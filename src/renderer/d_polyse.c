@@ -48,7 +48,7 @@ typedef struct {
 
 static int	r_p0[6], r_p1[6], r_p2[6];
 
-static const pixel_t	*d_pcolormap;	// the colormap row of the triangle's light
+static int		d_tlight;		// the light of the triangle drawn by subdivision
 
 int			d_aflatcolor;
 static int			d_xdenom;
@@ -147,6 +147,26 @@ void D_PolysetDraw (void)
 
 /*
 ================
+D_AliasPixel
+
+A skin texel lit: through the colormap row of its light, or with
+r_lightmode 1 its color times the light in the light's color. light is
+(255 - level) << 6, level 128 being 1.0.
+================
+*/
+static inline pixel_t D_AliasPixel (int index, int light)
+{
+	unsigned	level;
+
+	if (!r_affinetridesc.rgblight)
+		return d_cm30[index + (light & 0xFF00)];
+	level = light < (255 << 6) ? (unsigned)((255 << 6) - light) : 0;	// 8192 is 1.0
+	return R_LitPixel (index, (level * r_affinetridesc.tint[0]) >> 6,
+		(level * r_affinetridesc.tint[1]) >> 6, (level * r_affinetridesc.tint[2]) >> 6);
+}
+
+/*
+================
 D_PolysetDrawFinalVerts
 ================
 */
@@ -170,7 +190,7 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int nverts)
 
 				*zbuf = z;
 				pix = r_affinetridesc.skinremap[skintable[fv->v[3]>>16][fv->v[2]>>16]];
-				d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]] = d_cm30[pix + (fv->v[4] & 0xFF00)];
+				d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]] = D_AliasPixel (pix, fv->v[4]);
 			}
 		}
 	}
@@ -207,7 +227,7 @@ void D_DrawSubdiv (void)
 			continue;
 		}
 
-		d_pcolormap = &d_cm30[index0->v[4] & 0xFF00];
+		d_tlight = index0->v[4];
 
 		if (ptri[i].facesfront)
 		{
@@ -376,7 +396,7 @@ split:
 	{
 		*zbuf = zf;
 		d_viewbuffer[d_scantable[new[1]] + new[0]] =
-			d_pcolormap[r_affinetridesc.skinremap[skintable[new[3]>>16][new[2]>>16]]];
+			D_AliasPixel (r_affinetridesc.skinremap[skintable[new[3]>>16][new[2]>>16]], d_tlight);
 	}
 
 nodraw:
@@ -622,7 +642,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 			{
 				if (lzi * ALIAS_ZI_TO_FLOAT >= *lpz)
 				{
-					*lpdest = d_cm30[remap[*lptex] + (llight & 0xFF00)];
+					*lpdest = D_AliasPixel (remap[*lptex], llight);
 					*lpz = lzi * ALIAS_ZI_TO_FLOAT;
 				}
 				lpdest++;

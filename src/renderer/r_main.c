@@ -121,6 +121,12 @@ cvar_t	r_graphheight = {.name = "r_graphheight", .string = "15"};
 cvar_t	r_clearcolor = {.name = "r_clearcolor", .string = "2"};
 cvar_t	r_waterwarp = {.name = "r_waterwarp", .string = "1"};
 cvar_t	r_fullbright = {.name = "r_fullbright", .string = "0"};
+// 0: light through the colormap as Quake did; 1: light in RGB with 4x headroom
+cvar_t	r_lightmode = {.name = "r_lightmode", .string = "1", .archive = true};
+// dynamic lights have color (r_lightmode 1)
+static cvar_t	r_dlight_color = {.name = "r_dlight_color", .string = "1", .archive = true};
+// fullbright colors are this much brighter than white allows (r_lightmode 1)
+static cvar_t	r_fullbright_scale = {.name = "r_fullbright_scale", .string = "1.3", .archive = true};
 static cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1"};
 static cvar_t	r_drawviewmodel = {.name = "r_drawviewmodel", .string = "1"};
 static cvar_t	r_aliasstats = {.name = "r_polymodelstats", .string = "0"};
@@ -199,6 +205,9 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_ambient);
 	Cvar_RegisterVariable (&r_clearcolor);
 	Cvar_RegisterVariable (&r_waterwarp);
+	Cvar_RegisterVariable (&r_lightmode);
+	Cvar_RegisterVariable (&r_dlight_color);
+	Cvar_RegisterVariable (&r_fullbright_scale);
 	Cvar_RegisterVariable (&r_fullbright);
 	Cvar_RegisterVariable (&r_drawentities);
 	Cvar_RegisterVariable (&r_drawviewmodel);
@@ -262,6 +271,63 @@ static void R_AllocEdges (int numedges, int numsurfs)
 // is used to indicate no edge attached to surface
 	surfaces = r_surfaces_mem - 1;
 	surface_p = surfaces;
+}
+
+/*
+===============
+R_LightTint
+
+The color of summed light, its brightest channel 1
+===============
+*/
+static void R_LightTint (const vec3_t rgb, float color[3])
+{
+	float	m = fmaxf (rgb[0], fmaxf (rgb[1], rgb[2]));
+	int		i;
+
+	for (i=0 ; i<3 ; i++)
+		color[i] = m > 0 ? rgb[i] / m : 1;
+}
+
+/*
+===============
+R_DlightColor
+
+A dynamic light's color with its brightest channel 1; white without color
+===============
+*/
+void R_DlightColor (const dlight_t *dl, float color[3])
+{
+	float	m = fmaxf (dl->color[0], fmaxf (dl->color[1], dl->color[2]));
+	int		i;
+
+	for (i=0 ; i<3 ; i++)
+		color[i] = r_dlight_color.value && m > 0 ? dl->color[i] / m : 1;
+}
+
+/*
+===============
+R_CheckLightSettings
+
+Surfaces cached with other light settings are drawn again
+===============
+*/
+static void R_CheckLightSettings (void)
+{
+	static float	lightmode = -1, dlightcolor = -1, fbscale = -1;
+
+	if (r_fullbright_scale.value != fbscale)
+	{
+		fbscale = r_fullbright_scale.value;
+		R_SetFullbrightScale (fbscale > 0 ? fbscale : 1);
+		lightmode = -1;
+	}
+	if (r_lightmode.value != lightmode || r_dlight_color.value != dlightcolor)
+	{
+		lightmode = r_lightmode.value;
+		dlightcolor = r_dlight_color.value;
+		D_FlushCaches ();
+	}
 }
 
 /*
@@ -472,6 +538,8 @@ void R_DrawEntitiesOnList (void)
 	int			i, j;
 	int			lnum;
 	alight_t	lighting;
+	vec3_t		rgb;
+	float		color[3];
 // FIXME: remove and do real lighting
 	float		lightvec[3] = {-1, 0, 0};
 	vec3_t		dist;
@@ -506,6 +574,7 @@ void R_DrawEntitiesOnList (void)
 				lighting.shadelight = j;
 
 				lighting.plightvec = lightvec;
+				rgb[0] = rgb[1] = rgb[2] = (float)j;
 
 				for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
 				{
@@ -515,11 +584,16 @@ void R_DrawEntitiesOnList (void)
 										r_scene.dlights[lnum].origin,
 										dist);
 						add = r_scene.dlights[lnum].radius - Length(dist);
-	
+
 						if (add > 0)
+						{
 							lighting.ambientlight = (int)(lighting.ambientlight + add);
+							R_DlightColor (&r_scene.dlights[lnum], color);
+							VectorMA (rgb, add, color, rgb);
+						}
 					}
 				}
+				R_LightTint (rgb, lighting.color);
 	
 			// clamp lighting so it doesn't overbright as much
 				if (lighting.ambientlight > 128)
@@ -545,6 +619,8 @@ R_DrawViewModel
 */
 void R_DrawViewModel (void)
 {
+	vec3_t		rgb;
+	float		color[3];
 // FIXME: remove and do real lighting
 	float		lightvec[3] = {-1, 0, 0};
 	int			j;
@@ -573,6 +649,7 @@ void R_DrawViewModel (void)
 		j = 24;		// allways give some light on gun
 	r_viewlighting.ambientlight = j;
 	r_viewlighting.shadelight = j;
+	rgb[0] = rgb[1] = rgb[2] = (float)j;
 
 // add dynamic lights		
 	for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
@@ -588,8 +665,13 @@ void R_DrawViewModel (void)
 		VectorSubtract (currententity->origin, dl->origin, dist);
 		add = dl->radius - Length(dist);
 		if (add > 0)
+		{
 			r_viewlighting.ambientlight = (int)(r_viewlighting.ambientlight + add);
+			R_DlightColor (dl, color);
+			VectorMA (rgb, add, color, rgb);
+		}
 	}
+	R_LightTint (rgb, r_viewlighting.color);
 
 // clamp lighting so it doesn't overbright as much
 	if (r_viewlighting.ambientlight > 128)
@@ -861,6 +943,7 @@ void R_RenderView_ (void)
 	if (r_timegraph.value || r_speeds.value || r_dspeeds.value)
 		r_time1 = (float)Sys_DoubleTime ();
 
+	R_CheckLightSettings ();
 	R_SetupFrame ();
 
 	R_MarkLeaves ();	// done here so we know if we're in water

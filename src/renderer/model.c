@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 static model_t	*loadmodel;
 
 void Mod_LoadSpriteModel (model_t *mod, void *buffer);
+static int		mod_filelen;		// of the map file being loaded
 void Mod_LoadBrushModel (model_t *mod, void *buffer);
 void Mod_LoadAliasModel (model_t *mod, void *buffer);
 model_t *Mod_LoadModel (model_t *mod, bool crash);
@@ -297,7 +298,7 @@ model_t *Mod_LoadModel (model_t *mod, bool crash)
 //
 // load the file
 //
-	buf = (unsigned *)FS_LoadFile (mod->name, NULL);
+	buf = (unsigned *)FS_LoadFile (mod->name, &mod_filelen);
 	if (!buf)
 	{
 		if (crash)
@@ -534,6 +535,82 @@ void Mod_LoadLighting (lump_t *l)
 	memcpy (loadmodel->lightdata, mod_base + l->fileofs, l->filelen);
 }
 
+
+/*
+=================
+Mod_FindBSPXLump
+
+The BSPX directory follows the last lump, 4 byte aligned: "BSPX", a
+count, then 24 byte names with offsets and lengths
+=================
+*/
+static byte *Mod_FindBSPXLump (dheader_t *header, const char *name, int *length)
+{
+	int		i, end, count;
+	byte	*bspx;
+
+	end = 0;
+	for (i=0 ; i<HEADER_LUMPS ; i++)
+		if (header->lumps[i].fileofs + header->lumps[i].filelen > end)
+			end = header->lumps[i].fileofs + header->lumps[i].filelen;
+	end = (end + 3) & ~3;
+	if (end + 8 > mod_filelen || memcmp (mod_base + end, "BSPX", 4))
+		return NULL;
+
+	bspx = mod_base + end;
+	count = LittleLong (*(int *)(bspx + 4));
+	if (count < 0 || end + 8 + count * 32 > mod_filelen)
+		return NULL;
+	for (i=0 ; i<count ; i++)
+	{
+		byte	*entry = bspx + 8 + i * 32;
+		int		ofs = LittleLong (*(int *)(entry + 24));
+		int		len = LittleLong (*(int *)(entry + 28));
+
+		if (strncmp ((char *)entry, name, 24))
+			continue;
+		if (ofs < 0 || len < 0 || ofs > mod_filelen - len)
+			return NULL;
+		*length = len;
+		return mod_base + ofs;
+	}
+	return NULL;
+}
+
+/*
+=================
+Mod_LoadHDRLighting
+
+LIGHTING_E5BGR9 holds a sample for every mono one: 9 bit red, green and
+blue mantissas with a shared 5 bit exponent biased by 15, linear light
+where 1.0 is the mono 128. Stored as 16 bits per channel, 2048 is 1.0.
+=================
+*/
+static void Mod_LoadHDRLighting (dheader_t *header)
+{
+	byte	*in;
+	int		i, c, length, mono;
+	unsigned	e5bgr9;
+	float	scale, v;
+
+	loadmodel->lightrgb = NULL;
+	mono = header->lumps[LUMP_LIGHTING].filelen;
+	in = Mod_FindBSPXLump (header, "LIGHTING_E5BGR9", &length);
+	if (!in || !mono || length != mono * 4)
+		return;
+
+	loadmodel->lightrgb = Mod_Alloc ((size_t)mono * 3 * sizeof(*loadmodel->lightrgb));
+	for (i=0 ; i<mono ; i++)
+	{
+		e5bgr9 = (unsigned)in[i*4] | ((unsigned)in[i*4+1] << 8) | ((unsigned)in[i*4+2] << 16) | ((unsigned)in[i*4+3] << 24);
+		scale = ldexpf (2048.0f, (int)(e5bgr9 >> 27) - 15 - 9);
+		for (c=0 ; c<3 ; c++)
+		{
+			v = ((e5bgr9 >> (9 * c)) & 0x1ff) * scale + 0.5f;
+			loadmodel->lightrgb[i*3 + c] = (unsigned short)(v > 65535 ? 65535 : v);
+		}
+	}
+}
 
 /*
 =================
@@ -818,9 +895,15 @@ void Mod_LoadFaces (lump_t *l)
 			out->styles[i] = in->styles[i];
 		i = LittleLong(in->lightofs);
 		if (i == -1)
+		{
 			out->samples = NULL;
+			out->samples_rgb = NULL;
+		}
 		else
+		{
 			out->samples = loadmodel->lightdata + i;
+			out->samples_rgb = loadmodel->lightrgb ? loadmodel->lightrgb + (size_t)i * 3 : NULL;
+		}
 		
 	// set the drawing flags flag
 		
@@ -1093,6 +1176,7 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	Mod_LoadSurfedges (&header->lumps[LUMP_SURFEDGES]);
 	Mod_LoadTextures (&header->lumps[LUMP_TEXTURES]);
 	Mod_LoadLighting (&header->lumps[LUMP_LIGHTING]);
+	Mod_LoadHDRLighting (header);
 	Mod_LoadPlanes (&header->lumps[LUMP_PLANES]);
 	Mod_LoadTexinfo (&header->lumps[LUMP_TEXINFO]);
 	Mod_LoadFaces (&header->lumps[LUMP_FACES]);

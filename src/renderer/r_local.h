@@ -71,6 +71,7 @@ typedef struct {
 	int			ambientlight;
 	int			shadelight;
 	float		*plightvec;
+	float		color[3];		// the light's color, the brightest channel 1
 } alight_t;
 
 //===========================================================================
@@ -97,6 +98,40 @@ extern cvar_t	r_fullbright;
 extern pixel_t	d_pal30[256];				// the palette
 extern pixel_t	d_cm30[VID_GRADES * 256];	// the palette through each colormap row
 extern byte		r_identityremap[256];		// no player colors
+extern byte		d_palrgb[256][3];
+extern bool		d_fullbright[256];
+extern pixel_t	d_pal30_fb[256];
+
+void R_SetFullbrightScale (float scale);
+
+// r_lightmode 1: light in RGB, 128 << 8 is 1.0, clamped at 4.0 keeping the hue
+#define LIGHT_ONE		(128 << 8)
+#define LIGHT_MAX		(4 * LIGHT_ONE)
+
+extern cvar_t	r_lightmode;
+void R_DlightColor (const dlight_t *dl, float color[3]);
+
+// lit texel color: palette color times light, with 15 fraction bits. A
+// fullbright color is never darker than itself, but brighter light still
+// brightens it.
+static inline pixel_t R_LitPixel (int index, unsigned r, unsigned g, unsigned b)
+{
+	r = (d_palrgb[index][0] * r) >> 15;
+	g = (d_palrgb[index][1] * g) >> 15;
+	b = (d_palrgb[index][2] * b) >> 15;
+	if (d_fullbright[index])
+	{
+		pixel_t	fb = d_pal30_fb[index];
+
+		if (r < RGB30_R (fb))
+			r = RGB30_R (fb);
+		if (g < RGB30_G (fb))
+			g = RGB30_G (fb);
+		if (b < RGB30_B (fb))
+			b = RGB30_B (fb);
+	}
+	return RGB30 (r > 1023 ? 1023 : r, g > 1023 ? 1023 : g, b > 1023 ? 1023 : b);
+}
 extern cvar_t	r_drawflat;
 extern cvar_t	r_ambient;
 extern cvar_t	r_numsurfs;

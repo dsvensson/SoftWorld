@@ -124,7 +124,8 @@ typedef struct msurface_s
 	
 // lighting info
 	byte		styles[MAXLIGHTMAPS];
-	byte		*samples;		// [numstyles*surfsize]
+	byte		*samples;		// [numstyles*surfsize], 128 is 1.0
+	unsigned short	*samples_rgb;	// [numstyles*surfsize*3], 2048 is 1.0; NULL without RGB light
 } msurface_t;
 
 typedef struct mnode_s
@@ -351,6 +352,7 @@ typedef struct model_s
 
 	byte		*visdata;
 	byte		*lightdata;
+	unsigned short	*lightrgb;	// 3 per lightdata byte, from LIGHTING_E5BGR9
 	char		*entities;
 
 //

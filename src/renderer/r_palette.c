@@ -24,6 +24,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 pixel_t	d_pal30[256];
 pixel_t	d_cm30[VID_GRADES * 256];
 byte	r_identityremap[256];
+byte	d_palrgb[256][3];		// the palette, for lighting by multiplication
+bool	d_fullbright[256];		// colors light doesn't change
+pixel_t	d_pal30_fb[256];		// fullbright colors, brightened by r_fullbright_scale
 
 /*
 ===============
@@ -44,4 +47,36 @@ void R_InitPalette (const byte *palette, const byte *colormap)
 	}
 	for (i = 0 ; i < VID_GRADES * 256 ; i++)
 		d_cm30[i] = d_pal30[colormap[i]];
+
+	for (i = 0 ; i < 256 ; i++)
+	{
+		d_palrgb[i][0] = palette[i * 3];
+		d_palrgb[i][1] = palette[i * 3 + 1];
+		d_palrgb[i][2] = palette[i * 3 + 2];
+		// the same color in the brightest and the darkest row
+		d_fullbright[i] = colormap[i] == i && colormap[(VID_GRADES - 1) * 256 + i] == i && i;
+	}
+	R_SetFullbrightScale (1);
+}
+
+/*
+===============
+R_SetFullbrightScale
+===============
+*/
+void R_SetFullbrightScale (float scale)
+{
+	int		i, c;
+	unsigned	v[3];
+
+	for (i = 0 ; i < 256 ; i++)
+	{
+		for (c = 0 ; c < 3 ; c++)
+		{
+			v[c] = (unsigned)(d_palrgb[i][c] * scale + 0.5f);
+			if (v[c] > 1023)
+				v[c] = 1023;
+		}
+		d_pal30_fb[i] = RGB30 (v[0], v[1], v[2]);
+	}
 }

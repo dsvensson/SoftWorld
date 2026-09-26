@@ -626,6 +626,7 @@ R_AliasSetupLighting
 */
 void R_AliasSetupLighting (alight_t *plighting)
 {
+	int		i;
 
 // guarantee that no vertex will ever be lit below LIGHT_MIN, so we don't have
 // to clamp off the bottom
@@ -645,6 +646,10 @@ void R_AliasSetupLighting (alight_t *plighting)
 		r_shadelight = 0;
 
 	r_shadelight *= VID_GRADES;
+
+	r_affinetridesc.rgblight = r_lightmode.value != 0;
+	for (i=0 ; i<3 ; i++)
+		r_affinetridesc.tint[i] = (unsigned)(plighting->color[i] * 256);
 
 // rotate the lighting vector into the model's frame of reference
 	r_plightvec[0] = DotProduct (plighting->plightvec, alias_forward);
