@@ -34,6 +34,34 @@ static int				r_turb_spancount;
 void D_DrawTurbulent8Span (void);
 
 
+static pixel_t	**warp_rowptr;		// the source rows, compressed by the wave's height
+static int		*warp_column;		// and columns
+static int		*warp_uturb;		// the wave's offset of each column
+static int		*warp_vturb;		// and row
+
+/*
+=============
+D_SetWarpSize
+
+The underwater view is drawn into r_warpbuffer, then warped to the frame
+=============
+*/
+void D_SetWarpSize (int width, int height, int scale)
+{
+	int		amp = AMP2 * scale;
+
+	Mem_Free (r_warpbuffer);
+	Mem_Free (warp_rowptr);
+	Mem_Free (warp_column);
+	Mem_Free (warp_uturb);
+	Mem_Free (warp_vturb);
+	r_warpbuffer = Mem_Alloc ((size_t)width * height * sizeof(*r_warpbuffer));
+	warp_rowptr = Mem_Alloc ((size_t)(height + amp * 2) * sizeof(*warp_rowptr));
+	warp_column = Mem_Alloc ((size_t)(width + amp * 2) * sizeof(*warp_column));
+	warp_uturb = Mem_Alloc ((size_t)width * sizeof(*warp_uturb));
+	warp_vturb = Mem_Alloc ((size_t)height * sizeof(*warp_vturb));
+}
+
 /*
 =============
 D_WarpScreen
@@ -44,48 +72,43 @@ D_WarpScreen
 */
 void D_WarpScreen (void)
 {
-	int		w, h;
-	int		u,v;
+	int		w, h, u, v, k, amp, base;
 	pixel_t	*dest;
-	int		*turb;
 	int		*col;
 	pixel_t	**row;
-	pixel_t	*rowptr[MAXHEIGHT+(AMP2*2)];
-	int		column[MAXWIDTH+(AMP2*2)];
-	float	wratio, hratio;
 
 	w = r_refdef.vrect.width;
 	h = r_refdef.vrect.height;
+	k = (int)vid.scale;
+	amp = AMP2 * k;
 
-	wratio = w / (float)r_viewrect.width;
-	hratio = h / (float)r_viewrect.height;
-
-	for (v=0 ; v<r_viewrect.height+AMP2*2 ; v++)
+	for (v=0 ; v<h+amp*2 ; v++)
 	{
-		rowptr[v] = d_viewbuffer + (r_refdef.vrect.y * screenwidth) +
-				 (screenwidth * (int)((float)v * hratio * h / (h + AMP2 * 2)));
+		warp_rowptr[v] = d_viewbuffer + (r_refdef.vrect.y * screenwidth) +
+				 (screenwidth * (int)((float)v * h / (h + amp * 2)));
 	}
 
-	for (u=0 ; u<r_viewrect.width+AMP2*2 ; u++)
+	for (u=0 ; u<w+amp*2 ; u++)
 	{
-		column[u] = r_refdef.vrect.x +
-				(int)((float)u * wratio * w / (w + AMP2 * 2));
+		warp_column[u] = r_refdef.vrect.x +
+				(int)((float)u * w / (w + amp * 2));
 	}
 
-	turb = intsintable + ((int)(r_scene.time*SPEED)&(CYCLE-1));
+// the 320x200 look: the wave is k pixels wide and moves k pixels at a time
+	base = (int)(r_scene.time*SPEED)&(CYCLE-1);
+	for (u=0 ; u<w ; u++)
+		warp_uturb[u] = k * intsintable[base + u / k];
+	for (v=0 ; v<h ; v++)
+		warp_vturb[v] = k * intsintable[base + v / k];
+
 	dest = vid.buffer + r_viewrect.y * vid.rowpixels + r_viewrect.x;
 
 	for (v=0 ; v<r_viewrect.height ; v++, dest += vid.rowpixels)
 	{
-		col = &column[turb[v]];
-		row = &rowptr[v];
-		for (u=0 ; u<r_viewrect.width ; u+=4)
-		{
-			dest[u+0] = row[turb[u+0]][col[u+0]];
-			dest[u+1] = row[turb[u+1]][col[u+1]];
-			dest[u+2] = row[turb[u+2]][col[u+2]];
-			dest[u+3] = row[turb[u+3]][col[u+3]];
-		}
+		col = &warp_column[warp_vturb[v]];
+		row = &warp_rowptr[v];
+		for (u=0 ; u<r_viewrect.width ; u++)
+			dest[u] = row[warp_uturb[u]][col[u]];
 	}
 }
 

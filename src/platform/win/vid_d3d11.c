@@ -44,7 +44,7 @@ static cvar_t	vid_hdr_paperwhite = {.name = "vid_hdr_paperwhite", .string = "0",
 
 #define VID_BASE_WIDTH	320
 #define VID_BASE_HEIGHT	200
-#define VID_MAX_SCALE	4		// MAXWIDTH/MAXHEIGHT in r_shared.h cap the render size
+#define VID_MAX_SCALE	16
 
 // the constant buffer of present.hlsl
 typedef struct
@@ -455,7 +455,7 @@ VID_AllocBuffers
 The framebuffer, z-buffer and surface cache for the current render size.
 ================
 */
-static void VID_AllocBuffers (int width, int height)
+static void VID_AllocBuffers (int width, int height, int scale)
 {
 	vid.buffer = Mem_Alloc ((size_t)width * height * sizeof(pixel_t));
 
@@ -465,7 +465,8 @@ static void VID_AllocBuffers (int width, int height)
 	vid.aspect = ((float)height / (float)width) * (320.0f / 240.0f);
 	vid.recalc_refdef = 1;
 
-	D_SetBufferSize (width, height);
+	vid.scale = (unsigned)scale;
+	R_SetRenderSize (width, height, scale);
 }
 
 /*
@@ -581,7 +582,7 @@ void VID_Init (void)
 	VID_CreateWindow (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
 	VID_CreateDevice ();
 	VID_CreateFrameTexture (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
-	VID_AllocBuffers (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
+	VID_AllocBuffers (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale, scale);
 
 	ShowWindow (mainwindow, SW_SHOWDEFAULT);
 	UpdateWindow (mainwindow);

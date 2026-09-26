@@ -57,8 +57,7 @@ typedef struct
 	int				recalc_refdef;	// if true, recalc vid-based stuff
 	unsigned		conwidth;
 	unsigned		conheight;
-	int				maxwarpwidth;
-	int				maxwarpheight;
+	unsigned		scale;			// render pixels per pixel of the 320x200 layout
 } viddef_t;
 
 extern	viddef_t	vid;				// global video state

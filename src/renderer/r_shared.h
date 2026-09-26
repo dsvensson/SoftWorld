@@ -36,10 +36,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	MAXVERTS	16					// max points in a surface polygon
 #define MAXWORKINGVERTS	(MAXVERTS+4)	// max points in an intermediate
 										//  polygon (while processing)
-// !!! if this is changed, it must be changed in d_ifacea.h too !!!
-#define	MAXHEIGHT	1024
-#define	MAXWIDTH	1280
-
 #define INFINITE_DISTANCE	0x10000		// distance that's always guaranteed to
 										//  be farther away than anything in
 										//  the scene
@@ -57,19 +53,17 @@ extern int		r_drawnpolycount;
 
 extern cvar_t	r_clearcolor;
 
-extern int	sintable[MAXWIDTH+CYCLE];
-extern int	intsintable[MAXWIDTH+CYCLE];
+extern int	sintable[CYCLE*2];		// read from any offset within a cycle
+extern int	*intsintable;			// the underwater warp's, one base screen wide past a cycle
 
 extern	vec3_t	vup, base_vup;
 extern	vec3_t	vpn, base_vpn;
 extern	vec3_t	vright, base_vright;
 extern	entity_t		*currententity;
 
-#define NUMSTACKEDGES		2000
-#define	MINEDGES			NUMSTACKEDGES
-#define NUMSTACKSURFACES	1000
-#define MINSURFACES			NUMSTACKSURFACES
-#define	MAXSPANS			3000
+#define	MINEDGES			2000		// edges and surfaces grow when a frame needs more
+#define MINSURFACES			1000
+#define	MINSPANS			3000
 
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 typedef struct espan_s
@@ -141,13 +135,15 @@ extern int	ubasestep, errorterm, erroradjustup, erroradjustdown;
 											//  must be kept in sync
 #define ALIAS_XY_CLIP_MASK			0x000F
 
-// !!! if this is changed, it must be changed in asm_draw.h too !!!
+// u is fixed point with 20 fraction bits, 64 bits wide for any screen width
+#define EDGE_FRACBITS	20
+
 typedef struct edge_s
 {
-	fixed16_t		u;
-	fixed16_t		u_step;
+	int64_t			u;
+	int64_t			u_step;
 	struct edge_s	*prev, *next;
-	unsigned short	surfs[2];
+	uint32_t		surfs[2];
 	struct edge_s	*nextremove;
 	float			nearzi;
 	medge_t			*owner;

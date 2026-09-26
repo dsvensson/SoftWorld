@@ -24,10 +24,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 #include "d_local.h"
 
-// TODO: put in span spilling to shrink list size
-// !!! if this is changed, it must be changed in d_polysa.s too !!!
-#define DPS_MAXSPANS			MAXHEIGHT+1	
-									// 1 extra for spanpackage that marks end
 
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 typedef struct {
@@ -119,18 +115,25 @@ void D_PolysetScanLeftEdge (int height);
 
 /*
 ================
+D_SetPolysetSize
+
+A span for every scan line, one to mark the end and one more because of
+cache line pretouching
+================
+*/
+void D_SetPolysetSize (int height)
+{
+	Mem_Free (a_spans);
+	a_spans = Mem_Calloc ((size_t)height + 3, sizeof(*a_spans));
+}
+
+/*
+================
 D_PolysetDraw
 ================
 */
 void D_PolysetDraw (void)
 {
-	spanpackage_t	spans[DPS_MAXSPANS + 1 +
-			((CACHE_SIZE - 1) / sizeof(spanpackage_t)) + 1];
-						// one extra because of cache line pretouching
-
-	a_spans = (spanpackage_t *)
-			(((uintptr_t)&spans[0] + CACHE_SIZE - 1) & ~(CACHE_SIZE - 1));
-
 	if (r_affinetridesc.drawtype)
 	{
 		D_DrawSubdiv ();

@@ -26,8 +26,8 @@ int	d_vrectx, d_vrecty, d_vrectright_particle, d_vrectbottom_particle;
 
 int	d_y_aspect_shift, d_pix_min, d_pix_max, d_pix_shift;
 
-int		d_scantable[MAXHEIGHT];
-short	*zspantable[MAXHEIGHT]; 
+int		*d_scantable;		// by scan line
+short	**zspantable; 
 
 /*
 ================
@@ -38,10 +38,7 @@ void D_ViewChanged (void)
 {
 	int rowpixels;
 
-	if (r_dowarp)
-		rowpixels = WARP_WIDTH;
-	else
-		rowpixels = vid.rowpixels;
+	rowpixels = r_dowarp ? (int)vid.width : (int)vid.rowpixels;
 
 	scale_for_mip = xscale;
 	if (yscale > xscale)

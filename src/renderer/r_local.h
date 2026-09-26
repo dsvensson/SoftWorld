@@ -246,12 +246,14 @@ void R_ClearParticles (void);
 void R_ReadPointFile_f (void);
 
 extern int		r_amodels_drawn;
-extern edge_t	*auxedges;
 extern int		r_numallocatededges;
 extern edge_t	*r_edges, *edge_p, *edge_max;
 
-extern	edge_t	*newedges[MAXHEIGHT];
-extern	edge_t	*removeedges[MAXHEIGHT];
+extern	edge_t	**newedges;
+extern	edge_t	**removeedges;
+
+void R_SetEdgeSize (int width, int height);
+void R_SetWarpTable (int size);
 
 extern	int	screenwidth;
 

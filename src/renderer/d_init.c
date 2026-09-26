@@ -70,7 +70,7 @@ void D_SetupFrame (void)
 	if (r_dowarp)
 	{
 		d_viewbuffer = r_warpbuffer;
-		screenwidth = WARP_WIDTH;
+		screenwidth = vid.width;
 	}
 	else
 	{
@@ -97,12 +97,13 @@ void D_SetupFrame (void)
 
 /*
 ===============
-D_SetBufferSize
+R_SetRenderSize
 
-Allocates the z-buffer and surface cache for a width x height view buffer
+Allocates the z-buffer, the surface cache and every table of a width x
+height frame
 ===============
 */
-void D_SetBufferSize (int width, int height)
+void R_SetRenderSize (int width, int height, int scale)
 {
 	static byte	*buffers;
 	int			zbuffersize, cachesize;
@@ -114,9 +115,18 @@ void D_SetBufferSize (int width, int height)
 	zbuffersize = width * height * (int)sizeof (*d_pzbuffer);
 	buffers = Mem_AllocAligned ((size_t)zbuffersize + (size_t)cachesize, 64);
 	d_pzbuffer = (short *)buffers;
-
-	vid.maxwarpwidth = WARP_WIDTH;
-	vid.maxwarpheight = WARP_HEIGHT;
-
 	D_InitCaches (buffers + zbuffersize, cachesize);
+
+	Mem_Free (d_scantable);
+	Mem_Free (zspantable);
+	d_scantable = Mem_Calloc ((size_t)height, sizeof(*d_scantable));
+	zspantable = Mem_Calloc ((size_t)height, sizeof(*zspantable));
+
+	R_SetEdgeSize (width, height);
+	R_SetWarpTable ((width > height ? width : height) / scale);
+	D_SetWarpSize (width, height, scale);
+	D_SetPolysetSize (height);
+	D_SetSpriteSize (height);
+
+	vid.recalc_refdef = 1;
 }

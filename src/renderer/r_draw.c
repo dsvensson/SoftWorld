@@ -47,8 +47,8 @@ static bool		r_leftclipped, r_rightclipped;
 static bool	makeleftedge, makerightedge;
 static bool		r_nearzionly;
 
-int		sintable[MAXWIDTH+CYCLE];	// read from any offset within a cycle
-int		intsintable[MAXWIDTH+CYCLE];
+int		sintable[CYCLE*2];
+int		*intsintable;
 
 static mvertex_t	r_leftenter, r_leftexit;
 static mvertex_t	r_rightenter, r_rightexit;
@@ -76,7 +76,7 @@ R_EmitEdge
 void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 {
 	edge_t	*edge, *pcheck;
-	int		u_check;
+	int64_t	u_check;
 	float	u, u_step;
 	vec3_t	local, transformed;
 	float	*world;
@@ -189,7 +189,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		v = ceilv0;
 		v2 = r_ceilv1 - 1;
 
-		edge->surfs[0] = (unsigned short)(surface_p - surfaces);
+		edge->surfs[0] = (uint32_t)(surface_p - surfaces);
 		edge->surfs[1] = 0;
 
 		u_step = ((r_u1 - u0) / (r_v1 - v0));
@@ -202,14 +202,14 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		v = r_ceilv1;
 
 		edge->surfs[0] = 0;
-		edge->surfs[1] = (unsigned short)(surface_p - surfaces);
+		edge->surfs[1] = (uint32_t)(surface_p - surfaces);
 
 		u_step = ((u0 - r_u1) / (v0 - r_v1));
 		u = r_u1 + ((float)v - r_v1) * u_step;
 	}
 
-	edge->u_step = (fixed16_t)(u_step*0x100000);
-	edge->u = (fixed16_t)(u*0x100000 + 0xFFFFF);
+	edge->u_step = (int64_t)(u_step*0x100000);
+	edge->u = (int64_t)(u*0x100000 + 0xFFFFF);
 
 // we need to do this to avoid stepping off the edges if a very nearly
 // horizontal edge is less than epsilon above a scan, and numeric error causes
@@ -362,9 +362,9 @@ void R_EmitCachedEdge (void)
 	pedge_t = (edge_t *)((uintptr_t)r_edges + r_pedge->cachededgeoffset);
 
 	if (!pedge_t->surfs[0])
-		pedge_t->surfs[0] = (unsigned short)(surface_p - surfaces);
+		pedge_t->surfs[0] = (uint32_t)(surface_p - surfaces);
 	else
-		pedge_t->surfs[1] = (unsigned short)(surface_p - surfaces);
+		pedge_t->surfs[1] = (uint32_t)(surface_p - surfaces);
 
 	if (pedge_t->nearzi > r_nearzi)	// for mipmap finding
 		r_nearzi = pedge_t->nearzi;
@@ -395,7 +395,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 		return;
 	}
 
-// ditto if not enough edges left, or switch to auxedges if possible
+// ditto if not enough edges left
 	if ((edge_p + fa->numedges + 4) >= edge_max)
 	{
 		r_outofedges += fa->numedges;
@@ -593,7 +593,7 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 		return;
 	}
 
-// ditto if not enough edges left, or switch to auxedges if possible
+// ditto if not enough edges left
 	if ((edge_p + psurf->numedges + 4) >= edge_max)
 	{
 		r_outofedges += psurf->numedges;

@@ -382,6 +382,17 @@ void D_SpriteCalculateGradients (void)
 
 /*
 =====================
+D_SetSpriteSize
+=====================
+*/
+void D_SetSpriteSize (int height)
+{
+	Mem_Free (sprite_spans);
+	sprite_spans = Mem_Calloc ((size_t)height + 1, sizeof(*sprite_spans));
+}
+
+/*
+=====================
 D_DrawSprite
 =====================
 */
@@ -390,9 +401,6 @@ void D_DrawSprite (void)
 	int			i, nump;
 	float		ymin, ymax;
 	emitpoint_t	*pverts;
-	sspan_t		spans[MAXHEIGHT+1];
-
-	sprite_spans = spans;
 
 // find the top and bottom vertices, and make sure there's at least one scan to
 // draw

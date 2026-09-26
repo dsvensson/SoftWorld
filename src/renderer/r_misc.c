@@ -306,8 +306,6 @@ R_SetupFrame
 void R_SetupFrame (void)
 {
 	int				edgecount;
-	vrect_t			vrect;
-	float			w, h;
 
 // don't allow cheats in multiplayer
 r_draworder.value = 0;
@@ -367,36 +365,7 @@ r_drawflat.value = 0;
 
 	if ((r_dowarp != r_dowarpold) || r_viewchanged)
 	{
-		if (r_dowarp && ((vid.width > (unsigned)vid.maxwarpwidth) ||
-			(vid.height > (unsigned)vid.maxwarpheight)))
-		{
-		// the warp buffer is smaller than the screen; D_WarpScreen scales it back up
-			w = (float)vid.width;
-			h = (float)vid.height;
-
-			if (w > vid.maxwarpwidth)
-			{
-				h *= (float)vid.maxwarpwidth / w;
-				w = (float)vid.maxwarpwidth;
-			}
-
-			if (h > vid.maxwarpheight)
-			{
-				h = (float)vid.maxwarpheight;
-				w *= (float)vid.maxwarpheight / h;
-			}
-
-			vrect.x = (int)(r_viewrect.x * w / vid.width);
-			vrect.y = (int)(r_viewrect.y * h / vid.height);
-			vrect.width = (int)(r_viewrect.width * w / vid.width) & ~7;
-			vrect.height = (int)(r_viewrect.height * h / vid.height) & ~1;
-			vrect.pnext = NULL;
-
-			R_SetViewRect (&vrect, r_viewaspect * (h / w) *
-				((float)vid.width / (float)vid.height));
-		}
-		else
-			R_SetViewRect (&r_viewrect, r_viewaspect);
+		R_SetViewRect (&r_viewrect, r_viewaspect);
 
 		r_viewchanged = false;
 	}

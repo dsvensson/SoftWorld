@@ -90,7 +90,7 @@ extern short *d_pzbuffer;
 extern unsigned int d_zrowbytes, d_zwidth;
 
 extern int	*d_pscantable;
-extern int	d_scantable[MAXHEIGHT];
+extern int	*d_scantable;
 
 extern int	d_vrectx, d_vrecty, d_vrectright_particle, d_vrectbottom_particle;
 
@@ -98,7 +98,11 @@ extern int	d_y_aspect_shift, d_pix_min, d_pix_max, d_pix_shift;
 
 extern pixel_t	*d_viewbuffer;
 
-extern short	*zspantable[MAXHEIGHT];
+extern short	**zspantable;
+
+void D_SetWarpSize (int width, int height, int scale);
+void D_SetPolysetSize (int height);
+void D_SetSpriteSize (int height);
 
 extern int		d_minmip;
 extern float	d_scalemip[3];

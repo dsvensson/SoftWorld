@@ -48,7 +48,6 @@ int			c_surf;
 int r_maxsurfsseen, r_maxedgesseen;
 static int r_cnumsurfs;
 static surf_t	*r_surfaces_mem;	// heap block behind surfaces (which points one element into it)
-static bool	r_surfsonstack;
 int			r_clipflags;
 
 pixel_t		*r_warpbuffer;
@@ -214,8 +213,8 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_aliastransbase);
 	Cvar_RegisterVariable (&r_aliastransadj);
 
-	Cvar_SetValue ("r_maxedges", (float)NUMSTACKEDGES);
-	Cvar_SetValue ("r_maxsurfs", (float)NUMSTACKSURFACES);
+	Cvar_SetValue ("r_maxedges", (float)MINEDGES);
+	Cvar_SetValue ("r_maxsurfs", (float)MINSURFACES);
 
 	view_clipplanes[0].leftedge = true;
 	view_clipplanes[1].rightedge = true;
@@ -238,6 +237,35 @@ r_scene_t	r_scene;
 
 /*
 ===============
+R_AllocEdges
+
+The edges and surfaces of a frame; R_EdgeDrawing grows them when a frame
+needs more
+===============
+*/
+static void R_AllocEdges (int numedges, int numsurfs)
+{
+	if (numedges < MINEDGES)
+		numedges = MINEDGES;
+	if (numsurfs < MINSURFACES)
+		numsurfs = MINSURFACES;
+
+	Mem_Free (r_edges);
+	r_numallocatededges = numedges;
+	r_edges = Mem_Calloc ((size_t)r_numallocatededges, sizeof(edge_t));
+
+	Mem_Free (r_surfaces_mem);
+	r_cnumsurfs = numsurfs;
+	r_surfaces_mem = Mem_Calloc ((size_t)r_cnumsurfs, sizeof(surf_t));
+	surf_max = &r_surfaces_mem[r_cnumsurfs];
+// surface 0 doesn't really exist; it's just a dummy because index 0
+// is used to indicate no edge attached to surface
+	surfaces = r_surfaces_mem - 1;
+	surface_p = surfaces;
+}
+
+/*
+===============
 R_NewMap
 ===============
 */
@@ -256,44 +284,10 @@ void R_NewMap (void)
 	r_viewleaf = NULL;
 	R_ClearParticles ();
 
-	r_cnumsurfs = (int)r_maxsurfs.value;
-
-	if (r_cnumsurfs <= MINSURFACES)
-		r_cnumsurfs = MINSURFACES;
-
-	if (r_cnumsurfs > NUMSTACKSURFACES)
-	{
-		Mem_Free (r_surfaces_mem);
-		r_surfaces_mem = surfaces = Mem_Calloc ((size_t)r_cnumsurfs, sizeof(surf_t));
-		surface_p = surfaces;
-		surf_max = &surfaces[r_cnumsurfs];
-		r_surfsonstack = false;
-	// surface 0 doesn't really exist; it's just a dummy because index 0
-	// is used to indicate no edge attached to surface
-		surfaces--;
-	}
-	else
-	{
-		r_surfsonstack = true;
-	}
-
 	r_maxedgesseen = 0;
 	r_maxsurfsseen = 0;
 
-	r_numallocatededges = (int)r_maxedges.value;
-
-	if (r_numallocatededges < MINEDGES)
-		r_numallocatededges = MINEDGES;
-
-	if (r_numallocatededges <= NUMSTACKEDGES)
-	{
-		auxedges = NULL;
-	}
-	else
-	{
-		Mem_Free (auxedges);
-		auxedges = Mem_Calloc ((size_t)r_numallocatededges, sizeof(edge_t));
-	}
+	R_AllocEdges ((int)r_maxedges.value, (int)r_maxsurfs.value);
 
 	r_dowarpold = false;
 	r_viewchanged = false;
@@ -332,11 +326,11 @@ void R_SetViewRect (const vrect_t *vrect, float aspect)
 	r_refdef.horizontalFieldOfView = 2.0f * tanf((float)(r_refdef.fov_x/360*Q_PI));
 	r_refdef.fvrectx = (float)r_refdef.vrect.x;
 	r_refdef.fvrectx_adj = (float)r_refdef.vrect.x - 0.5f;
-	r_refdef.vrect_x_adj_shift20 = (r_refdef.vrect.x<<20) + (1<<19) - 1;
+	r_refdef.vrect_x_adj_shift20 = ((int64_t)r_refdef.vrect.x<<20) + (1<<19) - 1;
 	r_refdef.fvrecty = (float)r_refdef.vrect.y;
 	r_refdef.fvrecty_adj = (float)r_refdef.vrect.y - 0.5f;
 	r_refdef.vrectright = r_refdef.vrect.x + r_refdef.vrect.width;
-	r_refdef.vrectright_adj_shift20 = (r_refdef.vrectright<<20) + (1<<19) - 1;
+	r_refdef.vrectright_adj_shift20 = ((int64_t)r_refdef.vrectright<<20) + (1<<19) - 1;
 	r_refdef.fvrectright = (float)r_refdef.vrectright;
 	r_refdef.fvrectright_adj = (float)r_refdef.vrectright - 0.5f;
 	r_refdef.vrectrightedge = (float)r_refdef.vrectright - 0.99f;
@@ -812,50 +806,38 @@ R_EdgeDrawing
 */
 void R_EdgeDrawing (void)
 {
-	edge_t	ledges[NUMSTACKEDGES +
-				((CACHE_SIZE - 1) / sizeof(edge_t)) + 1];
-	surf_t	lsurfs[NUMSTACKSURFACES +
-				((CACHE_SIZE - 1) / sizeof(surf_t)) + 1];
+	if (!r_edges)
+		R_AllocEdges (MINEDGES, MINSURFACES);
 
-	if (auxedges)
+// nothing is drawn until the spans are scanned, so a frame that runs out
+// of edges or surfaces is built again with more
+	while (1)
 	{
-		r_edges = auxedges;
+		r_outofsurfaces = 0;
+		r_outofedges = 0;
+
+		R_BeginEdgeFrame ();
+
+		if (r_dspeeds.value)
+		{
+			rw_time1 = (float)Sys_DoubleTime ();
+		}
+
+		R_RenderWorld ();
+
+		if (r_dspeeds.value)
+		{
+			rw_time2 = (float)Sys_DoubleTime ();
+			db_time1 = rw_time2;
+		}
+
+		R_DrawBEntitiesOnList ();
+
+		if (!r_outofsurfaces && !r_outofedges)
+			break;
+		R_AllocEdges (r_outofedges ? r_numallocatededges * 2 : r_numallocatededges,
+			r_outofsurfaces ? r_cnumsurfs * 2 : r_cnumsurfs);
 	}
-	else
-	{
-		r_edges =  (edge_t *)
-				(((uintptr_t)&ledges[0] + CACHE_SIZE - 1) & ~(CACHE_SIZE - 1));
-	}
-
-	if (r_surfsonstack)
-	{
-		surfaces =  (surf_t *)
-				(((uintptr_t)&lsurfs[0] + CACHE_SIZE - 1) & ~(CACHE_SIZE - 1));
-		surf_max = &surfaces[r_cnumsurfs];
-	// surface 0 doesn't really exist; it's just a dummy because index 0
-	// is used to indicate no edge attached to surface
-		surfaces--;
-	}
-
-	R_BeginEdgeFrame ();
-
-	if (r_dspeeds.value)
-	{
-		rw_time1 = (float)Sys_DoubleTime ();
-	}
-
-	R_RenderWorld ();
-
-	if (r_drawculledpolys)
-		R_ScanEdges ();
-
-	if (r_dspeeds.value)
-	{
-		rw_time2 = (float)Sys_DoubleTime ();
-		db_time1 = rw_time2;
-	}
-
-	R_DrawBEntitiesOnList ();
 
 	if (r_dspeeds.value)
 	{
@@ -863,8 +845,7 @@ void R_EdgeDrawing (void)
 		se_time1 = db_time2;
 	}
 
-	if (!(r_drawpolys | r_drawculledpolys))
-		R_ScanEdges ();
+	R_ScanEdges ();
 }
 
 
@@ -877,10 +858,6 @@ r_refdef must be set before the first call
 */
 void R_RenderView_ (void)
 {
-	static pixel_t	warpbuffer[WARP_WIDTH * WARP_HEIGHT];
-
-	r_warpbuffer = warpbuffer;
-
 	if (r_timegraph.value || r_speeds.value || r_dspeeds.value)
 		r_time1 = (float)Sys_DoubleTime ();
 
@@ -978,11 +955,26 @@ R_InitTurb
 void R_InitTurb (void)
 {
 	int		i;
-	
-	for (i=0 ; i<MAXWIDTH+CYCLE ; i++)
-	{
+
+	for (i=0 ; i<CYCLE*2 ; i++)
 		sintable[i] = (int)(AMP + sin(i*3.14159*2/CYCLE)*AMP);
+}
+
+/*
+================
+R_SetWarpTable
+
+3.14159 is not quite pi, so the table isn't periodic; it is read with an
+offset within a cycle, one screen of the 320x200 layout wide or high
+================
+*/
+void R_SetWarpTable (int size)
+{
+	int		i;
+
+	Mem_Free (intsintable);
+	intsintable = Mem_Alloc ((size_t)(size + CYCLE) * sizeof(*intsintable));
+	for (i=0 ; i<size+CYCLE ; i++)
 		intsintable[i] = (int)(AMP2 + sin(i*3.14159*2/CYCLE)*AMP2);	// AMP2, not 20
-	}
 }
 

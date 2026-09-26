@@ -101,8 +101,8 @@ typedef struct
 										//  for use in edge list
 	float		fvrectx, fvrecty;		// for floating-point compares
 	float		fvrectx_adj, fvrecty_adj; // left and top edges, for clamping
-	int			vrect_x_adj_shift20;	// (vrect.x + 0.5 - epsilon) << 20
-	int			vrectright_adj_shift20;	// (vrectright + 0.5 - epsilon) << 20
+	int64_t		vrect_x_adj_shift20;	// (vrect.x + 0.5 - epsilon) << 20
+	int64_t		vrectright_adj_shift20;	// (vrectright + 0.5 - epsilon) << 20
 	float		fvrectright_adj, fvrectbottom_adj;
 										// right and bottom edges, for clamping
 	float		fvrectright;			// rightmost edge, for Alias clamping
@@ -171,7 +171,9 @@ void D_FlushCaches (void);
 void D_InitCaches (void *buffer, int size);
 
 // allocates the z-buffer and surface cache for a width x height view buffer
-void D_SetBufferSize (int width, int height);
+// allocates everything that depends on the size of the frame; scale is
+// render pixels per pixel of the 320x200 layout
+void R_SetRenderSize (int width, int height, int scale);
 
 //
 // what the client hands the renderer: set up once, updated as the game runs

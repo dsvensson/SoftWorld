@@ -24,7 +24,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 
 
-edge_t	*auxedges;
 edge_t	*r_edges, *edge_p, *edge_max;
 
 surf_t	*surfaces, *surface_p, *surf_max;
@@ -33,8 +32,10 @@ surf_t	*surfaces, *surface_p, *surf_max;
 // pointer is greater than another one, it should be drawn in front
 // surfaces[1] is the background, and is used as the active surface stack
 
-edge_t	*newedges[MAXHEIGHT];
-edge_t	*removeedges[MAXHEIGHT];
+edge_t	**newedges;		// by scan line
+edge_t	**removeedges;
+static espan_t	*basespans;		// room for r_maxspans
+static int		r_maxspans;
 
 static espan_t	*span_p, *max_span_p;
 
@@ -44,7 +45,7 @@ extern	int	screenwidth;
 
 static int	current_iv;
 
-static int	edge_head_u_shift20, edge_tail_u_shift20;
+static int	edge_head_u_shift20, edge_tail_u_shift20;	// in whole pixels
 
 static void (*pdrawfunc)(void);
 
@@ -108,6 +109,25 @@ void R_DrawCulledPolys (void)
 	}
 }
 
+
+/*
+==============
+R_SetEdgeSize
+
+The edge lists of each scan line, and room for the spans of a frame; the
+spans are drawn and the room reused when they run out
+==============
+*/
+void R_SetEdgeSize (int width, int height)
+{
+	Mem_Free (newedges);
+	Mem_Free (removeedges);
+	Mem_Free (basespans);
+	newedges = Mem_Calloc ((size_t)height, sizeof(*newedges));
+	removeedges = Mem_Calloc ((size_t)height, sizeof(*removeedges));
+	r_maxspans = width * 4 > MINSPANS ? width * 4 : MINSPANS;
+	basespans = Mem_Alloc ((size_t)r_maxspans * sizeof(*basespans));
+}
 
 /*
 ==============
@@ -367,7 +387,7 @@ continue_search:
 
 newtop:
 	// emit a span (obscures current top)
-		iu = edge->u >> 20;
+		iu = (int)(edge->u >> 20);
 
 		if (iu > surf2->last_u)
 		{
@@ -413,7 +433,7 @@ void R_TrailingEdge (surf_t *surf, edge_t *edge)
 		if (surf == surfaces[1].next)
 		{
 		// emit a span (current top going away)
-			iu = edge->u >> 20;
+			iu = (int)(edge->u >> 20);
 			if (iu > surf->last_u)
 			{
 				span = span_p++;
@@ -537,7 +557,7 @@ continue_search:
 
 newtop:
 		// emit a span (obscures current top)
-			iu = edge->u >> 20;
+			iu = (int)(edge->u >> 20);
 
 			if (iu > surf2->last_u)
 			{
@@ -645,28 +665,26 @@ Each surface has a linked list of its visible spans
 void R_ScanEdges (void)
 {
 	int		iv, bottom;
-	byte	basespans[MAXSPANS*sizeof(espan_t)+CACHE_SIZE];
 	espan_t	*basespan_p;
 	surf_t	*s;
 
-	basespan_p = (espan_t *)
-			((uintptr_t)(basespans + CACHE_SIZE - 1) & ~(CACHE_SIZE - 1));
-	max_span_p = &basespan_p[MAXSPANS - r_refdef.vrect.width];
+	basespan_p = basespans;
+	max_span_p = &basespan_p[r_maxspans - r_refdef.vrect.width];
 
 	span_p = basespan_p;
 
 // clear active edges to just the background edges around the whole screen
 // FIXME: most of this only needs to be set up once
-	edge_head.u = r_refdef.vrect.x << 20;
-	edge_head_u_shift20 = edge_head.u >> 20;
+	edge_head.u = (int64_t)r_refdef.vrect.x << 20;
+	edge_head_u_shift20 = (int)(edge_head.u >> 20);
 	edge_head.u_step = 0;
 	edge_head.prev = NULL;
 	edge_head.next = &edge_tail;
 	edge_head.surfs[0] = 0;
 	edge_head.surfs[1] = 1;
 	
-	edge_tail.u = (r_refdef.vrectright << 20) + 0xFFFFF;
-	edge_tail_u_shift20 = edge_tail.u >> 20;
+	edge_tail.u = ((int64_t)r_refdef.vrectright << 20) + 0xFFFFF;
+	edge_tail_u_shift20 = (int)(edge_tail.u >> 20);
 	edge_tail.u_step = 0;
 	edge_tail.prev = &edge_head;
 	edge_tail.next = &edge_aftertail;
@@ -679,7 +697,7 @@ void R_ScanEdges (void)
 	edge_aftertail.prev = &edge_tail;
 
 // FIXME: do we need this now that we clamp x in r_draw.c?
-	edge_sentinel.u = (fixed16_t)(2000u << 24);		// make sure nothing sorts past this
+	edge_sentinel.u = INT64_MAX;		// make sure nothing sorts past this
 	edge_sentinel.prev = &edge_aftertail;
 
 //	
