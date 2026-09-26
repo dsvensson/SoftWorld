@@ -943,6 +943,7 @@ void R_EdgeDrawing (void)
 		r_outofedges = 0;
 
 		R_BeginEdgeFrame ();
+		R_ClearFences ();
 		prof = R_ProfStart ();
 
 		if (r_dspeeds.value)
@@ -975,6 +976,7 @@ void R_EdgeDrawing (void)
 
 	prof = R_ProfStart ();
 	R_ScanEdges ();
+	R_DrawFences ();
 	R_ProfEnd (PROF_SPANS, prof);
 }
 

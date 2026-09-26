@@ -28,10 +28,6 @@ float		scale_for_mip;
 extern int			screenwidth;
 int			ubasestep, errorterm, erroradjustup, erroradjustdown;
 
-// FIXME: should go away
-extern void			R_RotateBmodel (void);
-extern void			R_TransformFrustum (void);
-
 static vec3_t		transformed_modelorg;
 
 /*
@@ -138,6 +134,26 @@ void D_CalcGradients (msurface_t *pface)
 //
 	bbextents = ((pface->extents[0] << 16) >> miplevel) - 1;
 	bbextentt = ((pface->extents[1] << 16) >> miplevel) - 1;
+}
+
+
+/*
+==============
+D_DrawFence
+==============
+*/
+void D_DrawFence (msurface_t *surf, const vec3_t transformed_org, emitpoint_t *pverts, int nump, float nearzi)
+{
+	surfcache_t	*cache;
+
+	VectorCopy (transformed_org, transformed_modelorg);
+	miplevel = D_MipLevelForScale (nearzi * scale_for_mip * surf->texinfo->mipadjust);
+	miplevel = D_SurfaceMipLevel (surf, miplevel);
+	cache = D_CacheSurface (surf, miplevel);
+	cacheblock = cache->data;
+	cachewidth = cache->width;
+	D_CalcGradients (surf);
+	D_DrawFencePolygon (pverts, nump);
 }
 
 

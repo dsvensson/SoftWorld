@@ -393,7 +393,7 @@ checkerboard. The mip levels are copied to follow each other.
 static bool Mod_LoadTextures (void)
 {
 	const byte	*lump;
-	int			lumplen, i, j, count, ofs, w, h, pos, num, max, altmax;
+	int			lumplen, i, j, count, ofs, pos, num, max, altmax;
 	size_t		pixels;
 	miptex_t	mt;
 	texture_t	*tx, *tx2;
@@ -430,17 +430,12 @@ static bool Mod_LoadTextures (void)
 			Con_DPrintf ("%s: texture %s is %ux%u, not multiples of 16\n", loadmodel->name, mt.name, mt.width, mt.height);
 			continue;
 		}
-		ok = true;
-		for (j=0 ; j<MIPLEVELS ; j++)
-		{
-			mt.offsets[j] = (unsigned)LittleLong ((int)mt.offsets[j]);
-			w = (int)(mt.width >> j);
-			h = (int)(mt.height >> j);
-			if (!mt.offsets[j] || mt.offsets[j] > (unsigned)(lumplen - ofs) || (size_t)w * h > (size_t)(lumplen - ofs) - mt.offsets[j])
-				ok = false;	// kept outside the map, in a wad
-		}
-		if (!ok)
-			continue;
+		// only the full size image is used: the smaller ones in maps may be
+		// missing or wrong (fences with color where they should be cut out)
+		mt.offsets[0] = (unsigned)LittleLong ((int)mt.offsets[0]);
+		if (!mt.offsets[0] || mt.offsets[0] > (unsigned)(lumplen - ofs)
+			|| (size_t)mt.width * mt.height > (size_t)(lumplen - ofs) - mt.offsets[0])
+			continue;	// kept outside the map, in a wad
 
 		pixels = (size_t)mt.width * mt.height / 64 * 85;
 		tx = Mod_Alloc (sizeof(texture_t) + pixels);
@@ -451,12 +446,11 @@ static bool Mod_LoadTextures (void)
 		pos = (int)sizeof(texture_t);
 		for (j=0 ; j<MIPLEVELS ; j++)
 		{
-			w = (int)(mt.width >> j);
-			h = (int)(mt.height >> j);
 			tx->offsets[j] = (unsigned)pos;
-			memcpy ((byte *)tx + pos, lump + ofs + mt.offsets[j], (size_t)w * h);
-			pos += w * h;
+			pos += (int)((mt.width >> j) * (mt.height >> j));
 		}
+		memcpy ((byte *)tx + tx->offsets[0], lump + ofs + mt.offsets[0], (size_t)mt.width * mt.height);
+		R_BuildMips (tx, tx->name[0] == '{');
 
 		if (!Q_strncmp (tx->name, "sky", 3))
 			R_InitSky (tx);
@@ -874,6 +868,9 @@ static bool Mod_LoadFaces (void)
 		R_SetFaceLightmap (loadmodel, out, f, &lumps, surfnum, texmins, texmaxs);
 
 	// set the drawing flags flag
+
+		if (out->texinfo->texture->name[0] == '{')	// fence
+			out->flags |= SURF_DRAWFENCE;
 
 		if (!Q_strncmp (out->texinfo->texture->name, "sky", 3))	// sky
 		{

@@ -103,6 +103,7 @@ extern byte		d_palrgb[256][3];
 extern pixel_t	d_pal30_floor[256];
 
 void R_SetFullbrightScale (float scale);
+void R_BuildMips (texture_t *tx, bool fence);
 
 // r_lightdata.c
 typedef struct
@@ -113,6 +114,15 @@ typedef struct
 	const byte	*styles;		// LMSTYLE: stylesperface bytes per face
 	int			stylesperface;
 } facelumps_t;
+
+// r_fence.c
+#define PIXEL_TRANSPARENT	0x80000000u		// a cut-out texel in a fence surface's cache block
+
+void R_ClearFences (void);
+void R_AddFence (msurface_t *surf);
+void R_DrawFences (void);
+void R_RotateBmodel (void);
+void R_TransformFrustum (void);
 
 void R_LightDataInit (void);
 void R_LoadLightData (model_t *mod, bspfile_t *bsp);

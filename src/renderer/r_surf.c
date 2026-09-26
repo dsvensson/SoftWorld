@@ -408,6 +408,36 @@ texture_t *R_TextureAnimation (texture_t *base)
 R_DrawSurface
 ===============
 */
+/*
+===============
+R_MarkFenceTexels
+
+The texels of a fence surface's block whose texture index is 255, so the
+fence drawer skips them; the texture tiles as R_DrawSurface tiles it
+===============
+*/
+static void R_MarkFenceTexels (void)
+{
+	texture_t	*mt = r_drawsurf.texture;
+	int			mip = r_drawsurf.surfmip;
+	int			tw = (int)mt->width >> mip, th = (int)mt->height >> mip;
+	const byte	*src = (byte *)mt + mt->offsets[mip];
+	int			s0, t0, x, y;
+	const byte	*row;
+	pixel_t		*dest;
+
+	s0 = ((r_drawsurf.surf->texturemins[0] >> mip) % tw + tw) % tw;
+	t0 = ((r_drawsurf.surf->texturemins[1] >> mip) % th + th) % th;
+	for (y = 0 ; y < r_drawsurf.surfheight ; y++)
+	{
+		row = src + ((t0 + y) % th) * tw;
+		dest = r_drawsurf.surfdat + y * r_drawsurf.rowpixels;
+		for (x = 0 ; x < r_drawsurf.surfwidth ; x++)
+			if (row[(s0 + x) % tw] == 255)
+				dest[x] |= PIXEL_TRANSPARENT;
+	}
+}
+
 void R_DrawSurface (void)
 {
 	unsigned char	*basetptr;
@@ -486,6 +516,9 @@ void R_DrawSurface (void)
 
 		pcolumndest += horzblockstep;
 	}
+
+	if (r_drawsurf.surf->flags & SURF_DRAWFENCE)
+		R_MarkFenceTexels ();
 }
 
 

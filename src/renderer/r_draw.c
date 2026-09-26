@@ -388,6 +388,13 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	medge_t		*pedges, tedge;
 	clipplane_t	*pclip;
 
+// a fence mustn't hide what's behind its holes: drawn after the world
+	if (fa->flags & SURF_DRAWFENCE)
+	{
+		R_AddFence (fa);
+		return;
+	}
+
 // skip out if no more surfs
 	if ((surface_p) >= surf_max)
 	{
@@ -585,6 +592,12 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	vec3_t		p_normal;
 	medge_t		tedge;
 	clipplane_t	*pclip;
+
+	if (psurf->flags & SURF_DRAWFENCE)
+	{
+		R_AddFence (psurf);
+		return;
+	}
 
 // skip out if no more surfs
 	if (surface_p >= surf_max)

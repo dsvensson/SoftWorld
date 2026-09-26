@@ -83,6 +83,13 @@ extern byte		*d_turbsource;	// the 64x64 texture of a turbulent surface
 
 extern void (*prealspandrawer)(void);
 surfcache_t	*D_CacheSurface (msurface_t *surface, int miplevel);
+void D_CalcGradients (msurface_t *pface);
+// a fence surface's clipped, projected polygon, with 1/z gradients set;
+// transformed_org is the view origin in the model's space
+void D_DrawFence (msurface_t *surf, const vec3_t transformed_org, emitpoint_t *pverts, int nump, float nearzi);
+// the spans of a convex polygon on the screen, clockwise; false if it covers no scan line
+bool D_PolygonSpans (emitpoint_t *pverts, int nump, sspan_t *spans);
+void D_DrawFencePolygon (emitpoint_t *pverts, int nump);
 
 extern int D_MipLevelForScale (float scale);
 

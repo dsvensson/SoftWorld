@@ -188,10 +188,10 @@ NextSpan:
 
 /*
 =====================
-D_SpriteScanLeftEdge
+D_ScanLeftEdge
 =====================
 */
-void D_SpriteScanLeftEdge (void)
+static void D_ScanLeftEdge (emitpoint_t *pverts, int nump, sspan_t *spans)
 {
 	int			i, v, itop, ibottom, lmaxindex;
 	emitpoint_t	*pvert, *pnext;
@@ -199,20 +199,20 @@ void D_SpriteScanLeftEdge (void)
 	float		du, dv, vtop, vbottom, slope;
 	fixed16_t	u, u_step;
 
-	pspan = sprite_spans;
+	pspan = spans;
 	i = minindex;
 	if (i == 0)
-		i = r_spritedesc.nump;
+		i = nump;
 
 	lmaxindex = maxindex;
 	if (lmaxindex == 0)
-		lmaxindex = r_spritedesc.nump;
+		lmaxindex = nump;
 
-	vtop = ceilf(r_spritedesc.pverts[i].v);
+	vtop = ceilf(pverts[i].v);
 
 	do
 	{
-		pvert = &r_spritedesc.pverts[i];
+		pvert = &pverts[i];
 		pnext = pvert - 1;
 
 		vbottom = ceilf(pnext->v);
@@ -242,7 +242,7 @@ void D_SpriteScanLeftEdge (void)
 
 		i--;
 		if (i == 0)
-			i = r_spritedesc.nump;
+			i = nump;
 
 	} while (i != lmaxindex);
 }
@@ -250,10 +250,10 @@ void D_SpriteScanLeftEdge (void)
 
 /*
 =====================
-D_SpriteScanRightEdge
+D_ScanRightEdge
 =====================
 */
-void D_SpriteScanRightEdge (void)
+static void D_ScanRightEdge (emitpoint_t *pverts, int nump, sspan_t *spans)
 {
 	int			i, v, itop, ibottom;
 	emitpoint_t	*pvert, *pnext;
@@ -261,10 +261,10 @@ void D_SpriteScanRightEdge (void)
 	float		du, dv, vtop, vbottom, slope, uvert, unext, vvert, vnext;
 	fixed16_t	u, u_step;
 
-	pspan = sprite_spans;
+	pspan = spans;
 	i = minindex;
 
-	vvert = r_spritedesc.pverts[i].v;
+	vvert = pverts[i].v;
 	if (vvert < r_refdef.fvrecty_adj)
 		vvert = r_refdef.fvrecty_adj;
 	if (vvert > r_refdef.fvrectbottom_adj)
@@ -274,7 +274,7 @@ void D_SpriteScanRightEdge (void)
 
 	do
 	{
-		pvert = &r_spritedesc.pverts[i];
+		pvert = &pverts[i];
 		pnext = pvert + 1;
 
 		vnext = pnext->v;
@@ -321,7 +321,7 @@ void D_SpriteScanRightEdge (void)
 		vvert = vnext;
 
 		i++;
-		if (i == r_spritedesc.nump)
+		if (i == nump)
 			i = 0;
 
 	} while (i != maxindex);
@@ -389,56 +389,175 @@ void D_SetSpriteSize (int height)
 
 /*
 =====================
-D_DrawSprite
+D_PolygonSpans
 =====================
 */
-void D_DrawSprite (void)
+bool D_PolygonSpans (emitpoint_t *pverts, int nump, sspan_t *spans)
 {
-	int			i, nump;
+	int			i;
 	float		ymin, ymax;
-	emitpoint_t	*pverts;
 
 // find the top and bottom vertices, and make sure there's at least one scan to
 // draw
 	ymin = 999999.9f;
 	ymax = -999999.9f;
-	pverts = r_spritedesc.pverts;
-
-	for (i=0 ; i<r_spritedesc.nump ; i++)
+	for (i=0 ; i<nump ; i++)
 	{
-		if (pverts->v < ymin)
+		if (pverts[i].v < ymin)
 		{
-			ymin = pverts->v;
+			ymin = pverts[i].v;
 			minindex = i;
 		}
-
-		if (pverts->v > ymax)
+		if (pverts[i].v > ymax)
 		{
-			ymax = pverts->v;
+			ymax = pverts[i].v;
 			maxindex = i;
 		}
-
-		pverts++;
 	}
 
 	ymin = ceilf(ymin);
 	ymax = ceilf(ymax);
-
 	if (ymin >= ymax)
-		return;		// doesn't cross any scans at all
-
-	cachewidth = r_spritedesc.pspriteframe->width;
-	sprite_height = r_spritedesc.pspriteframe->height;
+		return false;		// doesn't cross any scans at all
 
 // copy the first vertex to the last vertex, so we don't have to deal with
 // wrapping
-	nump = r_spritedesc.nump;
-	pverts = r_spritedesc.pverts;
 	pverts[nump] = pverts[0];
 
+	D_ScanLeftEdge (pverts, nump, spans);
+	D_ScanRightEdge (pverts, nump, spans);
+	return true;
+}
+
+/*
+=====================
+D_DrawSprite
+=====================
+*/
+void D_DrawSprite (void)
+{
+	cachewidth = r_spritedesc.pspriteframe->width;
+	sprite_height = r_spritedesc.pspriteframe->height;
+
 	D_SpriteCalculateGradients ();
-	D_SpriteScanLeftEdge ();
-	D_SpriteScanRightEdge ();
-	D_SpriteDrawSpans (sprite_spans);
+	if (D_PolygonSpans (r_spritedesc.pverts, r_spritedesc.nump, sprite_spans))
+		D_SpriteDrawSpans (sprite_spans);
+}
+
+/*
+=====================
+D_FenceDrawSpans
+
+Spans of a fence surface from its cache block: depth tested, depth writing,
+the cut-out texels skipped
+=====================
+*/
+static void D_FenceDrawSpans (sspan_t *pspan)
+{
+	int			count, spancount;
+	float		pixelzi;
+	pixel_t		*pdest, texel;
+	fixed16_t	s, t, snext, tnext, sstep, tstep;
+	float		sdivz, tdivz, zi, z, du, dv, spancountminus1;
+	float		sdivz8stepu, tdivz8stepu, zi8stepu;
+	float		*pz;
+
+	sstep = 0;
+	tstep = 0;
+
+	sdivz8stepu = d_sdivzstepu * 8;
+	tdivz8stepu = d_tdivzstepu * 8;
+	zi8stepu = d_zistepu * 8;
+
+	for ( ; pspan->count != DS_SPAN_LIST_END ; pspan++)
+	{
+		count = pspan->count;
+		if (count <= 0)
+			continue;
+
+		pdest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
+		pz = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
+
+	// the initial s/z, t/z, 1/z, s and t, clamped
+		du = (float)pspan->u;
+		dv = (float)pspan->v;
+
+		sdivz = d_sdivzorigin + dv*d_sdivzstepv + du*d_sdivzstepu;
+		tdivz = d_tdivzorigin + dv*d_tdivzstepv + du*d_tdivzstepu;
+		zi = d_ziorigin + dv*d_zistepv + du*d_zistepu;
+		z = (float)0x10000 / zi;
+		pixelzi = zi;
+
+		s = (int)(sdivz * z) + sadjust;
+		s = s > bbextents ? bbextents : (s < 0 ? 0 : s);
+		t = (int)(tdivz * z) + tadjust;
+		t = t > bbextentt ? bbextentt : (t < 0 ? 0 : t);
+
+		do
+		{
+			spancount = count >= 8 ? 8 : count;
+			count -= spancount;
+
+			if (count)
+			{
+				sdivz += sdivz8stepu;
+				tdivz += tdivz8stepu;
+				zi += zi8stepu;
+				z = (float)0x10000 / zi;
+				snext = (int)(sdivz * z) + sadjust;
+				snext = snext > bbextents ? bbextents : (snext < 8 ? 8 : snext);
+				tnext = (int)(tdivz * z) + tadjust;
+				tnext = tnext > bbextentt ? bbextentt : (tnext < 8 ? 8 : tnext);
+				sstep = (snext - s) >> 3;
+				tstep = (tnext - t) >> 3;
+			}
+			else
+			{
+				spancountminus1 = (float)(spancount - 1);
+				sdivz += d_sdivzstepu * spancountminus1;
+				tdivz += d_tdivzstepu * spancountminus1;
+				zi += d_zistepu * spancountminus1;
+				z = (float)0x10000 / zi;
+				snext = (int)(sdivz * z) + sadjust;
+				snext = snext > bbextents ? bbextents : (snext < 8 ? 8 : snext);
+				tnext = (int)(tdivz * z) + tadjust;
+				tnext = tnext > bbextentt ? bbextentt : (tnext < 8 ? 8 : tnext);
+				if (spancount > 1)
+				{
+					sstep = (snext - s) / (spancount - 1);
+					tstep = (tnext - t) / (spancount - 1);
+				}
+			}
+
+			do
+			{
+				texel = cacheblock[(s >> 16) + (t >> 16) * cachewidth];
+				if (!(texel & PIXEL_TRANSPARENT) && *pz <= pixelzi)
+				{
+					*pz = pixelzi;
+					*pdest = texel;
+				}
+				pixelzi += d_zistepu;
+				pdest++;
+				pz++;
+				s += sstep;
+				t += tstep;
+			} while (--spancount > 0);
+
+			s = snext;
+			t = tnext;
+		} while (count > 0);
+	}
+}
+
+/*
+=====================
+D_DrawFencePolygon
+=====================
+*/
+void D_DrawFencePolygon (emitpoint_t *pverts, int nump)
+{
+	if (D_PolygonSpans (pverts, nump, sprite_spans))
+		D_FenceDrawSpans (sprite_spans);
 }
 
