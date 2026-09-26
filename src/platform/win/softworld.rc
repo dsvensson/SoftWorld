@@ -1,0 +1,2 @@
+// Application icon; the manifest is embedded by the linker from softworld.manifest.
+1 ICON "softworld.ico"
