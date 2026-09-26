@@ -119,6 +119,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define K_MWHEELUP		239
 #define K_MWHEELDOWN	240
+#define	K_MOUSE4		241
+#define	K_MOUSE5		242
 
 
 

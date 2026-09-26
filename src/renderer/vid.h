@@ -84,3 +84,13 @@ void	VID_BringToFront (void);
 // restores and activates the window
 
 bool	VID_IsFullscreen (void);
+
+// how the presenter turns the frame into screen colors
+typedef struct
+{
+	float	blend[4];		// rgb and how much of it covers the whole view (0: none)
+	float	gamma;			// exponent applied to the frame; 1 keeps it
+	float	contrast;		// multiplier; 1 keeps it
+} vid_present_t;
+
+void	VID_SetPresent (const vid_present_t *present);

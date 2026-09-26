@@ -39,6 +39,8 @@ keydest_t	key_dest;
 int		key_count;			// incremented every key event
 
 char	*keybindings[256];
+static bool	key_char_eaten;		// the next typed character belongs to a binding
+
 bool	consolekeys[256];	// if true, can't be rebound while in console
 bool	menubound[256];	// if true, can't be rebound while in menu
 int		keyshift[256];		// key to map to if shift held down in console
@@ -90,6 +92,8 @@ keyname_t keynames[] =
 	{"MOUSE1", K_MOUSE1},
 	{"MOUSE2", K_MOUSE2},
 	{"MOUSE3", K_MOUSE3},
+	{"MOUSE4", K_MOUSE4},
+	{"MOUSE5", K_MOUSE5},
 
 	{"JOY1", K_JOY1},
 	{"JOY2", K_JOY2},
@@ -696,6 +700,8 @@ void Key_Event (int key, bool down)
 
 	if (key == K_SHIFT)
 		shift_down = down;
+	if (down)
+		key_char_eaten = false;
 
 //
 // handle escape specialy, so the user can never unbind it
@@ -768,6 +774,7 @@ void Key_Event (int key, bool down)
 		kb = keybindings[key];
 		if (kb)
 		{
+			key_char_eaten = true;
 			if (kb[0] == '+')
 			{	// button commands add keynum as a parm
 				snprintf (cmd, sizeof(cmd), "%s %i\n", kb, key);
@@ -787,6 +794,10 @@ void Key_Event (int key, bool down)
 
 	if (shift_down)
 		key = keyshift[key];
+
+	// text for the console and message line comes from Key_CharEvent
+	if (key_dest != key_menu && key >= 32 && key < 127 && !keydown[K_CTRL])
+		return;
 
 	switch (key_dest)
 	{
@@ -815,10 +826,49 @@ void Key_ClearStates (void)
 {
 	int		i;
 
+	// send the key ups, so held button commands (+forward) are released
 	for (i=0 ; i<256 ; i++)
 	{
+		if (keydown[i])
+			Key_Event (i, false);
 		keydown[i] = false;
-		key_repeats[i] = false;
+		key_repeats[i] = 0;
+	}
+	IN_ClearStates ();
+}
+
+/*
+===================
+Key_CharEvent
+
+Typed text for the console and the message line. Key_Event handles their
+editing keys; printable characters come from here, after the keyboard layout.
+===================
+*/
+void Key_CharEvent (int ch)
+{
+	if (key_char_eaten)
+	{	// the key that typed this ran a binding (toggleconsole, messagemode)
+		key_char_eaten = false;
+		return;
+	}
+	if (ch < 32 || ch >= 127)
+		return;		// control characters are keys, and the font is ASCII
+
+	switch (key_dest)
+	{
+	case key_message:
+		Key_Message (ch);
+		break;
+	case key_console:
+		Key_Console (ch);
+		break;
+	case key_game:
+		if (cls.state != ca_active)
+			Key_Console (ch);		// the console fills the screen
+		break;
+	default:
+		break;
 	}
 }
 

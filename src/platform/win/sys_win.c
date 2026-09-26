@@ -2,8 +2,8 @@
 
 #include "print.h"
 #include "sys.h"
+#include "win_local.h"
 
-#include <windows.h>
 #include <direct.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -97,4 +97,84 @@ void Sys_CommitMemory (void *base, size_t size)
 void Sys_ReleaseMemory (void *base, [[maybe_unused]] size_t size)
 {
 	VirtualFree (base, 0, MEM_RELEASE);
+}
+
+/*
+===============================================================================
+
+WAITING
+
+===============================================================================
+*/
+
+#define MAX_WAIT_HANDLES	8
+
+static HANDLE	sys_timer;
+static HANDLE	sys_waithandles[MAX_WAIT_HANDLES];
+static int		sys_numwaithandles;
+
+void Sys_AddWaitHandle (HANDLE handle)
+{
+	if (sys_numwaithandles == MAX_WAIT_HANDLES)
+		Sys_Error ("Sys_AddWaitHandle: too many handles");
+	sys_waithandles[sys_numwaithandles++] = handle;
+}
+
+void Sys_RemoveWaitHandle (HANDLE handle)
+{
+	int		i;
+
+	for (i=0 ; i<sys_numwaithandles ; i++)
+	{
+		if (sys_waithandles[i] == handle)
+		{
+			sys_waithandles[i] = sys_waithandles[--sys_numwaithandles];
+			return;
+		}
+	}
+}
+
+/*
+================
+Sys_WaitUntil
+
+Waits on a high-resolution waitable timer, window messages and the registered
+handles. The last fraction of a millisecond is spun, since the timer can
+overshoot by about that much.
+================
+*/
+void Sys_WaitUntil (double time)
+{
+	HANDLE			handles[MAX_WAIT_HANDLES + 1];
+	LARGE_INTEGER	due;
+	double			wait;
+	int				i;
+
+	wait = time - Sys_DoubleTime ();
+	if (wait <= 0)
+		return;
+
+	if (wait > 0.0008)
+	{
+		if (!sys_timer)
+		{
+			sys_timer = CreateWaitableTimerExW (NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+			if (!sys_timer)		// older systems lack high resolution timers
+				sys_timer = CreateWaitableTimerExW (NULL, NULL, 0, TIMER_ALL_ACCESS);
+			if (!sys_timer)
+				Sys_Error ("Couldn't create a waitable timer");
+		}
+		due.QuadPart = -(LONGLONG)((wait - 0.0005) * 1e7);	// relative, in 100 ns
+		SetWaitableTimer (sys_timer, &due, 0, NULL, NULL, FALSE);
+
+		handles[0] = sys_timer;
+		for (i=0 ; i<sys_numwaithandles ; i++)
+			handles[i+1] = sys_waithandles[i];
+		if (MsgWaitForMultipleObjectsEx ((DWORD)sys_numwaithandles + 1, handles, INFINITE,
+			QS_ALLINPUT, MWMO_INPUTAVAILABLE) != WAIT_OBJECT_0)
+			return;		// woken by input or a packet
+	}
+
+	while (Sys_DoubleTime () < time)
+		YieldProcessor ();
 }

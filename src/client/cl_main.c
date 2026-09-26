@@ -1303,6 +1303,35 @@ static void CL_UpdateSound (void)
 
 /*
 ==================
+Host_MaxFPS
+==================
+*/
+static float Host_MaxFPS (void)
+{
+	if (cl_maxfps.value)
+		return fmaxf(30.0f, fminf(cl_maxfps.value, 72.0f));
+	return fmaxf(30.0f, fminf(rate.value/80.0f, 72.0f));
+}
+
+/*
+==================
+Host_FrameWait
+
+Seconds until Host_Frame will run the next frame
+==================
+*/
+double Host_FrameWait (void)
+{
+	double	wait;
+
+	if (cls.timedemo)
+		return 0;
+	wait = oldrealtime + 1.0 / Host_MaxFPS () - realtime;
+	return wait > 0 ? wait : 0;
+}
+
+/*
+==================
 Host_Frame
 
 Runs all active servers
@@ -1324,10 +1353,7 @@ void Host_Frame (float time)
 	if (oldrealtime > realtime)
 		oldrealtime = 0;
 
-	if (cl_maxfps.value)
-		fps = fmaxf(30.0f, fminf(cl_maxfps.value, 72.0f));
-	else
-		fps = fmaxf(30.0f, fminf(rate.value/80.0f, 72.0f));
+	fps = Host_MaxFPS ();
 
 	if (!cls.timedemo && realtime - oldrealtime < 1.0/fps)
 		return;			// framerate is too high

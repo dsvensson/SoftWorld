@@ -475,3 +475,4 @@ extern	cvar_t	sys_nostdout;
 
 [[noreturn]] void SV_Error (char *error, ...);
 void SV_Init (quakeparms_t *parms);
+double SV_NextFrameWait (void);	// seconds until the next physics frame

@@ -21,20 +21,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma once
 // input.h -- external (non-keyboard) input devices
 
+#include "in_events.h"
 #include "protocol.h"
 
-void IN_Init (void);
-
-void IN_Shutdown (void);
-
-void IN_Commands (void);
-// oportunity for devices to stick commands on the script buffer
-
+// adds mouse and gamepad movement to the move being built
 void IN_Move (usercmd_t *cmd);
 
-void IN_Accumulate (void);
-// accumulates mouse movement between frames
-
+// forgets pending mouse motion and stick positions
 void IN_ClearStates (void);
-// add additional movement on top of the keyboard move cmd
-

@@ -489,6 +489,137 @@ void CL_SendCmd (void)
 CL_InitInput
 ============
 */
+/*
+===============================================================================
+
+MOUSE AND GAMEPAD
+
+===============================================================================
+*/
+
+cvar_t	m_filter = {.name = "m_filter", .string = "0"};
+cvar_t	joy_yawspeed = {.name = "joy_yawspeed", .string = "220", .archive = true};	// degrees per second
+cvar_t	joy_pitchspeed = {.name = "joy_pitchspeed", .string = "160", .archive = true};
+cvar_t	joy_invert = {.name = "joy_invert", .string = "0", .archive = true};
+
+static int		in_mouse_dx, in_mouse_dy;		// motion since the last move
+static int		in_old_mouse_x, in_old_mouse_y;	// for m_filter
+static float	in_stick[4];					// left x, left y, right x, right y
+
+void IN_MouseMotion (int dx, int dy)
+{
+	in_mouse_dx += dx;
+	in_mouse_dy += dy;
+}
+
+void IN_GamepadSticks (float lx, float ly, float rx, float ry)
+{
+	in_stick[0] = lx;
+	in_stick[1] = ly;
+	in_stick[2] = rx;
+	in_stick[3] = ry;
+}
+
+bool IN_WantsMouse (void)
+{
+	return key_dest == key_game;
+}
+
+void IN_ClearStates (void)
+{
+	in_mouse_dx = in_mouse_dy = 0;
+	in_old_mouse_x = in_old_mouse_y = 0;
+	in_stick[0] = in_stick[1] = in_stick[2] = in_stick[3] = 0;
+}
+
+static void Force_CenterView_f (void)
+{
+	cl.viewangles[PITCH] = 0;
+}
+
+static void IN_ClampPitch (void)
+{
+	if (cl.viewangles[PITCH] > 80)
+		cl.viewangles[PITCH] = 80;
+	if (cl.viewangles[PITCH] < -70)
+		cl.viewangles[PITCH] = -70;
+}
+
+static void IN_MouseMove (usercmd_t *cmd)
+{
+	int		mx, my;
+	float	mouse_x, mouse_y;
+
+	mx = in_mouse_dx;
+	my = in_mouse_dy;
+	in_mouse_dx = in_mouse_dy = 0;
+
+	if (m_filter.value)
+	{
+		mouse_x = (mx + in_old_mouse_x) * 0.5f;
+		mouse_y = (my + in_old_mouse_y) * 0.5f;
+	}
+	else
+	{
+		mouse_x = (float)mx;
+		mouse_y = (float)my;
+	}
+	in_old_mouse_x = mx;
+	in_old_mouse_y = my;
+
+	mouse_x *= sensitivity.value;
+	mouse_y *= sensitivity.value;
+
+// add mouse X/Y movement to cmd
+	if ( (in_strafe.state & 1) || (lookstrafe.value && (in_mlook.state & 1) ))
+		cmd->sidemove = (short)(cmd->sidemove + m_side.value * mouse_x);
+	else
+		cl.viewangles[YAW] -= m_yaw.value * mouse_x;
+
+	if (in_mlook.state & 1)
+		V_StopPitchDrift ();
+
+	if ( (in_mlook.state & 1) && !(in_strafe.state & 1))
+	{
+		cl.viewangles[PITCH] += m_pitch.value * mouse_y;
+		IN_ClampPitch ();
+	}
+	else
+	{
+		if ((in_strafe.state & 1) && noclip_anglehack)
+			cmd->upmove = (short)(cmd->upmove - m_forward.value * mouse_y);
+		else
+			cmd->forwardmove = (short)(cmd->forwardmove - m_forward.value * mouse_y);
+	}
+}
+
+static void IN_GamepadMove (usercmd_t *cmd)
+{
+	float	speed, frametime;
+
+	if (!in_stick[0] && !in_stick[1] && !in_stick[2] && !in_stick[3])
+		return;
+
+	speed = (in_speed.state & 1) ? cl_movespeedkey.value : 1;
+	cmd->forwardmove = (short)(cmd->forwardmove + in_stick[1] * cl_forwardspeed.value * speed);
+	cmd->sidemove = (short)(cmd->sidemove + in_stick[0] * cl_sidespeed.value * speed);
+
+	frametime = (float)host_frametime;
+	cl.viewangles[YAW] -= in_stick[2] * joy_yawspeed.value * frametime;
+	if (in_stick[3])
+	{
+		cl.viewangles[PITCH] += (joy_invert.value ? 1 : -1) * in_stick[3] * joy_pitchspeed.value * frametime;
+		V_StopPitchDrift ();
+		IN_ClampPitch ();
+	}
+}
+
+void IN_Move (usercmd_t *cmd)
+{
+	IN_MouseMove (cmd);
+	IN_GamepadMove (cmd);
+}
+
 void CL_InitInput (void)
 {
 	Cmd_AddCommand ("+moveup",IN_UpDown);
@@ -528,5 +659,10 @@ void CL_InitInput (void)
 	Cmd_AddCommand ("-mlook", IN_MLookUp);
 
 	Cvar_RegisterVariable (&cl_nodelta);
+	Cvar_RegisterVariable (&m_filter);
+	Cvar_RegisterVariable (&joy_yawspeed);
+	Cvar_RegisterVariable (&joy_pitchspeed);
+	Cvar_RegisterVariable (&joy_invert);
+	Cmd_AddCommand ("force_centerview", Force_CenterView_f);
 }
 

@@ -17,7 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// net_wins.c -- UDP networking over Winsock 2
+// net_udp_win.c -- UDP networking over Winsock 2
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "print.h"
 #include "q_string.h"
 #include "sys.h"
+#include "win_local.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +38,7 @@ netadr_t	net_local_adr;
 netadr_t	net_from;
 sizebuf_t	net_message;
 static SOCKET	net_socket = INVALID_SOCKET;
+static HANDLE	net_event;		// auto reset, signaled when packets arrive
 
 #define	MAX_UDP_PACKET	(MAX_MSGLEN*2)	// one more than msg + header
 static byte	net_message_buffer[MAX_UDP_PACKET];
@@ -194,17 +196,6 @@ NET_Sleep
 Waits for a packet to arrive, at most msec milliseconds.
 ====================
 */
-void NET_Sleep (int msec)
-{
-	fd_set			fdset;
-	struct timeval	timeout;
-
-	FD_ZERO (&fdset);
-	FD_SET (net_socket, &fdset);
-	timeout.tv_sec = msec / 1000;
-	timeout.tv_usec = (msec % 1000) * 1000;
-	select (0, &fdset, NULL, NULL, &timeout);
-}
 
 //=============================================================================
 
@@ -280,6 +271,12 @@ void NET_Init (int port)
 	//
 	net_socket = UDP_OpenSocket (port);
 
+	// let Sys_WaitUntil wake up when a packet arrives
+	net_event = CreateEventW (NULL, FALSE, FALSE, NULL);
+	if (!net_event || WSAEventSelect (net_socket, net_event, FD_READ) == SOCKET_ERROR)
+		Sys_Error ("NET_Init: couldn't create the socket event");
+	Sys_AddWaitHandle (net_event);
+
 	//
 	// init the message buffer
 	//
@@ -301,6 +298,12 @@ NET_Shutdown
 */
 void	NET_Shutdown (void)
 {
+	if (net_event)
+	{
+		Sys_RemoveWaitHandle (net_event);
+		CloseHandle (net_event);
+		net_event = NULL;
+	}
 	if (net_socket != INVALID_SOCKET)
 		closesocket (net_socket);
 	net_socket = INVALID_SOCKET;

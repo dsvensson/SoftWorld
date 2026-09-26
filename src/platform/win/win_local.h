@@ -19,28 +19,25 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #pragma once
-// host.h -- what the program's main loop shares with the engine modules
+// win_local.h -- shared by the Windows platform files
+
+#include <windows.h>
 
 #include "q_types.h"
 
-// the host system specifies the base of the directory tree and the command line
-typedef struct
-{
-	char	*basedir;
-	char	*cachedir;
-	int		argc;
-	char	**argv;
-} quakeparms_t;
+extern	HINSTANCE	global_hInstance;
+extern	HWND		mainwindow;
+extern	bool		ActiveApp, Minimized;
 
-extern	quakeparms_t	host_parms;
-extern	bool			host_initialized;	// true if into command execution
-extern	double			host_frametime;
-extern	double			realtime;			// not bounded in any way, changed at
-											// start of every frame, never reset
+// sys_win.c: extra handles Sys_WaitUntil wakes up for (console input, sockets)
+void	Sys_AddWaitHandle (HANDLE handle);
+void	Sys_RemoveWaitHandle (HANDLE handle);
 
-void	Host_Init (quakeparms_t *parms);
-void	Host_Shutdown (void);
-void	Host_Frame (float time);
-double	Host_FrameWait (void);		// seconds until the next frame is due
-[[noreturn]] void Host_Error (char *error, ...);
-[[noreturn]] void Host_EndGame (char *message, ...);
+// in_rawinput.c: input messages of the main window; true if consumed
+bool	IN_HandleMessage (UINT msg, WPARAM wParam, LPARAM lParam);
+void	IN_WindowChanged (void);
+void	IN_WindowActivated (bool active);
+
+// in_xinput.c
+void	IN_InitGamepad (void);
+void	IN_PollGamepad (void);

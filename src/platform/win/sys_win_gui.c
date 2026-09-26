@@ -29,19 +29,20 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "client.h"
 #include "keys.h"
 #include "screen.h"
+#include "sound.h"
 #include "vid.h"
-#include "winquake.h"
+#include "win_local.h"
 #include "entry_win.h"
 #include <direct.h>
+#include <stdlib.h>
 
 
-#define PAUSE_SLEEP		50				// sleep time on pause or minimization
-#define NOT_FOCUS_SLEEP	20				// sleep time when not focus
+#define PAUSE_SLEEP		0.05			// seconds between frames when paused or minimized
+#define NOT_FOCUS_SLEEP	0.02			// ... and when not the focus
 
 bool	ActiveApp, Minimized;
 HINSTANCE	global_hInstance;
 
-static HANDLE	tevent;
 
 /*
 ===============================================================================
@@ -58,8 +59,6 @@ Sys_Init
 */
 void Sys_Init (void)
 {
-	// make sure waits and timer events have 1 ms resolution
-	timeBeginPeriod (1);
 }
 
 void Sys_Error (char *error, ...)
@@ -90,8 +89,6 @@ void Sys_Printf (char *fmt, ...)
 void Sys_Quit (void)
 {
 	Host_Shutdown ();
-	if (tevent)
-		CloseHandle (tevent);
 
 	exit (0);
 }
@@ -142,16 +139,6 @@ void Sys_SendKeyEvents (void)
 		TranslateMessage (&msg);
 		DispatchMessage (&msg);
 	}
-}
-
-/*
-==================
-SleepUntilInput
-==================
-*/
-static void SleepUntilInput (int time)
-{
-	MsgWaitForMultipleObjects (1, &tevent, FALSE, (DWORD)time, QS_ALLINPUT);
 }
 
 /*
@@ -212,11 +199,6 @@ int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, [[maybe_unused]] int nCmd
 	parms.argc = com_argc;
 	parms.argv = com_argv;
 
-	tevent = CreateEvent (NULL, FALSE, FALSE, NULL);
-
-	if (!tevent)
-		Sys_Error ("Couldn't create event");
-
 	Sys_Init ();
 
 // because sound is off until we become active
@@ -233,17 +215,22 @@ int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, [[maybe_unused]] int nCmd
 	// yield the CPU for a little while when paused, minimized, or not the focus
 		if ((cl.paused && !ActiveApp) || Minimized || block_drawing)
 		{
-			SleepUntilInput (PAUSE_SLEEP);
+			Sys_WaitUntil (Sys_DoubleTime () + PAUSE_SLEEP);
 			scr_skipupdate = 1;		// no point in bothering to draw
 		}
 		else if (!ActiveApp)
 		{
-			SleepUntilInput (NOT_FOCUS_SLEEP);
+			Sys_WaitUntil (Sys_DoubleTime () + NOT_FOCUS_SLEEP);
 		}
 
 		newtime = Sys_DoubleTime ();
 		time = newtime - oldtime;
 		Host_Frame ((float)time);
 		oldtime = newtime;
+
+		// handle what arrived meanwhile, then sleep until the next frame is due,
+		// unless input or a packet comes first
+		Sys_SendKeyEvents ();
+		Sys_WaitUntil (Sys_DoubleTime () + Host_FrameWait ());
 	}
 }

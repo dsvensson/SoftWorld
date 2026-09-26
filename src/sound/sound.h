@@ -132,6 +132,10 @@ void SNDDMA_UnlockBuffer (void *buffer);
 // shutdown the DMA xfer.
 void SNDDMA_Shutdown(void);
 
+// silence while the window is inactive
+void S_BlockSound (void);
+void S_UnblockSound (void);
+
 // ====================================================================
 // User-setable variables
 // ====================================================================

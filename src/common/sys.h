@@ -62,6 +62,10 @@ void	Sys_Printf (char *fmt, ...);
 // seconds since startup, from a monotonic high-resolution clock
 double	Sys_DoubleTime (void);
 
+// sleeps until Sys_DoubleTime () reaches time, or until input or a network packet
+// arrives; may return early, so callers recheck what they wait for
+void	Sys_WaitUntil (double time);
+
 // directory holding the running executable, with '/' separators and no trailing '/'
 const char *Sys_ExecutableDir (void);
 

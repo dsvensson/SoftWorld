@@ -1,5 +1,10 @@
 // vid_d3d11.c -- Windows video backend: the main window and a DXGI flip-model swapchain
 // that presents the software renderer's framebuffer through Direct3D 11.
+//
+// The frame is uploaded as R10G10B10A2, with SDR white at 255, and drawn by
+// present.hlsl into the letterboxed viewport. The swapchain is SDR (B8G8R8A8) or, when
+// the display the window is on runs in HDR mode, scRGB (linear R16G16B16A16_FLOAT).
+// Which one is decided again when the window moves or the display settings change.
 
 #include "args.h"
 #include "cmd.h"
@@ -10,12 +15,11 @@
 #include "q_string.h"
 #include "sys.h"
 #include "client.h"
-#include "input.h"
 #include "keys.h"
 #include "render.h"
 #include "sound.h"
 #include "vid.h"
-#include "winquake.h"
+#include "win_local.h"
 
 #define COBJMACROS
 #include <d3d11.h>
@@ -28,19 +32,37 @@
 viddef_t	vid;				// global video state
 
 HWND		mainwindow;
-modestate_t	modestate = MS_UNINIT;
-bool	DDActive;			// never true: there is no exclusive fullscreen mode
 
-int			window_center_x, window_center_y;
-RECT		window_rect;
-
-cvar_t		_windowed_mouse = {.name = "_windowed_mouse", .string = "1", .archive = true};
-cvar_t		vid_vsync = {.name = "vid_vsync", .string = "1", .archive = true};
+cvar_t	vid_vsync = {.name = "vid_vsync", .string = "1", .archive = true};
+// 0: whole multiples of the render size, letterboxed; 1: fill the window, sharp bilinear
+cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true};
+cvar_t	vid_contrast = {.name = "vid_contrast", .string = "1", .archive = true};
+// use HDR output when the display is in HDR mode
+cvar_t	vid_hdr = {.name = "vid_hdr", .string = "1", .archive = true};
+// brightness of SDR white on an HDR display, in nits
+cvar_t	vid_hdr_paperwhite = {.name = "vid_hdr_paperwhite", .string = "200", .archive = true};
 
 #define VID_BASE_WIDTH	320
 #define VID_BASE_HEIGHT	200
 #define VID_MAX_SCALE	4		// MAXWIDTH/MAXHEIGHT in r_shared.h cap the render size
 
+// the constant buffer of present.hlsl
+typedef struct
+{
+	float	blend[4];
+	float	texsize[2];
+	float	scale[2];
+	float	gamma;
+	float	contrast;
+	float	sharp;
+	float	hdr;
+	float	paperwhite;
+	float	peak;
+	float	pad[2];
+} present_constants_t;
+static_assert (sizeof(present_constants_t) % 16 == 0, "constant buffers are whole float4s");
+
+static IDXGIFactory2			*d3d_factory;
 static ID3D11Device				*d3d_device;
 static ID3D11DeviceContext		*d3d_context;
 static IDXGISwapChain1			*d3d_swapchain;
@@ -50,13 +72,23 @@ static ID3D11ShaderResourceView	*d3d_frame_srv;
 static ID3D11VertexShader		*d3d_vs;
 static ID3D11PixelShader		*d3d_ps;
 static ID3D11SamplerState		*d3d_sampler;
+static ID3D11Buffer				*d3d_constants;
+static HANDLE					d3d_waitable;		// signaled when a frame may be queued
 static bool						d3d_allow_tearing;
+static UINT						d3d_swapflags;
 
 static bool		vid_initialized;
 static bool		vid_fullscreen;
 static WINDOWPLACEMENT	vid_windowed_placement = {.length = sizeof (WINDOWPLACEMENT)};
 static int		client_width, client_height;
-static uint32_t	vid_palette32[256];		// B8G8R8A8 for each palette index
+static uint32_t	vid_palette30[256];		// R10G10B10A2 for each palette index
+
+static bool		vid_outputdirty = true;	// recheck the display: moved, or settings changed
+static bool		vid_hdroutput;			// the swapchain is scRGB
+static bool		vid_outputknown;		// the output mode has been reported
+static float	vid_hdrwanted = -1;		// vid_hdr when the display was last checked
+static float	vid_peaknits = 1000;	// the display's brightest white
+static vid_present_t	vid_present = {.gamma = 1, .contrast = 1};
 
 static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
@@ -69,52 +101,13 @@ static void VID_CheckHR (HRESULT hr, const char *what)
 #define VID_RELEASE(obj) do { if (obj) { IUnknown_Release ((IUnknown *)(obj)); (obj) = NULL; } } while (0)
 
 /*
-================
-VID_UpdateWindowStatus
+===============================================================================
 
-Keeps the screen-space window rectangle current for the mouse code.
-================
+SWAPCHAIN
+
+===============================================================================
 */
-static void VID_UpdateWindowStatus (void)
-{
-	RECT	client;
-	POINT	topleft = {0, 0};
 
-	GetClientRect (mainwindow, &client);
-	ClientToScreen (mainwindow, &topleft);
-
-	window_rect.left = topleft.x;
-	window_rect.top = topleft.y;
-	window_rect.right = topleft.x + client.right;
-	window_rect.bottom = topleft.y + client.bottom;
-	window_center_x = (window_rect.left + window_rect.right) / 2;
-	window_center_y = (window_rect.top + window_rect.bottom) / 2;
-
-	IN_UpdateClipCursor ();
-}
-
-/*
-================
-ClearAllStates
-================
-*/
-static void ClearAllStates (void)
-{
-	int		i;
-
-// send an up event for each key, to make sure the server clears them all
-	for (i = 0 ; i < 256 ; i++)
-		Key_Event (i, false);
-
-	Key_ClearStates ();
-	IN_ClearStates ();
-}
-
-/*
-================
-VID_CreateBackbufferView
-================
-*/
 static void VID_CreateBackbufferView (void)
 {
 	ID3D11Texture2D	*backbuffer;
@@ -129,13 +122,16 @@ static void VID_CreateBackbufferView (void)
 /*
 ================
 VID_ResizeSwapchain
+
+Resizes the buffers to the window, and changes their format if format isn't
+DXGI_FORMAT_UNKNOWN.
 ================
 */
-static void VID_ResizeSwapchain (int width, int height)
+static void VID_ResizeSwapchain (int width, int height, DXGI_FORMAT format)
 {
 	if (!d3d_swapchain || width <= 0 || height <= 0)
 		return;
-	if (width == client_width && height == client_height)
+	if (width == client_width && height == client_height && format == DXGI_FORMAT_UNKNOWN)
 		return;
 
 	client_width = width;
@@ -143,9 +139,112 @@ static void VID_ResizeSwapchain (int width, int height)
 
 	ID3D11DeviceContext_OMSetRenderTargets (d3d_context, 0, NULL, NULL);
 	VID_RELEASE (d3d_rtv);
-	VID_CheckHR (IDXGISwapChain1_ResizeBuffers (d3d_swapchain, 0, 0, 0, DXGI_FORMAT_UNKNOWN,
-		d3d_allow_tearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0), "IDXGISwapChain1::ResizeBuffers");
+	ID3D11DeviceContext_Flush (d3d_context);
+	VID_CheckHR (IDXGISwapChain1_ResizeBuffers (d3d_swapchain, 0, 0, 0, format, d3d_swapflags),
+		"IDXGISwapChain1::ResizeBuffers");
 	VID_CreateBackbufferView ();
+}
+
+/*
+================
+VID_WindowOutput
+
+The display that shows most of the window
+================
+*/
+static IDXGIOutput6 *VID_WindowOutput (void)
+{
+	IDXGIAdapter1	*adapter;
+	IDXGIOutput		*output;
+	IDXGIOutput6	*best = NULL;
+	DXGI_OUTPUT_DESC	desc;
+	RECT			window;
+	LONG			area, bestarea = -1, w, h;
+	UINT			a, o;
+
+	GetWindowRect (mainwindow, &window);
+	for (a=0 ; IDXGIFactory2_EnumAdapters1 (d3d_factory, a, &adapter) != DXGI_ERROR_NOT_FOUND ; a++)
+	{
+		for (o=0 ; IDXGIAdapter1_EnumOutputs (adapter, o, &output) != DXGI_ERROR_NOT_FOUND ; o++)
+		{
+			IDXGIOutput_GetDesc (output, &desc);
+			w = min (window.right, desc.DesktopCoordinates.right) - max (window.left, desc.DesktopCoordinates.left);
+			h = min (window.bottom, desc.DesktopCoordinates.bottom) - max (window.top, desc.DesktopCoordinates.top);
+			area = (w > 0 && h > 0) ? w * h : 0;
+			if (area > bestarea)
+			{
+				VID_RELEASE (best);
+				if (SUCCEEDED (IDXGIOutput_QueryInterface (output, &IID_IDXGIOutput6, (void **)&best)))
+					bestarea = area;
+			}
+			IDXGIOutput_Release (output);
+		}
+		IDXGIAdapter1_Release (adapter);
+	}
+	return best;
+}
+
+/*
+================
+VID_CheckOutput
+
+Switches between SDR and scRGB output to match the display the window is on
+================
+*/
+static void VID_CheckOutput (void)
+{
+	IDXGIOutput6		*output;
+	IDXGISwapChain3		*swapchain3;
+	DXGI_OUTPUT_DESC1	desc;
+	DXGI_COLOR_SPACE_TYPE	space;
+	UINT				support;
+	bool				hdr = false;
+
+	vid_outputdirty = false;
+	vid_hdrwanted = vid_hdr.value;
+
+	// the factory goes stale when displays or their HDR mode change
+	if (!IDXGIFactory2_IsCurrent (d3d_factory))
+	{
+		VID_RELEASE (d3d_factory);
+		VID_CheckHR (CreateDXGIFactory2 (0, &IID_IDXGIFactory2, (void **)&d3d_factory), "CreateDXGIFactory2");
+	}
+
+	output = VID_WindowOutput ();
+	if (output)
+	{
+		if (SUCCEEDED (IDXGIOutput6_GetDesc1 (output, &desc)))
+		{
+			hdr = vid_hdr.value && desc.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
+			if (desc.MaxLuminance > 0)
+				vid_peaknits = desc.MaxLuminance;
+		}
+		IDXGIOutput6_Release (output);
+	}
+
+	space = hdr ? DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 : DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+	if (FAILED (IDXGISwapChain1_QueryInterface (d3d_swapchain, &IID_IDXGISwapChain3, (void **)&swapchain3)))
+		return;
+	if (hdr && (FAILED (IDXGISwapChain3_CheckColorSpaceSupport (swapchain3, space, &support))
+		|| !(support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT)))
+	{
+		hdr = false;
+		space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+	}
+
+	if (hdr != vid_hdroutput || !vid_outputknown)
+	{
+		if (hdr != vid_hdroutput)
+			VID_ResizeSwapchain (client_width, client_height, hdr ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_B8G8R8A8_UNORM);
+		vid_hdroutput = hdr;
+		vid_outputknown = true;
+		if (hdr)
+			Con_Printf ("HDR output, %.0f nits peak\n", vid_peaknits);
+		else
+			Con_Printf ("SDR output\n");
+	}
+	IDXGISwapChain3_SetColorSpace1 (swapchain3, space);
+	IDXGISwapChain3_Release (swapchain3);
 }
 
 /*
@@ -156,11 +255,11 @@ VID_CreateDevice
 static void VID_CreateDevice (void)
 {
 	static const D3D_FEATURE_LEVEL	levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0};
-	IDXGIFactory2	*factory;
-	IDXGIFactory5	*factory5;
-	HRESULT			hr;
-	RECT			client;
-	BOOL			tearing = FALSE;
+	IDXGIFactory5		*factory5;
+	IDXGISwapChain2		*swapchain2;
+	HRESULT				hr;
+	RECT				client;
+	BOOL				tearing = FALSE;
 
 	hr = D3D11CreateDevice (NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, levels, ARRAYSIZE (levels),
 		D3D11_SDK_VERSION, &d3d_device, NULL, &d3d_context);
@@ -171,9 +270,9 @@ static void VID_CreateDevice (void)
 			D3D11_SDK_VERSION, &d3d_device, NULL, &d3d_context), "D3D11CreateDevice");
 	}
 
-	VID_CheckHR (CreateDXGIFactory2 (0, &IID_IDXGIFactory2, (void **)&factory), "CreateDXGIFactory2");
+	VID_CheckHR (CreateDXGIFactory2 (0, &IID_IDXGIFactory2, (void **)&d3d_factory), "CreateDXGIFactory2");
 
-	if (SUCCEEDED (IDXGIFactory2_QueryInterface (factory, &IID_IDXGIFactory5, (void **)&factory5)))
+	if (SUCCEEDED (IDXGIFactory2_QueryInterface (d3d_factory, &IID_IDXGIFactory5, (void **)&factory5)))
 	{
 		if (FAILED (IDXGIFactory5_CheckFeatureSupport (factory5, DXGI_FEATURE_PRESENT_ALLOW_TEARING,
 				&tearing, sizeof (tearing))))
@@ -181,14 +280,14 @@ static void VID_CreateDevice (void)
 		IDXGIFactory5_Release (factory5);
 	}
 	d3d_allow_tearing = tearing != FALSE;
+	d3d_swapflags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT
+		| (d3d_allow_tearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0);
 
 	GetClientRect (mainwindow, &client);
 	client_width = client.right;
 	client_height = client.bottom;
 
 	DXGI_SWAP_CHAIN_DESC1 desc = {
-		.Width = 0,
-		.Height = 0,
 		.Format = DXGI_FORMAT_B8G8R8A8_UNORM,
 		.SampleDesc = {.Count = 1},
 		.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
@@ -196,14 +295,20 @@ static void VID_CreateDevice (void)
 		.Scaling = DXGI_SCALING_NONE,
 		.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD,
 		.AlphaMode = DXGI_ALPHA_MODE_IGNORE,
-		.Flags = d3d_allow_tearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0,
+		.Flags = d3d_swapflags,
 	};
-	VID_CheckHR (IDXGIFactory2_CreateSwapChainForHwnd (factory, (IUnknown *)d3d_device, mainwindow, &desc,
+	VID_CheckHR (IDXGIFactory2_CreateSwapChainForHwnd (d3d_factory, (IUnknown *)d3d_device, mainwindow, &desc,
 		NULL, NULL, &d3d_swapchain), "IDXGIFactory2::CreateSwapChainForHwnd");
 
 	// fullscreen is a borderless window toggled by us, never DXGI exclusive mode
-	IDXGIFactory2_MakeWindowAssociation (factory, mainwindow, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES);
-	IDXGIFactory2_Release (factory);
+	IDXGIFactory2_MakeWindowAssociation (d3d_factory, mainwindow, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES);
+
+	// queue at most one frame, and wait for room before drawing the next
+	VID_CheckHR (IDXGISwapChain1_QueryInterface (d3d_swapchain, &IID_IDXGISwapChain2, (void **)&swapchain2),
+		"IDXGISwapChain2");
+	IDXGISwapChain2_SetMaximumFrameLatency (swapchain2, 1);
+	d3d_waitable = IDXGISwapChain2_GetFrameLatencyWaitableObject (swapchain2);
+	IDXGISwapChain2_Release (swapchain2);
 
 	VID_CreateBackbufferView ();
 
@@ -213,7 +318,7 @@ static void VID_CreateDevice (void)
 		"ID3D11Device::CreatePixelShader");
 
 	D3D11_SAMPLER_DESC sampler = {
-		.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT,
+		.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR,
 		.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
 		.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
 		.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
@@ -222,6 +327,14 @@ static void VID_CreateDevice (void)
 	};
 	VID_CheckHR (ID3D11Device_CreateSamplerState (d3d_device, &sampler, &d3d_sampler),
 		"ID3D11Device::CreateSamplerState");
+
+	D3D11_BUFFER_DESC constants = {
+		.ByteWidth = sizeof (present_constants_t),
+		.Usage = D3D11_USAGE_DEFAULT,
+		.BindFlags = D3D11_BIND_CONSTANT_BUFFER,
+	};
+	VID_CheckHR (ID3D11Device_CreateBuffer (d3d_device, &constants, NULL, &d3d_constants),
+		"ID3D11Device::CreateBuffer");
 }
 
 /*
@@ -241,7 +354,7 @@ static void VID_CreateFrameTexture (int width, int height)
 		.Height = (UINT)height,
 		.MipLevels = 1,
 		.ArraySize = 1,
-		.Format = DXGI_FORMAT_B8G8R8A8_UNORM,
+		.Format = DXGI_FORMAT_R10G10B10A2_UNORM,
 		.SampleDesc = {.Count = 1},
 		.Usage = D3D11_USAGE_DYNAMIC,
 		.BindFlags = D3D11_BIND_SHADER_RESOURCE,
@@ -254,6 +367,14 @@ static void VID_CreateFrameTexture (int width, int height)
 }
 
 /*
+===============================================================================
+
+WINDOW
+
+===============================================================================
+*/
+
+/*
 ================
 VID_AllocBuffers
 
@@ -262,9 +383,7 @@ The framebuffer, z-buffer and surface cache for the current render size.
 */
 static void VID_AllocBuffers (int width, int height)
 {
-	vid.buffer = vid.conbuffer = vid.direct = malloc ((size_t)width * height);
-	if (!vid.buffer)
-		Sys_Error ("Not enough memory for the framebuffer");
+	vid.buffer = vid.conbuffer = vid.direct = Mem_Alloc ((size_t)width * height);
 
 	vid.rowbytes = vid.conrowbytes = width;
 	vid.width = vid.conwidth = width;
@@ -298,7 +417,6 @@ static void VID_SetFullscreen (bool fullscreen)
 		SetWindowPos (mainwindow, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top,
 			mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top,
 			SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
-		modestate = MS_FULLSCREEN;
 	}
 	else
 	{
@@ -306,11 +424,11 @@ static void VID_SetFullscreen (bool fullscreen)
 		SetWindowPlacement (mainwindow, &vid_windowed_placement);
 		SetWindowPos (mainwindow, NULL, 0, 0, 0, 0,
 			SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER);
-		modestate = MS_WINDOWED;
 	}
 
 	vid_fullscreen = fullscreen;
-	VID_UpdateWindowStatus ();
+	vid_outputdirty = true;
+	IN_WindowChanged ();
 }
 
 static void VID_Fullscreen_f (void)
@@ -357,22 +475,26 @@ static void VID_CreateWindow (int width, int height)
 		rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, global_hInstance, NULL);
 	if (!mainwindow)
 		Sys_Error ("Couldn't create the main window");
-
-	modestate = MS_WINDOWED;
 }
 
 /*
-================
-VID_Init
-================
+===============================================================================
+
+VIDEO CONTRACT
+
+===============================================================================
 */
+
 void VID_Init (unsigned char *palette)
 {
 	int		scale = 2;
 	int		i;
 
-	Cvar_RegisterVariable (&_windowed_mouse);
 	Cvar_RegisterVariable (&vid_vsync);
+	Cvar_RegisterVariable (&vid_scalemode);
+	Cvar_RegisterVariable (&vid_contrast);
+	Cvar_RegisterVariable (&vid_hdr);
+	Cvar_RegisterVariable (&vid_hdr_paperwhite);
 	Cmd_AddCommand ("vid_fullscreen", VID_Fullscreen_f);
 
 	i = COM_CheckParm ("-scale");
@@ -395,7 +517,7 @@ void VID_Init (unsigned char *palette)
 	ShowWindow (mainwindow, SW_SHOWDEFAULT);
 	UpdateWindow (mainwindow);
 	SetForegroundWindow (mainwindow);
-	VID_UpdateWindowStatus ();
+	IN_WindowChanged ();
 
 	if (COM_CheckParm ("-fullscreen"))
 		VID_SetFullscreen (true);
@@ -405,11 +527,6 @@ void VID_Init (unsigned char *palette)
 	vid_menukeyfn = NULL;
 }
 
-/*
-================
-VID_Shutdown
-================
-*/
 void VID_Shutdown (void)
 {
 	if (!vid_initialized)
@@ -419,6 +536,10 @@ void VID_Shutdown (void)
 
 	if (d3d_context)
 		ID3D11DeviceContext_ClearState (d3d_context);
+	if (d3d_waitable)
+		CloseHandle (d3d_waitable);
+	d3d_waitable = NULL;
+	VID_RELEASE (d3d_constants);
 	VID_RELEASE (d3d_sampler);
 	VID_RELEASE (d3d_ps);
 	VID_RELEASE (d3d_vs);
@@ -428,6 +549,7 @@ void VID_Shutdown (void)
 	VID_RELEASE (d3d_swapchain);
 	VID_RELEASE (d3d_context);
 	VID_RELEASE (d3d_device);
+	VID_RELEASE (d3d_factory);
 
 	if (mainwindow)
 		DestroyWindow (mainwindow);
@@ -437,6 +559,8 @@ void VID_Shutdown (void)
 /*
 ================
 VID_SetPalette
+
+The frame texture holds SDR white at 255 in each 10 bit channel.
 ================
 */
 void VID_SetPalette (unsigned char *palette)
@@ -445,8 +569,8 @@ void VID_SetPalette (unsigned char *palette)
 
 	for (i = 0 ; i < 256 ; i++)
 	{
-		vid_palette32[i] = 0xFF000000u | ((uint32_t)palette[i * 3] << 16) |
-			((uint32_t)palette[i * 3 + 1] << 8) | (uint32_t)palette[i * 3 + 2];
+		vid_palette30[i] = (3u << 30) | ((uint32_t)palette[i * 3 + 2] << 20) |
+			((uint32_t)palette[i * 3 + 1] << 10) | (uint32_t)palette[i * 3];
 	}
 }
 
@@ -462,6 +586,11 @@ void VID_ShiftPalette (unsigned char *palette)
 	VID_SetPalette (palette);
 }
 
+void VID_SetPresent (const vid_present_t *present)
+{
+	vid_present = *present;
+}
+
 /*
 ================
 VID_Update
@@ -473,41 +602,62 @@ letterboxed into the window.
 void VID_Update ([[maybe_unused]] vrect_t *rects)
 {
 	D3D11_MAPPED_SUBRESOURCE	mapped;
+	present_constants_t			constants;
 	unsigned					x, y;
 	float						scale, sx, sy;
 	UINT						flags = 0, interval;
+	int							i;
 
 	if (!vid_initialized || Minimized)
 		return;
 
+	if (vid_outputdirty || vid_hdr.value != vid_hdrwanted || !IDXGIFactory2_IsCurrent (d3d_factory))
+		VID_CheckOutput ();
+
+	// room for this frame in the queue
+	WaitForSingleObjectEx (d3d_waitable, 100, TRUE);
+
 	if (FAILED (ID3D11DeviceContext_Map (d3d_context, (ID3D11Resource *)d3d_frame, 0, D3D11_MAP_WRITE_DISCARD, 0,
 			&mapped)))
 		return;
-
 	for (y = 0 ; y < vid.height ; y++)
 	{
 		const byte	*src = vid.buffer + y * vid.rowbytes;
 		uint32_t	*dst = (uint32_t *)((byte *)mapped.pData + y * mapped.RowPitch);
 
 		for (x = 0 ; x < vid.width ; x++)
-			dst[x] = vid_palette32[src[x]];
+			dst[x] = vid_palette30[src[x]];
 	}
 	ID3D11DeviceContext_Unmap (d3d_context, (ID3D11Resource *)d3d_frame, 0);
 
-	// aspect-preserving fit, using whole multiples of the render size when possible
+	// aspect-preserving fit; whole multiples of the render size unless filling the window
 	sx = (float)client_width / (float)vid.width;
 	sy = (float)client_height / (float)vid.height;
 	scale = sx < sy ? sx : sy;
-	if (scale >= 1.0f)
+	if (scale >= 1.0f && !vid_scalemode.value)
 		scale = floorf (scale);
 
 	D3D11_VIEWPORT viewport = {
-		.Width = vid.width * scale,
-		.Height = vid.height * scale,
+		.Width = floorf (vid.width * scale),
+		.Height = floorf (vid.height * scale),
 		.MaxDepth = 1.0f,
 	};
 	viewport.TopLeftX = floorf ((client_width - viewport.Width) * 0.5f);
 	viewport.TopLeftY = floorf ((client_height - viewport.Height) * 0.5f);
+
+	for (i = 0 ; i < 4 ; i++)
+		constants.blend[i] = vid_present.blend[i];
+	constants.texsize[0] = (float)vid.width;
+	constants.texsize[1] = (float)vid.height;
+	constants.scale[0] = constants.scale[1] = scale > 1.0f ? scale : 1.0f;
+	constants.gamma = vid_present.gamma;
+	constants.contrast = vid_present.contrast * vid_contrast.value;
+	constants.sharp = scale == floorf (scale) ? 0.0f : 1.0f;
+	constants.hdr = vid_hdroutput ? 1.0f : 0.0f;
+	constants.paperwhite = vid_hdr_paperwhite.value / 80.0f;		// scRGB 1.0 is 80 nits
+	constants.peak = vid_peaknits / 80.0f;
+	constants.pad[0] = constants.pad[1] = 0;
+	ID3D11DeviceContext_UpdateSubresource (d3d_context, (ID3D11Resource *)d3d_constants, 0, NULL, &constants, 0, 0);
 
 	static const float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
 	ID3D11DeviceContext_ClearRenderTargetView (d3d_context, d3d_rtv, black);
@@ -519,6 +669,7 @@ void VID_Update ([[maybe_unused]] vrect_t *rects)
 	ID3D11DeviceContext_PSSetShader (d3d_context, d3d_ps, NULL, 0);
 	ID3D11DeviceContext_PSSetShaderResources (d3d_context, 0, 1, &d3d_frame_srv);
 	ID3D11DeviceContext_PSSetSamplers (d3d_context, 0, 1, &d3d_sampler);
+	ID3D11DeviceContext_PSSetConstantBuffers (d3d_context, 0, 1, &d3d_constants);
 	ID3D11DeviceContext_Draw (d3d_context, 3, 0);
 
 	interval = vid_vsync.value ? 1 : 0;
@@ -527,46 +678,13 @@ void VID_Update ([[maybe_unused]] vrect_t *rects)
 	IDXGISwapChain1_Present (d3d_swapchain, interval, flags);
 }
 
-//==========================================================================
-
-static const byte scantokey[128] =
-{
-//  0           1       2       3       4       5       6       7
-//  8           9       A       B       C       D       E       F
-	0  ,    27,     '1',    '2',    '3',    '4',    '5',    '6',
-	'7',    '8',    '9',    '0',    '-',    '=',    K_BACKSPACE, 9, // 0
-	'q',    'w',    'e',    'r',    't',    'y',    'u',    'i',
-	'o',    'p',    '[',    ']',    13 ,    K_CTRL,'a',  's',      // 1
-	'd',    'f',    'g',    'h',    'j',    'k',    'l',    ';',
-	'\'' ,    '`',    K_SHIFT,'\\',  'z',    'x',    'c',    'v',      // 2
-	'b',    'n',    'm',    ',',    '.',    '/',    K_SHIFT,'*',
-	K_ALT,' ',   0  ,    K_F1, K_F2, K_F3, K_F4, K_F5,   // 3
-	K_F6, K_F7, K_F8, K_F9, K_F10,  K_PAUSE,    0  , K_HOME,
-	K_UPARROW,K_PGUP,'-',K_LEFTARROW,'5',K_RIGHTARROW,'+',K_END, //4
-	K_DOWNARROW,K_PGDN,K_INS,K_DEL,0,0,             0,              K_F11,
-	K_F12,0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,        // 5
-	0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,
-	0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,        // 6
-	0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,
-	0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0         // 7
-};
-
 /*
-=======
-MapKey
+===============================================================================
 
-Map from windows scancodes to quake keynums
-=======
+WINDOW MESSAGES
+
+===============================================================================
 */
-static int MapKey (LPARAM lParam)
-{
-	int		key = (int)(lParam >> 16) & 255;
-
-	if (key > 127)
-		return 0;
-
-	return scantokey[key];
-}
 
 /*
 ================
@@ -594,19 +712,7 @@ static void AppActivate (bool active, bool minimize)
 		sound_active = true;
 	}
 
-	if (ActiveApp)
-	{
-		if (vid_fullscreen || (_windowed_mouse.value && key_dest == key_game))
-		{
-			IN_ActivateMouse ();
-			IN_HideMouse ();
-		}
-	}
-	else
-	{
-		IN_DeactivateMouse ();
-		IN_ShowMouse ();
-	}
+	IN_WindowActivated (ActiveApp);
 }
 
 /*
@@ -616,7 +722,7 @@ MainWndProc
 */
 static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	int		buttons;
+	RECT	*suggested;
 
 	switch (uMsg)
 	{
@@ -636,26 +742,32 @@ static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 		break;
 
 	case WM_MOVE:
-		VID_UpdateWindowStatus ();
+		vid_outputdirty = true;		// maybe onto another display
+		IN_WindowChanged ();
+		return 0;
+
+	case WM_DISPLAYCHANGE:
+		vid_outputdirty = true;
+		break;
+
+	case WM_DPICHANGED:
+		suggested = (RECT *)lParam;
+		if (!vid_fullscreen)
+			SetWindowPos (hWnd, NULL, suggested->left, suggested->top, suggested->right - suggested->left,
+				suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
 		return 0;
 
 	case WM_SIZE:
 		Minimized = wParam == SIZE_MINIMIZED;
 		if (!Minimized)
 		{
-			VID_ResizeSwapchain (LOWORD (lParam), HIWORD (lParam));
-			VID_UpdateWindowStatus ();
+			VID_ResizeSwapchain (LOWORD (lParam), HIWORD (lParam), DXGI_FORMAT_UNKNOWN);
+			IN_WindowChanged ();
 		}
-		return 0;
-
-	case WM_SYSCHAR:
-		// keep Alt-Space from happening
 		return 0;
 
 	case WM_ACTIVATE:
 		AppActivate (LOWORD (wParam) != WA_INACTIVE, HIWORD (wParam) != 0);
-		// fix the leftover Alt from any Alt-Tab or the like that switched us away
-		ClearAllStates ();
 		return 0;
 
 	case WM_KEYDOWN:
@@ -667,45 +779,7 @@ static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 				VID_SetFullscreen (!vid_fullscreen);
 			return 0;
 		}
-		Key_Event (MapKey (lParam), true);
-		return 0;
-
-	case WM_KEYUP:
-	case WM_SYSKEYUP:
-		Key_Event (MapKey (lParam), false);
-		return 0;
-
-	// Windows may pack multiple mouse events into one update, so always check all
-	// button states
-	case WM_LBUTTONDOWN:
-	case WM_LBUTTONUP:
-	case WM_RBUTTONDOWN:
-	case WM_RBUTTONUP:
-	case WM_MBUTTONDOWN:
-	case WM_MBUTTONUP:
-	case WM_MOUSEMOVE:
-		buttons = 0;
-		if (wParam & MK_LBUTTON)
-			buttons |= 1;
-		if (wParam & MK_RBUTTON)
-			buttons |= 2;
-		if (wParam & MK_MBUTTON)
-			buttons |= 4;
-		IN_MouseEvent (buttons);
-		return 0;
-
-	case WM_MOUSEWHEEL:
-		if ((short)HIWORD (wParam) > 0)
-		{
-			Key_Event (K_MWHEELUP, true);
-			Key_Event (K_MWHEELUP, false);
-		}
-		else
-		{
-			Key_Event (K_MWHEELDOWN, true);
-			Key_Event (K_MWHEELDOWN, false);
-		}
-		return 0;
+		break;
 
 	case WM_CLOSE:
 		// quit from the main loop, not from inside the window procedure
@@ -716,6 +790,8 @@ static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 		break;
 	}
 
+	if (IN_HandleMessage (uMsg, wParam, lParam))
+		return 0;
 	return DefWindowProc (hWnd, uMsg, wParam, lParam);
 }
 

@@ -12,8 +12,8 @@ endforeach()
 
 # Windows services shared by every program
 sw_add_module(sw_platform_win
-	win/sys_win.c win/net_wins.c)
-target_link_libraries(sw_platform_win PUBLIC sw_net sw_common ws2_32 winmm)
+	win/sys_win.c win/net_udp_win.c)
+target_link_libraries(sw_platform_win PUBLIC sw_net sw_common ws2_32)
 
 set(SW_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 file(MAKE_DIRECTORY "${SW_SHADER_DIR}")
@@ -22,12 +22,12 @@ sw_compile_hlsl("${SW_SHADER_DIR}/present_ps.h" "${CMAKE_CURRENT_SOURCE_DIR}/win
 
 # client with the local server
 sw_add_program(softworld WIN32
-	win/sys_win_gui.c win/vid_d3d11.c win/in_win.c win/snd_win.c
+	win/sys_win_gui.c win/vid_d3d11.c win/in_rawinput.c win/in_xinput.c win/snd_wasapi.c
 	"${SW_SHADER_DIR}/present_vs.h" "${SW_SHADER_DIR}/present_ps.h"
 	win/softworld.rc win/softworld.manifest
 	$<TARGET_OBJECTS:sw_entry_gui>)
 target_include_directories(softworld PRIVATE "${SW_SHADER_DIR}" win)
-target_link_libraries(softworld PRIVATE sw_client sw_platform_win d3d11 dxgi dxguid dsound)
+target_link_libraries(softworld PRIVATE sw_client sw_platform_win d3d11 dxgi dxguid ole32 avrt xinput)
 
 # dedicated server
 sw_add_program(softworld-server

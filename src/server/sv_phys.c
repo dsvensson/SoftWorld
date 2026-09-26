@@ -864,19 +864,45 @@ SV_Physics
 
 ================
 */
+static double	sv_physicstime;		// realtime of the last physics frame
+
+/*
+================
+SV_NextFrameWait
+
+Seconds until SV_Physics runs again, for the host to sleep in between
+================
+*/
+double SV_NextFrameWait (void)
+{
+	double	wait;
+	int		i;
+
+	if (sv.paused)
+		return 0.1;
+
+	// with nobody connected, physics can run at the slowest rate
+	for (i=0 ; i<MAX_CLIENTS ; i++)
+		if (svs.clients[i].state != cs_free)
+			break;
+	wait = sv_physicstime + (i == MAX_CLIENTS ? sv_maxtic.value : sv_mintic.value) - realtime;
+	if (wait < 0)
+		return 0;
+	return wait > 0.1 ? 0.1 : wait;
+}
+
 void SV_Physics (void)
 {
 	int		i;
 	edict_t	*ent;
-	static double	old_time;
 
 // don't bother running a frame if sys_ticrate seconds haven't passed
-	host_frametime = realtime - old_time;
+	host_frametime = realtime - sv_physicstime;
 	if (host_frametime < sv_mintic.value)
 		return;
 	if (host_frametime > sv_maxtic.value)
 		host_frametime = sv_maxtic.value;
-	old_time = realtime;
+	sv_physicstime = realtime;
 
 	pr_global_struct->frametime = (float)host_frametime;
 

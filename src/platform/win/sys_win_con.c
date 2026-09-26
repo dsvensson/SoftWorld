@@ -27,7 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <stdlib.h>
 #include "entry_win.h"
-#include <conio.h>
+#include "win_local.h"
 #include <direct.h>
 
 
@@ -56,45 +56,102 @@ void Sys_Error (char *error, ...)
 /*
 ================
 Sys_ConsoleInput
+
+A line typed on the console, edited as it is typed. Ctrl+C types "quit".
 ================
 */
+static HANDLE			con_input;		// NULL when stdin isn't a console
+static HANDLE			con_output;
+static volatile LONG	con_quit;
+
+static BOOL WINAPI Sys_CtrlHandler (DWORD type)
+{
+	if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT)
+	{
+		InterlockedExchange (&con_quit, 1);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static void Sys_Echo (const wchar_t *text, DWORD len)
+{
+	DWORD	written;
+
+	if (con_output)
+		WriteConsoleW (con_output, text, len, &written, NULL);
+}
+
 char *Sys_ConsoleInput (void)
 {
-	static char	text[256];
+	static char		line[256];
 	static int		len;
-	int		c;
+	INPUT_RECORD	rec;
+	DWORD			count;
+	wchar_t			ch;
 
-	// read a line out
-	while (_kbhit())
+	if (InterlockedExchange (&con_quit, 0))
+		return "quit";
+	if (!con_input)
+		return NULL;
+
+	// drain every event, so the input handle stops waking the main loop
+	while (GetNumberOfConsoleInputEvents (con_input, &count) && count)
 	{
-		c = _getch();
-		_putch (c);
-		if (c == '\r')
+		if (!ReadConsoleInputW (con_input, &rec, 1, &count) || !count)
+			break;
+		if (rec.EventType != KEY_EVENT || !rec.Event.KeyEvent.bKeyDown)
+			continue;
+
+		ch = rec.Event.KeyEvent.uChar.UnicodeChar;
+		if (ch == L'\r')
 		{
-			text[len] = 0;
-			_putch ('\n');
+			Sys_Echo (L"\r\n", 2);
+			line[len] = 0;
 			len = 0;
-			return text;
+			return line;
 		}
-		if (c == 8)
+		if (ch == L'\b')
 		{
 			if (len)
 			{
-				_putch (' ');
-				_putch (c);
 				len--;
-				text[len] = 0;
+				Sys_Echo (L"\b \b", 3);
 			}
 			continue;
 		}
-		text[len] = (char)c;
-		len++;
-		text[len] = 0;
-		if (len == sizeof(text))
-			len = 0;
+		if (ch >= 32 && ch < 127 && len < (int)sizeof(line) - 1)
+		{
+			line[len++] = (char)ch;
+			Sys_Echo (&ch, 1);
+		}
 	}
-
 	return NULL;
+}
+
+/*
+================
+Sys_InitConsole
+================
+*/
+static void Sys_InitConsole (void)
+{
+	DWORD	mode;
+
+	SetConsoleCtrlHandler (Sys_CtrlHandler, TRUE);
+
+	con_input = GetStdHandle (STD_INPUT_HANDLE);
+	if (!con_input || !GetConsoleMode (con_input, &mode))
+	{
+		con_input = NULL;		// redirected: no typing
+		return;
+	}
+	// raw key events; the line is edited and echoed here
+	SetConsoleMode (con_input, mode & ~(DWORD)(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT));
+	con_output = GetStdHandle (STD_OUTPUT_HANDLE);
+	if (!GetConsoleMode (con_output, &mode))
+		con_output = NULL;
+	Sys_AddWaitHandle (con_input);
 }
 
 
@@ -161,6 +218,7 @@ int Sys_ConsoleMain (int argc, char **argv)
 	parms.basedir = ".";
 	parms.cachedir = NULL;
 
+	Sys_InitConsole ();
 	SV_Init (&parms);
 
 // run one frame immediately for first heartbeat
@@ -172,11 +230,8 @@ int Sys_ConsoleMain (int argc, char **argv)
 	oldtime = Sys_DoubleTime () - 0.1;
 	while (1)
 	{
-	// select on the net socket and stdin
-	// the only reason we have a timeout at all is so that if the last
-	// connected client times out, the message would not otherwise
-	// be printed until the next event.
-		NET_Sleep (1);
+	// sleep until physics is due, a packet arrives or something is typed
+		Sys_WaitUntil (Sys_DoubleTime () + SV_NextFrameWait ());
 
 	// find time passed since last cycle
 		newtime = Sys_DoubleTime ();
