@@ -34,6 +34,8 @@ viddef_t	vid;				// global video state
 HWND		mainwindow;
 
 static cvar_t	vid_vsync = {.name = "vid_vsync", .string = "1", .archive = true};
+// render pixels per pixel of the 320x200 layout; 0 is the most the window holds
+static cvar_t	vid_scale = {.name = "vid_scale", .string = "0", .archive = true};
 // 0: whole multiples of the render size, letterboxed; 1: fill the window, sharp bilinear
 static cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true};
 static cvar_t	vid_contrast = {.name = "vid_contrast", .string = "1", .archive = true};
@@ -91,6 +93,8 @@ static float	vid_sdrwhitenits = 200;	// Windows' SDR content brightness on that 
 static vid_present_t	vid_present = {.gamma = 1, .contrast = 1};
 
 static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+static int VID_WantedScale (void);
+static void VID_SetScale (int scale);
 
 // SDR white on an HDR display: vid_hdr_paperwhite, or else what Windows uses
 static float VID_PaperWhiteNits (void)
@@ -457,11 +461,14 @@ The framebuffer, z-buffer and surface cache for the current render size.
 */
 static void VID_AllocBuffers (int width, int height, int scale)
 {
+	Mem_Free (vid.buffer);
 	vid.buffer = Mem_Alloc ((size_t)width * height * sizeof(pixel_t));
 
 	vid.rowpixels = width;
-	vid.width = vid.conwidth = width;
-	vid.height = vid.conheight = height;
+	vid.width = width;
+	vid.height = height;
+	vid.conwidth = width / scale;
+	vid.conheight = height / scale;
 	vid.aspect = ((float)height / (float)width) * (320.0f / 240.0f);
 	vid.recalc_refdef = 1;
 
@@ -565,24 +572,28 @@ void VID_Init (void)
 	int		i;
 
 	Cvar_RegisterVariable (&vid_vsync);
+	Cvar_RegisterVariable (&vid_scale);
 	Cvar_RegisterVariable (&vid_scalemode);
 	Cvar_RegisterVariable (&vid_contrast);
 	Cvar_RegisterVariable (&vid_hdr);
 	Cvar_RegisterVariable (&vid_hdr_paperwhite);
 	Cmd_AddCommand ("vid_fullscreen", VID_Fullscreen_f);
 
+	// -scale forces the render scale; the window starts that size either way
 	i = COM_CheckParm ("-scale");
 	if (i && i + 1 < com_argc)
+	{
 		scale = Q_atoi (com_argv[i + 1]);
-	if (scale < 1)
-		scale = 1;
-	if (scale > VID_MAX_SCALE)
-		scale = VID_MAX_SCALE;
+		if (scale < 1)
+			scale = 1;
+		if (scale > VID_MAX_SCALE)
+			scale = VID_MAX_SCALE;
+		Cvar_SetValue ("vid_scale", (float)scale);
+	}
 
 	VID_CreateWindow (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
 	VID_CreateDevice ();
-	VID_CreateFrameTexture (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
-	VID_AllocBuffers (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale, scale);
+	VID_SetScale (VID_WantedScale ());
 
 	ShowWindow (mainwindow, SW_SHOWDEFAULT);
 	UpdateWindow (mainwindow);
@@ -627,6 +638,46 @@ void VID_Shutdown (void)
 void VID_SetPresent (const vid_present_t *present)
 {
 	vid_present = *present;
+}
+
+/*
+================
+VID_WantedScale
+
+vid_scale, or the largest whole multiple of 320x200 the window holds
+================
+*/
+static int VID_WantedScale (void)
+{
+	int		scale;
+
+	if (vid_scale.value >= 1)
+		scale = (int)vid_scale.value;
+	else
+	{
+		scale = client_width / VID_BASE_WIDTH;
+		if (client_height / VID_BASE_HEIGHT < scale)
+			scale = client_height / VID_BASE_HEIGHT;
+	}
+	if (scale < 1)
+		scale = 1;
+	if (scale > VID_MAX_SCALE)
+		scale = VID_MAX_SCALE;
+	return scale;
+}
+
+/*
+================
+VID_SetScale
+
+A new frame size; the next frame is drawn at it
+================
+*/
+static void VID_SetScale (int scale)
+{
+	VID_CreateFrameTexture (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
+	VID_AllocBuffers (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale, scale);
+	Con_DPrintf ("Render size %dx%d\n", VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
 }
 
 /*
@@ -745,6 +796,10 @@ void VID_Update (void)
 	if (!interval && d3d_allow_tearing)
 		flags |= DXGI_PRESENT_ALLOW_TEARING;
 	IDXGISwapChain1_Present (d3d_swapchain, interval, flags);
+
+	// the window was resized, or vid_scale changed
+	if (client_width > 0 && client_height > 0 && VID_WantedScale () != (int)vid.scale)
+		VID_SetScale (VID_WantedScale ());
 }
 
 /*

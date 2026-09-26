@@ -71,7 +71,7 @@ Draws one solid graphics character
 */
 void M_DrawCharacter (int cx, int line, int num)
 {
-	Draw_Character ( cx + ((vid.width - 320)>>1), line, num);
+	Draw_Character ( cx + ((vid.conwidth - 320)>>1), line, num);
 }
 
 void M_Print (int cx, int cy, char *str)
@@ -96,12 +96,12 @@ void M_PrintWhite (int cx, int cy, char *str)
 
 void M_DrawTransPic (int x, int y, qpic_t *pic)
 {
-	Draw_TransPic (x + ((vid.width - 320)>>1), y, pic);
+	Draw_TransPic (x + ((vid.conwidth - 320)>>1), y, pic);
 }
 
 void M_DrawPic (int x, int y, qpic_t *pic)
 {
-	Draw_Pic (x + ((vid.width - 320)>>1), y, pic);
+	Draw_Pic (x + ((vid.conwidth - 320)>>1), y, pic);
 }
 
 
@@ -963,7 +963,7 @@ void M_Draw (void)
 	{
 		if (scr.con_current)
 		{
-			Draw_ConsoleBackground (vid.height, cls.download != NULL);
+			Draw_ConsoleBackground (vid.conheight, cls.download != NULL);
 			S_ExtraUpdate ();
 		}
 		else

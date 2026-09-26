@@ -158,7 +158,7 @@ void SCR_DrawCenterString (void)
 	start = scr_centerstring;
 
 	if (scr_center_lines <= 4)
-		y = (int)(vid.height*0.35);
+		y = (int)(vid.conheight*0.35);
 	else
 		y = 48;
 
@@ -168,7 +168,7 @@ void SCR_DrawCenterString (void)
 		for (l=0 ; l<40 ; l++)
 			if (start[l] == '\n' || !start[l])
 				break;
-		x = (vid.width - l*8)/2;
+		x = (vid.conwidth - l*8)/2;
 		for (j=0 ; j<l ; j++, x+=8)
 		{
 			Draw_Character (x, y, start[j]);	
@@ -293,6 +293,7 @@ Internal use only
 */
 static void SCR_CalcRefdef (void)
 {
+	vrect_t		pixels;
 	vrect_t		vrect;
 	float		size;
 
@@ -334,18 +335,23 @@ static void SCR_CalcRefdef (void)
 // account of water warping
 	vrect.x = 0;
 	vrect.y = 0;
-	vrect.width = vid.width;
-	vrect.height = vid.height;
+	vrect.width = vid.conwidth;
+	vrect.height = vid.conheight;
 
 	SCR_SetVrect (&vrect, &scr.vrect, scr.sb_lines);
 
 // guard against going from one mode to another that's less than half the
 // vertical resolution
-	if (scr.con_current > vid.height)
-		scr.con_current = (float)vid.height;
+	if (scr.con_current > vid.conheight)
+		scr.con_current = (float)vid.conheight;
 
 // notify the refresh of the change
-	R_ViewChanged (&scr.vrect, vid.aspect);
+	pixels = scr.vrect;
+	pixels.x *= vid.scale;
+	pixels.y *= vid.scale;
+	pixels.width *= vid.scale;
+	pixels.height *= vid.scale;
+	R_ViewChanged (&pixels, vid.aspect);
 }
 
 
@@ -490,8 +496,8 @@ void SCR_DrawFPS (void)
 	}
 
 	snprintf(st, sizeof(st), "%3d FPS", lastfps);
-	x = (int)(vid.width - strlen(st) * 8 - 8);
-	y = vid.height - scr.sb_lines - 8;
+	x = (int)(vid.conwidth - strlen(st) * 8 - 8);
+	y = vid.conheight - scr.sb_lines - 8;
 //	Draw_TileClear(x, y, strlen(st) * 8, 8);
 	Draw_String(x, y, st);
 }
@@ -512,8 +518,8 @@ void SCR_DrawPause (void)
 		return;
 
 	pic = Draw_CachePic ("gfx/pause.lmp");
-	Draw_Pic ( (vid.width - pic->width)/2, 
-		(vid.height - 48 - pic->height)/2, pic);
+	Draw_Pic ( (vid.conwidth - pic->width)/2, 
+		(vid.conheight - 48 - pic->height)/2, pic);
 }
 
 
@@ -532,11 +538,11 @@ void SCR_SetUpToDrawConsole (void)
 // decide on the height of the console
 	if (cls.state != ca_active)
 	{
-		scr_conlines = (float)vid.height;		// full screen
+		scr_conlines = (float)vid.conheight;		// full screen
 		scr.con_current = scr_conlines;
 	}
 	else if (cls.key_dest == key_console)
-		scr_conlines = (float)(vid.height/2);	// half screen
+		scr_conlines = (float)(vid.conheight/2);	// half screen
 	else
 		scr_conlines = 0;				// none visible
 	
@@ -923,17 +929,17 @@ static void SCR_DrawNetGraph (void)
 	int lost;
 	char st[80];
 
-	if (vid.width - 16 <= NET_TIMINGS)
-		w = vid.width - 16;
+	if (vid.conwidth - 16 <= NET_TIMINGS)
+		w = vid.conwidth - 16;
 	else
 		w = NET_TIMINGS;
 
-	x =	-(int)((vid.width - 320)>>1);
-	y = vid.height - scr.sb_lines - 24 - (int)r_graphheight.value*2 - 2;
+	x =	-(int)((vid.conwidth - 320)>>1);
+	y = vid.conheight - scr.sb_lines - 24 - (int)r_graphheight.value*2 - 2;
 
 	M_DrawTextBox (x, y, (w+7)/8, ((int)r_graphheight.value*2+7)/8 + 1);
 	y2 = y + 8;
-	y = vid.height - scr.sb_lines - 8 - 2;
+	y = vid.conheight - scr.sb_lines - 8 - 2;
 
 	x = 8;
 	lost = CL_CalcNet();
@@ -959,13 +965,13 @@ static void SCR_TileClear (void)
 	int		right = scr.vrect.x + scr.vrect.width;
 
 	if (top > 0)
-		Draw_TileClear (0, 0, vid.width, top);
+		Draw_TileClear (0, 0, vid.conwidth, top);
 	if (scr.vrect.x > 0)
 		Draw_TileClear (0, top, scr.vrect.x, scr.vrect.height);
-	if (right < (int)vid.width)
-		Draw_TileClear (right, top, vid.width - right, scr.vrect.height);
-	if (bottom < (int)vid.height)
-		Draw_TileClear (0, bottom, vid.width, vid.height - bottom);
+	if (right < (int)vid.conwidth)
+		Draw_TileClear (right, top, vid.conwidth - right, scr.vrect.height);
+	if (bottom < (int)vid.conheight)
+		Draw_TileClear (0, bottom, vid.conwidth, vid.conheight - bottom);
 }
 
 /*

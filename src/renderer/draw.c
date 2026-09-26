@@ -18,8 +18,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
-// draw.c -- this is the only file outside the refresh that touches the
-// vid buffer
+// draw.c -- 2D drawing. Coordinates are con units, the 320x200 layout;
+// each texel covers vid.scale x vid.scale pixels.
 
 #include "r_local.h"
 
@@ -142,6 +142,58 @@ void Draw_Init (void)
 
 /*
 ================
+Draw_Image
+
+An 8 bit image at con x,y; texels equal to transparent (if not -1) are
+skipped
+================
+*/
+static void Draw_Image (int x, int y, const byte *src, int srcrow, int w, int h, int transparent)
+{
+	int		k = (int)vid.scale;
+	int		u, v, i, j;
+	pixel_t	*dest, p;
+
+	for (v=0 ; v<h ; v++, src += srcrow)
+	{
+		for (j=0 ; j<k ; j++)
+		{
+			dest = vid.buffer + ((y+v)*k + j)*vid.rowpixels + x*k;
+			for (u=0 ; u<w ; u++, dest += k)
+			{
+				if (src[u] == transparent)
+					continue;
+				p = d_pal30[src[u]];
+				for (i=0 ; i<k ; i++)
+					dest[i] = p;
+			}
+		}
+	}
+}
+
+/*
+================
+Draw_Block
+
+A w x h con unit rectangle of one color
+================
+*/
+static void Draw_Block (int x, int y, int w, int h, pixel_t p)
+{
+	int		k = (int)vid.scale;
+	int		u, v;
+	pixel_t	*dest;
+
+	for (v=y*k ; v<(y+h)*k ; v++)
+	{
+		dest = vid.buffer + v*vid.rowpixels;
+		for (u=x*k ; u<(x+w)*k ; u++)
+			dest[u] = p;
+	}
+}
+
+/*
+================
 Draw_Character
 
 Draws one 8*8 graphics character with 0 being transparent.
@@ -151,17 +203,16 @@ smoothly scrolled off.
 */
 void Draw_Character (int x, int y, int num)
 {
-	pixel_t			*dest;
 	byte			*source;
 	int				drawline;
-	int				row, col, i;
+	int				row, col;
 
 	num &= 255;
 
 	if (y <= -8)
 		return;			// totally off screen
 
-	if ((unsigned)y > vid.height - 8 || x < 0 || (unsigned)x > vid.width - 8)
+	if ((unsigned)y > vid.conheight - 8 || x < 0 || (unsigned)x > vid.conwidth - 8)
 		return;
 
 	row = num>>4;
@@ -177,16 +228,7 @@ void Draw_Character (int x, int y, int num)
 	else
 		drawline = 8;
 
-	dest = vid.buffer + y*vid.rowpixels + x;
-
-	while (drawline--)
-	{
-		for (i = 0 ; i < 8 ; i++)
-			if (source[i])
-				dest[i] = d_pal30[source[i]];
-		source += 128;
-		dest += vid.rowpixels;
-	}
+	Draw_Image (x, y, source, 128, 8, drawline, 0);
 }
 
 /*
@@ -221,7 +263,7 @@ void Draw_Alt_String (int x, int y, char *str)
 
 void Draw_Pixel (int x, int y, byte color)
 {
-	vid.buffer[y*vid.rowpixels + x] = d_pal30[color];
+	Draw_Block (x, y, 1, 1, d_pal30[color]);
 }
 
 /*
@@ -242,29 +284,15 @@ Draw_SubPic
 */
 void Draw_SubPic (int x, int y, qpic_t *pic, int srcx, int srcy, int width, int height)
 {
-	pixel_t			*dest;
-	byte			*source;
-	int				u, v;
-
 	if ((x < 0) ||
-		((unsigned)(x + width) > vid.width) ||
+		((unsigned)(x + width) > vid.conwidth) ||
 		(y < 0) ||
-		((unsigned)(y + height) > vid.height))
+		((unsigned)(y + height) > vid.conheight))
 	{
 		Sys_Error ("Draw_Pic: bad coordinates");
 	}
 
-	source = pic->data + srcy * pic->width + srcx;
-
-	dest = vid.buffer + y * vid.rowpixels + x;
-
-	for (v=0 ; v<height ; v++)
-	{
-		for (u=0 ; u<width ; u++)
-			dest[u] = d_pal30[source[u]];
-		dest += vid.rowpixels;
-		source += pic->width;
-	}
+	Draw_Image (x, y, pic->data + srcy * pic->width + srcx, pic->width, width, height, -1);
 }
 
 
@@ -275,29 +303,13 @@ Draw_TransPic
 */
 void Draw_TransPic (int x, int y, qpic_t *pic)
 {
-	pixel_t	*dest;
-	byte	*source, tbyte;
-	int		v, u;
-
-	if (x < 0 || (unsigned)(x + pic->width) > vid.width || y < 0 ||
-		 (unsigned)(y + pic->height) > vid.height)
+	if (x < 0 || (unsigned)(x + pic->width) > vid.conwidth || y < 0 ||
+		 (unsigned)(y + pic->height) > vid.conheight)
 	{
 		Sys_Error ("Draw_TransPic: bad coordinates");
 	}
 
-	source = pic->data;
-
-	dest = vid.buffer + y * vid.rowpixels + x;
-
-	for (v=0 ; v<pic->height ; v++)
-	{
-		for (u=0 ; u<pic->width ; u++)
-			if ( (tbyte=source[u]) != TRANSPARENT_COLOR)
-				dest[u] = d_pal30[tbyte];
-
-		dest += vid.rowpixels;
-		source += pic->width;
-	}
+	Draw_Image (x, y, pic->data, pic->width, pic->width, pic->height, TRANSPARENT_COLOR);
 }
 
 void Draw_CharToConback (int num, byte *dest)
@@ -334,7 +346,7 @@ void Draw_ConsoleBackground (int lines, bool downloading)
 {
 	int				x, y, v;
 	byte			*src;
-	pixel_t			*dest;
+	byte			row[MAX_CONWIDTH];
 	int				f, fstep;
 	qpic_t			*conback;
 	char			ver[100];
@@ -355,20 +367,20 @@ void Draw_ConsoleBackground (int lines, bool downloading)
 	for (x=0 ; x<(int)strlen(ver) ; x++)
 		Draw_CharToConback (ver[x], src+(x<<3));
 
-// draw the pic
-	dest = vid.buffer;
+// draw the pic, stretched to the con width
 	fstep = 320*0x10000/vid.conwidth;
 
-	for (y=0 ; y<lines ; y++, dest += vid.rowpixels)
+	for (y=0 ; y<lines ; y++)
 	{
 		v = (vid.conheight - lines + y)*200/vid.conheight;
 		src = conback->data + v*320;
 		f = 0;
 		for (x=0 ; x<(int)vid.conwidth ; x++)
 		{
-			dest[x] = d_pal30[src[f>>16]];
+			row[x] = src[f>>16];
 			f += fstep;
 		}
+		Draw_Image (0, y, row, 0, vid.conwidth, 1, -1);
 	}
 
 	// put it back
@@ -385,18 +397,7 @@ A rectangle of an 8 bit image
 */
 static void R_DrawRect (vrect_t *prect, int rowbytes, byte *psrc)
 {
-	int		i, j;
-	pixel_t	*pdest;
-
-	pdest = vid.buffer + (prect->y * vid.rowpixels) + prect->x;
-
-	for (i=0 ; i<prect->height ; i++)
-	{
-		for (j=0 ; j<prect->width ; j++)
-			pdest[j] = d_pal30[psrc[j]];
-		psrc += rowbytes;
-		pdest += vid.rowpixels;
-	}
+	Draw_Image (prect->x, prect->y, psrc, rowbytes, prect->width, prect->height, -1);
 }
 
 /*
@@ -474,20 +475,14 @@ Fills a box of pixels with a single color
 */
 void Draw_Fill (int x, int y, int w, int h, int c)
 {
-	pixel_t			*dest;
-	int				u, v;
-
-	if (x < 0 || (unsigned)(x + w) > vid.width ||
-		y < 0 || (unsigned)(y + h) > vid.height) {
+	if (x < 0 || (unsigned)(x + w) > vid.conwidth ||
+		y < 0 || (unsigned)(y + h) > vid.conheight) {
 		Con_Printf("Bad Draw_Fill(%d, %d, %d, %d, %c)\n",
 			x, y, w, h, c);
 		return;
 	}
 
-	dest = vid.buffer + y*vid.rowpixels + x;
-	for (v=0 ; v<h ; v++, dest += vid.rowpixels)
-		for (u=0 ; u<w ; u++)
-			dest[u] = d_pal30[c & 255];
+	Draw_Block (x, y, w, h, d_pal30[c & 255]);
 }
 //=============================================================================
 
@@ -499,7 +494,7 @@ Draw_FadeScreen
 */
 void Draw_FadeScreen (void)
 {
-	int			x,y;
+	int			x, y, k = (int)vid.scale;
 	pixel_t		*pbuf;
 
 	for (y=0 ; y<(int)vid.height ; y++)
@@ -507,11 +502,11 @@ void Draw_FadeScreen (void)
 		int	t;
 
 		pbuf = vid.buffer + vid.rowpixels*y;
-		t = (y & 1) << 1;
+		t = ((y / k) & 1) << 1;
 
 		for (x=0 ; x<(int)vid.width ; x++)
 		{
-			if ((x & 3) != t)
+			if (((x / k) & 3) != t)
 				pbuf[x] = d_pal30[0];
 		}
 	}

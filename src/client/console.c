@@ -134,7 +134,7 @@ static void Con_Resize (void)
 	int		i, j, width, oldwidth, oldtotallines, numlines, numchars;
 	char	tbuf[CON_TEXTSIZE];
 
-	width = (vid.width >> 3) - 2;
+	width = (vid.conwidth >> 3) - 2;
 
 	if (width == con.linewidth)
 		return;
@@ -454,8 +454,8 @@ void Con_DrawNotify (void)
 		}
 
 		s = key_input.chat_buffer;
-		if ((unsigned)key_input.chat_bufferlen > (vid.width>>3)-(skip+1))
-			s += key_input.chat_bufferlen - ((vid.width>>3)-(skip+1));
+		if ((unsigned)key_input.chat_bufferlen > (vid.conwidth>>3)-(skip+1))
+			s += key_input.chat_bufferlen - ((vid.conwidth>>3)-(skip+1));
 		x = 0;
 		while(s[x])
 		{

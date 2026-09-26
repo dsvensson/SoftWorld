@@ -109,7 +109,10 @@ void R_SetRenderSize (int width, int height, int scale)
 	int			zbuffersize, cachesize;
 
 	if (buffers)
+	{
+		D_FlushCaches ();	// the surfaces forget their cache blocks
 		Mem_FreeAligned (buffers);
+	}
 
 	cachesize = D_SurfaceCacheForRes (width, height);
 	zbuffersize = width * height * (int)sizeof (*d_pzbuffer);

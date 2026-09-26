@@ -63,7 +63,6 @@ Only called by R_DisplayTime
 void R_LineGraph (int x, int y, int h)
 {
 	int		i;
-	pixel_t	*dest;
 	int		s;
 	int		color;
 
@@ -72,7 +71,6 @@ void R_LineGraph (int x, int y, int h)
 //	x += r_refdef.vrect.x;
 //	y += r_refdef.vrect.y;
 	
-	dest = vid.buffer + vid.rowpixels*y + x;
 	
 	s = (int)r_graphheight.value;
 
@@ -88,8 +86,8 @@ void R_LineGraph (int x, int y, int h)
 	if (h>s)
 		h = s;
 	
-	for (i=0 ; i<h ; i++, dest -= vid.rowpixels*2)
-		dest[0] = d_pal30[color];
+	for (i=0 ; i<h ; i++)
+		Draw_Pixel (x, y - i*2, (byte)color);
 }
 
 /*
@@ -104,6 +102,8 @@ extern float mouse_x, mouse_y;
 static int		graphval;
 void R_TimeGraph (void)
 {
+	int		conwidth = r_refdef.vrect.width / (int)vid.scale;
+	int		conheight = r_refdef.vrect.height / (int)vid.scale;
 	static	int		timex;
 	int		a;
 	float	r_time2;
@@ -125,14 +125,14 @@ a = graphval;
 	r_timings[timex] = (byte)a;
 	a = timex;
 
-	if (r_refdef.vrect.width <= MAX_TIMINGS)
-		x = r_refdef.vrect.width-1;
+	if (conwidth <= MAX_TIMINGS)
+		x = conwidth-1;
 	else
-		x = r_refdef.vrect.width -
-				(r_refdef.vrect.width - MAX_TIMINGS)/2;
+		x = conwidth -
+				(conwidth - MAX_TIMINGS)/2;
 	do
 	{
-		R_LineGraph (x, r_refdef.vrect.height-2, r_timings[a]);
+		R_LineGraph (x, conheight-2, r_timings[a]);
 		if (x==0)
 			break;		// screen too small to hold entire thing
 		x--;
@@ -151,11 +151,13 @@ R_ZGraph
 */
 void R_ZGraph (void)
 {
+	int		conwidth = r_refdef.vrect.width / (int)vid.scale;
+	int		conheight = r_refdef.vrect.height / (int)vid.scale;
 	int		a, x, w, i;
 	static	int	height[256];
 
-	if (r_refdef.vrect.width <= 256)
-		w = r_refdef.vrect.width;
+	if (conwidth <= 256)
+		w = conwidth;
 	else
 		w = 256;
 
@@ -165,7 +167,7 @@ void R_ZGraph (void)
 	for (a=0 ; a<w ; a++)
 	{
 		i = (r_framecount-a) & 255;
-		R_LineGraph (x+w-1-a, r_refdef.vrect.height-2, height[i]);
+		R_LineGraph (x+w-1-a, conheight-2, height[i]);
 	}
 }
 

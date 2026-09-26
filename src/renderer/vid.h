@@ -41,6 +41,8 @@ static inline unsigned RGB30_R (pixel_t p) { return p & 1023; }
 static inline unsigned RGB30_G (pixel_t p) { return (p >> 10) & 1023; }
 static inline unsigned RGB30_B (pixel_t p) { return (p >> 20) & 1023; }
 
+#define MAX_CONWIDTH	1024		// widest 2D layout
+
 typedef struct vrect_s
 {
 	int				x,y,width,height;
@@ -55,7 +57,7 @@ typedef struct
 	unsigned		height;
 	float			aspect;			// width / height -- < 0 is taller than wide
 	int				recalc_refdef;	// if true, recalc vid-based stuff
-	unsigned		conwidth;
+	unsigned		conwidth;		// the 2D layout: the frame in scale x scale blocks
 	unsigned		conheight;
 	unsigned		scale;			// render pixels per pixel of the 320x200 layout
 } viddef_t;
