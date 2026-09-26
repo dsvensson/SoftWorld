@@ -116,6 +116,7 @@ typedef struct
 	vec3_t		viewangles;
 
 	float		fov_x, fov_y;
+	float		viewmodel_fov_x;	// the gun's, with the same widening as fov_x
 	
 	int			ambientlight;
 } refdef_t;

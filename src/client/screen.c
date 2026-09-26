@@ -77,10 +77,12 @@ scr_state_t	scr;
 
 static float		scr_conlines;		// lines of console to display
 
-static float		oldscreensize, oldfov;
+static float		oldscreensize, oldfov, oldviewmodelfov;
 static float		oldsbar;
 cvar_t		scr_viewsize = {.name = "viewsize", .string = "100", .archive = true};
 static cvar_t		scr_fov = {.name = "fov", .string = "90"};	// 10 - 170
+// the gun's own field of view, so it looks the same whatever fov is; 0 is fov's
+static cvar_t		r_viewmodel_fov = {.name = "r_viewmodel_fov", .string = "0", .archive = true};
 static cvar_t		scr_conspeed = {.name = "scr_conspeed", .string = "300"};
 static cvar_t		scr_centertime = {.name = "scr_centertime", .string = "2"};
 static cvar_t		scr_showram = {.name = "showram", .string = "1"};
@@ -203,6 +205,21 @@ void SCR_CheckDrawCenterString (void)
 //=============================================================================
 
 /*
+=================
+SCR_WidenFov
+
+A fov for the 320 wide layout, for the layout in use: a wider one sees more
+to the sides, the same up and down
+=================
+*/
+static float SCR_WidenFov (float fov)
+{
+	if (vid.conwidth == 320)
+		return fov;
+	return atanf (tanf (fov * (float)Q_PI / 360) * vid.conwidth / 320) * 360 / (float)Q_PI;
+}
+
+/*
 ====================
 CalcFov
 ====================
@@ -315,11 +332,10 @@ static void SCR_CalcRefdef (void)
 	if (scr_fov.value > 170)
 		Cvar_Set ("fov","170");
 
-	r_refdef.fov_x = scr_fov.value;
-	// a wider layout sees more to the sides, the same up and down
-	if (vid.conwidth != 320)
-		r_refdef.fov_x = atanf (tanf (scr_fov.value * (float)Q_PI / 360) * vid.conwidth / 320) * 360 / (float)Q_PI;
+	r_refdef.fov_x = SCR_WidenFov (scr_fov.value);
 	r_refdef.fov_y = CalcFov (r_refdef.fov_x, (float)r_refdef.vrect.width, (float)r_refdef.vrect.height);
+	r_refdef.viewmodel_fov_x = SCR_WidenFov (r_viewmodel_fov.value >= 10 && r_viewmodel_fov.value <= 170 ?
+		r_viewmodel_fov.value : scr_fov.value);
 
 // intermission is always full screen	
 	if (cl.intermission)
@@ -397,6 +413,7 @@ SCR_Init
 void SCR_Init (void)
 {
 	Cvar_RegisterVariable (&scr_fov);
+	Cvar_RegisterVariable (&r_viewmodel_fov);
 	Cvar_RegisterVariable (&scr_viewsize);
 	Cvar_RegisterVariable (&scr_conspeed);
 	Cvar_RegisterVariable (&scr_showram);
@@ -1008,9 +1025,10 @@ void SCR_UpdateScreen (void)
 //
 // check for vid changes
 //
-	if (oldfov != scr_fov.value)
+	if (oldfov != scr_fov.value || oldviewmodelfov != r_viewmodel_fov.value)
 	{
 		oldfov = scr_fov.value;
+		oldviewmodelfov = r_viewmodel_fov.value;
 		vid.recalc_refdef = true;
 	}
 	

@@ -54,7 +54,6 @@ pixel_t		*r_warpbuffer;
 
 static byte		*r_stack_start;
 
-static bool	r_fov_greater_than_90;
 
 entity_t	r_worldentity;
 
@@ -525,11 +524,6 @@ void R_SetViewRect (const vrect_t *vrect, float aspect)
 	r_aliastransition = r_aliastransbase.value * res_scale;
 	r_resfudge = r_aliastransadj.value * res_scale;
 
-	if (r_refdef.fov_x <= 90.0f)
-		r_fov_greater_than_90 = false;
-	else
-		r_fov_greater_than_90 = true;
-
 // TODO: collect 386-specific code in one place
 
 	D_ViewChanged ();
@@ -672,7 +666,9 @@ void R_DrawViewModel (void)
 	float		add;
 	dlight_t	*dl;
 	
-	if (!r_drawviewmodel.value || r_fov_greater_than_90 || !r_scene.drawviewmodel)
+	float		saved[6], width;
+
+	if (!r_drawviewmodel.value || !r_scene.drawviewmodel)
 		return;
 
 
@@ -723,7 +719,32 @@ void R_DrawViewModel (void)
 
 	r_viewlighting.plightvec = lightvec;
 
+	// the gun's own field of view, the rest of the projection as the scene's
+	saved[0] = xscale;
+	saved[1] = yscale;
+	saved[2] = xscaleinv;
+	saved[3] = yscaleinv;
+	saved[4] = aliasxscale;
+	saved[5] = aliasyscale;
+	if (r_refdef.viewmodel_fov_x > 0)
+	{
+		width = 2.0f * tanf (r_refdef.viewmodel_fov_x / 360 * (float)Q_PI);
+		xscale = r_refdef.vrect.width / width;
+		yscale = xscale * pixelAspect;
+		xscaleinv = 1.0f / xscale;
+		yscaleinv = 1.0f / yscale;
+		aliasxscale = xscale * r_aliasuvscale;
+		aliasyscale = yscale * r_aliasuvscale;
+	}
+
 	R_AliasDrawModel (&r_viewlighting);
+
+	xscale = saved[0];
+	yscale = saved[1];
+	xscaleinv = saved[2];
+	yscaleinv = saved[3];
+	aliasxscale = saved[4];
+	aliasyscale = saved[5];
 }
 
 

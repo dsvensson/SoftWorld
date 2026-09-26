@@ -33,6 +33,11 @@ typedef struct
 
 static beam_t		cl_beams[MAX_BEAMS];
 
+// how far toward the current aim the player's own beam turns from where the
+// server last put it, 0 .. 1: hides the beam's lag behind the view (FTE)
+static cvar_t		cl_truelightning = {.name = "cl_truelightning", .string = "1", .archive = true};
+static vec3_t		cl_playerbeam_end;		// the server's end of the player's own beam
+
 #define	MAX_EXPLOSIONS	8
 typedef struct
 {
@@ -59,6 +64,7 @@ CL_ParseTEnts
 */
 void CL_InitTEnts (void)
 {
+	Cvar_RegisterVariable (&cl_truelightning);
 	cl_sfx_wizhit = S_PrecacheSound ("wizard/hit.wav");
 	cl_sfx_knighthit = S_PrecacheSound ("hknight/hit.wav");
 	cl_sfx_tink1 = S_PrecacheSound ("weapons/tink1.wav");
@@ -127,6 +133,9 @@ void CL_ParseBeam (model_t *m)
 	end[0] = MSG_ReadCoord ();
 	end[1] = MSG_ReadCoord ();
 	end[2] = MSG_ReadCoord ();
+
+	if (ent == cl.playernum + 1)
+		VectorCopy (end, cl_playerbeam_end);
 
 // override any beam with the same entity
 	for (i=0, b=cl_beams ; i< MAX_BEAMS ; i++, b++)
@@ -344,15 +353,54 @@ entity_t *CL_NewTempEntity (void)
 
 /*
 =================
+CL_TrueLightningEnd
+
+The end of the player's own beam turned toward the view by fraction f, at
+the length the server gave it; it leaves from 16 above the origin, as the
+server's does
+=================
+*/
+static void CL_TrueLightningEnd (const vec3_t start, float f, vec3_t end)
+{
+	vec3_t	from, dir, ang, right, up;
+	float	len, delta, pitch, yaw;
+
+	VectorCopy (start, from);
+	from[2] += 16;
+	VectorSubtract (cl_playerbeam_end, from, dir);
+	len = Length (dir);
+	if (len < 1)
+		return;
+
+	// the server's direction as view angles: pitch positive down
+	yaw = atan2f (dir[1], dir[0]) * 180 / (float)Q_PI;
+	pitch = -atan2f (dir[2], sqrtf (dir[0]*dir[0] + dir[1]*dir[1])) * 180 / (float)Q_PI;
+
+	delta = anglemod (cl.simangles[PITCH] - pitch);
+	if (delta > 180)
+		delta -= 360;
+	ang[PITCH] = pitch + delta * f;
+	delta = anglemod (cl.simangles[YAW] - yaw);
+	if (delta > 180)
+		delta -= 360;
+	ang[YAW] = yaw + delta * f;
+	ang[ROLL] = 0;
+
+	AngleVectors (ang, dir, right, up);		// writes all three
+	VectorMA (from, len, dir, end);
+}
+
+/*
+=================
 CL_UpdateBeams
 =================
 */
 void CL_UpdateBeams (void)
 {
-	int			i;
+	int			i, j;
 	beam_t		*b;
-	vec3_t		dist, org;
-	float		d;
+	vec3_t		dist, org, end;
+	float		d, f;
 	entity_t	*ent;
 	float		yaw, pitch;
 	float		forward;
@@ -363,15 +411,18 @@ void CL_UpdateBeams (void)
 		if (!b->model || b->endtime < cl.time)
 			continue;
 
-	// if coming from the player, update the start position
+	// if coming from the player, update the start position, and maybe the end
+		VectorCopy (b->end, end);
 		if (b->entity == cl.playernum+1)	// entity 0 is the world
 		{
 			VectorCopy (cl.simorg, b->start);
-//			b->start[2] -= 22;	// adjust for view height
+			f = cl_truelightning.value;
+			if (f > 0)
+				CL_TrueLightningEnd (b->start, f > 1 ? 1 : f, end);
 		}
 
 	// calculate pitch and yaw
-		VectorSubtract (b->end, b->start, dist);
+		VectorSubtract (end, b->start, dist);
 
 		if (dist[1] == 0 && dist[0] == 0)
 		{
@@ -407,8 +458,8 @@ void CL_UpdateBeams (void)
 			ent->angles[1] = yaw;
 			ent->angles[2] = (vec_t)(rand()%360);
 
-			for (i=0 ; i<3 ; i++)
-				org[i] += dist[i]*30;
+			for (j=0 ; j<3 ; j++)		// not i: that walks the beams
+				org[j] += dist[j]*30;
 			d -= 30;
 		}
 	}
