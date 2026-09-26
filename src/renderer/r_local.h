@@ -104,6 +104,22 @@ extern pixel_t	d_pal30_floor[256];
 
 void R_SetFullbrightScale (float scale);
 
+// r_lightdata.c
+typedef struct
+{
+	const byte	*decoupled;		// DECOUPLED_LM: a dlminfo_t per face
+	const byte	*shifts;		// LMSHIFT: a byte per face
+	const byte	*offsets;		// LMOFFSET: an int per face
+	const byte	*styles;		// LMSTYLE: stylesperface bytes per face
+	int			stylesperface;
+} facelumps_t;
+
+void R_LightDataInit (void);
+void R_LoadLightData (model_t *mod, bspfile_t *bsp);
+void R_FindFaceLumps (bspfile_t *bsp, int numfaces, facelumps_t *lumps);
+void R_SetFaceLightmap (model_t *mod, msurface_t *surf, const bspface_t *face, const facelumps_t *lumps,
+	int facenum, const double texmins[2], const double texmaxs[2]);
+
 // r_lightmode 1: light in RGB, 128 << 8 is 1.0, clamped at 4.0 keeping the hue
 #define LIGHT_ONE		(128 << 8)
 #define LIGHT_MAX		(4 * LIGHT_ONE)
@@ -327,7 +343,7 @@ void R_PrintAliasStats (void);
 void R_PrintTimes (void);
 void R_PrintDSpeeds (void);
 void R_AnimateLight (void);
-int R_LightPoint (vec3_t p);
+int R_LightPoint (vec3_t p, vec3_t color);
 void R_SetupFrame (void);
 void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1);
 void R_ClipEdge (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip);

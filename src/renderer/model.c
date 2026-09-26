@@ -570,63 +570,6 @@ static bool Mod_LoadTextures (void)
 
 /*
 =================
-Mod_LoadLighting
-=================
-*/
-static bool Mod_LoadLighting (void)
-{
-	const byte	*in;
-	int			count;
-
-	loadmodel->lightdata = NULL;
-	loadmodel->lightdatasize = 0;
-	if (!BSP_Lump (mod_bsp, LUMP_LIGHTING, 1, &in, &count))
-		return false;
-	if (!count)
-		return true;
-	loadmodel->lightdata = Mod_Alloc ((size_t)count);
-	loadmodel->lightdatasize = count;
-	memcpy (loadmodel->lightdata, in, (size_t)count);
-	return true;
-}
-
-/*
-=================
-Mod_LoadHDRLighting
-
-LIGHTING_E5BGR9 holds a sample for every mono one: 9 bit red, green and
-blue mantissas with a shared 5 bit exponent biased by 15, linear light
-where 1.0 is the mono 128. Stored as 16 bits per channel, 2048 is 1.0.
-=================
-*/
-static void Mod_LoadHDRLighting (void)
-{
-	const byte	*in;
-	int			i, c, length, mono;
-	unsigned	e5bgr9;
-	float		scale, v;
-
-	loadmodel->lightrgb = NULL;
-	mono = loadmodel->lightdatasize;
-	in = BSP_FindBSPXLump (mod_bsp, "LIGHTING_E5BGR9", &length);
-	if (!in || !mono || length != mono * 4)
-		return;
-
-	loadmodel->lightrgb = Mod_Alloc ((size_t)mono * 3 * sizeof(*loadmodel->lightrgb));
-	for (i=0 ; i<mono ; i++)
-	{
-		e5bgr9 = (unsigned)in[i*4] | ((unsigned)in[i*4+1] << 8) | ((unsigned)in[i*4+2] << 16) | ((unsigned)in[i*4+3] << 24);
-		scale = ldexpf (2048.0f, (int)(e5bgr9 >> 27) - 15 - 9);
-		for (c=0 ; c<3 ; c++)
-		{
-			v = ((e5bgr9 >> (9 * c)) & 0x1ff) * scale + 0.5f;
-			loadmodel->lightrgb[i*3 + c] = (unsigned short)(v > 65535 ? 65535 : v);
-		}
-	}
-}
-
-/*
-=================
 Mod_LoadVisibility
 =================
 */
@@ -830,12 +773,13 @@ static bool Mod_LoadTexinfo (void)
 ================
 CalcSurfaceExtents
 
-Fills in s->texturemins[] and s->extents[], in double as the light tools do
+Fills in s->texturemins[] and s->extents[], and the texture coordinates'
+range in mins and maxs; rounded as the light tools round them
 ================
 */
-static bool CalcSurfaceExtents (msurface_t *s)
+static bool CalcSurfaceExtents (msurface_t *s, double mins[2], double maxs[2])
 {
-	double		mins[2], maxs[2], val;
+	double		val;
 	int			i, j, e, bmins[2], bmaxs[2];
 	mvertex_t	*v;
 	mtexinfo_t	*tex;
@@ -855,10 +799,12 @@ static bool CalcSurfaceExtents (msurface_t *s)
 
 		for (j=0 ; j<2 ; j++)
 		{
-			val = (double)v->position[0] * tex->vecs[j][0] +
+			// as the light compilers do it: x87 precision, rounded to a
+			// float (Quakespasm's fix; lightmaps misalign otherwise)
+			val = (float)((double)v->position[0] * tex->vecs[j][0] +
 				(double)v->position[1] * tex->vecs[j][1] +
 				(double)v->position[2] * tex->vecs[j][2] +
-				tex->vecs[j][3];
+				tex->vecs[j][3]);
 			if (val < mins[j])
 				mins[j] = val;
 			if (val > maxs[j])
@@ -891,12 +837,14 @@ static bool Mod_LoadFaces (void)
 {
 	bspface_t	*in;
 	msurface_t	*out;
-	int			i, count, surfnum, numstyles, lightofs;
-	size_t		samples;
+	int			i, count, surfnum;
+	double		texmins[2], texmaxs[2];
+	facelumps_t	lumps;
 
 	in = BSP_Faces (mod_bsp, &count);
 	if (!in)
 		return false;
+	R_FindFaceLumps (mod_bsp, count, &lumps);
 	out = Mod_Alloc ((size_t)count * sizeof(*out) + 1);
 	loadmodel->surfaces = out;
 	loadmodel->numsurfaces = count;
@@ -918,33 +866,12 @@ static bool Mod_LoadFaces (void)
 		out->plane = loadmodel->planes + f->planenum;
 		out->texinfo = loadmodel->texinfo + f->texinfo;
 
-		if (!CalcSurfaceExtents (out))
+		if (!CalcSurfaceExtents (out, texmins, texmaxs))
 		{
 			Mem_Free (in);
 			return false;
 		}
-
-	// lighting info: the samples of every style must be in the lump
-		numstyles = 0;
-		for (i=0 ; i<MAXLIGHTMAPS ; i++)
-		{
-			out->styles[i] = f->styles[i];
-			if (f->styles[i] != 255 && numstyles == i)
-				numstyles++;
-		}
-		lightofs = f->lightofs;
-		samples = (size_t)((out->extents[0] >> 4) + 1) * ((out->extents[1] >> 4) + 1) * (size_t)numstyles;
-		if (lightofs < 0 || !loadmodel->lightdata || lightofs >= loadmodel->lightdatasize
-			|| samples > (size_t)(loadmodel->lightdatasize - lightofs))
-		{
-			out->samples = NULL;
-			out->samples_rgb = NULL;
-		}
-		else
-		{
-			out->samples = loadmodel->lightdata + lightofs;
-			out->samples_rgb = loadmodel->lightrgb ? loadmodel->lightrgb + (size_t)lightofs * 3 : NULL;
-		}
+		R_SetFaceLightmap (loadmodel, out, f, &lumps, surfnum, texmins, texmaxs);
 
 	// set the drawing flags flag
 
@@ -971,10 +898,42 @@ static bool Mod_LoadFaces (void)
 
 /*
 =================
-Mod_LoadNodes
+Mod_SetParents
 
-A node's children come after it, so one pass links every node and leaf to
-its parent
+Links the nodes and leafs of the world's tree, from node 0, to their parents.
+Only the world's: the trees of inline models may share leafs with it, and
+R_MarkLeaves climbs from a visible leaf through the world's nodes.
+=================
+*/
+static void Mod_SetParents (void)
+{
+	mnode_t		**stack, *node;
+	int			sp, j;
+
+	stack = Mem_Alloc ((size_t)loadmodel->numnodes * sizeof(*stack));
+	sp = 0;
+	stack[sp++] = loadmodel->nodes;
+	loadmodel->nodes->parent = NULL;
+	while (sp)
+	{
+		node = stack[--sp];
+		for (j=0 ; j<2 ; j++)
+		{
+			if (node->children[j]->contents < 0)
+				node->children[j]->parent = node;		// a leaf
+			else if (!node->children[j]->parent)
+			{	// each node once, even in a map that shares them
+				node->children[j]->parent = node;
+				stack[sp++] = node->children[j];
+			}
+		}
+	}
+	Mem_Free (stack);
+}
+
+/*
+=================
+Mod_LoadNodes
 =================
 */
 static bool Mod_LoadNodes (void)
@@ -1021,10 +980,10 @@ static bool Mod_LoadNodes (void)
 				out->children[j] = loadmodel->nodes + p;
 			else
 				out->children[j] = (mnode_t *)(loadmodel->leafs + (-1 - p));
-			out->children[j]->parent = out;
 		}
 	}
 	Mem_Free (in);
+	Mod_SetParents ();
 	return true;
 }
 
@@ -1209,10 +1168,9 @@ static bool Mod_LoadBrushModel (model_t *mod, byte *buffer, int size)
 		&& Mod_LoadVertexes ()
 		&& Mod_LoadEdges ()
 		&& Mod_LoadSurfedges ()
-		&& Mod_LoadTextures ()
-		&& Mod_LoadLighting ();
+		&& Mod_LoadTextures ();
 	if (ok)
-		Mod_LoadHDRLighting ();
+		R_LoadLightData (loadmodel, &bsp);
 	ok = ok
 		&& Mod_LoadPlanes ()
 		&& Mod_LoadTexinfo ()

@@ -122,10 +122,17 @@ typedef struct msurface_s
 
 	mtexinfo_t	*texinfo;
 	
-// lighting info
+// lighting info: lmwidth x lmheight luxels a style; texture coordinate (s, t)
+// falls on luxel lmvecs . (s, t, 1). A vanilla lightmap has a luxel every 16
+// texels from texturemins and is used as it is; others (DECOUPLED_LM, LMSHIFT)
+// are sampled onto a grid of 1 << lmgridshift texels (r_lightdata.c).
 	byte		styles[MAXLIGHTMAPS];
-	byte		*samples;		// [numstyles*surfsize], 128 is 1.0
-	unsigned short	*samples_rgb;	// [numstyles*surfsize*3], 2048 is 1.0; NULL without RGB light
+	bool		lmvanilla;
+	int			lmgridshift;
+	int			lmwidth, lmheight;
+	float		lmvecs[2][3];
+	byte		*samples;		// [numstyles*lmwidth*lmheight], 128 is 1.0; NULL if unlit
+	unsigned short	*samples_rgb;	// the same *3, 2048 is 1.0; NULL without RGB light
 } msurface_t;
 
 typedef struct mnode_s
@@ -355,9 +362,9 @@ typedef struct model_s
 	int			visbytes;		// a row of visibility bits, for every leaf
 	byte		*novis;			// everything visible
 	byte		*pvs;			// the last decompressed row
-	byte		*lightdata;
-	int			lightdatasize;
-	unsigned short	*lightrgb;	// 3 per lightdata byte, from LIGHTING_E5BGR9
+	byte		*lightdata;		// mono, 128 is 1.0
+	int			lightsamples;
+	unsigned short	*lightrgb;	// 3 per sample, 2048 is 1.0; NULL without colored light
 	char		*entities;
 
 //

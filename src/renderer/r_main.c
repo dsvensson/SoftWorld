@@ -207,6 +207,7 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_ambient);
 	Cvar_RegisterVariable (&r_clearcolor);
 	Cvar_RegisterVariable (&r_waterwarp);
+	R_LightDataInit ();
 	Cvar_RegisterVariable (&r_lightmode);
 	Cvar_RegisterVariable (&r_profile);
 	Cmd_AddCommand ("r_profile_show", R_Profile_f);
@@ -611,13 +612,12 @@ void R_DrawEntitiesOnList (void)
 		// trivial accept status
 			if (R_AliasCheckBBox ())
 			{
-				j = R_LightPoint (currententity->origin);
+				j = R_LightPoint (currententity->origin, rgb);
 	
 				lighting.ambientlight = j;
 				lighting.shadelight = j;
 
 				lighting.plightvec = lightvec;
-				rgb[0] = rgb[1] = rgb[2] = (float)j;
 
 				for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
 				{
@@ -686,13 +686,12 @@ void R_DrawViewModel (void)
 	VectorCopy (vup, viewlightvec);
 	VectorInverse (viewlightvec);
 
-	j = R_LightPoint (currententity->origin);
+	j = R_LightPoint (currententity->origin, rgb);
 
 	if (j < 24)
 		j = 24;		// allways give some light on gun
 	r_viewlighting.ambientlight = j;
 	r_viewlighting.shadelight = j;
-	rgb[0] = rgb[1] = rgb[2] = (float)j;
 
 // add dynamic lights		
 	for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
