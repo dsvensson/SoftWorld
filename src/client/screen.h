@@ -31,18 +31,13 @@ void SCR_UpdateScreen (void);
 
 void SCR_CenterPrint (char *str);
 
-// what the screen shows and which parts of it must be redrawn
+// what the screen shows
 typedef struct
 {
 	float	con_current;		// scan lines of console currently drawn
 	int		sb_lines;			// scan lines of status bar
 	vrect_t	vrect;				// the 3D view
 	bool	disabled_for_loading;
-
-	int		fullupdate;			// set to 0 to force full redraw
-	int		copytop;			// only the refresh window will be updated
-	int		copyeverything;		// unless these are flagged
-	int		clearnotify;		// set to 0 whenever notify text is drawn
 } scr_state_t;
 
 extern	scr_state_t	scr;

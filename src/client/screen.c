@@ -97,10 +97,8 @@ static qpic_t		*scr_net;
 static qpic_t		*scr_turtle;
 
 
-static int			clearconsole;
 
 
-static vrect_t		*pconupdate;
 
 
 void SCR_ScreenShot_f (void);
@@ -118,8 +116,6 @@ static char		scr_centerstring[1024];
 static float		scr_centertime_start;	// for slow victory printing
 static float		scr_centertime_off;
 static int			scr_center_lines;
-static int			scr_erase_lines;
-static int			scr_erase_center;
 
 /*
 ==============
@@ -145,25 +141,6 @@ void SCR_CenterPrint (char *str)
 	}
 }
 
-void SCR_EraseCenterString (void)
-{
-	int		y;
-
-	if (scr_erase_center++ > 1)
-	{
-		scr_erase_lines = 0;
-		return;
-	}
-
-	if (scr_center_lines <= 4)
-		y = (int)(vid.height*0.35);
-	else
-		y = 48;
-
-	scr.copytop = 1;
-	Draw_TileClear (0, y, vid.width, 8*scr_erase_lines < (int)vid.height - y - 1 ? 8*scr_erase_lines : (int)vid.height - y - 1);
-}
-
 void SCR_DrawCenterString (void)
 {
 	char	*start;
@@ -178,7 +155,6 @@ void SCR_DrawCenterString (void)
 	else
 		remaining = 9999;
 
-	scr_erase_center = 0;
 	start = scr_centerstring;
 
 	if (scr_center_lines <= 4)
@@ -213,9 +189,6 @@ void SCR_DrawCenterString (void)
 
 void SCR_CheckDrawCenterString (void)
 {
-	scr.copytop = 1;
-	if (scr_center_lines > scr_erase_lines)
-		scr_erase_lines = scr_center_lines;
 
 	scr_centertime_off = (float)(scr_centertime_off - cls.frametime);
 	
@@ -323,11 +296,9 @@ static void SCR_CalcRefdef (void)
 	vrect_t		vrect;
 	float		size;
 
-	scr.fullupdate = 0;		// force a background redraw
 	vid.recalc_refdef = 0;
 
 // force the status bar to redraw
-	Sbar_Changed ();
 
 //========================================
 	
@@ -583,19 +554,6 @@ void SCR_SetUpToDrawConsole (void)
 			scr.con_current = scr_conlines;
 	}
 
-	if (clearconsole++ < 1)
-	{
-		scr.copytop = 1;
-		Draw_TileClear (0,(int)scr.con_current,vid.width, vid.height - (int)scr.con_current);
-		Sbar_Changed ();
-	}
-	else if (scr.clearnotify++ < 1)
-	{
-		scr.copytop = 1;
-		Draw_TileClear (0,0,vid.width, con.notifylines);
-	}
-	else
-		con.notifylines = 0;
 }
 	
 /*
@@ -607,9 +565,7 @@ void SCR_DrawConsole (void)
 {
 	if (scr.con_current)
 	{
-		scr.copyeverything = 1;
 		Con_DrawConsole ((int)scr.con_current);
-		clearconsole = 0;
 	}
 	else
 	{
@@ -992,6 +948,28 @@ static void SCR_DrawNetGraph (void)
 
 /*
 ==================
+SCR_TileClear
+
+The backdrop around the 3D view
+==================
+*/
+static void SCR_TileClear (void)
+{
+	int		top = scr.vrect.y, bottom = scr.vrect.y + scr.vrect.height;
+	int		right = scr.vrect.x + scr.vrect.width;
+
+	if (top > 0)
+		Draw_TileClear (0, 0, vid.width, top);
+	if (scr.vrect.x > 0)
+		Draw_TileClear (0, top, scr.vrect.x, scr.vrect.height);
+	if (right < (int)vid.width)
+		Draw_TileClear (right, top, vid.width - right, scr.vrect.height);
+	if (bottom < (int)vid.height)
+		Draw_TileClear (0, bottom, vid.width, vid.height - bottom);
+}
+
+/*
+==================
 SCR_UpdateScreen
 
 This is called every frame, and can also be called explicitly to flush
@@ -1007,9 +985,6 @@ void SCR_UpdateScreen (void)
 
 	if (scr.disabled_for_loading || VID_IsMinimized ())
 		return;
-
-	scr.copytop = 0;
-	scr.copyeverything = 0;
 
 	if (!scr_initialized || !con.initialized)
 		return;				// not initialized yet
@@ -1051,18 +1026,11 @@ void SCR_UpdateScreen (void)
 // do 3D refresh drawing, and then update the screen
 //
 
-	if (scr.fullupdate++ < 1)
-	{	// clear the entire screen
-		scr.copyeverything = 1;
-		Draw_TileClear (0,0,vid.width,vid.height);
-		Sbar_Changed ();
-	}
+	SCR_TileClear ();
 
-	pconupdate = NULL;
 
 
 	SCR_SetUpToDrawConsole ();
-	SCR_EraseCenterString ();
 
 
 	V_RenderView ();
@@ -1075,7 +1043,6 @@ void SCR_UpdateScreen (void)
 		Sbar_Draw ();
 		Draw_FadeScreen ();
 		SCR_DrawNotifyString ();
-		scr.copyeverything = true;
 	}
 	else if (cl.intermission == 1 && cls.key_dest == key_game)
 	{

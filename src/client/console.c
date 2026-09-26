@@ -431,8 +431,6 @@ void Con_DrawNotify (void)
 			continue;
 		text = con.text + (i % con.totallines)*con.linewidth;
 		
-		scr.clearnotify = 0;
-		scr.copytop = 1;
 
 		for (x = 0 ; x < con.linewidth ; x++)
 			Draw_Character ( (x+1)<<3, v, text[x]);
@@ -443,8 +441,6 @@ void Con_DrawNotify (void)
 
 	if (cls.key_dest == key_message)
 	{
-		scr.clearnotify = 0;
-		scr.copytop = 1;
 	
 		if (key_input.chat_team)
 		{
@@ -470,8 +466,6 @@ void Con_DrawNotify (void)
 		v += 8;
 	}
 	
-	if (v > con.notifylines)
-		con.notifylines = v;
 }
 
 /*

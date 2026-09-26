@@ -961,8 +961,6 @@ void M_Draw (void)
 
 	if (!m_recursiveDraw)
 	{
-		scr.copyeverything = 1;
-
 		if (scr.con_current)
 		{
 			Draw_ConsoleBackground (vid.height, cls.download != NULL);
@@ -970,8 +968,6 @@ void M_Draw (void)
 		}
 		else
 			Draw_FadeScreen ();
-
-		scr.fullupdate = 0;
 	}
 	else
 	{

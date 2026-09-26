@@ -41,7 +41,6 @@ typedef struct
 	float	times[NUM_CON_TIMES];	// realtime the line was generated,
 									// for transparent notify lines
 	int		vislines;		// scan lines the console covers
-	int		notifylines;	// scan lines to clear for notify lines
 	bool	initialized;
 	bool	debuglog;		// -condebug: copy everything to qconsole.log
 } console_t;
