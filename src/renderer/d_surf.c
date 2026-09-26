@@ -219,6 +219,7 @@ D_CacheSurface
 */
 surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 {
+	double			prof;
 	surfcache_t     *cache;
 
 //
@@ -283,7 +284,9 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 	r_drawsurf.surf = surface;
 
 	c_surf++;
+	prof = R_ProfStart ();
 	R_DrawSurface ();
+	R_ProfEnd (PROF_SURFCACHE, prof);
 
 	return surface->cachespots[miplevel];
 }

@@ -990,6 +990,7 @@ needs almost the entire 256k of stack space!
 */
 void SCR_UpdateScreen (void)
 {
+	double			prof;
 	static float	oldscr_viewsize;
 
 	if (scr.disabled_for_loading || VID_IsMinimized ())
@@ -1043,6 +1044,7 @@ void SCR_UpdateScreen (void)
 
 
 	V_RenderView ();
+	prof = R_ProfStart ();
 	if (r_netgraph.value)
 		SCR_DrawNetGraph ();
 
@@ -1076,6 +1078,9 @@ void SCR_UpdateScreen (void)
 	}
 
 
+	R_ProfEnd (PROF_2D, prof);
 	V_UpdateBlend ();
+	prof = R_ProfStart ();
 	VID_Update ();
+	R_ProfEnd (PROF_PRESENT, prof);
 }

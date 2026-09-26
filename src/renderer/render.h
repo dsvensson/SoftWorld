@@ -134,6 +134,24 @@ extern	struct texture_s	*r_notexture_mip;
 extern	entity_t	r_worldentity;
 
 void R_Init (void);
+
+// r_profile 1: time per stage of the frame, printed by r_profile_show
+typedef enum
+{
+	PROF_EDGES,			// the world and brush models into edges and surfaces
+	PROF_SPANS,			// surfaces into pixels, surface cache included
+	PROF_SURFCACHE,		// lighting surfaces into the surface cache
+	PROF_MODELS,		// alias models and sprites
+	PROF_VIEWMODEL,
+	PROF_PARTICLES,
+	PROF_WARP,			// the underwater warp
+	PROF_2D,			// status bar, console, menus
+	PROF_PRESENT,		// the frame to the screen
+	PROF_COUNT
+} prof_t;
+
+double	R_ProfStart (void);						// 0 unless profiling
+void	R_ProfEnd (prof_t stage, double start);
 // palette.lmp and colormap.lmp, before any drawing
 void R_InitPalette (const byte *palette, const byte *colormap);
 void R_InitTextures (void);

@@ -122,6 +122,8 @@ cvar_t	r_clearcolor = {.name = "r_clearcolor", .string = "2"};
 cvar_t	r_waterwarp = {.name = "r_waterwarp", .string = "1"};
 cvar_t	r_fullbright = {.name = "r_fullbright", .string = "0"};
 // 0: light through the colormap as Quake did; 1: light in RGB with 4x headroom
+static cvar_t	r_profile = {.name = "r_profile", .string = "0"};
+static void R_Profile_f (void);
 cvar_t	r_lightmode = {.name = "r_lightmode", .string = "1", .archive = true};
 // dynamic lights have color (r_lightmode 1)
 static cvar_t	r_dlight_color = {.name = "r_dlight_color", .string = "1", .archive = true};
@@ -206,6 +208,8 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_clearcolor);
 	Cvar_RegisterVariable (&r_waterwarp);
 	Cvar_RegisterVariable (&r_lightmode);
+	Cvar_RegisterVariable (&r_profile);
+	Cmd_AddCommand ("r_profile_show", R_Profile_f);
 	Cvar_RegisterVariable (&r_dlight_color);
 	Cvar_RegisterVariable (&r_fullbright_scale);
 	Cvar_RegisterVariable (&r_fullbright);
@@ -287,6 +291,45 @@ static void R_LightTint (const vec3_t rgb, float color[3])
 
 	for (i=0 ; i<3 ; i++)
 		color[i] = m > 0 ? rgb[i] / m : 1;
+}
+
+static double	r_prof[PROF_COUNT];
+static int		r_profframes;
+
+double R_ProfStart (void)
+{
+	return r_profile.value ? Sys_DoubleTime () : 0;
+}
+
+void R_ProfEnd (prof_t stage, double start)
+{
+	if (start)
+		r_prof[stage] += Sys_DoubleTime () - start;
+}
+
+/*
+===============
+R_Profile_f
+
+Average microseconds per frame of each stage since the last call
+===============
+*/
+static void R_Profile_f (void)
+{
+	static const char	*names[PROF_COUNT] = {"edges", "spans", "surfcache", "models", "viewmodel",
+		"particles", "warp", "2d", "present"};
+	int		i;
+
+	if (!r_profframes)
+	{
+		Con_Printf ("no frames profiled; set r_profile 1\n");
+		return;
+	}
+	Con_Printf ("%d frames, microseconds per frame:\n", r_profframes);
+	for (i=0 ; i<PROF_COUNT ; i++)
+		Con_Printf ("  %-10s %8.1f\n", names[i], r_prof[i] * 1e6 / r_profframes);
+	memset (r_prof, 0, sizeof(r_prof));
+	r_profframes = 0;
 }
 
 /*
@@ -888,6 +931,8 @@ R_EdgeDrawing
 */
 void R_EdgeDrawing (void)
 {
+	double	prof;
+
 	if (!r_edges)
 		R_AllocEdges (MINEDGES, MINSURFACES);
 
@@ -899,6 +944,7 @@ void R_EdgeDrawing (void)
 		r_outofedges = 0;
 
 		R_BeginEdgeFrame ();
+		prof = R_ProfStart ();
 
 		if (r_dspeeds.value)
 		{
@@ -914,6 +960,7 @@ void R_EdgeDrawing (void)
 		}
 
 		R_DrawBEntitiesOnList ();
+		R_ProfEnd (PROF_EDGES, prof);
 
 		if (!r_outofsurfaces && !r_outofedges)
 			break;
@@ -927,7 +974,9 @@ void R_EdgeDrawing (void)
 		se_time1 = db_time2;
 	}
 
+	prof = R_ProfStart ();
 	R_ScanEdges ();
+	R_ProfEnd (PROF_SPANS, prof);
 }
 
 
@@ -940,6 +989,10 @@ r_refdef must be set before the first call
 */
 void R_RenderView_ (void)
 {
+	double	prof;
+
+	if (r_profile.value)
+		r_profframes++;
 	if (r_timegraph.value || r_speeds.value || r_dspeeds.value)
 		r_time1 = (float)Sys_DoubleTime ();
 
@@ -964,7 +1017,9 @@ void R_RenderView_ (void)
 		de_time1 = se_time2;
 	}
 
+	prof = R_ProfStart ();
 	R_DrawEntitiesOnList ();
+	R_ProfEnd (PROF_MODELS, prof);
 
 	if (r_dspeeds.value)
 	{
@@ -972,7 +1027,9 @@ void R_RenderView_ (void)
 		dv_time1 = de_time2;
 	}
 
+	prof = R_ProfStart ();
 	R_DrawViewModel ();
+	R_ProfEnd (PROF_VIEWMODEL, prof);
 
 	if (r_dspeeds.value)
 	{
@@ -980,13 +1037,17 @@ void R_RenderView_ (void)
 		dp_time1 = (float)Sys_DoubleTime ();
 	}
 
+	prof = R_ProfStart ();
 	R_DrawParticles ();
+	R_ProfEnd (PROF_PARTICLES, prof);
 
 	if (r_dspeeds.value)
 		dp_time2 = (float)Sys_DoubleTime ();
 
+	prof = R_ProfStart ();
 	if (r_dowarp)
 		D_WarpScreen ();
+	R_ProfEnd (PROF_WARP, prof);
 
 	r_scene.viewcontents = r_viewleaf->contents;
 
