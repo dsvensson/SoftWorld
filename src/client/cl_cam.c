@@ -39,16 +39,15 @@ static bool locked = false;
 static int oldbuttons;
 
 // track high fragger
-cvar_t cl_hightrack = {.name = "cl_hightrack", .string = "0"};
+static cvar_t cl_hightrack = {.name = "cl_hightrack", .string = "0"};
 
-cvar_t cl_chasecam = {.name = "cl_chasecam", .string = "0"};
+static cvar_t cl_chasecam = {.name = "cl_chasecam", .string = "0"};
 
 //cvar_t cl_camera_maxpitch = {.name = "cl_camera_maxpitch", .string = "10"};
 //cvar_t cl_camera_maxyaw = {.name = "cl_camera_maxyaw", .string = "30"};
 
-bool cam_forceview;
-vec3_t cam_viewangles;
-double cam_lastviewtime;
+static bool cam_forceview;
+static double cam_lastviewtime;
 
 int spec_track = 0; // player# of who we are tracking
 int autocam = CAM_NONE;

@@ -33,7 +33,7 @@ vec3_t			modelorg, base_modelorg;
 vec3_t			r_entorigin;	// the currently rendering entity in world
 								// coordinates
 
-float			entity_rotation[3][3];
+static float			entity_rotation[3][3];
 
 vec3_t			r_worldmodelorg;
 

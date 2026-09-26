@@ -31,7 +31,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <math.h>
 
-cvar_t	in_joystick = {.name = "joystick", .string = "1", .archive = true};
+static cvar_t	in_joystick = {.name = "joystick", .string = "1", .archive = true};
 
 #define TRIGGER_THRESHOLD	30			// of 255
 #define PROBE_INTERVAL		2000		// ms between looking for a pad when none is connected

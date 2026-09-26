@@ -21,7 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "cl_local.h"
 
-char *svc_strings[] =
+static char *svc_strings[] =
 {
 	"svc_bad",
 	"svc_nop",
@@ -101,7 +101,7 @@ char *svc_strings[] =
 	"NEW PROTOCOL"
 };
 
-int	oldparsecountmod;
+static int	oldparsecountmod;
 int	parsecountmod;
 double	parsecounttime;
 
@@ -1103,7 +1103,7 @@ void CL_MuzzleFlash (void)
 CL_ParseServerMessage
 =====================
 */
-int	received_framecount;
+static int	received_framecount;
 void CL_ParseServerMessage (void)
 {
 	int			cmd;

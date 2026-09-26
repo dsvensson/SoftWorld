@@ -23,10 +23,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 cvar_t		baseskin = {.name = "baseskin", .string = "base"};
 cvar_t		noskins = {.name = "noskins", .string = "0"};
 
-char		allskins[128];
+static char		allskins[128];
 #define	MAX_CACHED_SKINS		128
-skin_t		skins[MAX_CACHED_SKINS];
-int			numskins;
+static skin_t		skins[MAX_CACHED_SKINS];
+static int			numskins;
 
 /*
 ================

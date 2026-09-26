@@ -24,18 +24,17 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 drawsurf_t	r_drawsurf;
 
-int				lightleft, sourcesstep, blocksize, sourcetstep;
-int				lightdelta, lightdeltastep;
-int				lightright, lightleftstep, lightrightstep, blockdivshift;
-unsigned		blockdivmask;
-void			*prowdestbase;
-unsigned char	*pbasesource;
-int				surfrowbytes;	// used by ASM files
-unsigned		*r_lightptr;
-int				r_stepback;
-int				r_lightwidth;
-int				r_numhblocks, r_numvblocks;
-unsigned char	*r_source, *r_sourcemax;
+static int				lightleft, blocksize, sourcetstep;
+static int				lightright, lightleftstep, lightrightstep, blockdivshift;
+static unsigned		blockdivmask;
+static void			*prowdestbase;
+static unsigned char	*pbasesource;
+static int				surfrowbytes;	// used by ASM files
+static unsigned		*r_lightptr;
+static int				r_stepback;
+static int				r_lightwidth;
+static int				r_numhblocks, r_numvblocks;
+static unsigned char	*r_source, *r_sourcemax;
 
 void R_DrawSurfaceBlock8_mip0 (void);
 void R_DrawSurfaceBlock8_mip1 (void);
@@ -51,7 +50,7 @@ static void	(*surfmiptable[4])(void) = {
 
 
 
-unsigned		blocklights[18*18];
+static unsigned		blocklights[18*18];
 
 /*
 ===============

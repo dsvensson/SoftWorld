@@ -25,8 +25,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // because there can be a lot of nails, there is a special
 // network protocol for them
 #define	MAX_NAILS	32
-edict_t	*nails[MAX_NAILS];
-int		numnails;
+static edict_t	*nails[MAX_NAILS];
+static int		numnails;
 
 extern	int	sv_nailmodel, sv_supernailmodel, sv_playermodel;
 

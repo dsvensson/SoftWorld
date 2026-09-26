@@ -40,9 +40,9 @@ typedef struct cmdalias_s
 	char	*value;
 } cmdalias_t;
 
-cmdalias_t	*cmd_alias;
+static cmdalias_t	*cmd_alias;
 
-bool	cmd_wait;
+static bool	cmd_wait;
 
 cvar_t cl_warncmd = {.name = "cl_warncmd", .string = "0"};
 
@@ -70,7 +70,7 @@ void Cmd_Wait_f (void)
 =============================================================================
 */
 
-sizebuf_t	cmd_text;		// grows as needed
+static sizebuf_t	cmd_text;		// grows as needed
 
 /*
 ============

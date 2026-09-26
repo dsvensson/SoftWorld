@@ -83,9 +83,9 @@ to the new value before sending out any replies.
 */
 
 int		net_drop;
-cvar_t	showpackets = {.name = "showpackets", .string = "0"};
-cvar_t	showdrop = {.name = "showdrop", .string = "0"};
-cvar_t	qport = {.name = "qport", .string = "0"};
+static cvar_t	showpackets = {.name = "showpackets", .string = "0"};
+static cvar_t	showdrop = {.name = "showdrop", .string = "0"};
+static cvar_t	qport = {.name = "qport", .string = "0"};
 
 /*
 ===============

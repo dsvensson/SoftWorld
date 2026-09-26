@@ -74,11 +74,11 @@ static efrag_t *R_AllocEfrag (void)
 ===============================================================================
 */
 
-efrag_t		**lastlink;
+static efrag_t		**lastlink;
 
 vec3_t		r_emins, r_emaxs;
 
-entity_t	*r_addent;
+static entity_t	*r_addent;
 
 /*
 ===================

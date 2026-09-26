@@ -345,8 +345,6 @@ extern	entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
 extern	lightstyle_t	cl_lightstyle[MAX_LIGHTSTYLES];
 extern	dlight_t		cl_dlights[MAX_DLIGHTS];
 
-extern	bool	nomaster;
-extern float	server_version;	// version of server we connected to
 
 void Cmd_ForwardToServer (void);
 
@@ -385,9 +383,6 @@ typedef struct
 	int		state;			// low bit is down state
 } kbutton_t;
 
-extern	kbutton_t	in_mlook, in_klook;
-extern 	kbutton_t 	in_strafe;
-extern 	kbutton_t 	in_speed;
 
 void CL_InitInput (void);
 void CL_SendCmd (void);
@@ -528,7 +523,6 @@ void	Skin_NextDownload (void);
 extern	playermove_t	cl_pmove;
 
 extern	bool	noclip_anglehack;
-extern	cvar_t	password;
 extern	byte	*host_basepal;
 extern	byte	*host_colormap;
 extern	int		host_framecount;	// incremented every frame, never reset

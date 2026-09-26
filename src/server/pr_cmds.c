@@ -608,7 +608,7 @@ name checkclient (void)
 =================
 */
 #define	MAX_CHECK	16
-int c_invis, c_notvis;
+static int c_invis, c_notvis;
 void PF_checkclient (void)
 {
 	edict_t	*ent, *self;
@@ -783,7 +783,7 @@ void PF_dprint (void)
 	Con_Printf ("%s",PF_VarString(0));
 }
 
-char	pr_string_temp[128];
+static char	pr_string_temp[128];
 
 void PF_ftos (void)
 {
@@ -1587,7 +1587,7 @@ void PF_Fixme (void)
 
 
 
-builtin_t pr_builtin[] =
+static builtin_t pr_builtin[] =
 {
 	PF_Fixme,
 PF_makevectors,	// void(entity e)	makevectors 		= #1;

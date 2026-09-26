@@ -27,13 +27,12 @@ static int	miplevel;
 float		scale_for_mip;
 extern int			screenwidth;
 int			ubasestep, errorterm, erroradjustup, erroradjustdown;
-int			vstartscan;
 
 // FIXME: should go away
 extern void			R_RotateBmodel (void);
 extern void			R_TransformFrustum (void);
 
-vec3_t		transformed_modelorg;
+static vec3_t		transformed_modelorg;
 
 /*
 ==============

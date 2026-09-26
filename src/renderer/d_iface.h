@@ -137,8 +137,6 @@ extern bool	r_dowarp;
 
 extern affinetridesc_t	r_affinetridesc;
 extern spritedesc_t		r_spritedesc;
-extern zpointdesc_t		r_zpointdesc;
-extern polydesc_t		r_polydesc;
 
 extern int		d_con_indirect;	// if 0, Quake will draw console directly
 								//  to vid.buffer; if 1, Quake will
@@ -214,7 +212,7 @@ void R_DrawSurface (void);
 #define	SKYSIZE			(1 << SKYSHIFT)
 #define SKYMASK			(SKYSIZE - 1)
 
-extern float	skyspeed, skyspeed2;
+extern float skyspeed;
 extern float	skytime;
 
 extern int		c_surf;

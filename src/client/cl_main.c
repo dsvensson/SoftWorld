@@ -28,18 +28,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 bool	noclip_anglehack;		// remnant from old quake
 
 
-cvar_t	rcon_password = {.name = "rcon_password", .string = ""};
+static cvar_t	rcon_password = {.name = "rcon_password", .string = ""};
 
-cvar_t	rcon_address = {.name = "rcon_address", .string = ""};
+static cvar_t	rcon_address = {.name = "rcon_address", .string = ""};
 
-cvar_t	cl_timeout = {.name = "cl_timeout", .string = "60"};
+static cvar_t	cl_timeout = {.name = "cl_timeout", .string = "60"};
 
 cvar_t	cl_shownet = {.name = "cl_shownet", .string = "0"};	// can be 0, 1, or 2
 
 cvar_t	cl_sbar		= {.name = "cl_sbar", .string = "0", .archive = true};
 cvar_t	cl_hudswap	= {.name = "cl_hudswap", .string = "0", .archive = true};
 // frames per second drawn; with independent physics 0 is no cap (vid_vsync still applies)
-cvar_t	cl_maxfps	= {.name = "cl_maxfps", .string = "0", .archive = true};
+static cvar_t	cl_maxfps	= {.name = "cl_maxfps", .string = "0", .archive = true};
 
 cvar_t	lookspring = {.name = "lookspring", .string = "0", .archive = true};
 cvar_t	lookstrafe = {.name = "lookstrafe", .string = "0", .archive = true};
@@ -54,25 +54,24 @@ cvar_t	cl_predict_players = {.name = "cl_predict_players", .string = "1"};
 cvar_t	cl_predict_players2 = {.name = "cl_predict_players2", .string = "1"};
 cvar_t	cl_solid_players = {.name = "cl_solid_players", .string = "1"};
 
-cvar_t  localid = {.name = "localid", .string = ""};
+static cvar_t  localid = {.name = "localid", .string = ""};
 
 static bool allowremotecmd = true;
 
 //
 // info mirrors
 //
-cvar_t	password = {.name = "password", .string = "", .info = true};
-cvar_t	spectator = {.name = "spectator", .string = "", .info = true};
+static cvar_t	password = {.name = "password", .string = "", .info = true};
+static cvar_t	spectator = {.name = "spectator", .string = "", .info = true};
 cvar_t	name = {.name = "name", .string = "unnamed", .archive = true, .info = true};
-cvar_t	team = {.name = "team", .string = "", .archive = true, .info = true};
-cvar_t	skin = {.name = "skin", .string = "", .archive = true, .info = true};
-cvar_t	topcolor = {.name = "topcolor", .string = "0", .archive = true, .info = true};
-cvar_t	bottomcolor = {.name = "bottomcolor", .string = "0", .archive = true, .info = true};
-cvar_t	rate = {.name = "rate", .string = "2500", .archive = true, .info = true};
-cvar_t	noaim = {.name = "noaim", .string = "0", .archive = true, .info = true};
-cvar_t	msg = {.name = "msg", .string = "1", .archive = true, .info = true};
+static cvar_t	team = {.name = "team", .string = "", .archive = true, .info = true};
+static cvar_t	skin = {.name = "skin", .string = "", .archive = true, .info = true};
+static cvar_t	topcolor = {.name = "topcolor", .string = "0", .archive = true, .info = true};
+static cvar_t	bottomcolor = {.name = "bottomcolor", .string = "0", .archive = true, .info = true};
+static cvar_t	rate = {.name = "rate", .string = "2500", .archive = true, .info = true};
+static cvar_t	noaim = {.name = "noaim", .string = "0", .archive = true, .info = true};
+static cvar_t	msg = {.name = "msg", .string = "1", .archive = true, .info = true};
 
-extern cvar_t cl_hightrack;
 
 
 client_static_t	cls;
@@ -90,16 +89,15 @@ int				cl_numvisedicts, cl_oldnumvisedicts;
 entity_t		*cl_visedicts, *cl_oldvisedicts;
 entity_t		cl_visedicts_list[2][MAX_VISEDICTS];
 
-double			connect_time = -1;		// for connection retransmits
+static double			connect_time = -1;		// for connection retransmits
 
 quakeparms_t host_parms;
 
 bool	host_initialized;		// true if into command execution
-bool	nomaster;
 
 double		host_frametime;
 double		realtime;				// without any filtering or bounding
-double		oldrealtime;			// last frame run
+static double		oldrealtime;			// last frame run
 int			host_framecount;
 
 
@@ -108,15 +106,15 @@ byte		*host_colormap;
 
 netadr_t	master_adr;				// address of the master server
 
-cvar_t	host_speeds = {.name = "host_speeds", .string = "0"};			// set for running times
+static cvar_t	host_speeds = {.name = "host_speeds", .string = "0"};			// set for running times
 cvar_t	show_fps = {.name = "show_fps", .string = "0"};			// set for running times
 
 int			fps_count;
 
-jmp_buf 	host_abort;
+static jmp_buf 	host_abort;
 
 
-float	server_version = 0;	// version of server we connected to
+static float	server_version = 0;	// version of server we connected to
 
 char emodel_name[] = 
 	{ 'e' ^ 0xff, 'm' ^ 0xff, 'o' ^ 0xff, 'd' ^ 0xff, 'e' ^ 0xff, 'l' ^ 0xff, 0 };
@@ -1393,7 +1391,6 @@ Host_Frame
 Runs all active servers
 ==================
 */
-int		nopacketcount;
 void Host_Frame (float time)
 {
 	static double		time1 = 0;

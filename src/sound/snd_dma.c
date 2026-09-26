@@ -38,42 +38,42 @@ int			total_channels;
 
 int				snd_blocked = 0;
 static bool	snd_ambient = 1;
-bool		snd_initialized = false;
+static bool		snd_initialized = false;
 
 // pointer should go away
 volatile dma_t  *shm = 0;
 volatile dma_t sn;
 
 static int	s_viewentity;		// the listener's own entity
-vec3_t		listener_origin;
-vec3_t		listener_forward;
-vec3_t		listener_right;
-vec3_t		listener_up;
-vec_t		sound_nominal_clip_dist=1000.0;
+static vec3_t		listener_origin;
+static vec3_t		listener_forward;
+static vec3_t		listener_right;
+static vec3_t		listener_up;
+static vec_t		sound_nominal_clip_dist=1000.0;
 
-int			soundtime;		// sample PAIRS
+static int			soundtime;		// sample PAIRS
 int   		paintedtime; 	// sample PAIRS
 
 
 #define	MAX_SFX		512
-sfx_t		*known_sfx;		// hunk allocated [MAX_SFX]
-int			num_sfx;
+static sfx_t		*known_sfx;		// hunk allocated [MAX_SFX]
+static int			num_sfx;
 
-sfx_t		*ambient_sfx[NUM_AMBIENTS];
+static sfx_t		*ambient_sfx[NUM_AMBIENTS];
 
 
-int sound_started=0;
+static int sound_started=0;
 
 cvar_t bgmvolume = {.name = "bgmvolume", .string = "1", .archive = true};
 cvar_t volume = {.name = "volume", .string = "0.7", .archive = true};
 
-cvar_t nosound = {.name = "nosound", .string = "0"};
-cvar_t precache = {.name = "precache", .string = "1"};
+static cvar_t nosound = {.name = "nosound", .string = "0"};
+static cvar_t precache = {.name = "precache", .string = "1"};
 cvar_t loadas8bit = {.name = "loadas8bit", .string = "0"};
-cvar_t ambient_level = {.name = "ambient_level", .string = "0.3"};
-cvar_t ambient_fade = {.name = "ambient_fade", .string = "100"};
-cvar_t snd_noextraupdate = {.name = "snd_noextraupdate", .string = "0"};
-cvar_t snd_show = {.name = "snd_show", .string = "0"};
+static cvar_t ambient_level = {.name = "ambient_level", .string = "0.3"};
+static cvar_t ambient_fade = {.name = "ambient_fade", .string = "100"};
+static cvar_t snd_noextraupdate = {.name = "snd_noextraupdate", .string = "0"};
+static cvar_t snd_show = {.name = "snd_show", .string = "0"};
 cvar_t _snd_mixahead = {.name = "_snd_mixahead", .string = "0.1", .archive = true};
 
 
@@ -82,7 +82,7 @@ cvar_t _snd_mixahead = {.name = "_snd_mixahead", .string = "0.1", .archive = tru
 // ====================================================================
 
 
-bool fakedma = false;	// synchronous fake DMA progress, for renderer profiling
+static bool fakedma = false;	// synchronous fake DMA progress, for renderer profiling
 
 void S_SoundInfo_f(void)
 {

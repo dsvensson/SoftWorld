@@ -24,8 +24,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define NUM_MIPS	4
 
-cvar_t	d_mipcap = {.name = "d_mipcap", .string = "0"};
-cvar_t	d_mipscale = {.name = "d_mipscale", .string = "1"};
+static cvar_t	d_mipcap = {.name = "d_mipcap", .string = "0"};
+static cvar_t	d_mipscale = {.name = "d_mipscale", .string = "1"};
 
 surfcache_t		*d_initial_rover;
 bool		d_roverwrapped;

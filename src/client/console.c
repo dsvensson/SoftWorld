@@ -22,26 +22,26 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cl_local.h"
 
 int			con_ormask;
-console_t	con_main;
-console_t	con_chat;
+static console_t	con_main;
+static console_t	con_chat;
 console_t	*con;			// point to either con_main or con_chat
 
-int 		con_linewidth;	// characters across screen
+static int 		con_linewidth;	// characters across screen
 int			con_totallines;		// total lines in console scrollback
 
-float		con_cursorspeed = 4;
+static float		con_cursorspeed = 4;
 
 
-cvar_t		con_notifytime = {.name = "con_notifytime", .string = "3"};		//seconds
+static cvar_t		con_notifytime = {.name = "con_notifytime", .string = "3"};		//seconds
 
 #define	NUM_CON_TIMES 4
-float		con_times[NUM_CON_TIMES];	// realtime time the line was generated
+static float		con_times[NUM_CON_TIMES];	// realtime time the line was generated
 								// for transparent notify lines
 
-int			con_vislines;
+static int			con_vislines;
 int			con_notifylines;		// scan lines to clear for notify lines
 
-bool	con_debuglog;
+static bool	con_debuglog;
 
 #define		MAXCMDLINE	256
 extern	char	key_lines[32][MAXCMDLINE];

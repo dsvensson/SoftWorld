@@ -29,14 +29,14 @@ char			*pr_strings;
 // while the level runs, so every string is a small positive offset from pr_strings
 static vmarray_t	pr_stringpool;
 static size_t		pr_stringpool_used;
-ddef_t			*pr_fielddefs;
-ddef_t			*pr_globaldefs;
+static ddef_t			*pr_fielddefs;
+static ddef_t			*pr_globaldefs;
 dstatement_t	*pr_statements;
 globalvars_t	*pr_global_struct;
 float			*pr_globals;			// same as pr_global_struct
 int				pr_edict_size;	// in bytes
 
-int		type_size[8] = {1,sizeof(void *)/4,1,3,1,1,sizeof(void *)/4,sizeof(void *)/4};
+static int		type_size[8] = {1,sizeof(void *)/4,1,3,1,1,sizeof(void *)/4,sizeof(void *)/4};
 
 ddef_t *ED_FieldAtOfs (int ofs);
 bool	ED_ParseEpair (void *base, ddef_t *key, char *s);

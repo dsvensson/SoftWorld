@@ -19,18 +19,17 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 #include "cl_local.h"
 
-cvar_t	cl_nopred = {.name = "cl_nopred", .string = "0"};
-cvar_t	cl_pushlatency = {.name = "pushlatency", .string = "-999"};
+static cvar_t	cl_nopred = {.name = "cl_nopred", .string = "0"};
+static cvar_t	cl_pushlatency = {.name = "pushlatency", .string = "-999"};
 // send commands at cl_physfps and draw frames at cl_maxfps
-cvar_t	cl_independentPhysics = {.name = "cl_independentPhysics", .string = "1", .archive = true};
+static cvar_t	cl_independentPhysics = {.name = "cl_independentPhysics", .string = "1", .archive = true};
 // commands per second; 0 uses 77, never more than the server's maxfps
 cvar_t	cl_physfps = {.name = "cl_physfps", .string = "0", .archive = true};
 // don't interpolate the view between commands
-cvar_t	cl_nolerp = {.name = "cl_nolerp", .string = "0", .archive = true};
+static cvar_t	cl_nolerp = {.name = "cl_nolerp", .string = "0", .archive = true};
 
 playermove_t	cl_pmove;
 
-extern	frame_t		*view_frame;
 
 /*
 ==============

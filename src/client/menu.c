@@ -20,7 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cl_local.h"
 
 
-enum {m_none, m_main, m_singleplayer, m_load, m_save, m_multiplayer, m_setup, m_net, m_options, m_keys, m_help, m_quit, m_serialconfig, m_modemconfig, m_lanconfig, m_gameoptions, m_search, m_slist} m_state;
+static enum {m_none, m_main, m_singleplayer, m_load, m_save, m_multiplayer, m_setup, m_net, m_options, m_keys, m_help, m_quit, m_serialconfig, m_modemconfig, m_lanconfig, m_gameoptions, m_search, m_slist} m_state;
 
 void M_Menu_Main_f (void);
 	void M_Menu_SinglePlayer_f (void);
@@ -46,13 +46,10 @@ void M_Main_Key (int key);
 	void M_Help_Key (int key);
 	void M_Quit_Key (int key);
 
-bool	m_entersound;		// play after drawing a frame, so caching
+static bool	m_entersound;		// play after drawing a frame, so caching
 								// won't disrupt the sound
-bool	m_recursiveDraw;
+static bool	m_recursiveDraw;
 
-int			m_return_state;
-bool	m_return_onerror;
-char		m_return_reason [32];
 
 #define StartingGame	(m_multiplayer_cursor == 1)
 #define JoiningGame		(m_multiplayer_cursor == 0)
@@ -107,8 +104,6 @@ void M_DrawPic (int x, int y, qpic_t *pic)
 	Draw_Pic (x + ((vid.width - 320)>>1), y, pic);
 }
 
-byte identityTable[256];
-byte translationTable[256];
 
 void M_DrawTextBox (int x, int y, int width, int lines)
 {
@@ -167,7 +162,7 @@ void M_DrawTextBox (int x, int y, int width, int lines)
 
 //=============================================================================
 
-int m_save_demonum;
+static int m_save_demonum;
 		
 /*
 ================
@@ -203,7 +198,7 @@ void M_ToggleMenu_f (void)
 //=============================================================================
 /* MAIN MENU */
 
-int	m_main_cursor;
+static int	m_main_cursor;
 #define	MAIN_ITEMS	5
 
 
@@ -296,7 +291,7 @@ void M_Main_Key (int key)
 
 #define	SLIDER_RANGE	10
 
-int		options_cursor;
+static int		options_cursor;
 
 void M_Menu_Options_f (void)
 {
@@ -551,7 +546,7 @@ void M_Options_Key (int k)
 //=============================================================================
 /* KEYS MENU */
 
-char *bindnames[][2] =
+static char *bindnames[][2] =
 {
 {"+attack", 		"attack"},
 {"impulse 10", 		"change weapon"},
@@ -575,8 +570,8 @@ char *bindnames[][2] =
 
 #define	NUMCOMMANDS	(sizeof(bindnames)/sizeof(bindnames[0]))
 
-int		keys_cursor;
-int		bind_grab;
+static int		keys_cursor;
+static int		bind_grab;
 
 void M_Menu_Keys_f (void)
 {
@@ -743,7 +738,7 @@ void M_Keys_Key (int k)
 //=============================================================================
 /* HELP MENU */
 
-int		help_page;
+static int		help_page;
 #define	NUM_HELP_PAGES	6
 
 
@@ -791,9 +786,9 @@ void M_Help_Key (int key)
 //=============================================================================
 /* QUIT MENU */
 
-int		msgNumber;
-int		m_quit_prevstate;
-bool	wasInMenus;
+static int		msgNumber;
+static int		m_quit_prevstate;
+static bool	wasInMenus;
 
 void M_Menu_Quit_f (void)
 {

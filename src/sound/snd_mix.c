@@ -23,10 +23,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 
 #define	PAINTBUFFER_SIZE	512
-portable_samplepair_t paintbuffer[PAINTBUFFER_SIZE];
-int		snd_scaletable[32][256];
-int 	*snd_p, snd_linear_count, snd_vol;
-short	*snd_out;
+static portable_samplepair_t paintbuffer[PAINTBUFFER_SIZE];
+static int		snd_scaletable[32][256];
+static int 	*snd_p, snd_linear_count, snd_vol;
+static short	*snd_out;
 
 void Snd_WriteLinearBlastStereo16 (void);
 

@@ -337,11 +337,7 @@ extern	cvar_t	sv_maxspeed;
 
 extern	netadr_t	master_adr[MAX_MASTERS];	// address of the master server
 
-extern	cvar_t	spawn;
 extern	cvar_t	teamplay;
-extern	cvar_t	deathmatch;
-extern	cvar_t	fraglimit;
-extern	cvar_t	timelimit;
 
 extern	server_static_t	svs;				// persistant server info
 extern	server_t		sv;					// local server
@@ -354,7 +350,6 @@ extern	char		localmodels[MAX_MODELS][5];	// inline model names for precache
 
 extern	char		localinfo[MAX_LOCALINFO_STRING+1];
 
-extern	arena_t		sv_level_arena;
 extern	FILE		*sv_logfile;
 extern	FILE		*sv_fraglogfile;
 
@@ -471,7 +466,6 @@ void ClientReliableWrite_Short(client_t *cl, int c);
 void ClientReliableWrite_String(client_t *cl, char *s);
 void ClientReliableWrite_SZ(client_t *cl, void *data, int len);
 
-extern	cvar_t	sys_nostdout;
 
 [[noreturn]] void SV_Error (char *error, ...);
 void SV_Init (quakeparms_t *parms);

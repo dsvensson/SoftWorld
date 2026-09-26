@@ -35,7 +35,7 @@ Con_Printf redirection
 =============================================================================
 */
 
-char	outputbuf[8000];
+static char	outputbuf[8000];
 
 redirect_t	sv_redirected;
 

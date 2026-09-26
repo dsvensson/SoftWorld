@@ -24,9 +24,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 //define	PASSAGES
 
-void		*colormap;
-vec3_t		viewlightvec;
-alight_t	r_viewlighting = {128, 192, viewlightvec};
+static vec3_t		viewlightvec;
+static alight_t	r_viewlighting = {128, 192, viewlightvec};
 float		r_time1;
 int			r_numallocatededges;
 bool	r_drawpolys;
@@ -46,16 +45,17 @@ btofpoly_t	*pbtofpolys;
 mvertex_t	*r_pcurrentvertbase;
 
 int			c_surf;
-int			r_maxsurfsseen, r_maxedgesseen, r_cnumsurfs;
+int r_maxsurfsseen, r_maxedgesseen;
+static int r_cnumsurfs;
 static surf_t	*r_surfaces_mem;	// heap block behind surfaces (which points one element into it)
-bool	r_surfsonstack;
+static bool	r_surfsonstack;
 int			r_clipflags;
 
 byte		*r_warpbuffer;
 
-byte		*r_stack_start;
+static byte		*r_stack_start;
 
-bool	r_fov_greater_than_90;
+static bool	r_fov_greater_than_90;
 
 entity_t	r_worldentity;
 
@@ -80,9 +80,9 @@ float		aliasxscale, aliasyscale, aliasxcenter, aliasycenter;
 int		screenwidth;
 
 float	pixelAspect;
-float	screenAspect;
-float	verticalFieldOfView;
-float	xOrigin, yOrigin;
+static float	screenAspect;
+static float	verticalFieldOfView;
+static float	xOrigin, yOrigin;
 
 mplane_t	screenedge[4];
 
@@ -115,27 +115,27 @@ float	se_time1, se_time2, de_time1, de_time2, dv_time1, dv_time2;
 void R_MarkLeaves (void);
 
 cvar_t	r_draworder = {.name = "r_draworder", .string = "0"};
-cvar_t	r_speeds = {.name = "r_speeds", .string = "0"};
-cvar_t	r_timegraph = {.name = "r_timegraph", .string = "0"};
-cvar_t	r_zgraph = {.name = "r_zgraph", .string = "0"};
+static cvar_t	r_speeds = {.name = "r_speeds", .string = "0"};
+static cvar_t	r_timegraph = {.name = "r_timegraph", .string = "0"};
+static cvar_t	r_zgraph = {.name = "r_zgraph", .string = "0"};
 cvar_t	r_graphheight = {.name = "r_graphheight", .string = "15"};
 cvar_t	r_clearcolor = {.name = "r_clearcolor", .string = "2"};
 cvar_t	r_waterwarp = {.name = "r_waterwarp", .string = "1"};
 cvar_t	r_fullbright = {.name = "r_fullbright", .string = "0"};
-cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1"};
-cvar_t	r_drawviewmodel = {.name = "r_drawviewmodel", .string = "1"};
-cvar_t	r_aliasstats = {.name = "r_polymodelstats", .string = "0"};
-cvar_t	r_dspeeds = {.name = "r_dspeeds", .string = "0"};
+static cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1"};
+static cvar_t	r_drawviewmodel = {.name = "r_drawviewmodel", .string = "1"};
+static cvar_t	r_aliasstats = {.name = "r_polymodelstats", .string = "0"};
+static cvar_t	r_dspeeds = {.name = "r_dspeeds", .string = "0"};
 cvar_t	r_drawflat = {.name = "r_drawflat", .string = "0"};
 cvar_t	r_ambient = {.name = "r_ambient", .string = "0"};
-cvar_t	r_reportsurfout = {.name = "r_reportsurfout", .string = "0"};
-cvar_t	r_maxsurfs = {.name = "r_maxsurfs", .string = "0"};
+static cvar_t	r_reportsurfout = {.name = "r_reportsurfout", .string = "0"};
+static cvar_t	r_maxsurfs = {.name = "r_maxsurfs", .string = "0"};
 cvar_t	r_numsurfs = {.name = "r_numsurfs", .string = "0"};
-cvar_t	r_reportedgeout = {.name = "r_reportedgeout", .string = "0"};
-cvar_t	r_maxedges = {.name = "r_maxedges", .string = "0"};
+static cvar_t	r_reportedgeout = {.name = "r_reportedgeout", .string = "0"};
+static cvar_t	r_maxedges = {.name = "r_maxedges", .string = "0"};
 cvar_t	r_numedges = {.name = "r_numedges", .string = "0"};
-cvar_t	r_aliastransbase = {.name = "r_aliastransbase", .string = "200"};
-cvar_t	r_aliastransadj = {.name = "r_aliastransadj", .string = "100"};
+static cvar_t	r_aliastransbase = {.name = "r_aliastransbase", .string = "200"};
+static cvar_t	r_aliastransadj = {.name = "r_aliastransadj", .string = "100"};
 
 
 

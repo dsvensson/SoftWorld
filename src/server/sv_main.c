@@ -36,13 +36,13 @@ cvar_t	sv_mintic = {.name = "sv_mintic", .string = "0.03"};	// bound the size of
 cvar_t	sv_maxtic = {.name = "sv_maxtic", .string = "0.1"};	// physics time tic 
 
 
-cvar_t	timeout = {.name = "timeout", .string = "65"};		// seconds without any message
-cvar_t	zombietime = {.name = "zombietime", .string = "2"};	// seconds to sink messages
+static cvar_t	timeout = {.name = "timeout", .string = "65"};		// seconds without any message
+static cvar_t	zombietime = {.name = "zombietime", .string = "2"};	// seconds to sink messages
 											// after disconnect
 
-cvar_t	sv_rcon_password = {.name = "rcon_password", .string = ""};	// password for remote server commands
-cvar_t	sv_password = {.name = "password", .string = ""};	// password for entering the game
-cvar_t	spectator_password = {.name = "spectator_password", .string = ""};	// password for entering as a sepctator
+static cvar_t	sv_rcon_password = {.name = "rcon_password", .string = ""};	// password for remote server commands
+static cvar_t	sv_password = {.name = "password", .string = ""};	// password for entering the game
+static cvar_t	spectator_password = {.name = "spectator_password", .string = ""};	// password for entering as a sepctator
 
 cvar_t	allow_download = {.name = "allow_download", .string = "1"};
 cvar_t	allow_download_skins = {.name = "allow_download_skins", .string = "1"};
@@ -50,7 +50,7 @@ cvar_t	allow_download_models = {.name = "allow_download_models", .string = "1"};
 cvar_t	allow_download_sounds = {.name = "allow_download_sounds", .string = "1"};
 cvar_t	allow_download_maps = {.name = "allow_download_maps", .string = "1"};
 
-cvar_t sv_highchars = {.name = "sv_highchars", .string = "1"};
+static cvar_t sv_highchars = {.name = "sv_highchars", .string = "1"};
 
 cvar_t sv_phs = {.name = "sv_phs", .string = "1"};
 
@@ -60,17 +60,17 @@ cvar_t pausable	= {.name = "pausable", .string = "1"};
 //
 // game rules mirrored in svs.info
 //
-cvar_t	fraglimit = {.name = "fraglimit", .string = "0", .info = true};
-cvar_t	timelimit = {.name = "timelimit", .string = "0", .info = true};
+static cvar_t	fraglimit = {.name = "fraglimit", .string = "0", .info = true};
+static cvar_t	timelimit = {.name = "timelimit", .string = "0", .info = true};
 cvar_t	teamplay = {.name = "teamplay", .string = "0", .info = true};
-cvar_t	samelevel = {.name = "samelevel", .string = "0", .info = true};
-cvar_t	maxclients = {.name = "maxclients", .string = "8", .info = true};
-cvar_t	maxspectators = {.name = "maxspectators", .string = "8", .info = true};
-cvar_t	deathmatch = {.name = "deathmatch", .string = "1", .info = true};			// 0, 1, or 2
-cvar_t	spawn = {.name = "spawn", .string = "0", .info = true};
-cvar_t	watervis = {.name = "watervis", .string = "0", .info = true};
+static cvar_t	samelevel = {.name = "samelevel", .string = "0", .info = true};
+static cvar_t	maxclients = {.name = "maxclients", .string = "8", .info = true};
+static cvar_t	maxspectators = {.name = "maxspectators", .string = "8", .info = true};
+static cvar_t	deathmatch = {.name = "deathmatch", .string = "1", .info = true};			// 0, 1, or 2
+static cvar_t	spawn = {.name = "spawn", .string = "0", .info = true};
+static cvar_t	watervis = {.name = "watervis", .string = "0", .info = true};
 
-cvar_t	hostname = {.name = "hostname", .string = "unnamed", .info = true};
+static cvar_t	hostname = {.name = "hostname", .string = "unnamed", .info = true};
 
 FILE	*sv_logfile;
 FILE	*sv_fraglogfile;
@@ -862,10 +862,10 @@ typedef struct
 
 #define	MAX_IPFILTERS	1024
 
-ipfilter_t	ipfilters[MAX_IPFILTERS];
-int			numipfilters;
+static ipfilter_t	ipfilters[MAX_IPFILTERS];
+static int			numipfilters;
 
-cvar_t	filterban = {.name = "filterban", .string = "1"};
+static cvar_t	filterban = {.name = "filterban", .string = "1"};
 
 /*
 =================

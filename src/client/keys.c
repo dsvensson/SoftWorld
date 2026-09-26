@@ -28,24 +28,24 @@ key up events are sent even if in console mode
 #define		MAXCMDLINE	256
 char	key_lines[32][MAXCMDLINE];
 int		key_linepos;
-int		shift_down=false;
-int		key_lastpress;
+static int		shift_down=false;
+static int		key_lastpress;
 
 int		edit_line=0;
-int		history_line=0;
+static int		history_line=0;
 
 keydest_t	key_dest;
 
-int		key_count;			// incremented every key event
+static int		key_count;			// incremented every key event
 
 char	*keybindings[256];
 static bool	key_char_eaten;		// the next typed character belongs to a binding
 
-bool	consolekeys[256];	// if true, can't be rebound while in console
-bool	menubound[256];	// if true, can't be rebound while in menu
-int		keyshift[256];		// key to map to if shift held down in console
-int		key_repeats[256];	// if > 1, it is autorepeating
-bool	keydown[256];
+static bool	consolekeys[256];	// if true, can't be rebound while in console
+static bool	menubound[256];	// if true, can't be rebound while in menu
+static int		keyshift[256];		// key to map to if shift held down in console
+static int		key_repeats[256];	// if > 1, it is autorepeating
+static bool	keydown[256];
 
 typedef struct
 {
@@ -53,7 +53,7 @@ typedef struct
 	int		keynum;
 } keyname_t;
 
-keyname_t keynames[] =
+static keyname_t keynames[] =
 {
 	{"TAB", K_TAB},
 	{"ENTER", K_ENTER},

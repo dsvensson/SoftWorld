@@ -31,7 +31,7 @@ typedef struct
 	vec3_t	start, end;
 } beam_t;
 
-beam_t		cl_beams[MAX_BEAMS];
+static beam_t		cl_beams[MAX_BEAMS];
 
 #define	MAX_EXPLOSIONS	8
 typedef struct
@@ -41,16 +41,16 @@ typedef struct
 	model_t	*model;
 } explosion_t;
 
-explosion_t	cl_explosions[MAX_EXPLOSIONS];
+static explosion_t	cl_explosions[MAX_EXPLOSIONS];
 
 
-sfx_t			*cl_sfx_wizhit;
-sfx_t			*cl_sfx_knighthit;
-sfx_t			*cl_sfx_tink1;
-sfx_t			*cl_sfx_ric1;
-sfx_t			*cl_sfx_ric2;
-sfx_t			*cl_sfx_ric3;
-sfx_t			*cl_sfx_r_exp3;
+static sfx_t			*cl_sfx_wizhit;
+static sfx_t			*cl_sfx_knighthit;
+static sfx_t			*cl_sfx_tink1;
+static sfx_t			*cl_sfx_ric1;
+static sfx_t			*cl_sfx_ric2;
+static sfx_t			*cl_sfx_ric3;
+static sfx_t			*cl_sfx_r_exp3;
 
 /*
 =================

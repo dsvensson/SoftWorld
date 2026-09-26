@@ -37,11 +37,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 
 
-cvar_t	registered = {.name = "registered", .string = "0"};
+static cvar_t	registered = {.name = "registered", .string = "0"};
 
-bool	com_modified;	// set true if using non-id files
+static bool	com_modified;	// set true if using non-id files
 
-int		static_registered = 1;	// only for startup check, then set
+static int		static_registered = 1;	// only for startup check, then set
 
 
 static void COM_InitFilesystem (const char *basedir);
@@ -56,7 +56,7 @@ void COM_Path_f (void);
 char	gamedirfile[MAX_OSPATH];
 
 // this graphic needs to be in the pak file to use registered features
-unsigned short pop[] =
+static unsigned short pop[] =
 {
  0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000
 ,0x0000,0x0000,0x6600,0x0000,0x0000,0x0000,0x6600,0x0000
@@ -234,7 +234,7 @@ typedef struct
 
 
 char	com_gamedir[MAX_OSPATH];
-char	com_basedir[MAX_OSPATH];
+static char	com_basedir[MAX_OSPATH];
 
 typedef struct searchpath_s
 {
@@ -243,8 +243,8 @@ typedef struct searchpath_s
 	struct searchpath_s *next;
 } searchpath_t;
 
-searchpath_t	*com_searchpaths;
-searchpath_t	*com_base_searchpaths;	// without gamedirs
+static searchpath_t	*com_searchpaths;
+static searchpath_t	*com_base_searchpaths;	// without gamedirs
 
 /*
 ================

@@ -23,13 +23,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 edict_t	*sv_player;
 
-usercmd_t	cmd;
+static usercmd_t	cmd;
 
-cvar_t	sv_rollspeed = {.name = "cl_rollspeed", .string = "200"};
-cvar_t	sv_rollangle = {.name = "cl_rollangle", .string = "2.0"};
-cvar_t	sv_spectalk = {.name = "sv_spectalk", .string = "1"};
+static cvar_t	sv_rollspeed = {.name = "cl_rollspeed", .string = "200"};
+static cvar_t	sv_rollangle = {.name = "cl_rollangle", .string = "2.0"};
+static cvar_t	sv_spectalk = {.name = "sv_spectalk", .string = "1"};
 
-cvar_t	sv_mapcheck	= {.name = "sv_mapcheck", .string = "1"};
+static cvar_t	sv_mapcheck	= {.name = "sv_mapcheck", .string = "1"};
 
 
 extern int fp_messages, fp_persecond, fp_secondsdead;
@@ -1103,7 +1103,7 @@ typedef struct
 	void	(*func) (void);
 } ucmd_t;
 
-ucmd_t ucmds[] =
+static ucmd_t ucmds[] =
 {
 	{"new", SV_New_f},
 	{"modellist", SV_Modellist_f},
@@ -1179,7 +1179,7 @@ USER CMD EXECUTION
 
 //============================================================================
 
-vec3_t	pmove_mins, pmove_maxs;
+static vec3_t	pmove_mins, pmove_maxs;
 
 static playermove_t	sv_pmove;
 
@@ -1254,7 +1254,7 @@ SV_PreRunCmd
 ===========
 Done before running a player command.  Clears the touch array
 */
-byte playertouch[(MAX_EDICTS+7)/8];
+static byte playertouch[(MAX_EDICTS+7)/8];
 
 void SV_PreRunCmd(void)
 {

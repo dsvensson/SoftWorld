@@ -59,8 +59,6 @@ typedef struct edict_s
 extern	dprograms_t		*progs;
 extern	dfunction_t		*pr_functions;
 extern	char			*pr_strings;
-extern	ddef_t			*pr_globaldefs;
-extern	ddef_t			*pr_fielddefs;
 extern	dstatement_t	*pr_statements;
 extern	globalvars_t	*pr_global_struct;
 extern	float			*pr_globals;			// same as pr_global_struct
@@ -112,7 +110,6 @@ int NUM_FOR_EDICT(edict_t *e);
 #define	E_VECTOR(e,o) (&((float*)&e->v)[o])
 #define	E_STRING(e,o) (PR_GetString(*(string_t *)&((float*)&e->v)[o]))
 
-extern	int		type_size[8];
 
 typedef void (*builtin_t) (void);
 extern	builtin_t *pr_builtins;
@@ -122,7 +119,6 @@ extern int		pr_argc;
 
 extern	bool	pr_trace;
 extern	dfunction_t	*pr_xfunction;
-extern	int			pr_xstatement;
 
 extern func_t SpectatorConnect;
 extern func_t SpectatorThink;
@@ -140,7 +136,6 @@ eval_t *GetEdictFieldValue(edict_t *ed, char *field);
 //
 #define MAX_PRSTR 1024
 
-extern char *pr_strtbl[MAX_PRSTR];
 extern int num_prstr;
 
 char *PR_GetString(int num);

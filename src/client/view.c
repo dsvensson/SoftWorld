@@ -34,38 +34,38 @@ when crossing a water boudnary.
 cvar_t	cl_rollspeed = {.name = "cl_rollspeed", .string = "200"};
 cvar_t	cl_rollangle = {.name = "cl_rollangle", .string = "2.0"};
 
-cvar_t	cl_bob = {.name = "cl_bob", .string = "0.02"};
-cvar_t	cl_bobcycle = {.name = "cl_bobcycle", .string = "0.6"};
-cvar_t	cl_bobup = {.name = "cl_bobup", .string = "0.5"};
+static cvar_t	cl_bob = {.name = "cl_bob", .string = "0.02"};
+static cvar_t	cl_bobcycle = {.name = "cl_bobcycle", .string = "0.6"};
+static cvar_t	cl_bobup = {.name = "cl_bobup", .string = "0.5"};
 
-cvar_t	v_kicktime = {.name = "v_kicktime", .string = "0.5"};
-cvar_t	v_kickroll = {.name = "v_kickroll", .string = "0.6"};
-cvar_t	v_kickpitch = {.name = "v_kickpitch", .string = "0.6"};
+static cvar_t	v_kicktime = {.name = "v_kicktime", .string = "0.5"};
+static cvar_t	v_kickroll = {.name = "v_kickroll", .string = "0.6"};
+static cvar_t	v_kickpitch = {.name = "v_kickpitch", .string = "0.6"};
 
-cvar_t	v_iyaw_cycle = {.name = "v_iyaw_cycle", .string = "2"};
-cvar_t	v_iroll_cycle = {.name = "v_iroll_cycle", .string = "0.5"};
-cvar_t	v_ipitch_cycle = {.name = "v_ipitch_cycle", .string = "1"};
-cvar_t	v_iyaw_level = {.name = "v_iyaw_level", .string = "0.3"};
-cvar_t	v_iroll_level = {.name = "v_iroll_level", .string = "0.1"};
-cvar_t	v_ipitch_level = {.name = "v_ipitch_level", .string = "0.3"};
+static cvar_t	v_iyaw_cycle = {.name = "v_iyaw_cycle", .string = "2"};
+static cvar_t	v_iroll_cycle = {.name = "v_iroll_cycle", .string = "0.5"};
+static cvar_t	v_ipitch_cycle = {.name = "v_ipitch_cycle", .string = "1"};
+static cvar_t	v_iyaw_level = {.name = "v_iyaw_level", .string = "0.3"};
+static cvar_t	v_iroll_level = {.name = "v_iroll_level", .string = "0.1"};
+static cvar_t	v_ipitch_level = {.name = "v_ipitch_level", .string = "0.3"};
 
-cvar_t	v_idlescale = {.name = "v_idlescale", .string = "0"};
+static cvar_t	v_idlescale = {.name = "v_idlescale", .string = "0"};
 
-cvar_t	crosshair = {.name = "crosshair", .string = "0", .archive = true};
-cvar_t	crosshaircolor = {.name = "crosshaircolor", .string = "79", .archive = true};
+static cvar_t	crosshair = {.name = "crosshair", .string = "0", .archive = true};
+static cvar_t	crosshaircolor = {.name = "crosshaircolor", .string = "79", .archive = true};
 
-cvar_t  cl_crossx = {.name = "cl_crossx", .string = "0", .archive = true};
-cvar_t  cl_crossy = {.name = "cl_crossy", .string = "0", .archive = true};
+static cvar_t  cl_crossx = {.name = "cl_crossx", .string = "0", .archive = true};
+static cvar_t  cl_crossy = {.name = "cl_crossy", .string = "0", .archive = true};
 
 
-cvar_t  v_contentblend = {.name = "v_contentblend", .string = "1"};
+static cvar_t  v_contentblend = {.name = "v_contentblend", .string = "1"};
 
-float	v_dmg_time, v_dmg_roll, v_dmg_pitch;
+static float	v_dmg_time, v_dmg_roll, v_dmg_pitch;
 
-extern	int			in_forward, in_forward2, in_back;
+extern	int in_forward2;
 
-frame_t		*view_frame;
-player_state_t		*view_message;
+static frame_t		*view_frame;
+static player_state_t		*view_message;
 
 /*
 ===============
@@ -122,8 +122,8 @@ float V_CalcBob (void)
 //=============================================================================
 
 
-cvar_t	v_centermove = {.name = "v_centermove", .string = "0.15"};
-cvar_t	v_centerspeed = {.name = "v_centerspeed", .string = "500"};
+static cvar_t	v_centermove = {.name = "v_centermove", .string = "0.15"};
+static cvar_t	v_centerspeed = {.name = "v_centerspeed", .string = "500"};
 
 
 void V_StartPitchDrift (void)
@@ -232,14 +232,14 @@ void V_DriftPitch (void)
 */ 
  
  
-cshift_t	cshift_empty = { {130,80,50}, 0 };
-cshift_t	cshift_water = { {130,80,50}, 128 };
-cshift_t	cshift_slime = { {0,25,5}, 150 };
-cshift_t	cshift_lava = { {255,80,0}, 150 };
+static cshift_t	cshift_empty = { {130,80,50}, 0 };
+static cshift_t	cshift_water = { {130,80,50}, 128 };
+static cshift_t	cshift_slime = { {0,25,5}, 150 };
+static cshift_t	cshift_lava = { {255,80,0}, 150 };
 
 cvar_t		v_gamma = {.name = "gamma", .string = "1", .archive = true};
 
-byte		gammatable[256];	// palette is sent through this
+static byte		gammatable[256];	// palette is sent through this
 
 
 
@@ -784,7 +784,6 @@ void DropPunchAngle (void)
 static void V_DrawCrosshair (void)
 {
 	int x, y;
-	extern cvar_t crosshair, cl_crossx, cl_crossy, crosshaircolor;
 	extern vrect_t		scr_vrect;
 	byte c = (byte)crosshaircolor.value;
 

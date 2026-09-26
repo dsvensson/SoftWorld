@@ -32,22 +32,22 @@ typedef struct
 } prstack_t;
 
 #define	MAX_STACK_DEPTH		32
-prstack_t	pr_stack[MAX_STACK_DEPTH];
-int			pr_depth;
+static prstack_t	pr_stack[MAX_STACK_DEPTH];
+static int			pr_depth;
 
 #define	LOCALSTACK_SIZE		2048
-int			localstack[LOCALSTACK_SIZE];
-int			localstack_used;
+static int			localstack[LOCALSTACK_SIZE];
+static int			localstack_used;
 
 
 bool	pr_trace;
 dfunction_t	*pr_xfunction;
-int			pr_xstatement;
+static int			pr_xstatement;
 
 
 int		pr_argc;
 
-char *pr_opnames[] =
+static char *pr_opnames[] =
 {
 "DONE",
 
@@ -656,7 +656,7 @@ while (1)
 
 /*----------------------*/
 
-char *pr_strtbl[MAX_PRSTR];
+static char *pr_strtbl[MAX_PRSTR];
 int num_prstr;
 
 char *PR_GetString(int num)

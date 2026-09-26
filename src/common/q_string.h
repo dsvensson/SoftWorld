@@ -53,7 +53,6 @@ char	*va (char *format, ...);
 
 // parses the next token into com_token; returns the text after it, or NULL at the end
 extern	char	com_token[1024];
-extern	bool	com_eof;
 char	*COM_Parse (char *data);
 
 void	COM_StripExtension (char *in, char *out);

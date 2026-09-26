@@ -24,9 +24,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "d_local.h"
 
 
-int		iskyspeed = 8;
-int		iskyspeed2 = 2;
-float	skyspeed, skyspeed2;
+static int		iskyspeed = 8;
+static int		iskyspeed2 = 2;
+float skyspeed;
+static float skyspeed2;
 
 float		skytime;
 
@@ -38,9 +39,9 @@ int r_skydirect;		// not used?
 
 // TODO: clean up these routines
 
-byte	bottomsky[128*131];
-byte	bottommask[128*131];
-byte	newsky[128*256];	// newsky and topsky both pack in here, 128 bytes
+static byte	bottomsky[128*131];
+static byte	bottommask[128*131];
+static byte	newsky[128*256];	// newsky and topsky both pack in here, 128 bytes
 							//  of newsky on the left of each scan, 128 bytes
 							//  of topsky on the right, because the low-level
 							//  drawers need 256-byte scan widths

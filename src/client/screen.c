@@ -76,37 +76,37 @@ int			scr_copytop;
 int			scr_copyeverything;
 
 float		scr_con_current;
-float		scr_conlines;		// lines of console to display
+static float		scr_conlines;		// lines of console to display
 
-float		oldscreensize, oldfov;
-float		oldsbar;
+static float		oldscreensize, oldfov;
+static float		oldsbar;
 cvar_t		scr_viewsize = {.name = "viewsize", .string = "100", .archive = true};
-cvar_t		scr_fov = {.name = "fov", .string = "90"};	// 10 - 170
-cvar_t		scr_conspeed = {.name = "scr_conspeed", .string = "300"};
-cvar_t		scr_centertime = {.name = "scr_centertime", .string = "2"};
-cvar_t		scr_showram = {.name = "showram", .string = "1"};
-cvar_t		scr_showturtle = {.name = "showturtle", .string = "0"};
-cvar_t		scr_showpause = {.name = "showpause", .string = "1"};
-cvar_t		scr_printspeed = {.name = "scr_printspeed", .string = "8"};
-cvar_t		scr_allowsnap = {.name = "scr_allowsnap", .string = "1"};
-cvar_t		r_netgraph = {.name = "r_netgraph", .string = "0"};
+static cvar_t		scr_fov = {.name = "fov", .string = "90"};	// 10 - 170
+static cvar_t		scr_conspeed = {.name = "scr_conspeed", .string = "300"};
+static cvar_t		scr_centertime = {.name = "scr_centertime", .string = "2"};
+static cvar_t		scr_showram = {.name = "showram", .string = "1"};
+static cvar_t		scr_showturtle = {.name = "showturtle", .string = "0"};
+static cvar_t		scr_showpause = {.name = "showpause", .string = "1"};
+static cvar_t		scr_printspeed = {.name = "scr_printspeed", .string = "8"};
+static cvar_t		scr_allowsnap = {.name = "scr_allowsnap", .string = "1"};
+static cvar_t		r_netgraph = {.name = "r_netgraph", .string = "0"};
 
-bool	scr_initialized;		// ready to draw
+static bool	scr_initialized;		// ready to draw
 
-qpic_t		*scr_ram;
-qpic_t		*scr_net;
-qpic_t		*scr_turtle;
+static qpic_t		*scr_ram;
+static qpic_t		*scr_net;
+static qpic_t		*scr_turtle;
 
 int			scr_fullupdate;
 
-int			clearconsole;
+static int			clearconsole;
 int			clearnotify;
 
 extern int			sb_lines;
 
 
 
-vrect_t		*pconupdate;
+static vrect_t		*pconupdate;
 vrect_t		scr_vrect;
 
 bool	scr_disabled_for_loading;
@@ -126,12 +126,12 @@ CENTER PRINTING
 ===============================================================================
 */
 
-char		scr_centerstring[1024];
-float		scr_centertime_start;	// for slow victory printing
-float		scr_centertime_off;
-int			scr_center_lines;
-int			scr_erase_lines;
-int			scr_erase_center;
+static char		scr_centerstring[1024];
+static float		scr_centertime_start;	// for slow victory printing
+static float		scr_centertime_off;
+static int			scr_center_lines;
+static int			scr_erase_lines;
+static int			scr_erase_center;
 
 /*
 ==============
@@ -934,8 +934,8 @@ void SCR_RSShot_f (void)
 
 //=============================================================================
 
-char	*scr_notifystring;
-bool	scr_drawdialog;
+static char	*scr_notifystring;
+static bool	scr_drawdialog;
 
 void SCR_DrawNotifyString (void)
 {

@@ -30,31 +30,28 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define FULLY_CLIPPED_CACHED	0x80000000
 #define FRAMECOUNT_MASK			0x7FFFFFFF
 
-unsigned int	cacheoffset;
+static unsigned int	cacheoffset;
 
 int			c_faceclip;					// number of faces clipped
 
-zpointdesc_t	r_zpointdesc;
 
-polydesc_t		r_polydesc;
-
+static polydesc_t		r_polydesc;
 
 
-clipplane_t	*entity_clipplanes;
+
 clipplane_t	view_clipplanes[4];
-clipplane_t	world_clipplanes[16];
 
-medge_t			*r_pedge;
+static medge_t			*r_pedge;
 
-bool		r_leftclipped, r_rightclipped;
+static bool		r_leftclipped, r_rightclipped;
 static bool	makeleftedge, makerightedge;
-bool		r_nearzionly;
+static bool		r_nearzionly;
 
 int		sintable[1280];
 int		intsintable[1280];
 
-mvertex_t	r_leftenter, r_leftexit;
-mvertex_t	r_rightenter, r_rightexit;
+static mvertex_t	r_leftenter, r_leftexit;
+static mvertex_t	r_rightenter, r_rightexit;
 
 typedef struct
 {
@@ -62,12 +59,12 @@ typedef struct
 	int		ceilv;
 } evert_t;
 
-int				r_emitted;
-float			r_nearzi;
-float			r_u1, r_v1, r_lzi1;
-int				r_ceilv1;
+static int				r_emitted;
+static float			r_nearzi;
+static float			r_u1, r_v1, r_lzi1;
+static int				r_ceilv1;
 
-bool	r_lastvertvalid;
+static bool	r_lastvertvalid;
 
 
 

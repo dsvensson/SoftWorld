@@ -89,22 +89,13 @@ typedef struct {
 //===========================================================================
 
 extern cvar_t	r_draworder;
-extern cvar_t	r_speeds;
-extern cvar_t	r_timegraph;
 extern cvar_t	r_graphheight;
 extern cvar_t	r_clearcolor;
 extern cvar_t	r_waterwarp;
 extern cvar_t	r_fullbright;
-extern cvar_t	r_drawentities;
-extern cvar_t	r_aliasstats;
-extern cvar_t	r_dspeeds;
 extern cvar_t	r_drawflat;
 extern cvar_t	r_ambient;
-extern cvar_t	r_reportsurfout;
-extern cvar_t	r_maxsurfs;
 extern cvar_t	r_numsurfs;
-extern cvar_t	r_reportedgeout;
-extern cvar_t	r_maxedges;
 extern cvar_t	r_numedges;
 
 #define XCENTERING	(1.0 / 2.0)
@@ -143,15 +134,11 @@ extern	vec3_t	r_origin;
 
 extern	vec3_t	r_entorigin;
 
-extern	float	screenAspect;
-extern	float	verticalFieldOfView;
-extern	float	xOrigin, yOrigin;
 
 extern	int		r_visframecount;
 
 //=============================================================================
 
-extern int	vstartscan;
 
 
 
@@ -196,7 +183,6 @@ extern int		*pfrustum_indexes[4];
 #define	NEAR_CLIP	0.01
 
 extern int			ubasestep, errorterm, erroradjustup, erroradjustdown;
-extern int			vstartscan;
 
 extern fixed16_t	sadjust, tadjust;
 extern fixed16_t	bbextents, bbextentt;
@@ -206,7 +192,6 @@ extern fixed16_t	bbextents, bbextentt;
 extern mvertex_t	*r_ptverts, *r_ptvertsmax;
 
 extern vec3_t			sbaseaxis[3], tbaseaxis[3];
-extern float			entity_rotation[3][3];
 
 
 extern int		r_currentkey;
@@ -233,11 +218,7 @@ void	R_ZDrawSubmodelPolys (model_t *clmodel);
 #define ALIAS_Z_CLIP_PLANE	5
 
 extern int				numverts;
-extern int				a_skinwidth;
-extern mtriangle_t		*ptriangles;
 extern int				numtriangles;
-extern aliashdr_t		*paliashdr;
-extern mdl_t			*pmdl;
 extern float			leftclip, topclip, rightclip, bottomclip;
 extern int				r_acliptype;
 extern finalvert_t		*pfinalverts;
@@ -271,11 +252,7 @@ extern	edge_t	*removeedges[MAXHEIGHT];
 extern	int	screenwidth;
 
 // FIXME: make stack vars when debugging done
-extern	edge_t	edge_head;
-extern	edge_t	edge_tail;
-extern	edge_t	edge_aftertail;
 extern int		r_bmodelactive;
-extern vrect_t	*pconupdate;
 
 extern float		aliasxscale, aliasyscale, aliasxcenter, aliasycenter;
 extern float		r_aliastransition, r_resfudge;
@@ -292,8 +269,7 @@ extern float	r_time1;
 extern float	dp_time1, dp_time2, db_time1, db_time2, rw_time1, rw_time2;
 extern float	se_time1, se_time2, de_time1, de_time2, dv_time1, dv_time2;
 extern int		r_frustum_indexes[4*6];
-extern int		r_maxsurfsseen, r_maxedgesseen, r_cnumsurfs;
-extern bool	r_surfsonstack;
+extern int r_maxsurfsseen, r_maxedgesseen;
 extern bool	r_dowarpold, r_viewchanged;
 extern vrect_t	r_viewrect;
 extern float	r_viewaspect;
@@ -305,7 +281,6 @@ extern vec3_t	r_emins, r_emaxs;
 extern mnode_t	*r_pefragtopnode;
 extern int		r_clipflags;
 extern int		r_dlightframecount;
-extern bool	r_fov_greater_than_90;
 
 void R_StoreEfrags (efrag_t **ppefrag);
 void R_TimeRefresh_f (void);

@@ -25,14 +25,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 #include "r_local.h"
 
-model_t	*loadmodel;
+static model_t	*loadmodel;
 
 void Mod_LoadSpriteModel (model_t *mod, void *buffer);
 void Mod_LoadBrushModel (model_t *mod, void *buffer);
 void Mod_LoadAliasModel (model_t *mod, void *buffer);
 model_t *Mod_LoadModel (model_t *mod, bool crash);
 
-byte	mod_novis[MAX_MAP_LEAFS/8];
+static byte	mod_novis[MAX_MAP_LEAFS/8];
 
 static model_t	**mod_known;		// every model ever named; entries never move
 static int		mod_numknown, mod_maxknown;
@@ -366,7 +366,7 @@ model_t *Mod_ForName (char *modname, bool crash)
 ===============================================================================
 */
 
-byte	*mod_base;
+static byte	*mod_base;
 
 
 /*

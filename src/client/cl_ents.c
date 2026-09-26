@@ -156,7 +156,7 @@ CL_ParseDelta
 Can go from either a baseline or a previous packet_entity
 ==================
 */
-int	bitcounts[32];	/// just for protocol profiling
+static int	bitcounts[32];	/// just for protocol profiling
 void CL_ParseDelta (entity_state_t *from, entity_state_t *to, int bits)
 {
 	int			i;
@@ -564,8 +564,8 @@ typedef struct
 } projectile_t;
 
 #define	MAX_PROJECTILES	32
-projectile_t	cl_projectiles[MAX_PROJECTILES];
-int				cl_num_projectiles;
+static projectile_t	cl_projectiles[MAX_PROJECTILES];
+static int				cl_num_projectiles;
 
 extern int cl_spikeindex;
 

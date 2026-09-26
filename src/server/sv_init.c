@@ -22,7 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 server_static_t	svs;				// persistant server info
 server_t		sv;					// local server
-arena_t		sv_level_arena;		// memory that lives as long as the current level
+static arena_t		sv_level_arena;		// memory that lives as long as the current level
 
 char	localmodels[MAX_MODELS][5];	// inline model names for precache
 

@@ -27,19 +27,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define LIGHT_MIN	5		// lowest light value we'll allow, to avoid the
 							//  need for inner-loop light clamping
 
-mtriangle_t		*ptriangles;
 affinetridesc_t	r_affinetridesc;
 
 void *			acolormap;	// FIXME: should go away
 
-trivertx_t		*r_apverts;
+static trivertx_t		*r_apverts;
 
 // TODO: these probably will go away with optimized rasterization
-mdl_t				*pmdl;
-vec3_t				r_plightvec;
-int					r_ambientlight;
-float				r_shadelight;
-aliashdr_t			*paliashdr;
+static mdl_t				*pmdl;
+static vec3_t				r_plightvec;
+static int					r_ambientlight;
+static float				r_shadelight;
+static aliashdr_t			*paliashdr;
 finalvert_t			*pfinalverts;
 auxvert_t			*pauxverts;
 static float		ziscale;
@@ -50,10 +49,10 @@ static vec3_t		alias_forward, alias_right, alias_up;
 static maliasskindesc_t	*pskindesc;
 
 int				r_amodels_drawn;
-int				a_skinwidth;
-int				r_anumverts;
+static int				a_skinwidth;
+static int				r_anumverts;
 
-float	aliastransform[3][4];
+static float	aliastransform[3][4];
 
 typedef struct {
 	int	index0;
@@ -68,7 +67,7 @@ static aedge_t	aedges[12] = {
 
 #define NUMVERTEXNORMALS	162
 
-float	r_avertexnormals[NUMVERTEXNORMALS][3] = {
+static float	r_avertexnormals[NUMVERTEXNORMALS][3] = {
 #include "anorms.inc"
 };
 

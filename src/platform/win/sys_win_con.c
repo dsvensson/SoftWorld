@@ -31,7 +31,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <direct.h>
 
 
-cvar_t	sys_nostdout = {.name = "sys_nostdout", .string = "0"};
+static cvar_t	sys_nostdout = {.name = "sys_nostdout", .string = "0"};
 
 /*
 ================
@@ -203,7 +203,6 @@ main
 
 ==================
 */
-char	*newargv[256];
 
 int Sys_ConsoleMain (int argc, char **argv)
 {

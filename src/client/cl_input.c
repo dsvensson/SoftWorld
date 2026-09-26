@@ -21,7 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "cl_local.h"
 
-cvar_t	cl_nodelta = {.name = "cl_nodelta", .string = "0"};
+static cvar_t	cl_nodelta = {.name = "cl_nodelta", .string = "0"};
 
 /*
 ===============================================================================
@@ -45,7 +45,7 @@ state bit 2 is edge triggered on the down to up transition
 */
 
 
-kbutton_t	in_mlook, in_klook;
+static kbutton_t	in_mlook, in_klook;
 
 // the mouse looks around without holding +mlook
 cvar_t	freelook = {.name = "freelook", .string = "1", .archive = true};
@@ -54,12 +54,12 @@ static bool IN_MouseLook (void)
 {
 	return (in_mlook.state & 1) || freelook.value;
 }
-kbutton_t	in_left, in_right, in_forward, in_back;
-kbutton_t	in_lookup, in_lookdown, in_moveleft, in_moveright;
-kbutton_t	in_strafe, in_speed, in_use, in_jump, in_attack;
-kbutton_t	in_up, in_down;
+static kbutton_t	in_left, in_right, in_forward, in_back;
+static kbutton_t	in_lookup, in_lookdown, in_moveleft, in_moveright;
+static kbutton_t	in_strafe, in_speed, in_use, in_jump, in_attack;
+static kbutton_t	in_up, in_down;
 
-int			in_impulse;
+static int			in_impulse;
 
 
 void KeyDown (kbutton_t *b)
@@ -509,10 +509,10 @@ MOUSE AND GAMEPAD
 ===============================================================================
 */
 
-cvar_t	m_filter = {.name = "m_filter", .string = "0"};
-cvar_t	joy_yawspeed = {.name = "joy_yawspeed", .string = "220", .archive = true};	// degrees per second
-cvar_t	joy_pitchspeed = {.name = "joy_pitchspeed", .string = "160", .archive = true};
-cvar_t	joy_invert = {.name = "joy_invert", .string = "0", .archive = true};
+static cvar_t	m_filter = {.name = "m_filter", .string = "0"};
+static cvar_t	joy_yawspeed = {.name = "joy_yawspeed", .string = "220", .archive = true};	// degrees per second
+static cvar_t	joy_pitchspeed = {.name = "joy_pitchspeed", .string = "160", .archive = true};
+static cvar_t	joy_invert = {.name = "joy_invert", .string = "0", .archive = true};
 
 static int		in_mouse_dx, in_mouse_dy;		// motion since the last move
 static int		in_old_mouse_x, in_old_mouse_y;	// for m_filter

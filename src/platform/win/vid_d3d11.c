@@ -33,14 +33,14 @@ viddef_t	vid;				// global video state
 
 HWND		mainwindow;
 
-cvar_t	vid_vsync = {.name = "vid_vsync", .string = "1", .archive = true};
+static cvar_t	vid_vsync = {.name = "vid_vsync", .string = "1", .archive = true};
 // 0: whole multiples of the render size, letterboxed; 1: fill the window, sharp bilinear
-cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true};
-cvar_t	vid_contrast = {.name = "vid_contrast", .string = "1", .archive = true};
+static cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true};
+static cvar_t	vid_contrast = {.name = "vid_contrast", .string = "1", .archive = true};
 // use HDR output when the display is in HDR mode
-cvar_t	vid_hdr = {.name = "vid_hdr", .string = "1", .archive = true};
+static cvar_t	vid_hdr = {.name = "vid_hdr", .string = "1", .archive = true};
 // brightness of SDR white on an HDR display, in nits; 0 uses Windows' SDR content brightness
-cvar_t	vid_hdr_paperwhite = {.name = "vid_hdr_paperwhite", .string = "0", .archive = true};
+static cvar_t	vid_hdr_paperwhite = {.name = "vid_hdr_paperwhite", .string = "0", .archive = true};
 
 #define VID_BASE_WIDTH	320
 #define VID_BASE_HEIGHT	200
