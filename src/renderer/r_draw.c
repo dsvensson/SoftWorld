@@ -47,8 +47,8 @@ static bool		r_leftclipped, r_rightclipped;
 static bool	makeleftedge, makerightedge;
 static bool		r_nearzionly;
 
-int		sintable[1280];
-int		intsintable[1280];
+int		sintable[MAXWIDTH+CYCLE];	// read from any offset within a cycle
+int		intsintable[MAXWIDTH+CYCLE];
 
 static mvertex_t	r_leftenter, r_leftexit;
 static mvertex_t	r_rightenter, r_rightexit;

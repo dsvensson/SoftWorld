@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "args.h"
 #include "cl_public.h"
 #include "cmd.h"
+#include "cvar.h"
 #include "fs.h"
 #include "host.h"
 #include "in_events.h"
@@ -37,6 +38,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdio.h>
 
 host_t	host;
+
+// a fixed frame time, for timedemos that must draw the same frames every run
+static cvar_t	host_framerate = {.name = "host_framerate", .string = "0"};
 
 static jmp_buf	host_abort;			// Host_Error and Host_EndGame return here
 static bool		host_abort_set;		// once a frame has run
@@ -116,6 +120,7 @@ void Host_Init (quakeparms_t *parms)
 	Cmd_Init ();
 	COM_Init (host.parms.basedir);
 	NET_Init ();
+	Cvar_RegisterVariable (&host_framerate);
 
 	CL_Init ();
 	SV_Init ();
@@ -145,6 +150,8 @@ void Host_Frame (double time)
 		return;			// something bad happened, or the server disconnected
 	host_abort_set = true;
 
+	if (host_framerate.value > 0)
+		time = host_framerate.value;
 	host.realtime += time;
 
 	Sys_SendKeyEvents ();

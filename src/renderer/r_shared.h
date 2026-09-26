@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mathlib.h"
 #include "vid.h"
 #include "cvar.h"
+#include "d_iface.h"
 #include "model.h"
 #include "render.h"
 
@@ -56,8 +57,8 @@ extern int		r_drawnpolycount;
 
 extern cvar_t	r_clearcolor;
 
-extern int	sintable[1280];
-extern int	intsintable[1280];
+extern int	sintable[MAXWIDTH+CYCLE];
+extern int	intsintable[MAXWIDTH+CYCLE];
 
 extern	vec3_t	vup, base_vup;
 extern	vec3_t	vpn, base_vpn;

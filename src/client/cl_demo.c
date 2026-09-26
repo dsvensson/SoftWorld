@@ -19,8 +19,53 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "cl_local.h"
+#include "png.h"
 
 void CL_FinishTimeDemo (void);
+
+// every nth timedemo frame is written to <basedir>/frames, for comparing renderers
+static cvar_t	timedemo_dump = {.name = "timedemo_dump", .string = "0"};
+
+/*
+==============
+CL_InitDemo
+==============
+*/
+void CL_InitDemo (void)
+{
+	Cvar_RegisterVariable (&timedemo_dump);
+}
+
+/*
+==============
+CL_DumpTimedemoFrame
+
+The frame as the renderer drew it, through the unshifted palette
+==============
+*/
+void CL_DumpTimedemoFrame (void)
+{
+	char		path[MAX_OSPATH];
+	byte		*rgb;
+	unsigned	x, y;
+	int			frame;
+
+	if (!cls.timedemo || timedemo_dump.value < 1 || cls.state != ca_active)
+		return;
+	frame = cls.framecount - cls.td_startframe;
+	if (frame % (int)timedemo_dump.value)
+		return;
+
+	rgb = Mem_Alloc ((size_t)vid.width * vid.height * 3);
+	for (y = 0 ; y < vid.height ; y++)
+		for (x = 0 ; x < vid.width ; x++)
+			memcpy (rgb + (y * vid.width + x) * 3, cls.basepal + vid.buffer[y * vid.rowbytes + x] * 3, 3);
+	snprintf (path, sizeof(path), "%s/frames/%06d.png", FS_BaseDir (), frame);
+	COM_CreatePath (path);
+	if (!PNG_WriteRGB (path, (int)vid.width, (int)vid.height, rgb, (int)vid.width * 3))
+		Con_Printf ("Couldn't write %s\n", path);
+	Mem_Free (rgb);
+}
 
 /*
 ==============================================================================

@@ -1116,6 +1116,7 @@ static void CL_InitLocal (void)
 	Cmd_AddCommand ("stop", CL_Stop_f);
 	Cmd_AddCommand ("playdemo", CL_PlayDemo_f);
 	Cmd_AddCommand ("timedemo", CL_TimeDemo_f);
+	CL_InitDemo ();
 
 	Cmd_AddCommand ("skins", Skin_Skins_f);
 	Cmd_AddCommand ("allskins", Skin_AllSkins_f);
@@ -1363,6 +1364,7 @@ void CL_Frame (void)
 		time1 = Sys_DoubleTime ();
 
 	SCR_UpdateScreen ();
+	CL_DumpTimedemoFrame ();
 
 	if (host_speeds.value)
 		time2 = Sys_DoubleTime ();

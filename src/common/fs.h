@@ -31,6 +31,7 @@ extern	char	gamedirfile[MAX_OSPATH];
 
 // starts the file system on basedir (overridable with -basedir)
 void	COM_Init (const char *basedir);
+const char	*FS_BaseDir (void);	// the directory holding the game directories
 
 // loads a file into memory from Mem_Alloc (0-terminated); NULL if missing
 byte	*FS_LoadFile (const char *path, int *length);

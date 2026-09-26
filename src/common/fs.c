@@ -236,6 +236,16 @@ typedef struct
 char	com_gamedir[MAX_OSPATH];
 static char	com_basedir[MAX_OSPATH];
 
+/*
+================
+FS_BaseDir
+================
+*/
+const char *FS_BaseDir (void)
+{
+	return com_basedir;
+}
+
 typedef struct searchpath_s
 {
 	char	filename[MAX_OSPATH];
