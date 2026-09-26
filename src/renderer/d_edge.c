@@ -122,11 +122,13 @@ void D_CalcGradients (msurface_t *pface)
 	VectorScale (transformed_modelorg, mipscale, p_temp1);
 
 	t = 0x10000*mipscale;
-	sadjust = (fixed16_t)(((fixed16_t)(DotProduct (p_temp1, p_saxis) * 0x10000 + 0.5)) -
-			((pface->texturemins[0] << 16) >> miplevel)
+	// the terms are 16.16 texture coordinates and can pass 32 bits (texture
+	// coordinates beyond +-32768); their sum is relative to the surface
+	sadjust = (fixed16_t)(((int64_t)(DotProduct (p_temp1, p_saxis) * 0x10000 + 0.5)) -
+			(((int64_t)pface->texturemins[0] * 0x10000) >> miplevel)
 			+ pface->texinfo->vecs[0][3]*t);
-	tadjust = (fixed16_t)(((fixed16_t)(DotProduct (p_temp1, p_taxis) * 0x10000 + 0.5)) -
-			((pface->texturemins[1] << 16) >> miplevel)
+	tadjust = (fixed16_t)(((int64_t)(DotProduct (p_temp1, p_taxis) * 0x10000 + 0.5)) -
+			(((int64_t)pface->texturemins[1] * 0x10000) >> miplevel)
 			+ pface->texinfo->vecs[1][3]*t);
 
 //

@@ -262,9 +262,12 @@ int R_LightPoint (vec3_t p, vec3_t color)
 		return 255;
 	}
 
+	// down to the floor, which in a big map may be further than 2048 below
 	end[0] = p[0];
 	end[1] = p[1];
 	end[2] = p[2] - 2048;
+	if (r_scene.worldmodel->mins[2] - 1 < end[2])
+		end[2] = r_scene.worldmodel->mins[2] - 1;
 
 	r = RecursiveLightPoint (r_scene.worldmodel->nodes, p, end, color);
 
