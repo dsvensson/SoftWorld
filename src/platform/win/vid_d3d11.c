@@ -560,7 +560,7 @@ VIDEO CONTRACT
 ===============================================================================
 */
 
-void VID_Init (unsigned char *palette)
+void VID_Init (unsigned char *palette, unsigned char *colormap)
 {
 	int		scale = 2;
 	int		i;
@@ -580,7 +580,7 @@ void VID_Init (unsigned char *palette)
 	if (scale > VID_MAX_SCALE)
 		scale = VID_MAX_SCALE;
 
-	vid.colormap = host_colormap;
+	vid.colormap = colormap;
 	vid.fullbright = 256 - LittleLong (*((int *)vid.colormap + 2048));
 
 	VID_CreateWindow (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);

@@ -212,7 +212,7 @@ static void CL_LerpMove (void)
 		lerp_delay = 0.01;
 	}
 
-	now = realtime;
+	now = host.realtime;
 	newcmd = cls.netchan.outgoing_sequence != lastsequence;
 	if (newcmd)
 	{
@@ -276,7 +276,7 @@ static void CL_CalcCrouch (void)
 	static vec3_t	oldorigin;
 	static float	oldz, extracrouch, crouchspeed = 100;
 	vec3_t			delta;
-	float			frametime = (float)host_frametime;
+	float			frametime = (float)cls.frametime;
 	bool			teleported;
 
 	VectorSubtract (cl.simorg, oldorigin, delta);
@@ -338,9 +338,9 @@ void CL_PredictMove (bool repredict)
 	if (cl.paused)
 		return;
 
-	cl.time = realtime - cls.latency - cl_pushlatency.value*0.001;
-	if (cl.time > realtime)
-		cl.time = realtime;
+	cl.time = host.realtime - cls.latency - cl_pushlatency.value*0.001;
+	if (cl.time > host.realtime)
+		cl.time = host.realtime;
 	r_scene.time = cl.time;
 
 	if (cl.intermission)

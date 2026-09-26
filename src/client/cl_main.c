@@ -91,20 +91,12 @@ entity_t		cl_visedicts_list[2][MAX_VISEDICTS];
 
 static double			connect_time = -1;		// for connection retransmits
 
-quakeparms_t host_parms;
 
-bool	host_initialized;		// true if into command execution
 
-double		host_frametime;
-double		realtime;				// without any filtering or bounding
 static double		oldrealtime;			// last frame run
-int			host_framecount;
 
 
-byte		*host_basepal;
-byte		*host_colormap;
 
-netadr_t	master_adr;				// address of the master server
 
 static cvar_t	host_speeds = {.name = "host_speeds", .string = "0"};			// set for running times
 cvar_t	show_fps = {.name = "show_fps", .string = "0"};			// set for running times
@@ -191,7 +183,7 @@ void CL_SendConnectPacket (void)
 		adr.port = BigShort (27500);
 	t2 = Sys_DoubleTime ();
 
-	connect_time = realtime+t2-t1;	// for retransmit requests
+	connect_time = host.realtime+t2-t1;	// for retransmit requests
 
 	cls.qport = (int)Cvar_VariableValue("qport");
 
@@ -221,7 +213,7 @@ void CL_CheckForResend (void)
 		return;
 	if (cls.state != ca_disconnected)
 		return;
-	if (connect_time && realtime - connect_time < 5.0)
+	if (connect_time && host.realtime - connect_time < 5.0)
 		return;
 
 	t1 = Sys_DoubleTime ();
@@ -236,7 +228,7 @@ void CL_CheckForResend (void)
 		adr.port = BigShort (27500);
 	t2 = Sys_DoubleTime ();
 
-	connect_time = realtime+t2-t1;	// for retransmit requests
+	connect_time = host.realtime+t2-t1;	// for retransmit requests
 
 	Con_Printf ("Connecting to %s...\n", cls.servername);
 	snprintf (data, sizeof(data), "%c%c%c%cgetchallenge\n", 255, 255, 255, 255);
@@ -930,7 +922,7 @@ void CL_ReadPackets (void)
 	// check timeout
 	//
 	if (cls.state >= ca_connected
-	 && realtime - cls.netchan.last_received > cl_timeout.value)
+	 && host.realtime - cls.netchan.last_received > cl_timeout.value)
 	{
 		Con_Printf ("\nServer connection timed out.\n");
 		CL_Disconnect ();
@@ -1257,7 +1249,7 @@ void Host_WriteConfiguration (void)
 {
 	FILE	*f;
 
-	if (host_initialized)
+	if (host.initialized)
 	{
 		f = fopen (va("%s/config.cfg",com_gamedir), "w");
 		if (!f)
@@ -1290,7 +1282,7 @@ static void CL_UpdateSound (void)
 	snd_listener_t	listener = {0};
 
 	listener.viewentity = cl.playernum + 1;
-	listener.frametime = (float)host_frametime;
+	listener.frametime = (float)cls.frametime;
 	if (cls.state == ca_active)
 	{
 		VectorCopy (r_refdef.vieworg, listener.origin);
@@ -1347,13 +1339,13 @@ static void CL_DecidePhysFrame (void)
 	if (!CL_IndependentPhysics ())
 	{
 		cls.physframe = true;
-		cls.physframetime = host_frametime;
+		cls.physframetime = cls.frametime;
 		cls.physaccum = 0;
 		return;
 	}
 
 	minframetime = CL_PhysFrameTime ();
-	cls.physaccum += host_frametime;
+	cls.physaccum += cls.frametime;
 	if (cls.physaccum < minframetime)
 	{
 		cls.physframe = false;
@@ -1380,7 +1372,7 @@ double Host_FrameWait (void)
 	fps = Host_MaxFPS ();
 	if (cls.timedemo || !fps)
 		return 0;
-	wait = oldrealtime + 1.0 / fps - realtime;
+	wait = oldrealtime + 1.0 / fps - host.realtime;
 	return wait > 0 ? wait : 0;
 }
 
@@ -1405,19 +1397,19 @@ void Host_Frame (float time)
 		return;			// something bad happened, or the server disconnected
 
 	// decide the simulation time
-	realtime += time;
-	if (oldrealtime > realtime)
+	host.realtime += time;
+	if (oldrealtime > host.realtime)
 		oldrealtime = 0;
 
 	fps = Host_MaxFPS ();
 
-	if (!cls.timedemo && fps && realtime - oldrealtime < 1.0/fps)
+	if (!cls.timedemo && fps && host.realtime - oldrealtime < 1.0/fps)
 		return;			// framerate is too high
 
-	host_frametime = realtime - oldrealtime;
-	oldrealtime = realtime;
-	if (host_frametime > 0.2)
-		host_frametime = 0.2;
+	cls.frametime = host.realtime - oldrealtime;
+	oldrealtime = host.realtime;
+	if (cls.frametime > 0.2)
+		cls.frametime = 0.2;
 	CL_DecidePhysFrame ();
 
 	// get new key events
@@ -1482,7 +1474,7 @@ void Host_Frame (float time)
 					pass1+pass2+pass3, pass1, pass2, pass3);
 	}
 
-	host_framecount++;
+	cls.framecount++;
 	fps_count++;
 }
 
@@ -1516,13 +1508,13 @@ void Host_Init (quakeparms_t *parms)
 
 	Sys_mkdir("qw");
 
-	host_parms = *parms;
+	host.parms = *parms;
 
 	Cbuf_Init ();
 	Cmd_Init ();
 	V_Init ();
 
-	COM_Init (host_parms.basedir);
+	COM_Init (host.parms.basedir);
 
 	Host_FixupModelNames();
 	
@@ -1539,13 +1531,13 @@ void Host_Init (quakeparms_t *parms)
 	
 	R_InitTextures ();
  
-	host_basepal = FS_LoadFile ("gfx/palette.lmp", NULL);
-	if (!host_basepal)
+	cls.basepal = FS_LoadFile ("gfx/palette.lmp", NULL);
+	if (!cls.basepal)
 		Sys_Error ("Couldn't load gfx/palette.lmp");
-	host_colormap = FS_LoadFile ("gfx/colormap.lmp", NULL);
-	if (!host_colormap)
+	cls.colormap = FS_LoadFile ("gfx/colormap.lmp", NULL);
+	if (!cls.colormap)
 		Sys_Error ("Couldn't load gfx/colormap.lmp");
-	VID_Init (host_basepal);
+	VID_Init (cls.basepal, cls.colormap);
 	Draw_Init ();
 	SCR_Init ();
 	R_Init ();
@@ -1561,7 +1553,7 @@ void Host_Init (quakeparms_t *parms)
 	Cbuf_AddText ("cl_warncmd 1\n");
 
 
-	host_initialized = true;
+	host.initialized = true;
 
 	Con_Printf ("\nClient Version %4.2f (Build %04d)\n\n", VERSION, build_number());
 
@@ -1593,7 +1585,7 @@ void Host_Shutdown(void)
 	NET_Shutdown ();
 	S_Shutdown();
 	IN_Shutdown ();
-	if (host_basepal)
+	if (cls.basepal)
 		VID_Shutdown();
 }
 

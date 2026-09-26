@@ -76,7 +76,7 @@ void CL_WriteDemoCmd (usercmd_t *pcmd)
 
 //Con_Printf("write: %ld bytes, %4.4f\n", msg->cursize, realtime);
 
-	fl = LittleFloat((float)realtime);
+	fl = LittleFloat((float)host.realtime);
 	fwrite (&fl, sizeof(fl), 1, cls.demofile);
 
 	c = dem_cmd;
@@ -120,7 +120,7 @@ void CL_WriteDemoMessage (sizebuf_t *msg)
 	if (!cls.demorecording)
 		return;
 
-	fl = LittleFloat((float)realtime);
+	fl = LittleFloat((float)host.realtime);
 	fwrite (&fl, sizeof(fl), 1, cls.demofile);
 
 	c = dem_read;
@@ -165,25 +165,25 @@ bool CL_GetDemoMessage (void)
 		}
 		if (!cls.td_starttime && cls.state == ca_active) {
 			cls.td_starttime = (float)Sys_DoubleTime();
-			cls.td_startframe = host_framecount;
+			cls.td_startframe = cls.framecount;
 		}
-		realtime = demotime; // warp
+		host.realtime = demotime; // warp
 	} else if (!cl.paused && cls.state >= ca_onserver) {	// allways grab until fully connected
-		if (realtime + 1.0 < demotime) {
+		if (host.realtime + 1.0 < demotime) {
 			// too far back
-			realtime = demotime - 1.0;
+			host.realtime = demotime - 1.0;
 			// rewind back to time
 			fseek(cls.demofile, ftell(cls.demofile) - sizeof(demotime),
 					SEEK_SET);
 			return 0;
-		} else if (realtime < demotime) {
+		} else if (host.realtime < demotime) {
 			// rewind back to time
 			fseek(cls.demofile, ftell(cls.demofile) - sizeof(demotime),
 					SEEK_SET);
 			return 0;		// don't need another message yet
 		}
 	} else
-		realtime = demotime; // we're warping
+		host.realtime = demotime; // we're warping
 
 	if (cls.state < ca_demostart)
 		Host_Error ("CL_GetDemoMessage: cls.state != ca_active");
@@ -319,7 +319,7 @@ void CL_WriteRecordDemoMessage (sizebuf_t *msg, int seq)
 	if (!cls.demorecording)
 		return;
 
-	fl = LittleFloat((float)realtime);
+	fl = LittleFloat((float)host.realtime);
 	fwrite (&fl, sizeof(fl), 1, cls.demofile);
 
 	c = dem_read;
@@ -349,7 +349,7 @@ void CL_WriteSetDemoMessage (void)
 	if (!cls.demorecording)
 		return;
 
-	fl = LittleFloat((float)realtime);
+	fl = LittleFloat((float)host.realtime);
 	fwrite (&fl, sizeof(fl), 1, cls.demofile);
 
 	c = dem_set;
@@ -737,7 +737,7 @@ void CL_PlayDemo_f (void)
 	cls.demoplayback = true;
 	cls.state = ca_demostart;
 	Netchan_Setup (&cls.netchan, net_from, 0, NS_CLIENT);
-	realtime = 0;
+	host.realtime = 0;
 }
 
 /*
@@ -754,7 +754,7 @@ void CL_FinishTimeDemo (void)
 	cls.timedemo = false;
 	
 // the first frame didn't count
-	frames = (host_framecount - cls.td_startframe) - 1;
+	frames = (cls.framecount - cls.td_startframe) - 1;
 	time = (float)(Sys_DoubleTime() - cls.td_starttime);
 	if (!time)
 		time = 1;
@@ -786,7 +786,7 @@ void CL_TimeDemo_f (void)
 	
 	cls.timedemo = true;
 	cls.td_starttime = 0;
-	cls.td_startframe = host_framecount;
+	cls.td_startframe = cls.framecount;
 	cls.td_lastframe = -1;		// get a new message this frame
 }
 

@@ -741,7 +741,7 @@ void SV_SendClientMessages (void)
 
 		// don't let rate limiting build up while the game is paused
 		if (sv.paused)
-			c->netchan.cleartime = realtime;
+			c->netchan.cleartime = host.realtime;
 	}
 }
 

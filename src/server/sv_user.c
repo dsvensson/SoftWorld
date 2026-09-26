@@ -62,7 +62,7 @@ void SV_New_f (void)
 		return;
 
 	host_client->state = cs_connected;
-	host_client->connection_started = realtime;
+	host_client->connection_started = host.realtime;
 
 	// send the info about the new client to all connected clients
 //	SV_FullClientUpdate (host_client, &sv.reliable_datagram);
@@ -730,18 +730,18 @@ void SV_Say (bool team)
 	}
 
 	if (fp_messages) {
-		if (!sv.paused && realtime<host_client->lockedtill) {
+		if (!sv.paused && host.realtime<host_client->lockedtill) {
 			SV_ClientPrintf(host_client, PRINT_CHAT,
 				"You can't talk for %d more seconds\n", 
-					(int) (host_client->lockedtill - realtime));
+					(int) (host_client->lockedtill - host.realtime));
 			return;
 		}
 		tmp = host_client->whensaidhead - fp_messages + 1;
 		if (tmp < 0)
 			tmp = 10+tmp;
 		if (!sv.paused &&
-			host_client->whensaid[tmp] && (realtime-host_client->whensaid[tmp] < fp_persecond)) {
-			host_client->lockedtill = realtime + fp_secondsdead;
+			host_client->whensaid[tmp] && (host.realtime-host_client->whensaid[tmp] < fp_persecond)) {
+			host_client->lockedtill = host.realtime + fp_secondsdead;
 			if (fp_msg[0])
 				SV_ClientPrintf(host_client, PRINT_CHAT,
 					"FloodProt: %s\n", fp_msg);
@@ -753,7 +753,7 @@ void SV_Say (bool team)
 		host_client->whensaidhead++;
 		if (host_client->whensaidhead > 9)
 			host_client->whensaidhead = 0;
-		host_client->whensaid[host_client->whensaidhead] = realtime;
+		host_client->whensaid[host_client->whensaidhead] = host.realtime;
 	}
 
 	p = Cmd_Args();
@@ -1309,13 +1309,13 @@ void SV_RunCmd (usercmd_t *ucmd)
 			PM_CalcRoll (sv_player->v.angles, sv_player->v.velocity, sv_rollangle.value, sv_rollspeed.value)*4;
 	}
 
-	host_frametime = ucmd->msec * 0.001;
-	if (host_frametime > 0.1)
-		host_frametime = 0.1;
+	sv.frametime = ucmd->msec * 0.001;
+	if (sv.frametime > 0.1)
+		sv.frametime = 0.1;
 
 	if (!host_client->spectator)
 	{
-		pr_global_struct->frametime = (float)host_frametime;
+		pr_global_struct->frametime = (float)sv.frametime;
 
 		pr_global_struct->time = (float)sv.time;
 		pr_global_struct->self = EDICT_TO_PROG(sv_player);
@@ -1432,7 +1432,7 @@ void SV_ExecuteClientMessage (client_t *cl)
 
 	// calc ping time
 	frame = &cl->frames[cl->netchan.incoming_acknowledged & UPDATE_MASK];
-	frame->ping_time = (float)(realtime - frame->senttime);
+	frame->ping_time = (float)(host.realtime - frame->senttime);
 
 	// make sure the reply sequence number matches the incoming
 	// sequence number 
@@ -1442,7 +1442,7 @@ void SV_ExecuteClientMessage (client_t *cl)
 		cl->send_message = false;	// don't reply, sequences have slipped		
 
 	// save time for ping calculations
-	cl->frames[cl->netchan.outgoing_sequence & UPDATE_MASK].senttime = realtime;
+	cl->frames[cl->netchan.outgoing_sequence & UPDATE_MASK].senttime = host.realtime;
 	cl->frames[cl->netchan.outgoing_sequence & UPDATE_MASK].ping_time = -1;
 
 	host_client = cl;

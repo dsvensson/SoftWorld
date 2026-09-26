@@ -868,7 +868,7 @@ void CL_ParseClientdata (void)
 	frame = &cl.frames[i];
 	parsecounttime = cl.frames[i].senttime;
 
-	frame->receivedtime = realtime;
+	frame->receivedtime = host.realtime;
 
 // calculate latency
 	latency = (float)(frame->receivedtime - frame->senttime);
@@ -1110,8 +1110,8 @@ void CL_ParseServerMessage (void)
 	char		*s;
 	int			i, j;
 
-	received_framecount = host_framecount;
-	cl.last_servermessage = realtime;
+	received_framecount = cls.framecount;
+	cl.last_servermessage = host.realtime;
 	CL_ClearProjectiles ();
 
 //
@@ -1248,7 +1248,7 @@ void CL_ParseServerMessage (void)
 			i = MSG_ReadByte ();
 			if (i >= MAX_CLIENTS)
 				Host_EndGame ("CL_ParseServerMessage: svc_updateentertime > MAX_SCOREBOARD");
-			cl.players[i].entertime = (float)(realtime - MSG_ReadFloat ());
+			cl.players[i].entertime = (float)(host.realtime - MSG_ReadFloat ());
 			break;
 			
 		case svc_spawnbaseline:
@@ -1291,7 +1291,7 @@ void CL_ParseServerMessage (void)
 
 		case svc_intermission:
 			cl.intermission = 1;
-			cl.completed_time = (int)realtime;
+			cl.completed_time = (int)host.realtime;
 			vid.recalc_refdef = true;	// go to full screen
 			for (i=0 ; i<3 ; i++)
 				cl.simorg[i] = MSG_ReadCoord ();			
@@ -1302,7 +1302,7 @@ void CL_ParseServerMessage (void)
 
 		case svc_finale:
 			cl.intermission = 2;
-			cl.completed_time = (int)realtime;
+			cl.completed_time = (int)host.realtime;
 			vid.recalc_refdef = true;	// go to full screen
 			SCR_CenterPrint (MSG_ReadString ());			
 			break;

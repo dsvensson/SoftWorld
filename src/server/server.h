@@ -67,6 +67,8 @@ typedef struct
 	cmodel_t	*worldmodel;
 	unsigned	map_checksum, map_checksum2;
 	movevars_t	movevars;			// player movement settings from the sv_ cvars
+	double		frametime;			// seconds the current physics step or move covers
+	double		physicstime;		// sv.time of the last physics frame
 	char		*model_precache[MAX_MODELS];	// NULL terminated
 	char		*sound_precache[MAX_SOUNDS];	// NULL terminated
 	char		*lightstyles[MAX_LIGHTSTYLES];

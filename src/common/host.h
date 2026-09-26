@@ -32,11 +32,15 @@ typedef struct
 	char	**argv;
 } quakeparms_t;
 
-extern	quakeparms_t	host_parms;
-extern	bool			host_initialized;	// true if into command execution
-extern	double			host_frametime;
-extern	double			realtime;			// not bounded in any way, changed at
-											// start of every frame, never reset
+// what every program's host shares with the modules
+typedef struct
+{
+	quakeparms_t	parms;
+	bool			initialized;	// true once commands are executed
+	double			realtime;		// seconds since startup; advanced once a host frame, never paused
+} host_t;
+
+extern	host_t	host;
 
 void	Host_Init (quakeparms_t *parms);
 void	Host_Shutdown (void);

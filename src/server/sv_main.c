@@ -20,12 +20,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "sv_local.h"
 
-quakeparms_t host_parms;
 
-bool	host_initialized;		// true if into command execution (compatability)
 
-double		host_frametime;
-double		realtime;				// without any filtering or bounding
 
 
 netadr_t	master_adr[MAX_MASTERS];	// address of group servers
@@ -214,7 +210,7 @@ void SV_DropClient (client_t *drop)
 	*drop->uploadfn = 0;
 
 	drop->state = cs_zombie;		// become free in a few seconds
-	drop->connection_started = realtime;	// for zombie timeout
+	drop->connection_started = host.realtime;	// for zombie timeout
 
 	drop->old_frags = 0;
 	drop->edict->v.frags = 0;
@@ -288,7 +284,7 @@ void SV_FullClientUpdate (client_t *client, sizebuf_t *buf)
 	
 	MSG_WriteByte (buf, svc_updateentertime);
 	MSG_WriteByte (buf, i);
-	MSG_WriteFloat (buf, (float)(realtime - client->connection_started));
+	MSG_WriteFloat (buf, (float)(host.realtime - client->connection_started));
 
 	Q_strncpyz (info, client->userinfo, sizeof(info));
 	Info_RemovePrefixedKeys (info, '_');	// server passwords, etc
@@ -354,7 +350,7 @@ void SVC_Status (void)
 			bottom = (bottom < 0) ? 0 : ((bottom > 13) ? 13 : bottom);
 			ping = SV_CalcPing (cl);
 			Con_Printf ("%i %i %i %i \"%s\" \"%s\" %i %i\n", cl->userid, 
-				cl->old_frags, (int)(realtime - cl->connection_started)/60,
+				cl->old_frags, (int)(host.realtime - cl->connection_started)/60,
 				ping, cl->name, Info_ValueForKey (cl->userinfo, "skin"), top, bottom);
 		}
 	}
@@ -378,10 +374,10 @@ void SV_CheckLog (void)
 	// bump sequence if allmost full, or ten minutes have passed and
 	// there is something still sitting there
 	if (sz->cursize > LOG_HIGHWATER
-	|| (realtime - svs.logtime > LOG_FLUSH && sz->cursize) )
+	|| (host.realtime - svs.logtime > LOG_FLUSH && sz->cursize) )
 	{
 		// swap buffers and bump sequence
-		svs.logtime = realtime;
+		svs.logtime = host.realtime;
 		svs.logsequence++;
 		sz = &svs.log[svs.logsequence&1];
 		sz->cursize = 0;
@@ -478,7 +474,7 @@ void SVC_GetChallenge (void)
 		// overwrite the oldest
 		svs.challenges[oldest].challenge = (rand() << 16) ^ rand();
 		svs.challenges[oldest].adr = net_from;
-		svs.challenges[oldest].time = (int)realtime;
+		svs.challenges[oldest].time = (int)host.realtime;
 		i = oldest;
 	}
 
@@ -1138,7 +1134,7 @@ void SV_CheckTimeouts (void)
 	float	droptime;
 	int	nclients;
 	
-	droptime = (float)(realtime - timeout.value);
+	droptime = (float)(host.realtime - timeout.value);
 	nclients = 0;
 
 	for (i=0,cl=svs.clients ; i<MAX_CLIENTS ; i++,cl++)
@@ -1153,7 +1149,7 @@ void SV_CheckTimeouts (void)
 			}
 		}
 		if (cl->state == cs_zombie && 
-			realtime - cl->connection_started > zombietime.value)
+			host.realtime - cl->connection_started > zombietime.value)
 		{
 			cl->state = cs_free;	// can now be reused
 		}
@@ -1230,10 +1226,9 @@ void SV_Frame (float time)
 	rand ();
 
 // decide the simulation time
-	if (!sv.paused) {
-		realtime += time;
+	host.realtime += time;
+	if (!sv.paused)
 		sv.time += time;
-	}
 
 // check timeouts
 	SV_CheckTimeouts ();
@@ -1388,7 +1383,7 @@ void SV_InitLocal (void)
 
 	// init fraglog stuff
 	svs.logsequence = 1;
-	svs.logtime = realtime;
+	svs.logtime = host.realtime;
 	svs.log[0].data = svs.log_buf[0];
 	svs.log[0].maxsize = sizeof(svs.log_buf[0]);
 	svs.log[0].cursize = 0;
@@ -1417,10 +1412,10 @@ void Master_Heartbeat (void)
 	int			active;
 	int			i;
 
-	if (realtime - svs.last_heartbeat < HEARTBEAT_SECONDS)
+	if (host.realtime - svs.last_heartbeat < HEARTBEAT_SECONDS)
 		return;		// not time to send yet
 
-	svs.last_heartbeat = realtime;
+	svs.last_heartbeat = host.realtime;
 
 	//
 	// count active users
@@ -1550,9 +1545,9 @@ void SV_ExtractFromUserinfo (client_t *cl)
 	
 	if (strncmp(val, cl->name, strlen(cl->name))) {
 		if (!sv.paused) {
-			if (!cl->lastnametime || realtime - cl->lastnametime > 5) {
+			if (!cl->lastnametime || host.realtime - cl->lastnametime > 5) {
 				cl->lastnamecount = 0;
-				cl->lastnametime = (float)realtime;
+				cl->lastnametime = (float)host.realtime;
 			} else if (cl->lastnamecount++ > 4) {
 				SV_BroadcastPrintf (PRINT_HIGH, "%s was kicked for name spam\n", cl->name);
 				SV_ClientPrintf (cl, PRINT_HIGH, "You were kicked from the game for name spamming\n");
@@ -1630,12 +1625,12 @@ void SV_Init (quakeparms_t *parms)
 	COM_AddParm ("-game");
 	COM_AddParm ("qw");
 
-	host_parms = *parms;
+	host.parms = *parms;
 
 	Cbuf_Init ();
 	Cmd_Init ();	
 
-	COM_Init (host_parms.basedir);
+	COM_Init (host.parms.basedir);
 	
 	PR_Init ();
 
@@ -1647,7 +1642,7 @@ void SV_Init (quakeparms_t *parms)
 
 	Cbuf_InsertText ("exec server.cfg\n");
 
-	host_initialized = true;
+	host.initialized = true;
 	
 	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
 

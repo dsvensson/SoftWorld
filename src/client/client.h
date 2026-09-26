@@ -200,6 +200,11 @@ typedef struct
 	bool		physframe;		// this frame makes and sends a command
 	double		physframetime;	// seconds the command covers
 	double		physaccum;		// time not yet covered by a command
+
+	double		frametime;		// seconds since the last drawn frame, at most 0.2
+	int			framecount;		// frames drawn, never reset
+	byte		*basepal;		// gfx/palette.lmp
+	byte		*colormap;		// gfx/colormap.lmp
 } client_static_t;
 
 extern client_static_t	cls;
@@ -523,6 +528,3 @@ void	Skin_NextDownload (void);
 extern	playermove_t	cl_pmove;
 
 extern	bool	noclip_anglehack;
-extern	byte	*host_basepal;
-extern	byte	*host_colormap;
-extern	int		host_framecount;	// incremented every frame, never reset

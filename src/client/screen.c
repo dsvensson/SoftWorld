@@ -229,7 +229,7 @@ void SCR_CheckDrawCenterString (void)
 	if (scr_center_lines > scr_erase_lines)
 		scr_erase_lines = scr_center_lines;
 
-	scr_centertime_off = (float)(scr_centertime_off - host_frametime);
+	scr_centertime_off = (float)(scr_centertime_off - cls.frametime);
 	
 	if (scr_centertime_off <= 0 && !cl.intermission)
 		return;
@@ -484,7 +484,7 @@ void SCR_DrawTurtle (void)
 	if (!scr_showturtle.value)
 		return;
 
-	if (host_frametime < 0.1)
+	if (cls.frametime < 0.1)
 	{
 		count = 0;
 		return;
@@ -585,14 +585,14 @@ void SCR_SetUpToDrawConsole (void)
 	
 	if (scr_conlines < scr_con_current)
 	{
-		scr_con_current = (float)(scr_con_current - scr_conspeed.value*host_frametime);
+		scr_con_current = (float)(scr_con_current - scr_conspeed.value*cls.frametime);
 		if (scr_conlines > scr_con_current)
 			scr_con_current = scr_conlines;
 
 	}
 	else if (scr_conlines > scr_con_current)
 	{
-		scr_con_current = (float)(scr_con_current + scr_conspeed.value*host_frametime);
+		scr_con_current = (float)(scr_con_current + scr_conspeed.value*cls.frametime);
 		if (scr_conlines < scr_con_current)
 			scr_con_current = scr_conlines;
 	}
@@ -748,7 +748,7 @@ void SCR_ScreenShot_f (void)
 // 
 
 	WritePCXfile (pcxname, vid.buffer, vid.width, vid.height, vid.rowbytes,
-				  host_basepal, false);
+				  cls.basepal, false);
 
 
 	Con_Printf ("Wrote %s\n", pcxname);
@@ -773,9 +773,9 @@ int MipColor(int r, int g, int b)
 	bestdist = 256*256*3;
 
 	for (i = 0; i < 256; i++) {
-		r1 = host_basepal[i*3] - r;
-		g1 = host_basepal[i*3+1] - g;
-		b1 = host_basepal[i*3+2] - b;
+		r1 = cls.basepal[i*3] - r;
+		g1 = cls.basepal[i*3+1] - g;
+		b1 = cls.basepal[i*3+2] - b;
 		dist = (float)(r1*r1 + g1*g1 + b1*b1);
 		if (dist < bestdist) {
 			bestdist = dist;
@@ -895,9 +895,9 @@ void SCR_RSShot_f (void)
 			for (/* */; dy < dey; dy++) {
 				src = vid.buffer + (vid.rowbytes * dy) + dx;
 				for (nx = dx; nx < dex; nx++) {
-					r += host_basepal[*src * 3];
-					g += host_basepal[*src * 3+1];
-					b += host_basepal[*src * 3+2];
+					r += cls.basepal[*src * 3];
+					g += cls.basepal[*src * 3+1];
+					b += cls.basepal[*src * 3+2];
 					src++;
 					count++;
 				}
@@ -922,7 +922,7 @@ void SCR_RSShot_f (void)
 	st[sizeof(st) - 1] = 0;
 	SCR_DrawStringToSnap (st, newbuf, w - (int)strlen(st)*8, 20, w);
 
-	WritePCXfile (pcxname, newbuf, w, h, w, host_basepal, true);
+	WritePCXfile (pcxname, newbuf, w, h, w, cls.basepal, true);
 
 	free(newbuf);
 

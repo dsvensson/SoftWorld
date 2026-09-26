@@ -225,7 +225,7 @@ void M_Main_Draw (void)
 	M_DrawPic ( (320-p->width)/2, 4, p);
 	M_DrawTransPic (72, 32, Draw_CachePic ("gfx/mainmenu.lmp") );
 
-	f = (int)(realtime * 10)%6;
+	f = (int)(host.realtime * 10)%6;
 	
 	M_DrawTransPic (54, 32 + m_main_cursor * 20,Draw_CachePic( va("gfx/menudot%i.lmp", f+1 ) ) );
 }
@@ -476,7 +476,7 @@ void M_Options_Draw (void)
 	}
 
 // cursor
-	M_DrawCharacter (200, 32 + options_cursor*8, 12+((int)(realtime*4)&1));
+	M_DrawCharacter (200, 32 + options_cursor*8, 12+((int)(host.realtime*4)&1));
 }
 
 
@@ -671,7 +671,7 @@ void M_Keys_Draw (void)
 	if (bind_grab)
 		M_DrawCharacter (130, 48 + keys_cursor*8, '=');
 	else
-		M_DrawCharacter (130, 48 + keys_cursor*8, 12+((int)(realtime*4)&1));
+		M_DrawCharacter (130, 48 + keys_cursor*8, 12+((int)(host.realtime*4)&1));
 }
 
 

@@ -163,7 +163,7 @@ void Netchan_Setup (netchan_t *chan, netadr_t adr, int remoteqport, netsrc_t soc
 	memset (chan, 0, sizeof(*chan));
 
 	chan->remote_address = adr;
-	chan->last_received = (float)realtime;
+	chan->last_received = (float)host.realtime;
 
 	chan->message.data = chan->message_buf;
 	chan->message.allowoverflow = true;
@@ -186,7 +186,7 @@ Returns true if the bandwidth choke isn't active
 #define	MAX_BACKUP	200
 bool Netchan_CanPacket (netchan_t *chan)
 {
-	if (chan->cleartime < realtime + MAX_BACKUP*chan->rate)
+	if (chan->cleartime < host.realtime + MAX_BACKUP*chan->rate)
 		return true;
 	return false;
 }
@@ -281,12 +281,12 @@ void Netchan_Transmit (netchan_t *chan, int length, byte *data)
 // send the datagram
 	i = chan->outgoing_sequence & (MAX_LATENT-1);
 	chan->outgoing_size[i] = send.cursize;
-	chan->outgoing_time[i] = realtime;
+	chan->outgoing_time[i] = host.realtime;
 
 	NET_SendPacket (send.cursize, send.data, chan->remote_address);
 
-	if (chan->cleartime < realtime)
-		chan->cleartime = realtime + send.cursize*chan->rate;
+	if (chan->cleartime < host.realtime)
+		chan->cleartime = host.realtime + send.cursize*chan->rate;
 	else
 		chan->cleartime += send.cursize*chan->rate;
 
@@ -392,10 +392,10 @@ bool Netchan_Process (netchan_t *chan)
 	chan->frame_latency = (float)(chan->frame_latency*OLD_AVG
 		+ (chan->outgoing_sequence-sequence_ack)*(1.0f-OLD_AVG));
 	chan->frame_rate = (float)(chan->frame_rate*OLD_AVG
-		+ (realtime-chan->last_received)*(1.0f-OLD_AVG));
+		+ (host.realtime-chan->last_received)*(1.0f-OLD_AVG));
 	chan->good_count += 1;
 
-	chan->last_received = (float)realtime;
+	chan->last_received = (float)host.realtime;
 
 	return true;
 }

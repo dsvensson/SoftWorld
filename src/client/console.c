@@ -317,7 +317,7 @@ void Con_Print (char *txt)
 			Con_Linefeed ();
 		// mark time for transparent overlay
 			if (con->current >= 0)
-				con_times[con->current % NUM_CON_TIMES] = (float)realtime;
+				con_times[con->current % NUM_CON_TIMES] = (float)host.realtime;
 		}
 
 		switch (c)
@@ -408,7 +408,7 @@ void Con_DrawInput (void)
 	text = key_lines[edit_line];
 	
 // add the cursor frame
-	text[key_linepos] = 10+((int)(realtime*con_cursorspeed)&1);
+	text[key_linepos] = 10+((int)(host.realtime*con_cursorspeed)&1);
 	
 // fill out remainder with spaces
 	for (i=key_linepos+1 ; i< con_linewidth ; i++)
@@ -451,7 +451,7 @@ void Con_DrawNotify (void)
 		time = con_times[i % NUM_CON_TIMES];
 		if (time == 0)
 			continue;
-		time = (float)(realtime - time);
+		time = (float)(host.realtime - time);
 		if (time > con_notifytime.value)
 			continue;
 		text = con->text + (i % con_totallines)*con_linewidth;
@@ -491,7 +491,7 @@ void Con_DrawNotify (void)
 			Draw_Character ( (x+skip)<<3, v, s[x]);
 			x++;
 		}
-		Draw_Character ( (x+skip)<<3, v, 10+((int)(realtime*con_cursorspeed)&1));
+		Draw_Character ( (x+skip)<<3, v, 10+((int)(host.realtime*con_cursorspeed)&1));
 		v += 8;
 	}
 	

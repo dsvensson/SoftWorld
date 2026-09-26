@@ -134,7 +134,7 @@ void CL_DecayLights (void)
 		if (dl->die < cl.time || !dl->radius)
 			continue;
 		
-		dl->radius = (float)(dl->radius - host_frametime*dl->decay);
+		dl->radius = (float)(dl->radius - cls.frametime*dl->decay);
 		if (dl->radius < 0)
 			dl->radius = 0;
 	}
@@ -797,9 +797,9 @@ void CL_LinkPlayers (void)
 	frame_t			*frame;
 	int				oldphysent;
 
-	playertime = realtime - cls.latency + 0.02;
-	if (playertime > realtime)
-		playertime = realtime;
+	playertime = host.realtime - cls.latency + 0.02;
+	if (playertime > host.realtime)
+		playertime = host.realtime;
 
 	frame = &cl.frames[cl.parsecount&UPDATE_MASK];
 
@@ -947,9 +947,9 @@ void CL_SetUpPlayerPrediction(bool dopred)
 	frame_t			*frame;
 	struct predicted_player *pplayer;
 
-	playertime = realtime - cls.latency + 0.02;
-	if (playertime > realtime)
-		playertime = realtime;
+	playertime = host.realtime - cls.latency + 0.02;
+	if (playertime > host.realtime)
+		playertime = host.realtime;
 
 	frame = &cl.frames[cl.parsecount&UPDATE_MASK];
 

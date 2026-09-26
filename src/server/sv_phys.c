@@ -106,7 +106,7 @@ bool SV_RunThink (edict_t *ent)
 		thinktime = ent->v.nextthink;
 		if (thinktime <= 0)
 			return true;
-		if (thinktime > sv.time + host_frametime)
+		if (thinktime > sv.time + sv.frametime)
 			return true;
 		
 		if (thinktime < sv.time)
@@ -350,7 +350,7 @@ SV_AddGravity
 */
 void SV_AddGravity (edict_t *ent, float scale)
 {
-	ent->v.velocity[2] = (float)(ent->v.velocity[2] - scale * sv.movevars.gravity * host_frametime);
+	ent->v.velocity[2] = (float)(ent->v.velocity[2] - scale * sv.movevars.gravity * sv.frametime);
 }
 
 /*
@@ -559,14 +559,14 @@ float	l;
 	oldltime = ent->v.ltime;
 	
 	thinktime = ent->v.nextthink;
-	if (thinktime < ent->v.ltime + host_frametime)
+	if (thinktime < ent->v.ltime + sv.frametime)
 	{
 		movetime = thinktime - ent->v.ltime;
 		if (movetime < 0)
 			movetime = 0;
 	}
 	else
-		movetime = (float)host_frametime;
+		movetime = (float)sv.frametime;
 
 	if (movetime)
 	{
@@ -624,8 +624,8 @@ void SV_Physics_Noclip (edict_t *ent)
 	if (!SV_RunThink (ent))
 		return;
 	
-	VectorMA (ent->v.angles, (float)host_frametime, ent->v.avelocity, ent->v.angles);
-	VectorMA (ent->v.origin, (float)host_frametime, ent->v.velocity, ent->v.origin);
+	VectorMA (ent->v.angles, (float)sv.frametime, ent->v.avelocity, ent->v.angles);
+	VectorMA (ent->v.origin, (float)sv.frametime, ent->v.velocity, ent->v.origin);
 
 	SV_LinkEdict (ent, false);
 }
@@ -708,10 +708,10 @@ void SV_Physics_Toss (edict_t *ent)
 		SV_AddGravity (ent, 1.0);
 
 // move angles
-	VectorMA (ent->v.angles, (float)host_frametime, ent->v.avelocity, ent->v.angles);
+	VectorMA (ent->v.angles, (float)sv.frametime, ent->v.avelocity, ent->v.angles);
 
 // move origin
-	VectorScale (ent->v.velocity, (float)host_frametime, move);
+	VectorScale (ent->v.velocity, (float)sv.frametime, move);
 	trace = SV_PushEntity (ent, move);
 	if (trace.fraction == 1)
 		return;
@@ -775,7 +775,7 @@ void SV_Physics_Step (edict_t *ent)
 
 		SV_AddGravity (ent, 1.0);
 		SV_CheckVelocity (ent);
-		SV_FlyMove (ent, (float)host_frametime, NULL);
+		SV_FlyMove (ent, (float)sv.frametime, NULL);
 		SV_LinkEdict (ent, true);
 
 		if ( (int)ent->v.flags & FL_ONGROUND )	// just hit ground
@@ -810,9 +810,9 @@ SV_RunEntity
 */
 void SV_RunEntity (edict_t *ent)
 {
-	if (ent->v.lastruntime == (float)realtime)
+	if (ent->v.lastruntime == (float)host.realtime)
 		return;
-	ent->v.lastruntime = (float)realtime;
+	ent->v.lastruntime = (float)host.realtime;
 
 	switch ( (int)ent->v.movetype)
 	{
@@ -852,7 +852,7 @@ void SV_RunNewmis (void)
 	if (!pr_global_struct->newmis)
 		return;
 	ent = PROG_TO_EDICT(pr_global_struct->newmis);
-	host_frametime = 0.05;
+	sv.frametime = 0.05;
 	pr_global_struct->newmis = 0;
 	
 	SV_RunEntity (ent);		
@@ -864,8 +864,6 @@ SV_Physics
 
 ================
 */
-static double	sv_physicstime;		// realtime of the last physics frame
-
 /*
 ================
 SV_NextFrameWait
@@ -885,7 +883,7 @@ double SV_NextFrameWait (void)
 	for (i=0 ; i<MAX_CLIENTS ; i++)
 		if (svs.clients[i].state != cs_free)
 			break;
-	wait = sv_physicstime + (i == MAX_CLIENTS ? sv_maxtic.value : sv_mintic.value) - realtime;
+	wait = sv.physicstime + (i == MAX_CLIENTS ? sv_maxtic.value : sv_mintic.value) - sv.time;
 	if (wait < 0)
 		return 0;
 	return wait > 0.1 ? 0.1 : wait;
@@ -897,14 +895,14 @@ void SV_Physics (void)
 	edict_t	*ent;
 
 // don't bother running a frame if sys_ticrate seconds haven't passed
-	host_frametime = realtime - sv_physicstime;
-	if (host_frametime < sv_mintic.value)
+	sv.frametime = sv.time - sv.physicstime;
+	if (sv.frametime < sv_mintic.value)
 		return;
-	if (host_frametime > sv_maxtic.value)
-		host_frametime = sv_maxtic.value;
-	sv_physicstime = realtime;
+	if (sv.frametime > sv_maxtic.value)
+		sv.frametime = sv_maxtic.value;
+	sv.physicstime = sv.time;
 
-	pr_global_struct->frametime = (float)host_frametime;
+	pr_global_struct->frametime = (float)sv.frametime;
 
 	SV_ProgStartFrame ();
 

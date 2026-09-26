@@ -333,13 +333,13 @@ void Cam_Track(usercmd_t *cmd)
 	self = frame->playerstate + cl.playernum;
 
 	if (!locked || !Cam_IsVisible(player, desired_position)) {
-		if (!locked || realtime - cam_lastviewtime > 0.1) {
+		if (!locked || host.realtime - cam_lastviewtime > 0.1) {
 			if (!InitFlyby(self, player, true))
 				InitFlyby(self, player, false);
-			cam_lastviewtime = realtime;
+			cam_lastviewtime = host.realtime;
 		}
 	} else
-		cam_lastviewtime = realtime;
+		cam_lastviewtime = host.realtime;
 	
 	// couldn't track for some reason
 	if (!locked || !autocam)

@@ -416,7 +416,7 @@ void CL_SendCmd (void)
 	// save this command off for prediction
 	i = cls.netchan.outgoing_sequence & UPDATE_MASK;
 	cmd = &cl.frames[i].cmd;
-	cl.frames[i].senttime = realtime;
+	cl.frames[i].senttime = host.realtime;
 	cl.frames[i].receivedtime = -1;		// we haven't gotten a reply yet
 
 //	seq_hash = (cls.netchan.outgoing_sequence & 0xffff) ; // ^ QW_CHECK_HASH;
@@ -621,7 +621,7 @@ static void IN_GamepadMove (usercmd_t *cmd)
 	cmd->forwardmove = (short)(cmd->forwardmove + in_stick[1] * cl_forwardspeed.value * speed);
 	cmd->sidemove = (short)(cmd->sidemove + in_stick[0] * cl_sidespeed.value * speed);
 
-	frametime = (float)host_frametime;
+	frametime = (float)cls.frametime;
 	cl.viewangles[YAW] -= in_stick[2] * joy_yawspeed.value * frametime;
 	if (in_stick[3])
 	{

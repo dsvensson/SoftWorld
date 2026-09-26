@@ -97,7 +97,7 @@ float V_CalcBob (void)
 	if (cl_pmove.onground == -1)
 		return bob;		// just use old value
 
-	bobtime += host_frametime;
+	bobtime += cls.frametime;
 	cycle = (float)(bobtime - (int)(bobtime/cl_bobcycle.value)*cl_bobcycle.value);
 	cycle /= cl_bobcycle.value;
 	if (cycle < cl_bobup.value)
@@ -177,7 +177,7 @@ void V_DriftPitch (void)
 		if ( abs(cl.frames[(cls.netchan.outgoing_sequence-1)&UPDATE_MASK].cmd.forwardmove) < 200)
 			cl.driftmove = 0;
 		else
-			cl.driftmove = (float)(cl.driftmove + host_frametime);
+			cl.driftmove = (float)(cl.driftmove + cls.frametime);
 	
 		if ( cl.driftmove > v_centermove.value)
 		{
@@ -194,8 +194,8 @@ void V_DriftPitch (void)
 		return;
 	}
 
-	move = (float)(host_frametime * cl.pitchvel);
-	cl.pitchvel = (float)(cl.pitchvel + host_frametime * v_centerspeed.value);
+	move = (float)(cls.frametime * cl.pitchvel);
+	cl.pitchvel = (float)(cl.pitchvel + cls.frametime * v_centerspeed.value);
 	
 //Con_Printf ("move: %f (%f)\n", move, host_frametime);
 
@@ -499,12 +499,12 @@ void V_UpdatePalette (void)
 	}
 	
 // drop the damage value
-	cl.cshifts[CSHIFT_DAMAGE].percent = (int)(cl.cshifts[CSHIFT_DAMAGE].percent - host_frametime*150);
+	cl.cshifts[CSHIFT_DAMAGE].percent = (int)(cl.cshifts[CSHIFT_DAMAGE].percent - cls.frametime*150);
 	if (cl.cshifts[CSHIFT_DAMAGE].percent <= 0)
 		cl.cshifts[CSHIFT_DAMAGE].percent = 0;
 
 // drop the bonus value
-	cl.cshifts[CSHIFT_BONUS].percent = (int)(cl.cshifts[CSHIFT_BONUS].percent - host_frametime*100);
+	cl.cshifts[CSHIFT_BONUS].percent = (int)(cl.cshifts[CSHIFT_BONUS].percent - cls.frametime*100);
 	if (cl.cshifts[CSHIFT_BONUS].percent <= 0)
 		cl.cshifts[CSHIFT_BONUS].percent = 0;
 
@@ -512,7 +512,7 @@ void V_UpdatePalette (void)
 	if (!new && !force)
 		return;
 			
-	basepal = host_basepal;
+	basepal = cls.basepal;
 	newpal = pal;
 	
 	for (i=0 ; i<256 ; i++)
@@ -579,7 +579,7 @@ void CalcGunAngle (void)
 		pitch = 10;
 	if (pitch < -10)
 		pitch = -10;
-	move = (float)(host_frametime*20);
+	move = (float)(cls.frametime*20);
 	if (yaw > oldyaw)
 	{
 		if (oldyaw + move < yaw)
@@ -646,7 +646,7 @@ void V_CalcViewRoll (void)
 	{
 		r_refdef.viewangles[ROLL] += v_dmg_time/v_kicktime.value*v_dmg_roll;
 		r_refdef.viewangles[PITCH] += v_dmg_time/v_kicktime.value*v_dmg_pitch;
-		v_dmg_time = (float)(v_dmg_time - host_frametime);
+		v_dmg_time = (float)(v_dmg_time - cls.frametime);
 	}
 
 }
@@ -776,7 +776,7 @@ DropPunchAngle
 */
 void DropPunchAngle (void)
 {
-	cl.punchangle = (float)(cl.punchangle - 10*host_frametime);
+	cl.punchangle = (float)(cl.punchangle - 10*cls.frametime);
 	if (cl.punchangle < 0)
 		cl.punchangle = 0;
 }
@@ -838,7 +838,7 @@ cl.simangles[ROLL] = 0;	// FIXME @@@
 	}
 
 	r_scene.visedicts = cl_visedicts;
-	r_scene.frametime = (float)host_frametime;
+	r_scene.frametime = (float)cls.frametime;
 	r_scene.drawviewmodel = Cam_DrawViewModel ()
 		&& !(cl.stats[STAT_ITEMS] & IT_INVISIBILITY) && cl.stats[STAT_HEALTH] > 0;
 
