@@ -28,12 +28,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 static edict_t	*nails[MAX_NAILS];
 static int		numnails;
 
-extern	int	sv_nailmodel, sv_supernailmodel, sv_playermodel;
 
 bool SV_AddNailUpdate (edict_t *ent)
 {
-	if (ent->v.modelindex != sv_nailmodel
-		&& ent->v.modelindex != sv_supernailmodel)
+	if (ent->v.modelindex != sv.nailmodel
+		&& ent->v.modelindex != sv.supernailmodel)
 		return false;
 	if (numnails == MAX_NAILS)
 		return true;
@@ -287,7 +286,7 @@ void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizeb
 		
 		pflags = PF_MSEC | PF_COMMAND;
 		
-		if (ent->v.modelindex != sv_playermodel)
+		if (ent->v.modelindex != sv.playermodel)
 			pflags |= PF_MODEL;
 		for (i=0 ; i<3 ; i++)
 			if (ent->v.velocity[i])

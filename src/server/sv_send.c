@@ -37,7 +37,6 @@ Con_Printf redirection
 
 static char	outputbuf[8000];
 
-redirect_t	sv_redirected;
 
 extern cvar_t sv_phs;
 
@@ -50,7 +49,7 @@ void SV_FlushRedirect (void)
 {
 	char	send[8000+6];
 
-	if (sv_redirected == RD_PACKET)
+	if (svs.redirected == RD_PACKET)
 	{
 		send[0] = 0xff;
 		send[1] = 0xff;
@@ -61,7 +60,7 @@ void SV_FlushRedirect (void)
 
 		NET_SendPacket ((int)strlen(send)+1, send, net_from);
 	}
-	else if (sv_redirected == RD_CLIENT)
+	else if (svs.redirected == RD_CLIENT)
 	{
 		ClientReliableWrite_Begin (host_client, svc_print, (int)strlen(outputbuf)+3);
 		ClientReliableWrite_Byte (host_client, PRINT_HIGH);
@@ -85,7 +84,7 @@ static void SV_RedirectPrint (const char *msg);
 
 void SV_BeginRedirect (redirect_t rd)
 {
-	sv_redirected = rd;
+	svs.redirected = rd;
 	outputbuf[0] = 0;
 	Con_SetPrintRedirect (SV_RedirectPrint);
 }
@@ -94,7 +93,7 @@ void SV_EndRedirect (void)
 {
 	Con_SetPrintRedirect (NULL);
 	SV_FlushRedirect ();
-	sv_redirected = RD_NONE;
+	svs.redirected = RD_NONE;
 }
 
 
@@ -121,10 +120,10 @@ Copies console output to the server log file.
 */
 void SV_LogPrint (const char *msg)
 {
-	if (sv_logfile)
+	if (svs.logfile)
 	{
-		fputs (msg, sv_logfile);
-		fflush (sv_logfile);
+		fputs (msg, svs.logfile);
+		fflush (svs.logfile);
 	}
 }
 
@@ -403,26 +402,25 @@ FRAME UPDATES
 ===============================================================================
 */
 
-int		sv_nailmodel, sv_supernailmodel, sv_playermodel;
 
 void SV_FindModelNumbers (void)
 {
 	int		i;
 
-	sv_nailmodel = -1;
-	sv_supernailmodel = -1;
-	sv_playermodel = -1;
+	sv.nailmodel = -1;
+	sv.supernailmodel = -1;
+	sv.playermodel = -1;
 
 	for (i=0 ; i<MAX_MODELS ; i++)
 	{
 		if (!sv.model_precache[i])
 			break;
 		if (!strcmp(sv.model_precache[i],"progs/spike.mdl"))
-			sv_nailmodel = i;
+			sv.nailmodel = i;
 		if (!strcmp(sv.model_precache[i],"progs/s_spike.mdl"))
-			sv_supernailmodel = i;
+			sv.supernailmodel = i;
 		if (!strcmp(sv.model_precache[i],"progs/player.mdl"))
-			sv_playermodel = i;
+			sv.playermodel = i;
 	}
 }
 
@@ -506,7 +504,7 @@ void SV_UpdateClientStats (client_t *client)
 	if (!client->spectator)
 		stats[STAT_ACTIVEWEAPON] = (int)ent->v.weapon;
 	// stuff the sigil bits into the high bits of items for sbar
-	stats[STAT_ITEMS] = (int)ent->v.items | ((int)pr_global_struct->serverflags << 28);
+	stats[STAT_ITEMS] = (int)ent->v.items | ((int)pr.global_struct->serverflags << 28);
 
 	for (i=0 ; i<MAX_CL_STATS ; i++)
 		if (stats[i] != client->stats[i])

@@ -56,14 +56,30 @@ typedef struct edict_s
 
 //============================================================================
 
-extern	dprograms_t		*progs;
-extern	dfunction_t		*pr_functions;
-extern	char			*pr_strings;
-extern	dstatement_t	*pr_statements;
-extern	globalvars_t	*pr_global_struct;
-extern	float			*pr_globals;			// same as pr_global_struct
+// the QuakeC virtual machine
+typedef struct
+{
+	dprograms_t		*progs;
+	dfunction_t		*functions;
+	char			*strings;
+	dstatement_t	*statements;
+	globalvars_t	*global_struct;
+	float			*globals;			// same as global_struct
+	int				edict_size;			// in bytes
 
-extern	int				pr_edict_size;	// in bytes
+	bool			trace;
+	dfunction_t		*xfunction;			// the function running
+	int				argc;				// arguments of the builtin being called
+	int				num_prstr;			// C strings QuakeC can reach
+
+	// optional QuakeC functions
+	func_t			SpectatorConnect;
+	func_t			SpectatorThink;
+	func_t			SpectatorDisconnect;
+} pr_state_t;
+
+extern	pr_state_t	pr;
+
 
 //============================================================================
 
@@ -90,20 +106,20 @@ void ED_LoadFromFile (char *data);
 edict_t *EDICT_NUM(int n);
 int NUM_FOR_EDICT(edict_t *e);
 
-#define	NEXT_EDICT(e) ((edict_t *)( (byte *)e + pr_edict_size))
+#define	NEXT_EDICT(e) ((edict_t *)( (byte *)e + pr.edict_size))
 
 #define	EDICT_TO_PROG(e) ((int)((byte *)(e) - (byte *)sv.edicts))
 #define PROG_TO_EDICT(e) ((edict_t *)((byte *)sv.edicts + e))
 
 //============================================================================
 
-#define	G_FLOAT(o) (pr_globals[o])
-#define	G_INT(o) (*(int *)&pr_globals[o])
-#define	G_EDICT(o) ((edict_t *)((byte *)sv.edicts+ *(int *)&pr_globals[o]))
+#define	G_FLOAT(o) (pr.globals[o])
+#define	G_INT(o) (*(int *)&pr.globals[o])
+#define	G_EDICT(o) ((edict_t *)((byte *)sv.edicts+ *(int *)&pr.globals[o]))
 #define G_EDICTNUM(o) NUM_FOR_EDICT(G_EDICT(o))
-#define	G_VECTOR(o) (&pr_globals[o])
-#define	G_STRING(o) (PR_GetString(*(string_t *)&pr_globals[o]))
-#define	G_FUNCTION(o) (*(func_t *)&pr_globals[o])
+#define	G_VECTOR(o) (&pr.globals[o])
+#define	G_STRING(o) (PR_GetString(*(string_t *)&pr.globals[o]))
+#define	G_FUNCTION(o) (*(func_t *)&pr.globals[o])
 
 #define	E_FLOAT(e,o) (((float*)&e->v)[o])
 #define	E_INT(e,o) (*(int *)&((float*)&e->v)[o])
@@ -115,14 +131,8 @@ typedef void (*builtin_t) (void);
 extern	builtin_t *pr_builtins;
 extern int pr_numbuiltins;
 
-extern int		pr_argc;
 
-extern	bool	pr_trace;
-extern	dfunction_t	*pr_xfunction;
 
-extern func_t SpectatorConnect;
-extern func_t SpectatorThink;
-extern func_t SpectatorDisconnect;
 
 [[noreturn]] void PR_RunError (char *error, ...);
 
@@ -136,7 +146,6 @@ eval_t *GetEdictFieldValue(edict_t *ed, char *field);
 //
 #define MAX_PRSTR 1024
 
-extern int num_prstr;
 
 char *PR_GetString(int num);
 int PR_SetString(char *s);

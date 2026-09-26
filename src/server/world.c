@@ -105,8 +105,6 @@ ENTITY AREA CHECKING
 */
 
 
-areanode_t	sv_areanodes[AREA_NODES];
-static int			sv_numareanodes;
 
 /*
 ===============
@@ -120,8 +118,8 @@ areanode_t *SV_CreateAreaNode (int depth, vec3_t mins, vec3_t maxs)
 	vec3_t		size;
 	vec3_t		mins1, maxs1, mins2, maxs2;
 
-	anode = &sv_areanodes[sv_numareanodes];
-	sv_numareanodes++;
+	anode = &sv.areanodes[sv.numareanodes];
+	sv.numareanodes++;
 
 	ClearLink (&anode->trigger_edicts);
 	ClearLink (&anode->solid_edicts);
@@ -161,8 +159,8 @@ SV_ClearWorld
 */
 void SV_ClearWorld (void)
 {
-	memset (sv_areanodes, 0, sizeof(sv_areanodes));
-	sv_numareanodes = 0;
+	memset (sv.areanodes, 0, sizeof(sv.areanodes));
+	sv.numareanodes = 0;
 	SV_CreateAreaNode (0, sv.worldmodel->mins, sv.worldmodel->maxs);
 }
 
@@ -210,16 +208,16 @@ void SV_TouchLinks ( edict_t *ent, areanode_t *node )
 		|| ent->v.absmax[2] < touch->v.absmin[2] )
 			continue;
 			
-		old_self = pr_global_struct->self;
-		old_other = pr_global_struct->other;
+		old_self = pr.global_struct->self;
+		old_other = pr.global_struct->other;
 
-		pr_global_struct->self = EDICT_TO_PROG(touch);
-		pr_global_struct->other = EDICT_TO_PROG(ent);
-		pr_global_struct->time = (float)sv.time;
+		pr.global_struct->self = EDICT_TO_PROG(touch);
+		pr.global_struct->other = EDICT_TO_PROG(ent);
+		pr.global_struct->time = (float)sv.time;
 		PR_ExecuteProgram (touch->v.touch);
 
-		pr_global_struct->self = old_self;
-		pr_global_struct->other = old_other;
+		pr.global_struct->self = old_self;
+		pr.global_struct->other = old_other;
 	}
 	
 // recurse down both sides
@@ -286,7 +284,7 @@ void SV_LinkEdict (edict_t *ent, bool touch_triggers)
 		return;
 
 // find the first node that the ent's box crosses
-	node = sv_areanodes;
+	node = sv.areanodes;
 	while (1)
 	{
 		if (node->axis == -1)
@@ -308,7 +306,7 @@ void SV_LinkEdict (edict_t *ent, bool touch_triggers)
 	
 // if touch_triggers, touch all entities at this node and decend for more
 	if (touch_triggers)
-		SV_TouchLinks ( ent, sv_areanodes );
+		SV_TouchLinks ( ent, sv.areanodes );
 }
 
 
@@ -550,7 +548,7 @@ trace_t SV_Move (vec3_t start, vec3_t mins, vec3_t maxs, vec3_t end, int type, e
 	SV_MoveBounds ( start, clip.mins2, clip.maxs2, end, clip.boxmins, clip.boxmaxs );
 
 // clip to entities
-	SV_ClipToLinks ( sv_areanodes, &clip );
+	SV_ClipToLinks ( sv.areanodes, &clip );
 
 	return clip.trace;
 }

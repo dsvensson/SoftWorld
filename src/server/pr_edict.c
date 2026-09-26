@@ -21,9 +21,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "sv_local.h"
 
-dprograms_t		*progs;
-dfunction_t		*pr_functions;
-char			*pr_strings;
 
 // pr_strings lives in this pool: the progs string table followed by strings created
 // while the level runs, so every string is a small positive offset from pr_strings
@@ -31,10 +28,7 @@ static vmarray_t	pr_stringpool;
 static size_t		pr_stringpool_used;
 static ddef_t			*pr_fielddefs;
 static ddef_t			*pr_globaldefs;
-dstatement_t	*pr_statements;
-globalvars_t	*pr_global_struct;
-float			*pr_globals;			// same as pr_global_struct
-int				pr_edict_size;	// in bytes
+pr_state_t		pr;
 
 static int		type_size[8] = {1,sizeof(void *)/4,1,3,1,1,sizeof(void *)/4,sizeof(void *)/4};
 
@@ -51,9 +45,6 @@ typedef struct {
 
 static gefv_cache	gefvCache[GEFV_CACHESIZE] = {{NULL, ""}, {NULL, ""}};
 
-func_t SpectatorConnect;
-func_t SpectatorThink;
-func_t SpectatorDisconnect;
 
 
 /*
@@ -65,7 +56,7 @@ Sets everything to NULL
 */
 void ED_ClearEdict (edict_t *e)
 {
-	memset (&e->v, 0, progs->entityfields * 4);
+	memset (&e->v, 0, pr.progs->entityfields * 4);
 	e->free = false;
 }
 
@@ -151,7 +142,7 @@ ddef_t *ED_GlobalAtOfs (int ofs)
 	ddef_t		*def;
 	int			i;
 	
-	for (i=0 ; i<progs->numglobaldefs ; i++)
+	for (i=0 ; i<pr.progs->numglobaldefs ; i++)
 	{
 		def = &pr_globaldefs[i];
 		if (def->ofs == ofs)
@@ -170,7 +161,7 @@ ddef_t *ED_FieldAtOfs (int ofs)
 	ddef_t		*def;
 	int			i;
 	
-	for (i=0 ; i<progs->numfielddefs ; i++)
+	for (i=0 ; i<pr.progs->numfielddefs ; i++)
 	{
 		def = &pr_fielddefs[i];
 		if (def->ofs == ofs)
@@ -189,7 +180,7 @@ ddef_t *ED_FindField (char *name)
 	ddef_t		*def;
 	int			i;
 	
-	for (i=0 ; i<progs->numfielddefs ; i++)
+	for (i=0 ; i<pr.progs->numfielddefs ; i++)
 	{
 		def = &pr_fielddefs[i];
 		if (!strcmp(PR_GetString(def->s_name),name) )
@@ -208,9 +199,9 @@ dfunction_t *ED_FindFunction (char *name)
 	dfunction_t		*func;
 	int				i;
 	
-	for (i=0 ; i<progs->numfunctions ; i++)
+	for (i=0 ; i<pr.progs->numfunctions ; i++)
 	{
-		func = &pr_functions[i];
+		func = &pr.functions[i];
 		if (!strcmp(PR_GetString(func->s_name),name) )
 			return func;
 	}
@@ -272,7 +263,7 @@ char *PR_ValueString (etype_t type, eval_t *val)
 		snprintf (line, sizeof(line), "entity %i", NUM_FOR_EDICT(PROG_TO_EDICT(val->edict)) );
 		break;
 	case ev_function:
-		f = pr_functions + val->function;
+		f = pr.functions + val->function;
 		snprintf (line, sizeof(line), "%s()", PR_GetString(f->s_name));
 		break;
 	case ev_field:
@@ -315,7 +306,7 @@ char *PR_GlobalString (int ofs)
 	void	*val;
 	static char	line[128];
 	
-	val = (void *)&pr_globals[ofs];
+	val = (void *)&pr.globals[ofs];
 	def = ED_GlobalAtOfs(ofs);
 	if (!def)
 		snprintf (line, sizeof(line), "%i(?\?\?)", ofs);
@@ -376,7 +367,7 @@ void ED_Print (edict_t *ed)
 		return;
 	}
 	
-	for (i=1 ; i<progs->numfielddefs ; i++)
+	for (i=1 ; i<pr.progs->numfielddefs ; i++)
 	{
 		d = &pr_fielddefs[i];
 		name = PR_GetString(d->s_name);
@@ -588,7 +579,7 @@ bool	ED_ParseEpair (void *base, ddef_t *key, char *s)
 			Con_Printf ("Can't find function %s\n", s);
 			return false;
 		}
-		*(func_t *)d = (func_t)(func - pr_functions);
+		*(func_t *)d = (func_t)(func - pr.functions);
 		break;
 		
 	default:
@@ -617,7 +608,7 @@ char *ED_ParseEdict (char *data, edict_t *ent)
 
 // clear it
 	if (ent != sv.edicts)	// hack
-		memset (&ent->v, 0, progs->entityfields * 4);
+		memset (&ent->v, 0, pr.progs->entityfields * 4);
 
 // go through all the dictionary pairs
 	while (1)
@@ -708,7 +699,7 @@ void ED_LoadFromFile (char *data)
 	
 	ent = NULL;
 	inhibit = 0;
-	pr_global_struct->time = (float)sv.time;
+	pr.global_struct->time = (float)sv.time;
 
 // parse ents
 	while (1)
@@ -756,8 +747,8 @@ void ED_LoadFromFile (char *data)
 			continue;
 		}
 
-		pr_global_struct->self = EDICT_TO_PROG(ent);
-		PR_ExecuteProgram ((func_t)(func - pr_functions));
+		pr.global_struct->self = EDICT_TO_PROG(ent);
+		PR_ExecuteProgram ((func_t)(func - pr.functions));
 		SV_FlushSignon();
 	}	
 
@@ -780,73 +771,73 @@ void PR_LoadProgs (void)
 	for (i=0 ; i<GEFV_CACHESIZE ; i++)
 		gefvCache[i].field[0] = 0;
 
-	if (progs)
-		Mem_Free (progs);
-	progs = (dprograms_t *)FS_LoadFile ("qwprogs.dat", NULL);
-	if (!progs)
-		progs = (dprograms_t *)FS_LoadFile ("progs.dat", NULL);
-	if (!progs)
+	if (pr.progs)
+		Mem_Free (pr.progs);
+	pr.progs = (dprograms_t *)FS_LoadFile ("qwprogs.dat", NULL);
+	if (!pr.progs)
+		pr.progs = (dprograms_t *)FS_LoadFile ("progs.dat", NULL);
+	if (!pr.progs)
 		SV_Error ("PR_LoadProgs: couldn't load progs.dat");
 	Con_DPrintf ("Programs occupy %iK.\n", com_filesize/1024);
 
 // add prog crc to the serverinfo
-	snprintf (num, sizeof(num), "%i", CRC_Block ((byte *)progs, com_filesize));
+	snprintf (num, sizeof(num), "%i", CRC_Block ((byte *)pr.progs, com_filesize));
 	Info_SetValueForStarKey (svs.info, "*progs", num, MAX_SERVERINFO_STRING, SV_InfoCharset ());
 
 // byte swap the header
-	for (i=0 ; i<(int)(sizeof(*progs)/4) ; i++)
-		((int *)progs)[i] = LittleLong ( ((int *)progs)[i] );		
+	for (i=0 ; i<(int)(sizeof(*pr.progs)/4) ; i++)
+		((int *)pr.progs)[i] = LittleLong ( ((int *)pr.progs)[i] );		
 
-	if (progs->version != PROG_VERSION)
-		SV_Error ("progs.dat has wrong version number (%i should be %i)", progs->version, PROG_VERSION);
-	if (progs->crc != PROGHEADER_CRC)
+	if (pr.progs->version != PROG_VERSION)
+		SV_Error ("progs.dat has wrong version number (%i should be %i)", pr.progs->version, PROG_VERSION);
+	if (pr.progs->crc != PROGHEADER_CRC)
 		SV_Error ("You must have the progs.dat from QuakeWorld installed");
 
-	pr_functions = (dfunction_t *)((byte *)progs + progs->ofs_functions);
+	pr.functions = (dfunction_t *)((byte *)pr.progs + pr.progs->ofs_functions);
 	if (!pr_stringpool.base)
 		VMArray_Init (&pr_stringpool, "QuakeC strings", 1, 256 * 1024 * 1024);
 	pr_stringpool_used = 0;
-	pr_strings = VMArray_Reserve (&pr_stringpool, 0, (size_t)progs->numstrings);
-	memcpy (pr_strings, (byte *)progs + progs->ofs_strings, (size_t)progs->numstrings);
-	pr_stringpool_used = (size_t)progs->numstrings;
-	pr_globaldefs = (ddef_t *)((byte *)progs + progs->ofs_globaldefs);
-	pr_fielddefs = (ddef_t *)((byte *)progs + progs->ofs_fielddefs);
-	pr_statements = (dstatement_t *)((byte *)progs + progs->ofs_statements);
+	pr.strings = VMArray_Reserve (&pr_stringpool, 0, (size_t)pr.progs->numstrings);
+	memcpy (pr.strings, (byte *)pr.progs + pr.progs->ofs_strings, (size_t)pr.progs->numstrings);
+	pr_stringpool_used = (size_t)pr.progs->numstrings;
+	pr_globaldefs = (ddef_t *)((byte *)pr.progs + pr.progs->ofs_globaldefs);
+	pr_fielddefs = (ddef_t *)((byte *)pr.progs + pr.progs->ofs_fielddefs);
+	pr.statements = (dstatement_t *)((byte *)pr.progs + pr.progs->ofs_statements);
 
-	num_prstr = 0;
+	pr.num_prstr = 0;
 
-	pr_global_struct = (globalvars_t *)((byte *)progs + progs->ofs_globals);
-	pr_globals = (float *)pr_global_struct;
+	pr.global_struct = (globalvars_t *)((byte *)pr.progs + pr.progs->ofs_globals);
+	pr.globals = (float *)pr.global_struct;
 	
-	pr_edict_size = progs->entityfields * 4 + sizeof (edict_t) - sizeof(entvars_t);
+	pr.edict_size = pr.progs->entityfields * 4 + sizeof (edict_t) - sizeof(entvars_t);
 	
 // byte swap the lumps
-	for (i=0 ; i<progs->numstatements ; i++)
+	for (i=0 ; i<pr.progs->numstatements ; i++)
 	{
-		pr_statements[i].op = LittleShort(pr_statements[i].op);
-		pr_statements[i].a = LittleShort(pr_statements[i].a);
-		pr_statements[i].b = LittleShort(pr_statements[i].b);
-		pr_statements[i].c = LittleShort(pr_statements[i].c);
+		pr.statements[i].op = LittleShort(pr.statements[i].op);
+		pr.statements[i].a = LittleShort(pr.statements[i].a);
+		pr.statements[i].b = LittleShort(pr.statements[i].b);
+		pr.statements[i].c = LittleShort(pr.statements[i].c);
 	}
 
-	for (i=0 ; i<progs->numfunctions; i++)
+	for (i=0 ; i<pr.progs->numfunctions; i++)
 	{
-	pr_functions[i].first_statement = LittleLong (pr_functions[i].first_statement);
-	pr_functions[i].parm_start = LittleLong (pr_functions[i].parm_start);
-	pr_functions[i].s_name = LittleLong (pr_functions[i].s_name);
-	pr_functions[i].s_file = LittleLong (pr_functions[i].s_file);
-	pr_functions[i].numparms = LittleLong (pr_functions[i].numparms);
-	pr_functions[i].locals = LittleLong (pr_functions[i].locals);
+	pr.functions[i].first_statement = LittleLong (pr.functions[i].first_statement);
+	pr.functions[i].parm_start = LittleLong (pr.functions[i].parm_start);
+	pr.functions[i].s_name = LittleLong (pr.functions[i].s_name);
+	pr.functions[i].s_file = LittleLong (pr.functions[i].s_file);
+	pr.functions[i].numparms = LittleLong (pr.functions[i].numparms);
+	pr.functions[i].locals = LittleLong (pr.functions[i].locals);
 	}	
 
-	for (i=0 ; i<progs->numglobaldefs ; i++)
+	for (i=0 ; i<pr.progs->numglobaldefs ; i++)
 	{
 		pr_globaldefs[i].type = LittleShort (pr_globaldefs[i].type);
 		pr_globaldefs[i].ofs = LittleShort (pr_globaldefs[i].ofs);
 		pr_globaldefs[i].s_name = LittleLong (pr_globaldefs[i].s_name);
 	}
 
-	for (i=0 ; i<progs->numfielddefs ; i++)
+	for (i=0 ; i<pr.progs->numfielddefs ; i++)
 	{
 		pr_fielddefs[i].type = LittleShort (pr_fielddefs[i].type);
 		if (pr_fielddefs[i].type & DEF_SAVEGLOBAL)
@@ -855,18 +846,18 @@ void PR_LoadProgs (void)
 		pr_fielddefs[i].s_name = LittleLong (pr_fielddefs[i].s_name);
 	}
 
-	for (i=0 ; i<progs->numglobals ; i++)
-		((int *)pr_globals)[i] = LittleLong (((int *)pr_globals)[i]);
+	for (i=0 ; i<pr.progs->numglobals ; i++)
+		((int *)pr.globals)[i] = LittleLong (((int *)pr.globals)[i]);
 
 	// Zoid, find the spectator functions
-	SpectatorConnect = SpectatorThink = SpectatorDisconnect = 0;
+	pr.SpectatorConnect = pr.SpectatorThink = pr.SpectatorDisconnect = 0;
 
 	if ((f = ED_FindFunction ("SpectatorConnect")) != NULL)
-		SpectatorConnect = (func_t)(f - pr_functions);
+		pr.SpectatorConnect = (func_t)(f - pr.functions);
 	if ((f = ED_FindFunction ("SpectatorThink")) != NULL)
-		SpectatorThink = (func_t)(f - pr_functions);
+		pr.SpectatorThink = (func_t)(f - pr.functions);
 	if ((f = ED_FindFunction ("SpectatorDisconnect")) != NULL)
-		SpectatorDisconnect = (func_t)(f - pr_functions);
+		pr.SpectatorDisconnect = (func_t)(f - pr.functions);
 }
 
 
@@ -889,7 +880,7 @@ edict_t *EDICT_NUM(int n)
 {
 	if (n < 0 || n >= MAX_EDICTS)
 		SV_Error ("EDICT_NUM: bad number %i", n);
-	return (edict_t *)((byte *)sv.edicts+ (n)*pr_edict_size);
+	return (edict_t *)((byte *)sv.edicts+ (n)*pr.edict_size);
 }
 
 int NUM_FOR_EDICT(edict_t *e)
@@ -897,7 +888,7 @@ int NUM_FOR_EDICT(edict_t *e)
 	int		b;
 	
 	b = (int)((byte *)e - (byte *)sv.edicts);
-	b = b / pr_edict_size;
+	b = b / pr.edict_size;
 	
 	if (b < 0 || b >= sv.num_edicts)
 		SV_Error ("NUM_FOR_EDICT: bad pointer");

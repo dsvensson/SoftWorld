@@ -24,9 +24,7 @@ server_static_t	svs;				// persistant server info
 server_t		sv;					// local server
 static arena_t		sv_level_arena;		// memory that lives as long as the current level
 
-char	localmodels[MAX_MODELS][5];	// inline model names for precache
 
-char localinfo[MAX_LOCALINFO_STRING+1]; // local game info
 
 /*
 ================
@@ -156,7 +154,7 @@ void SV_SaveSpawnparms (void)
 		return;		// no progs loaded yet
 
 	// serverflags is the only game related thing maintained
-	svs.serverflags = (int)pr_global_struct->serverflags;
+	svs.serverflags = (int)pr.global_struct->serverflags;
 
 	for (i=0, host_client = svs.clients ; i<MAX_CLIENTS ; i++, host_client++)
 	{
@@ -167,10 +165,10 @@ void SV_SaveSpawnparms (void)
 		host_client->state = cs_connected;
 
 		// call the progs to get default spawn parms for the new client
-		pr_global_struct->self = EDICT_TO_PROG(host_client->edict);
-		PR_ExecuteProgram (pr_global_struct->SetChangeParms);
+		pr.global_struct->self = EDICT_TO_PROG(host_client->edict);
+		PR_ExecuteProgram (pr.global_struct->SetChangeParms);
 		for (j=0 ; j<NUM_SPAWN_PARMS ; j++)
-			host_client->spawn_parms[j] = (&pr_global_struct->parm1)[j];
+			host_client->spawn_parms[j] = (&pr.global_struct->parm1)[j];
 	}
 }
 
@@ -326,7 +324,7 @@ void SV_SpawnServer (char *server)
 	PR_LoadProgs ();
 
 	// allocate edicts
-	sv.edicts = Arena_Alloc (&sv_level_arena, (size_t)MAX_EDICTS*pr_edict_size);
+	sv.edicts = Arena_Alloc (&sv_level_arena, (size_t)MAX_EDICTS*pr.edict_size);
 	
 	// leave slots at start for clients only
 	sv.num_edicts = MAX_CLIENTS+1;
@@ -352,15 +350,15 @@ void SV_SpawnServer (char *server)
 	//
 	SV_ClearWorld ();
 	
-	sv.sound_precache[0] = pr_strings;
+	sv.sound_precache[0] = pr.strings;
 
-	sv.model_precache[0] = pr_strings;
+	sv.model_precache[0] = pr.strings;
 	sv.model_precache[1] = sv.modelname;
 	sv.models[1] = sv.worldmodel;
 	for (i=1 ; i<CM_NumInlineModels () ; i++)
 	{
-		sv.model_precache[1+i] = localmodels[i];
-		sv.models[i+1] = CM_InlineModel (localmodels[i]);
+		sv.model_precache[1+i] = svs.localmodels[i];
+		sv.models[i+1] = CM_InlineModel (svs.localmodels[i]);
 	}
 
 	//check player/eyes models for hacks
@@ -382,9 +380,9 @@ void SV_SpawnServer (char *server)
 	ent->v.solid = SOLID_BSP;
 	ent->v.movetype = MOVETYPE_PUSH;
 
-	pr_global_struct->mapname = PR_SetString(sv.name);
+	pr.global_struct->mapname = PR_SetString(sv.name);
 	// serverflags are for cross level information (sigils)
-	pr_global_struct->serverflags = (float)svs.serverflags;
+	pr.global_struct->serverflags = (float)svs.serverflags;
 	
 	// run the frame start qc function to let progs check cvars
 	SV_ProgStartFrame ();

@@ -36,6 +36,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define	MAX_MASTERS	8				// max recipients for heartbeat packets
 
+typedef enum {RD_NONE, RD_CLIENT, RD_PACKET} redirect_t;
+
 #define	MAX_SIGNON_BUFFERS	8
 
 typedef enum {
@@ -107,6 +109,11 @@ typedef struct
 	int			num_signon_buffers;
 	int			signon_buffer_size[MAX_SIGNON_BUFFERS];
 	byte		signon_buffers[MAX_SIGNON_BUFFERS][MAX_DATAGRAM];
+
+	areanode_t	areanodes[AREA_NODES];	// entities sorted by position
+	int			numareanodes;
+
+	int			nailmodel, supernailmodel, playermodel;	// model indices, for compression
 } server_t;
 
 
@@ -264,6 +271,21 @@ typedef struct
 	byte		log_buf[2][MAX_DATAGRAM];
 
 	challenge_t	challenges[MAX_CHALLENGES];	// to prevent invalid IPs from connecting
+
+	netadr_t	master_adr[MAX_MASTERS];	// heartbeats go here
+	char		localmodels[MAX_MODELS][5];	// inline model names for precache
+	char		localinfo[MAX_LOCALINFO_STRING+1];	// info for QuakeC only
+	FILE		*logfile;
+	FILE		*fraglogfile;
+	redirect_t	redirected;					// where console output goes
+
+	struct
+	{
+		int		messages;		// this many ...
+		int		persecond;		// ... in this many seconds is flooding
+		int		secondsdead;	// seconds a flooder is muted
+		char	msg[255];		// what they are told
+	} floodprot;
 } server_static_t;
 
 //=============================================================================
@@ -337,7 +359,6 @@ typedef struct
 extern	cvar_t	sv_mintic, sv_maxtic;
 extern	cvar_t	sv_maxspeed;
 
-extern	netadr_t	master_adr[MAX_MASTERS];	// address of the master server
 
 extern	cvar_t	teamplay;
 
@@ -348,12 +369,8 @@ extern	client_t	*host_client;
 
 extern	edict_t		*sv_player;
 
-extern	char		localmodels[MAX_MODELS][5];	// inline model names for precache
 
-extern	char		localinfo[MAX_LOCALINFO_STRING+1];
 
-extern	FILE		*sv_logfile;
-extern	FILE		*sv_fraglogfile;
 
 //===========================================================
 
@@ -437,7 +454,6 @@ void SV_TogglePause (const char *msg);
 //
 // svonly.c
 //
-typedef enum {RD_NONE, RD_CLIENT, RD_PACKET} redirect_t;
 void SV_BeginRedirect (redirect_t rd);
 void SV_EndRedirect (void);
 

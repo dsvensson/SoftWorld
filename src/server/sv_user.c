@@ -32,8 +32,6 @@ static cvar_t	sv_spectalk = {.name = "sv_spectalk", .string = "1"};
 static cvar_t	sv_mapcheck	= {.name = "sv_mapcheck", .string = "1"};
 
 
-extern int fp_messages, fp_persecond, fp_secondsdead;
-extern char fp_msg[];
 extern cvar_t pausable;
 
 /*
@@ -347,7 +345,7 @@ void SV_Spawn_f (void)
 	// set up the edict
 	ent = host_client->edict;
 
-	memset (&ent->v, 0, progs->entityfields * 4);
+	memset (&ent->v, 0, pr.progs->entityfields * 4);
 	ent->v.colormap = (float)NUM_FOR_EDICT(ent);
 	ent->v.team = 0;	// FIXME
 	ent->v.netname = PR_SetString(host_client->name);
@@ -368,19 +366,19 @@ void SV_Spawn_f (void)
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_TOTALSECRETS);
-	ClientReliableWrite_Long (host_client, (int)pr_global_struct->total_secrets);
+	ClientReliableWrite_Long (host_client, (int)pr.global_struct->total_secrets);
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_TOTALMONSTERS);
-	ClientReliableWrite_Long (host_client, (int)pr_global_struct->total_monsters);
+	ClientReliableWrite_Long (host_client, (int)pr.global_struct->total_monsters);
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_SECRETS);
-	ClientReliableWrite_Long (host_client, (int)pr_global_struct->found_secrets);
+	ClientReliableWrite_Long (host_client, (int)pr.global_struct->found_secrets);
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_MONSTERS);
-	ClientReliableWrite_Long (host_client, (int)pr_global_struct->killed_monsters);
+	ClientReliableWrite_Long (host_client, (int)pr.global_struct->killed_monsters);
 
 	// get the client to check and download skins
 	// when that is completed, a begin command will be issued
@@ -443,32 +441,32 @@ void SV_Begin_f (void)
 	{
 		SV_SpawnSpectator ();
 
-		if (SpectatorConnect) {
+		if (pr.SpectatorConnect) {
 			// copy spawn parms out of the client_t
 			for (i=0 ; i< NUM_SPAWN_PARMS ; i++)
-				(&pr_global_struct->parm1)[i] = host_client->spawn_parms[i];
+				(&pr.global_struct->parm1)[i] = host_client->spawn_parms[i];
 	
 			// call the spawn function
-			pr_global_struct->time = (float)sv.time;
-			pr_global_struct->self = EDICT_TO_PROG(sv_player);
-			PR_ExecuteProgram (SpectatorConnect);
+			pr.global_struct->time = (float)sv.time;
+			pr.global_struct->self = EDICT_TO_PROG(sv_player);
+			PR_ExecuteProgram (pr.SpectatorConnect);
 		}
 	}
 	else
 	{
 		// copy spawn parms out of the client_t
 		for (i=0 ; i< NUM_SPAWN_PARMS ; i++)
-			(&pr_global_struct->parm1)[i] = host_client->spawn_parms[i];
+			(&pr.global_struct->parm1)[i] = host_client->spawn_parms[i];
 
 		// call the spawn function
-		pr_global_struct->time = (float)sv.time;
-		pr_global_struct->self = EDICT_TO_PROG(sv_player);
-		PR_ExecuteProgram (pr_global_struct->ClientConnect);
+		pr.global_struct->time = (float)sv.time;
+		pr.global_struct->self = EDICT_TO_PROG(sv_player);
+		PR_ExecuteProgram (pr.global_struct->ClientConnect);
 
 		// actually spawn the player
-		pr_global_struct->time = (float)sv.time;
-		pr_global_struct->self = EDICT_TO_PROG(sv_player);
-		PR_ExecuteProgram (pr_global_struct->PutClientInServer);	
+		pr.global_struct->time = (float)sv.time;
+		pr.global_struct->self = EDICT_TO_PROG(sv_player);
+		PR_ExecuteProgram (pr.global_struct->PutClientInServer);	
 	}
 
 	// clear the net statistics, because connecting gives a bogus picture
@@ -729,25 +727,25 @@ void SV_Say (bool team)
 		snprintf (text, sizeof(text), "%s: ", host_client->name);
 	}
 
-	if (fp_messages) {
+	if (svs.floodprot.messages) {
 		if (!sv.paused && host.realtime<host_client->lockedtill) {
 			SV_ClientPrintf(host_client, PRINT_CHAT,
 				"You can't talk for %d more seconds\n", 
 					(int) (host_client->lockedtill - host.realtime));
 			return;
 		}
-		tmp = host_client->whensaidhead - fp_messages + 1;
+		tmp = host_client->whensaidhead - svs.floodprot.messages + 1;
 		if (tmp < 0)
 			tmp = 10+tmp;
 		if (!sv.paused &&
-			host_client->whensaid[tmp] && (host.realtime-host_client->whensaid[tmp] < fp_persecond)) {
-			host_client->lockedtill = host.realtime + fp_secondsdead;
-			if (fp_msg[0])
+			host_client->whensaid[tmp] && (host.realtime-host_client->whensaid[tmp] < svs.floodprot.persecond)) {
+			host_client->lockedtill = host.realtime + svs.floodprot.secondsdead;
+			if (svs.floodprot.msg[0])
 				SV_ClientPrintf(host_client, PRINT_CHAT,
-					"FloodProt: %s\n", fp_msg);
+					"FloodProt: %s\n", svs.floodprot.msg);
 			else
 				SV_ClientPrintf(host_client, PRINT_CHAT,
-					"FloodProt: You can't talk for %d seconds.\n", fp_secondsdead);
+					"FloodProt: You can't talk for %d seconds.\n", svs.floodprot.secondsdead);
 			return;
 		}
 		host_client->whensaidhead++;
@@ -859,9 +857,9 @@ void SV_Kill_f (void)
 		return;
 	}
 	
-	pr_global_struct->time = (float)sv.time;
-	pr_global_struct->self = EDICT_TO_PROG(sv_player);
-	PR_ExecuteProgram (pr_global_struct->ClientKill);
+	pr.global_struct->time = (float)sv.time;
+	pr.global_struct->self = EDICT_TO_PROG(sv_player);
+	PR_ExecuteProgram (pr.global_struct->ClientKill);
 }
 
 /*
@@ -1315,11 +1313,11 @@ void SV_RunCmd (usercmd_t *ucmd)
 
 	if (!host_client->spectator)
 	{
-		pr_global_struct->frametime = (float)sv.frametime;
+		pr.global_struct->frametime = (float)sv.frametime;
 
-		pr_global_struct->time = (float)sv.time;
-		pr_global_struct->self = EDICT_TO_PROG(sv_player);
-		PR_ExecuteProgram (pr_global_struct->PlayerPreThink);
+		pr.global_struct->time = (float)sv.time;
+		pr.global_struct->self = EDICT_TO_PROG(sv_player);
+		PR_ExecuteProgram (pr.global_struct->PlayerPreThink);
 
 		SV_RunThink (sv_player);
 	}
@@ -1346,7 +1344,7 @@ void SV_RunCmd (usercmd_t *ucmd)
 		pmove_mins[i] = sv_pmove.origin[i] - 256;
 		pmove_maxs[i] = sv_pmove.origin[i] + 256;
 	}
-	AddLinksToPmove ( sv_areanodes );
+	AddLinksToPmove ( sv.areanodes );
 
 	PM_PlayerMove (&sv_pmove, &movevars);
 
@@ -1380,8 +1378,8 @@ void SV_RunCmd (usercmd_t *ucmd)
 			ent = EDICT_NUM(n);
 			if (!ent->v.touch || (playertouch[n/8]&(1<<(n%8))))
 				continue;
-			pr_global_struct->self = EDICT_TO_PROG(ent);
-			pr_global_struct->other = EDICT_TO_PROG(sv_player);
+			pr.global_struct->self = EDICT_TO_PROG(ent);
+			pr.global_struct->other = EDICT_TO_PROG(sv_player);
 			PR_ExecuteProgram (ent->v.touch);
 			playertouch[n/8] |= 1 << (n%8);
 		}
@@ -1399,14 +1397,14 @@ void SV_PostRunCmd(void)
 	// run post-think
 
 	if (!host_client->spectator) {
-		pr_global_struct->time = (float)sv.time;
-		pr_global_struct->self = EDICT_TO_PROG(sv_player);
-		PR_ExecuteProgram (pr_global_struct->PlayerPostThink);
+		pr.global_struct->time = (float)sv.time;
+		pr.global_struct->self = EDICT_TO_PROG(sv_player);
+		PR_ExecuteProgram (pr.global_struct->PlayerPostThink);
 		SV_RunNewmis ();
-	} else if (SpectatorThink) {
-		pr_global_struct->time = (float)sv.time;
-		pr_global_struct->self = EDICT_TO_PROG(sv_player);
-		PR_ExecuteProgram (SpectatorThink);
+	} else if (pr.SpectatorThink) {
+		pr.global_struct->time = (float)sv.time;
+		pr.global_struct->self = EDICT_TO_PROG(sv_player);
+		PR_ExecuteProgram (pr.SpectatorThink);
 	}
 }
 

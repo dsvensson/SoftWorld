@@ -24,7 +24,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 
 
-netadr_t	master_adr[MAX_MASTERS];	// address of group servers
 
 client_t	*host_client;			// current client
 
@@ -68,8 +67,6 @@ static cvar_t	watervis = {.name = "watervis", .string = "0", .info = true};
 
 static cvar_t	hostname = {.name = "hostname", .string = "unnamed", .info = true};
 
-FILE	*sv_logfile;
-FILE	*sv_fraglogfile;
 
 void Master_Shutdown (void);
 
@@ -86,15 +83,15 @@ Quake calls this before calling Sys_Quit or Sys_Error
 void SV_Shutdown (void)
 {
 	Master_Shutdown ();
-	if (sv_logfile)
+	if (svs.logfile)
 	{
-		fclose (sv_logfile);
-		sv_logfile = NULL;
+		fclose (svs.logfile);
+		svs.logfile = NULL;
 	}
-	if (sv_fraglogfile)
+	if (svs.fraglogfile)
 	{
-		fclose (sv_fraglogfile);
-		sv_logfile = NULL;
+		fclose (svs.fraglogfile);
+		svs.logfile = NULL;
 	}
 	NET_Shutdown ();
 }
@@ -180,15 +177,15 @@ void SV_DropClient (client_t *drop)
 		{
 			// call the prog function for removing a client
 			// this will set the body to a dead frame, among other things
-			pr_global_struct->self = EDICT_TO_PROG(drop->edict);
-			PR_ExecuteProgram (pr_global_struct->ClientDisconnect);
+			pr.global_struct->self = EDICT_TO_PROG(drop->edict);
+			PR_ExecuteProgram (pr.global_struct->ClientDisconnect);
 		}
-		else if (SpectatorDisconnect)
+		else if (pr.SpectatorDisconnect)
 		{
 			// call the prog function for removing a client
 			// this will set the body to a dead frame, among other things
-			pr_global_struct->self = EDICT_TO_PROG(drop->edict);
-			PR_ExecuteProgram (SpectatorDisconnect);
+			pr.global_struct->self = EDICT_TO_PROG(drop->edict);
+			PR_ExecuteProgram (pr.SpectatorDisconnect);
 		}
 	}
 
@@ -406,7 +403,7 @@ void SVC_Log (void)
 	else
 		seq = -1;
 
-	if (seq == svs.logsequence-1 || !sv_fraglogfile)
+	if (seq == svs.logsequence-1 || !svs.fraglogfile)
 	{	// they allready have this data, or we aren't logging frags
 		data[0] = A2A_NACK;
 		NET_SendPacket (1, data, net_from);
@@ -689,9 +686,9 @@ void SVC_DirectConnect (void)
 	newcl->lockedtill = 0;
 
 	// call the progs to get default spawn parms for the new client
-	PR_ExecuteProgram (pr_global_struct->SetNewParms);
+	PR_ExecuteProgram (pr.global_struct->SetNewParms);
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
-		newcl->spawn_parms[i] = (&pr_global_struct->parm1)[i];
+		newcl->spawn_parms[i] = (&pr.global_struct->parm1)[i];
 
 	if (newcl->spectator)
 		Con_Printf ("Spectator %s connected\n", newcl->name);
@@ -1305,6 +1302,10 @@ static void SV_ServerinfoCvarChanged (char *name, char *value)
 void SV_InitLocal (void)
 {
 	int		i;
+
+	svs.floodprot.messages = 4;
+	svs.floodprot.persecond = 4;
+	svs.floodprot.secondsdead = 10;
 	extern	cvar_t	sv_maxvelocity;
 	extern	cvar_t	sv_gravity;
 	extern	cvar_t	sv_aim;
@@ -1377,7 +1378,7 @@ void SV_InitLocal (void)
 	Cmd_AddCommand ("writeip", SV_WriteIP_f);
 
 	for (i=0 ; i<MAX_MODELS ; i++)
-		snprintf (localmodels[i], sizeof(localmodels[i]), "*%i", i);
+		snprintf (svs.localmodels[i], sizeof(svs.localmodels[i]), "*%i", i);
 
 	Info_SetValueForStarKey (svs.info, "*version", va("%4.2f", VERSION), MAX_SERVERINFO_STRING, SV_InfoCharset ());
 
@@ -1433,10 +1434,10 @@ void Master_Heartbeat (void)
 
 	// send to group master
 	for (i=0 ; i<MAX_MASTERS ; i++)
-		if (master_adr[i].port)
+		if (svs.master_adr[i].port)
 		{
-			Con_Printf ("Sending heartbeat to %s\n", NET_AdrToString (master_adr[i]));
-			NET_SendPacket ((int)strlen(string), string, master_adr[i]);
+			Con_Printf ("Sending heartbeat to %s\n", NET_AdrToString (svs.master_adr[i]));
+			NET_SendPacket ((int)strlen(string), string, svs.master_adr[i]);
 		}
 }
 
@@ -1456,10 +1457,10 @@ void Master_Shutdown (void)
 
 	// send to group master
 	for (i=0 ; i<MAX_MASTERS ; i++)
-		if (master_adr[i].port)
+		if (svs.master_adr[i].port)
 		{
-			Con_Printf ("Sending heartbeat to %s\n", NET_AdrToString (master_adr[i]));
-			NET_SendPacket ((int)strlen(string), string, master_adr[i]);
+			Con_Printf ("Sending heartbeat to %s\n", NET_AdrToString (svs.master_adr[i]));
+			NET_SendPacket ((int)strlen(string), string, svs.master_adr[i]);
 		}
 }
 

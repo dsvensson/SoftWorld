@@ -22,10 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 static bool	sv_allow_cheats;
 
-int fp_messages=4, fp_persecond=4, fp_secondsdead=10;
-char fp_msg[255] = { 0 };
 extern cvar_t cl_warncmd;
-	extern		redirect_t	sv_redirected;
 
 
 /*
@@ -49,25 +46,25 @@ void SV_SetMaster_f (void)
 	char	data[2];
 	int		i;
 
-	memset (&master_adr, 0, sizeof(master_adr));
+	memset (&svs.master_adr, 0, sizeof(svs.master_adr));
 
 	for (i=1 ; i<Cmd_Argc() ; i++)
 	{
-		if (!strcmp(Cmd_Argv(i), "none") || !NET_StringToAdr (Cmd_Argv(i), &master_adr[i-1]))
+		if (!strcmp(Cmd_Argv(i), "none") || !NET_StringToAdr (Cmd_Argv(i), &svs.master_adr[i-1]))
 		{
 			Con_Printf ("Setting nomaster mode.\n");
 			return;
 		}
-		if (master_adr[i-1].port == 0)
-			master_adr[i-1].port = BigShort (27000);
+		if (svs.master_adr[i-1].port == 0)
+			svs.master_adr[i-1].port = BigShort (27000);
 
-		Con_Printf ("Master server at %s\n", NET_AdrToString (master_adr[i-1]));
+		Con_Printf ("Master server at %s\n", NET_AdrToString (svs.master_adr[i-1]));
 
 		Con_Printf ("Sending a ping.\n");
 
 		data[0] = A2A_PING;
 		data[1] = 0;
-		NET_SendPacket (2, data, master_adr[i-1]);
+		NET_SendPacket (2, data, svs.master_adr[i-1]);
 	}
 
 	svs.last_heartbeat = -99999;
@@ -96,18 +93,18 @@ void SV_Logfile_f (void)
 {
 	char	name[MAX_OSPATH];
 
-	if (sv_logfile)
+	if (svs.logfile)
 	{
 		Con_Printf ("File logging off.\n");
-		fclose (sv_logfile);
-		sv_logfile = NULL;
+		fclose (svs.logfile);
+		svs.logfile = NULL;
 		return;
 	}
 
 	snprintf (name, sizeof(name), "%s/qconsole.log", com_gamedir);
 	Con_Printf ("Logging text to %s.\n", name);
-	sv_logfile = fopen (name, "w");
-	if (!sv_logfile)
+	svs.logfile = fopen (name, "w");
+	if (!svs.logfile)
 		Con_Printf ("failed.\n");
 }
 
@@ -122,11 +119,11 @@ void SV_Fraglogfile_f (void)
 	char	name[MAX_OSPATH];
 	int		i;
 
-	if (sv_fraglogfile)
+	if (svs.fraglogfile)
 	{
 		Con_Printf ("Frag file logging off.\n");
-		fclose (sv_fraglogfile);
-		sv_fraglogfile = NULL;
+		fclose (svs.fraglogfile);
+		svs.fraglogfile = NULL;
 		return;
 	}
 
@@ -134,20 +131,20 @@ void SV_Fraglogfile_f (void)
 	for (i=0 ; i<1000 ; i++)
 	{
 		snprintf (name, sizeof(name), "%s/frag_%i.log", com_gamedir, i);
-		sv_fraglogfile = fopen (name, "r");
-		if (!sv_fraglogfile)
+		svs.fraglogfile = fopen (name, "r");
+		if (!svs.fraglogfile)
 		{	// can't read it, so create this one
-			sv_fraglogfile = fopen (name, "w");
-			if (!sv_fraglogfile)
+			svs.fraglogfile = fopen (name, "w");
+			if (!svs.fraglogfile)
 				i=1000;	// give error
 			break;
 		}
-		fclose (sv_fraglogfile);
+		fclose (svs.fraglogfile);
 	}
 	if (i==1000)
 	{
 		Con_Printf ("Can't open any logfiles.\n");
-		sv_fraglogfile = NULL;
+		svs.fraglogfile = NULL;
 		return;
 	}
 
@@ -388,10 +385,10 @@ void SV_Status_f (void)
 	Con_Printf ("net address      : %s\n",NET_AdrToString (net_local_adr));
 	Con_Printf ("cpu utilization  : %3i%%\n",(int)cpu);
 	Con_Printf ("avg response time: %i ms\n",(int)avg);
-	Con_Printf ("packets/frame    : %5.2f (%d)\n", pak, num_prstr);
+	Con_Printf ("packets/frame    : %5.2f (%d)\n", pak, pr.num_prstr);
 	
 // min fps lat drp
-	if (sv_redirected != RD_NONE) {
+	if (svs.redirected != RD_NONE) {
 		// most remote clients are 40 columns
 		//           0123456789012345678901234567890123456789
 		Con_Printf ("name               userid frags\n");
@@ -585,7 +582,7 @@ void SV_Localinfo_f (void)
 	if (Cmd_Argc() == 1)
 	{
 		Con_Printf ("Local info settings:\n");
-		Info_Print (localinfo);
+		Info_Print (svs.localinfo);
 		return;
 	}
 
@@ -600,7 +597,7 @@ void SV_Localinfo_f (void)
 		Con_Printf ("Star variables cannot be changed.\n");
 		return;
 	}
-	Info_SetValueForKey (localinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_LOCALINFO_STRING, SV_InfoCharset ());
+	Info_SetValueForKey (svs.localinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_LOCALINFO_STRING, SV_InfoCharset ());
 }
 
 
@@ -674,9 +671,9 @@ void SV_Floodprot_f (void)
 	
 	if (Cmd_Argc() == 1)
 	{
-		if (fp_messages) {
+		if (svs.floodprot.messages) {
 			Con_Printf ("Current floodprot settings: \nAfter %d msgs per %d seconds, silence for %d seconds\n", 
-				fp_messages, fp_persecond, fp_secondsdead);
+				svs.floodprot.messages, svs.floodprot.persecond, svs.floodprot.secondsdead);
 			return;
 		} else
 			Con_Printf ("No floodprots enabled.\n");
@@ -703,21 +700,21 @@ void SV_Floodprot_f (void)
 		return;
 	}
 
-	fp_messages	= arg1;
-	fp_persecond = arg2;
-	fp_secondsdead = arg3;
+	svs.floodprot.messages	= arg1;
+	svs.floodprot.persecond = arg2;
+	svs.floodprot.secondsdead = arg3;
 }
 
 void SV_Floodprotmsg_f (void)
 {
 	if (Cmd_Argc() == 1) {
-		Con_Printf("Current msg: %s\n", fp_msg);
+		Con_Printf("Current msg: %s\n", svs.floodprot.msg);
 		return;
 	} else if (Cmd_Argc() != 2) {
 		Con_Printf("Usage: floodprotmsg \"<message>\"\n");
 		return;
 	}
-	snprintf(fp_msg, sizeof(fp_msg), "%s", Cmd_Argv(1));
+	snprintf(svs.floodprot.msg, sizeof(svs.floodprot.msg), "%s", Cmd_Argv(1));
 }
   
 /*
@@ -803,7 +800,7 @@ void SV_Snap (int uid)
 	Q_strncpyz(cl->uploadfn, checkname, sizeof(cl->uploadfn));
 
 	memcpy(&cl->snap_from, &net_from, sizeof(net_from));
-	if (sv_redirected != RD_NONE)
+	if (svs.redirected != RD_NONE)
 		cl->remote_snap = true;
 	else
 		cl->remote_snap = false;
