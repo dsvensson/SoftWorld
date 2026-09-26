@@ -527,20 +527,16 @@ void	Cmd_AddCommand (char *cmd_name, xcommand_t function)
 	cmd_function_t	*cmd;
 	
 		
-// fail if the command is a variable name
-	if (Cvar_VariableString(cmd_name)[0])
-	{
-		Con_Printf ("Cmd_AddCommand: %s already defined as a var\n", cmd_name);
-		return;
-	}
-	
-// fail if the command already exists
+// a name has one meaning; the same command from both ends is registered once
+	if (Cvar_FindVar (cmd_name))
+		Sys_Error ("Cmd_AddCommand: %s is a variable", cmd_name);
 	for (cmd=cmd_functions ; cmd ; cmd=cmd->next)
 	{
 		if (!Q_strcmp (cmd_name, cmd->name))
 		{
-			Con_Printf ("Cmd_AddCommand: %s already defined\n", cmd_name);
-			return;
+			if (cmd->function == function)
+				return;
+			Sys_Error ("Cmd_AddCommand: %s is defined twice", cmd_name);
 		}
 	}
 

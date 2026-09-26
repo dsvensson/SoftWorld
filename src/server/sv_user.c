@@ -25,8 +25,6 @@ edict_t	*sv_player;
 
 static usercmd_t	cmd;
 
-static cvar_t	sv_rollspeed = {.name = "cl_rollspeed", .string = "200"};
-static cvar_t	sv_rollangle = {.name = "cl_rollangle", .string = "2.0"};
 static cvar_t	sv_spectalk = {.name = "sv_spectalk", .string = "1"};
 
 static cvar_t	sv_mapcheck	= {.name = "sv_mapcheck", .string = "1"};
@@ -1304,7 +1302,7 @@ void SV_RunCmd (usercmd_t *ucmd)
 			sv_player->v.angles[YAW] = sv_player->v.v_angle[YAW];
 		}
 		sv_player->v.angles[ROLL] = 
-			PM_CalcRoll (sv_player->v.angles, sv_player->v.velocity, sv_rollangle.value, sv_rollspeed.value)*4;
+			PM_CalcRoll (sv_player->v.angles, sv_player->v.velocity)*4;
 	}
 
 	sv.frametime = ucmd->msec * 0.001;
@@ -1570,8 +1568,7 @@ SV_UserInit
 */
 void SV_UserInit (void)
 {
-	Cvar_RegisterVariable (&sv_rollspeed);
-	Cvar_RegisterVariable (&sv_rollangle);
+	PM_Init ();
 	Cvar_RegisterVariable (&sv_spectalk);
 	Cvar_RegisterVariable (&sv_mapcheck);
 }

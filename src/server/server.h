@@ -30,6 +30,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "world.h"
 #include "arena.h"
 #include "host.h"
+#include "sv_public.h"
 // server.h
 
 #define	QW_SERVER
@@ -66,6 +67,7 @@ typedef struct
 	
 	char		name[64];			// map name
 	char		modelname[MAX_QPATH];		// maps/<name>.bsp, for model_precache[0]
+	cmap_t		*map;				// a reference the server holds
 	cmodel_t	*worldmodel;
 	unsigned	map_checksum, map_checksum2;
 	movevars_t	movevars;			// player movement settings from the sv_ cvars
@@ -126,7 +128,7 @@ typedef enum
 					// connection for a couple seconds
 	cs_connected,	// has been assigned to a client_t, but not in game yet
 	cs_spawned		// client is fully in game
-} client_state_t;
+} sv_client_state_t;
 
 typedef struct
 {
@@ -142,7 +144,7 @@ typedef struct
 
 typedef struct client_s
 {
-	client_state_t	state;
+	sv_client_state_t	state;
 
 	int				spectator;			// non-interactive
 
@@ -279,6 +281,7 @@ typedef struct
 	FILE		*fraglogfile;
 	redirect_t	redirected;					// where console output goes
 
+	int			port;						// UDP port, opened with the first map
 	sizebuf_t	net_message;				// the packet being read
 	netadr_t	net_from;					// and who sent it
 	byte		net_message_buf[MAX_UDP_PACKET];
@@ -381,8 +384,6 @@ extern	edict_t		*sv_player;
 //
 // sv_main.c
 //
-void SV_Shutdown (void);
-void SV_Frame (float time);
 void SV_FinalMessage (char *message);
 void SV_DropClient (client_t *drop);
 
@@ -490,5 +491,3 @@ void ClientReliableWrite_SZ(client_t *cl, void *data, int len);
 
 
 [[noreturn]] void SV_Error (char *error, ...);
-void SV_Init (quakeparms_t *parms);
-double SV_NextFrameWait (void);	// seconds until the next physics frame

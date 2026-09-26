@@ -107,19 +107,24 @@ char *Cvar_CompleteVariable (char *partial)
 }
 
 
-static void (*cvar_info_hook)(char *name, char *value);
+static cvar_info_hook_t	cvar_userinfo_hook;		// the client's
+static cvar_info_hook_t	cvar_serverinfo_hook;	// the server's
 
 /*
 ============
-Cvar_SetInfoHook
+Cvar_SetUserinfoHook / Cvar_SetServerinfoHook
 
-Called whenever a cvar flagged as info changes (the client puts them in its
-userinfo, the server in its serverinfo).
+Called whenever a cvar flagged as userinfo or serverinfo changes
 ============
 */
-void Cvar_SetInfoHook (void (*hook)(char *name, char *value))
+void Cvar_SetUserinfoHook (cvar_info_hook_t hook)
 {
-	cvar_info_hook = hook;
+	cvar_userinfo_hook = hook;
+}
+
+void Cvar_SetServerinfoHook (cvar_info_hook_t hook)
+{
+	cvar_serverinfo_hook = hook;
 }
 
 /*
@@ -138,8 +143,10 @@ void Cvar_Set (char *var_name, char *value)
 		return;
 	}
 
-	if (var->info && cvar_info_hook)
-		cvar_info_hook (var_name, value);
+	if (var->userinfo && cvar_userinfo_hook)
+		cvar_userinfo_hook (var_name, value);
+	if (var->serverinfo && cvar_serverinfo_hook)
+		cvar_serverinfo_hook (var_name, value);
 	
 	Mem_Free (var->string);	// free the old value string
 	
@@ -173,19 +180,14 @@ void Cvar_RegisterVariable (cvar_t *variable)
 {
 	char	value[512];
 
-// first check to see if it has allready been defined
+// a variable both ends of a listen server use is registered by both;
+// two variables with one name are a bug
+	if (Cvar_FindVar (variable->name) == variable)
+		return;
 	if (Cvar_FindVar (variable->name))
-	{
-		Con_Printf ("Can't register variable %s, allready defined\n", variable->name);
-		return;
-	}
-	
-// check for overlap with a command
+		Sys_Error ("Cvar_RegisterVariable: %s is defined twice", variable->name);
 	if (Cmd_Exists (variable->name))
-	{
-		Con_Printf ("Cvar_RegisterVariable: %s is a command\n", variable->name);
-		return;
-	}
+		Sys_Error ("Cvar_RegisterVariable: %s is a command", variable->name);
 		
 // link the variable in
 	variable->next = cvar_vars;

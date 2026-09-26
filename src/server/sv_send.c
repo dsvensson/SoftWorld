@@ -239,7 +239,7 @@ void SV_Multicast (vec3_t origin, int to)
 	int			j;
 	bool	reliable;
 
-	leafnum = CM_Leafnum (CM_PointInLeaf (origin));
+	leafnum = CM_Leafnum (sv.map, CM_PointInLeaf (sv.map, origin));
 
 	reliable = false;
 
@@ -282,7 +282,7 @@ void SV_Multicast (vec3_t origin, int to)
 		}
 
 		// -1 is because pvs rows are 1 based, not 0 based like leafs
-		leafnum = CM_Leafnum (CM_PointInLeaf (client->edict->v.origin)) - 1;
+		leafnum = CM_Leafnum (sv.map, CM_PointInLeaf (sv.map, client->edict->v.origin)) - 1;
 		if (leafnum >= 0 && !(mask[leafnum>>3] & (1<<(leafnum&7))))
 			continue;
 

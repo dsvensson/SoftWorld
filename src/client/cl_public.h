@@ -8,7 +8,7 @@ of the License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 
@@ -19,14 +19,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #pragma once
-// view.h
+// cl_public.h -- what the host sees of the client
 
-#include "cvar.h"
-#include "mathlib.h"
+void	CL_Init (void);			// brings up the client with its video, sound and input
+void	CL_Shutdown (void);		// writes the configuration and closes the devices
 
-extern	cvar_t		v_gamma;
+void	CL_Frame (void);		// packets, a command when due and a drawn frame, by host.realtime
+double	CL_FrameWait (void);	// seconds until CL_Frame has a frame to draw
 
-void V_Init (void);
-void V_RenderView (void);
-float V_CalcRoll (vec3_t angles, vec3_t velocity);
-void V_UpdatePalette (void);
+void	CL_Drop (void);			// leaves the game after an error, stopping the demo loop
+void	CL_Disconnect (void);

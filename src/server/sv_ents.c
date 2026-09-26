@@ -395,7 +395,7 @@ void SV_WriteEntitiesToClient (client_t *client, sizebuf_t *msg)
 	// find the client's PVS
 	clent = client->edict;
 	VectorAdd (clent->v.origin, clent->v.view_ofs, org);
-	pvs = CM_FatPVS (org);
+	pvs = CM_FatPVS (sv.map, org);
 
 	// send over the players in the PVS
 	SV_WritePlayersToClient (client, clent, pvs, msg);

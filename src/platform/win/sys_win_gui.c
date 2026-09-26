@@ -26,9 +26,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "print.h"
 #include "q_string.h"
 #include "sys.h"
-#include "client.h"
-#include "keys.h"
-#include "screen.h"
 #include "sound.h"
 #include "vid.h"
 #include "win_local.h"
@@ -63,12 +60,20 @@ void Sys_Error (char *error, ...)
 {
 	va_list		argptr;
 	char		text[1024];
-
-	Host_Shutdown ();
+	static bool	inerror;
 
 	va_start (argptr, error);
 	vsnprintf (text, sizeof(text), error, argptr);
 	va_end (argptr);
+
+	// the console and its log see the error; an error while shutting down
+	// goes straight to the message box
+	if (!inerror)
+	{
+		inerror = true;
+		Con_Printf ("Sys_Error: %s\n", text);
+		Host_Shutdown ();
+	}
 
 	MessageBox (NULL, text, "Error", MB_OK | MB_ICONERROR);
 
@@ -209,7 +214,7 @@ int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, [[maybe_unused]] int nCmd
 	{
 		newtime = Sys_DoubleTime ();
 		time = newtime - oldtime;
-		Host_Frame ((float)time);
+		Host_Frame (time);
 		oldtime = newtime;
 
 		// handle what arrived meanwhile, then sleep until the next frame is due,

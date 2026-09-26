@@ -35,8 +35,6 @@ static cvar_t	timeout = {.name = "timeout", .string = "65"};		// seconds without
 static cvar_t	zombietime = {.name = "zombietime", .string = "2"};	// seconds to sink messages
 											// after disconnect
 
-static cvar_t	sv_rcon_password = {.name = "rcon_password", .string = ""};	// password for remote server commands
-static cvar_t	sv_password = {.name = "password", .string = ""};	// password for entering the game
 static cvar_t	spectator_password = {.name = "spectator_password", .string = ""};	// password for entering as a sepctator
 
 cvar_t	allow_download = {.name = "allow_download", .string = "1"};
@@ -55,17 +53,17 @@ cvar_t pausable	= {.name = "pausable", .string = "1"};
 //
 // game rules mirrored in svs.info
 //
-static cvar_t	fraglimit = {.name = "fraglimit", .string = "0", .info = true};
-static cvar_t	timelimit = {.name = "timelimit", .string = "0", .info = true};
-cvar_t	teamplay = {.name = "teamplay", .string = "0", .info = true};
-static cvar_t	samelevel = {.name = "samelevel", .string = "0", .info = true};
-static cvar_t	maxclients = {.name = "maxclients", .string = "8", .info = true};
-static cvar_t	maxspectators = {.name = "maxspectators", .string = "8", .info = true};
-static cvar_t	deathmatch = {.name = "deathmatch", .string = "1", .info = true};			// 0, 1, or 2
-static cvar_t	spawn = {.name = "spawn", .string = "0", .info = true};
-static cvar_t	watervis = {.name = "watervis", .string = "0", .info = true};
+static cvar_t	fraglimit = {.name = "fraglimit", .string = "0", .serverinfo = true};
+static cvar_t	timelimit = {.name = "timelimit", .string = "0", .serverinfo = true};
+cvar_t	teamplay = {.name = "teamplay", .string = "0", .serverinfo = true};
+static cvar_t	samelevel = {.name = "samelevel", .string = "0", .serverinfo = true};
+static cvar_t	maxclients = {.name = "maxclients", .string = "8", .serverinfo = true};
+static cvar_t	maxspectators = {.name = "maxspectators", .string = "8", .serverinfo = true};
+static cvar_t	deathmatch = {.name = "deathmatch", .string = "1", .serverinfo = true};			// 0, 1, or 2
+static cvar_t	spawn = {.name = "spawn", .string = "0", .serverinfo = true};
+static cvar_t	watervis = {.name = "watervis", .string = "0", .serverinfo = true};
 
-static cvar_t	hostname = {.name = "hostname", .string = "unnamed", .info = true};
+static cvar_t	hostname = {.name = "hostname", .string = "unnamed", .serverinfo = true};
 
 
 void Master_Shutdown (void);
@@ -75,13 +73,66 @@ void Master_Shutdown (void);
 
 /*
 ================
+SV_Active
+================
+*/
+bool SV_Active (void)
+{
+	return sv.state != ss_dead;
+}
+
+/*
+================
+SV_Kill
+
+Ends the game: the clients are told and forgotten. A listen server closes
+its port until the next map.
+================
+*/
+void SV_Kill (void)
+{
+	int			i;
+	client_t	*cl;
+
+	if (sv.state == ss_dead)
+		return;
+
+	SV_FinalMessage ("server shutdown\n");
+	for (i=0, cl = svs.clients ; i<MAX_CLIENTS ; i++, cl++)
+	{
+		if (cl->download)
+		{
+			fclose (cl->download);
+			cl->download = NULL;
+		}
+		if (cl->upload)
+		{
+			fclose (cl->upload);
+			cl->upload = NULL;
+		}
+		cl->state = cs_free;
+	}
+
+	PR_ResetStack ();
+	sv.state = ss_dead;
+	if (sv.map)
+		CM_FreeMap (sv.map);
+	sv.map = NULL;
+	if (!host.dedicated)
+		NET_CloseSocket (NS_SERVER);
+	Con_Printf ("Server stopped.\n");
+}
+
+/*
+================
 SV_Shutdown
 
-Quake calls this before calling Sys_Quit or Sys_Error
+At exit
 ================
 */
 void SV_Shutdown (void)
 {
+	SV_Kill ();
 	Master_Shutdown ();
 	if (svs.logfile)
 	{
@@ -91,17 +142,16 @@ void SV_Shutdown (void)
 	if (svs.fraglogfile)
 	{
 		fclose (svs.fraglogfile);
-		svs.logfile = NULL;
+		svs.fraglogfile = NULL;
 	}
-	NET_Shutdown ();
 }
 
 /*
 ================
 SV_Error
 
-Sends a datagram to all the clients informing them of the server crash,
-then exits
+Tells the clients the server crashed and ends the game; the host decides
+whether the program goes on
 ================
 */
 void SV_Error (char *error, ...)
@@ -122,10 +172,10 @@ void SV_Error (char *error, ...)
 	Con_Printf ("SV_Error: %s\n",string);
 
 	SV_FinalMessage (va("server crashed: %s\n", string));
-		
-	SV_Shutdown ();
+	SV_Kill ();
 
-	Sys_Error ("SV_Error: %s\n",string);
+	inerror = false;
+	Host_Error ("SV_Error: %s\n",string);
 }
 
 /*
@@ -150,7 +200,7 @@ void SV_FinalMessage (char *message)
 	MSG_WriteByte (&svs.net_message, svc_disconnect);
 
 	for (i=0, cl = svs.clients ; i<MAX_CLIENTS ; i++, cl++)
-		if (cl->state >= cs_spawned)
+		if (cl->state >= cs_connected)
 			Netchan_Transmit (&cl->netchan, svs.net_message.cursize
 			, svs.net_message.data);
 }
@@ -556,9 +606,9 @@ void SVC_DirectConnect (void)
 	else
 	{
 		s = Info_ValueForKey (userinfo, "password");
-		if (sv_password.string[0] && 
-			Q_strcasecmp (sv_password.string, "none") &&
-			strcmp(sv_password.string, s) )
+		if (password.string[0] && 
+			Q_strcasecmp (password.string, "none") &&
+			strcmp(password.string, s) )
 		{
 			Con_Printf ("%s:password failed\n", NET_AdrToString (svs.net_from));
 			Netchan_OutOfBandPrint (NS_SERVER, svs.net_from, "%c\nserver requires a password\n\n", A2C_PRINT);
@@ -699,10 +749,10 @@ void SVC_DirectConnect (void)
 
 int Rcon_Validate (void)
 {
-	if (!strlen (sv_rcon_password.string))
+	if (!strlen (rcon_password.string))
 		return 0;
 
-	if (strcmp (Cmd_Argv(1), sv_rcon_password.string) )
+	if (strcmp (Cmd_Argv(1), rcon_password.string) )
 		return 0;
 
 	return 1;
@@ -777,6 +827,7 @@ void SV_ConnectionlessPacket (void)
 	Cmd_TokenizeString (s);
 
 	c = Cmd_Argv(0);
+	Con_DPrintf ("%s: %s\n", NET_AdrToString (svs.net_from), c);
 
 	if (!strcmp(c, "ping") || ( c[0] == A2A_PING && (c[1] == 0 || c[1] == '\n')) )
 	{
@@ -1160,26 +1211,6 @@ void SV_CheckTimeouts (void)
 
 /*
 ===================
-SV_GetConsoleCommands
-
-Add them exactly as if they had been typed at the console
-===================
-*/
-void SV_GetConsoleCommands (void)
-{
-	char	*cmd;
-
-	while (1)
-	{
-		cmd = Sys_ConsoleInput ();
-		if (!cmd)
-			break;
-		Cbuf_AddText (cmd);
-	}
-}
-
-/*
-===================
 SV_CheckVars
 
 ===================
@@ -1189,9 +1220,9 @@ void SV_CheckVars (void)
 	static char *pw, *spw;
 	int			v;
 
-	if (sv_password.string == pw && spectator_password.string == spw)
+	if (password.string == pw && spectator_password.string == spw)
 		return;
-	pw = sv_password.string;
+	pw = password.string;
 	spw = spectator_password.string;
 
 	v = 0;
@@ -1213,7 +1244,7 @@ SV_Frame
 
 ==================
 */
-void SV_Frame (float time)
+void SV_Frame (double time)
 {
 	static double	start, end;
 	
@@ -1224,7 +1255,6 @@ void SV_Frame (float time)
 	rand ();
 
 // decide the simulation time
-	host.realtime += time;
 	if (!sv.paused)
 		sv.time += time;
 
@@ -1240,12 +1270,6 @@ void SV_Frame (float time)
 
 // get packets
 	SV_ReadPackets ();
-
-// check for commands typed to the host
-	SV_GetConsoleCommands ();
-	
-// process console commands
-	Cbuf_Execute ();
 
 	SV_CheckVars ();
 
@@ -1313,7 +1337,7 @@ void SV_InitLocal (void)
 	extern	cvar_t	sv_stopspeed;
 	extern	cvar_t	sv_spectatormaxspeed;
 
-	Cvar_SetInfoHook (SV_ServerinfoCvarChanged);
+	Cvar_SetServerinfoHook (SV_ServerinfoCvarChanged);
 	Con_AddPrintSink (SV_LogPrint);
 	extern	cvar_t	sv_accelerate;
 	extern	cvar_t	sv_airaccelerate;
@@ -1324,8 +1348,6 @@ void SV_InitLocal (void)
 	SV_InitOperatorCommands	();
 	SV_UserInit ();
 	
-	Cvar_RegisterVariable (&sv_rcon_password);
-	Cvar_RegisterVariable (&sv_password);
 	Cvar_RegisterVariable (&spectator_password);
 
 	Cvar_RegisterVariable (&sv_mintic);
@@ -1606,11 +1628,9 @@ void SV_InitNet (void)
 		port = atoi(com_argv[p+1]);
 		Con_Printf ("Port: %i\n", port);
 	}
+	svs.port = port;
 	svs.net_message.data = svs.net_message_buf;
 	svs.net_message.maxsize = sizeof(svs.net_message_buf);
-	NET_Init ();
-	if (!NET_OpenSocket (NS_SERVER, port))
-		Sys_Error ("Couldn't open UDP port %i", port);
 
 	svs.last_heartbeat = -99999;		// send immediately
 }
@@ -1621,44 +1641,9 @@ void SV_InitNet (void)
 SV_Init
 ====================
 */
-void SV_Init (quakeparms_t *parms)
+void SV_Init (void)
 {
-	COM_InitArgv (parms->argc, parms->argv);
-	COM_AddParm ("-game");
-	COM_AddParm ("qw");
-
-	host.parms = *parms;
-
-	Cbuf_Init ();
-	Cmd_Init ();	
-
-	COM_Init (host.parms.basedir);
-	
 	PR_Init ();
-
 	SV_InitNet ();
-
 	SV_InitLocal ();
-	Sys_Init ();
-
-
-	Cbuf_InsertText ("exec server.cfg\n");
-
-	host.initialized = true;
-	
-	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
-
-	Con_Printf ("\nServer Version %4.2f (Build %04d)\n\n", VERSION, build_number());
-
-	Con_Printf ("======== QuakeWorld Initialized ========\n");
-	
-// process command line arguments
-	Cmd_StuffCmds_f ();
-	Cbuf_Execute ();
-
-// if a map wasn't specified on the command line, spawn start.map
-	if (sv.state == ss_dead)
-		Cmd_ExecuteString ("map start");
-	if (sv.state == ss_dead)
-		SV_Error ("Couldn't spawn a server");
 }

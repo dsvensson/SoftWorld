@@ -84,7 +84,9 @@ extern	vec3_t	player_maxs;
 void	PM_PlayerMove (playermove_t *pm, const movevars_t *mv);
 
 // how far the view rolls when strafing at velocity
-float	PM_CalcRoll (const vec3_t angles, const vec3_t velocity, float rollangle, float rollspeed);
+// the view roll while strafing, from cl_rollangle and cl_rollspeed
+float	PM_CalcRoll (const vec3_t angles, const vec3_t velocity);
+void	PM_Init (void);		// registers the variables pmove reads
 
 int		PM_PointContents (const playermove_t *pm, const vec3_t point);
 bool	PM_TestPlayerPosition (const playermove_t *pm, const vec3_t point);

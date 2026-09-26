@@ -250,6 +250,17 @@ void PR_Profile_f (void)
 
 /*
 ============
+PR_ResetStack
+============
+*/
+void PR_ResetStack (void)
+{
+	pr_depth = 0;
+	localstack_used = 0;
+}
+
+/*
+============
 PR_RunError
 
 Aborts the currently executing function

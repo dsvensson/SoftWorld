@@ -22,7 +22,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cl_local.h"
 
 
-static cvar_t	rcon_password = {.name = "rcon_password", .string = ""};
 
 static cvar_t	rcon_address = {.name = "rcon_address", .string = ""};
 
@@ -55,16 +54,15 @@ static bool allowremotecmd = true;
 //
 // info mirrors
 //
-static cvar_t	password = {.name = "password", .string = "", .info = true};
-static cvar_t	spectator = {.name = "spectator", .string = "", .info = true};
-cvar_t	name = {.name = "name", .string = "unnamed", .archive = true, .info = true};
-static cvar_t	team = {.name = "team", .string = "", .archive = true, .info = true};
-static cvar_t	skin = {.name = "skin", .string = "", .archive = true, .info = true};
-static cvar_t	topcolor = {.name = "topcolor", .string = "0", .archive = true, .info = true};
-static cvar_t	bottomcolor = {.name = "bottomcolor", .string = "0", .archive = true, .info = true};
-static cvar_t	rate = {.name = "rate", .string = "2500", .archive = true, .info = true};
-static cvar_t	noaim = {.name = "noaim", .string = "0", .archive = true, .info = true};
-static cvar_t	msg = {.name = "msg", .string = "1", .archive = true, .info = true};
+static cvar_t	spectator = {.name = "spectator", .string = "", .userinfo = true};
+cvar_t	name = {.name = "name", .string = "unnamed", .archive = true, .userinfo = true};
+static cvar_t	team = {.name = "team", .string = "", .archive = true, .userinfo = true};
+static cvar_t	skin = {.name = "skin", .string = "", .archive = true, .userinfo = true};
+static cvar_t	topcolor = {.name = "topcolor", .string = "0", .archive = true, .userinfo = true};
+static cvar_t	bottomcolor = {.name = "bottomcolor", .string = "0", .archive = true, .userinfo = true};
+static cvar_t	rate = {.name = "rate", .string = "2500", .archive = true, .userinfo = true};
+static cvar_t	noaim = {.name = "noaim", .string = "0", .archive = true, .userinfo = true};
+static cvar_t	msg = {.name = "msg", .string = "1", .archive = true, .userinfo = true};
 
 
 client_static_t	cls;
@@ -81,7 +79,6 @@ static cvar_t	host_speeds = {.name = "host_speeds", .string = "0"};			// set for
 cvar_t	show_fps = {.name = "show_fps", .string = "0"};			// set for running times
 
 
-static jmp_buf 	host_abort;
 
 
 static float	server_version = 0;	// version of server we connected to
@@ -238,6 +235,8 @@ void CL_Connect_f (void)
 	server = Cmd_Argv (1);
 
 	CL_Disconnect ();
+	if (strcmp (server, "local"))
+		SV_Kill ();			// playing elsewhere ends the local game
 
 	strncpy (cls.servername, server, sizeof(cls.servername)-1);
 	CL_BeginServerConnect();
@@ -319,6 +318,8 @@ void CL_ClearState (void)
 	CL_ClearTEnts ();
 
 // wipe the entire cl structure
+	if (cl.map)
+		CM_FreeMap (cl.map);
 	memset (&cl, 0, sizeof(cl));
 
 	SZ_Clear (&cls.netchan.message);
@@ -334,7 +335,7 @@ void CL_ClearState (void)
 CL_Disconnect
 
 Sends a disconnect message to the server
-This is also called on Host_Error, so it shouldn't cause any errors
+This is also called after errors, so it shouldn't cause any
 =====================
 */
 void CL_Disconnect (void)
@@ -380,6 +381,7 @@ void CL_Disconnect (void)
 void CL_Disconnect_f (void)
 {
 	CL_Disconnect ();
+	SV_Kill ();
 }
 
 /*
@@ -1021,14 +1023,14 @@ static void CL_UserinfoCvarChanged (char *key, char *value)
 	}
 }
 
-void CL_Init (void)
+static void CL_InitLocal (void)
 {
 	extern	cvar_t		baseskin;
 	extern	cvar_t		noskins;
 	char st[80];
 
 	cls.state = ca_disconnected;
-	Cvar_SetInfoHook (CL_UserinfoCvarChanged);
+	Cvar_SetUserinfoHook (CL_UserinfoCvarChanged);
 
 	r_scene.numvisedicts = &cl.numvisedicts;
 	r_scene.maxvisedicts = MAX_VISEDICTS;
@@ -1078,7 +1080,6 @@ void CL_Init (void)
 	Cvar_RegisterVariable (&m_forward);
 	Cvar_RegisterVariable (&m_side);
 
-	Cvar_RegisterVariable (&rcon_password);
 	Cvar_RegisterVariable (&rcon_address);
 
 	Cvar_RegisterVariable (&cl_predict_players2);
@@ -1094,7 +1095,6 @@ void CL_Init (void)
 	// info mirrors
 	//
 	Cvar_RegisterVariable (&name);
-	Cvar_RegisterVariable (&password);
 	Cvar_RegisterVariable (&spectator);
 	Cvar_RegisterVariable (&skin);
 	Cvar_RegisterVariable (&team);
@@ -1153,69 +1153,13 @@ void CL_Init (void)
 
 
 /*
-================
-Host_EndGame
-
-Call this to drop to a console without exiting the qwcl
-================
-*/
-void Host_EndGame (char *message, ...)
-{
-	va_list		argptr;
-	char		string[1024];
-	
-	va_start (argptr,message);
-	vsnprintf (string,sizeof(string),message,argptr);
-	va_end (argptr);
-	Con_Printf ("\n===========================\n");
-	Con_Printf ("Host_EndGame: %s\n",string);
-	Con_Printf ("===========================\n\n");
-	
-	CL_Disconnect ();
-
-	longjmp (host_abort, 1);
-}
-
-/*
-================
-Host_Error
-
-This shuts down the client and exits qwcl
-================
-*/
-void Host_Error (char *error, ...)
-{
-	va_list		argptr;
-	char		string[1024];
-	static	bool inerror = false;
-	
-	if (inerror)
-		Sys_Error ("Host_Error: recursively entered");
-	inerror = true;
-	
-	va_start (argptr,error);
-	vsnprintf (string,sizeof(string),error,argptr);
-	va_end (argptr);
-	Con_Printf ("Host_Error: %s\n",string);
-	
-	CL_Disconnect ();
-	cls.demonum = -1;
-
-	inerror = false;
-
-// FIXME
-	Sys_Error ("Host_Error: %s\n",string);
-}
-
-
-/*
 ===============
-Host_WriteConfiguration
+CL_WriteConfiguration
 
 Writes key bindings and archived cvars to config.cfg
 ===============
 */
-void Host_WriteConfiguration (void)
+void CL_WriteConfiguration (void)
 {
 	FILE	*f;
 
@@ -1256,18 +1200,18 @@ static void CL_UpdateSound (void)
 	{
 		VectorCopy (r_refdef.vieworg, listener.origin);
 		AngleVectors (r_refdef.viewangles, listener.forward, listener.right, listener.up);
-		if (cl.clipmodels[1])
-			listener.ambient_levels = CM_LeafAmbientLevels (CM_PointInLeaf (listener.origin));
+		if (cl.map)
+			listener.ambient_levels = CM_LeafAmbientLevels (CM_PointInLeaf (cl.map, listener.origin));
 	}
 	S_Update (&listener);
 }
 
 /*
 ==================
-Host_MaxFPS
+CL_MaxFPS
 ==================
 */
-static float Host_MaxFPS (void)
+static float CL_MaxFPS (void)
 {
 	if (CL_IndependentPhysics ())
 		return cl_maxfps.value > 0 ? fmaxf (cl_maxfps.value, 30.0f) : 0;	// 0: no cap but the display's
@@ -1328,17 +1272,17 @@ static void CL_DecidePhysFrame (void)
 
 /*
 ==================
-Host_FrameWait
+CL_FrameWait
 
-Seconds until Host_Frame will run the next frame
+Seconds until CL_Frame will draw the next frame
 ==================
 */
-double Host_FrameWait (void)
+double CL_FrameWait (void)
 {
 	double	wait;
 	float	fps;
 
-	fps = Host_MaxFPS ();
+	fps = CL_MaxFPS ();
 	if (cls.timedemo)
 		return 0;
 
@@ -1357,12 +1301,12 @@ double Host_FrameWait (void)
 
 /*
 ==================
-Host_Frame
+CL_Frame
 
-Runs all active servers
+Reads the server's packets, sends a command when one is due, and draws
 ==================
 */
-void Host_Frame (float time)
+void CL_Frame (void)
 {
 	static double		time1 = 0;
 	static double		time2 = 0;
@@ -1372,15 +1316,10 @@ void Host_Frame (float time)
 	int			oldincoming;
 	bool		repredict;
 
-	if (setjmp (host_abort) )
-		return;			// something bad happened, or the server disconnected
-
-	// decide the simulation time
-	host.realtime += time;
 	if (oldrealtime > host.realtime)
 		oldrealtime = 0;
 
-	fps = Host_MaxFPS ();
+	fps = CL_MaxFPS ();
 
 	if (!cls.timedemo && fps && host.realtime - oldrealtime < 1.0/fps)
 		return;			// framerate is too high
@@ -1390,15 +1329,6 @@ void Host_Frame (float time)
 	if (cls.frametime > 0.2)
 		cls.frametime = 0.2;
 	CL_DecidePhysFrame ();
-
-	// get new key events
-	Sys_SendKeyEvents ();
-
-	// allow mice or other external controllers to add commands
-	IN_Commands ();
-
-	// process console commands
-	Cbuf_Execute ();
 
 	// fetch results from server
 	oldincoming = cls.netchan.incoming_sequence;
@@ -1463,7 +1393,7 @@ static void simple_crypt(char *buf, int len)
 		*buf++ ^= 0xff;
 }
 
-void Host_FixupModelNames(void)
+static void CL_FixupModelNames (void)
 {
 	simple_crypt(emodel_name, sizeof(emodel_name) - 1);
 	simple_crypt(pmodel_name, sizeof(pmodel_name) - 1);
@@ -1476,43 +1406,29 @@ void Host_FixupModelNames(void)
 
 /*
 ====================
-Host_Init
+CL_Init
 ====================
 */
-void Host_Init (quakeparms_t *parms)
+void CL_Init (void)
 {
-	COM_InitArgv (parms->argc, parms->argv);
-	COM_AddParm ("-game");
-	COM_AddParm ("qw");
+	Sys_mkdir ("qw");
 
-	Sys_mkdir("qw");
-
-	host.parms = *parms;
-
-	Cbuf_Init ();
-	Cmd_Init ();
 	V_Init ();
+	CL_FixupModelNames ();
 
-	COM_Init (host.parms.basedir);
-
-	Host_FixupModelNames();
-	
 	cls.net_message.data = cls.net_message_buf;
 	cls.net_message.maxsize = sizeof(cls.net_message_buf);
-	NET_Init ();
-	if (!NET_OpenSocket (NS_CLIENT, PORT_CLIENT) && !NET_OpenSocket (NS_CLIENT, PORT_ANY))
-		Con_Printf ("No UDP socket, only local games\n");
-
 	W_LoadWadFile ("gfx.wad");
 	Key_Init ();
-	Con_Init ();	
-	M_Init ();	
+	Con_Init ();
+
+	if (!NET_OpenSocket (NS_CLIENT, PORT_CLIENT) && !NET_OpenSocket (NS_CLIENT, PORT_ANY))
+		Con_Printf ("No UDP socket, only local games\n");
+	M_Init ();
 	Mod_Init ();
-	
-//	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
-	
+
 	R_InitTextures ();
- 
+
 	cls.basepal = FS_LoadFile ("gfx/palette.lmp", NULL);
 	if (!cls.basepal)
 		Sys_Error ("Couldn't load gfx/palette.lmp");
@@ -1527,47 +1443,34 @@ void Host_Init (quakeparms_t *parms)
 
 	cls.state = ca_disconnected;
 	Sbar_Init ();
-	CL_Init ();
+	CL_InitLocal ();
 	IN_Init ();
-
-	Cbuf_InsertText ("exec quake.rc\n");
-	Cbuf_AddText ("echo Type connect <internet address> or use GameSpy to connect to a game.\n");
-	Cbuf_AddText ("cl_warncmd 1\n");
-
-
-	host.initialized = true;
-
-	Con_Printf ("\nClient Version %4.2f (Build %04d)\n\n", VERSION, build_number());
-
-	Con_Printf ("\x80\x81\x81\x81\x81\x81\x81 QuakeWorld Initialized \x81\x81\x81\x81\x81\x81\x82\n");
 }
-
 
 /*
 ===============
-Host_Shutdown
-
-FIXME: this is a callback from Sys_Quit and Sys_Error.  It would be better
-to run quit through here before the final handoff to the sys code.
+CL_Shutdown
 ===============
 */
-void Host_Shutdown(void)
+void CL_Shutdown (void)
 {
-	static bool isdown = false;
-	
-	if (isdown)
-	{
-		printf ("recursive shutdown\n");
-		return;
-	}
-	isdown = true;
-
-	Host_WriteConfiguration (); 
-		
-	NET_Shutdown ();
-	S_Shutdown();
+	CL_WriteConfiguration ();
+	S_Shutdown ();
 	IN_Shutdown ();
 	if (cls.basepal)
-		VID_Shutdown();
+		VID_Shutdown ();
+}
+
+/*
+===============
+CL_Drop
+
+Leaves the game after an error; the demo loop stops too
+===============
+*/
+void CL_Drop (void)
+{
+	CL_Disconnect ();
+	cls.demonum = -1;
 }
 

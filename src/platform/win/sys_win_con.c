@@ -20,9 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "args.h"
 #include "cvar.h"
 #include "host.h"
-#include "net.h"
 #include "print.h"
-#include "server.h"
 #include "sys.h"
 
 #include <stdlib.h>
@@ -180,6 +178,7 @@ Sys_Quit
 */
 void Sys_Quit (void)
 {
+	Host_Shutdown ();
 	exit (0);
 }
 
@@ -218,10 +217,11 @@ int Sys_ConsoleMain (int argc, char **argv)
 	parms.cachedir = NULL;
 
 	Sys_InitConsole ();
-	SV_Init (&parms);
+	Sys_Init ();
+	Host_Init (&parms);
 
 // run one frame immediately for first heartbeat
-	SV_Frame (0.1f);		
+	Host_Frame (0.1);
 
 //
 // main loop
@@ -230,14 +230,14 @@ int Sys_ConsoleMain (int argc, char **argv)
 	while (1)
 	{
 	// sleep until physics is due, a packet arrives or something is typed
-		Sys_WaitUntil (Sys_DoubleTime () + SV_NextFrameWait ());
+		Sys_WaitUntil (Sys_DoubleTime () + Host_FrameWait ());
 
 	// find time passed since last cycle
 		newtime = Sys_DoubleTime ();
 		time = newtime - oldtime;
 		oldtime = newtime;
 		
-		SV_Frame ((float)time);
+		Host_Frame (time);
 	}	
 
 	return true;

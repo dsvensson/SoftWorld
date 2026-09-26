@@ -73,15 +73,31 @@ void SV_SetMaster_f (void)
 
 /*
 ==================
-SV_Quit_f
+SV_KillServer_f
 ==================
 */
-void SV_Quit_f (void)
+static void SV_KillServer_f (void)
 {
-	SV_FinalMessage ("server shutdown\n");
-	Con_Printf ("Shutting down.\n");
-	SV_Shutdown ();
-	Sys_Quit ();
+	if (!SV_Active ())
+		Con_Printf ("No map is running\n");
+	SV_Kill ();
+}
+
+/*
+==================
+SV_HasLocalClient
+
+Whether the client in this process is on the server
+==================
+*/
+static bool SV_HasLocalClient (void)
+{
+	int		i;
+
+	for (i=0 ; i<MAX_CLIENTS ; i++)
+		if (svs.clients[i].state != cs_free && svs.clients[i].netchan.remote_address.type == NA_LOOPBACK)
+			return true;
+	return false;
 }
 
 /*
@@ -326,6 +342,10 @@ void SV_Map_f (void)
 	SV_SpawnServer (level);
 
 	SV_BroadcastCommand ("reconnect\n");
+
+	// the player of a listen server joins the game
+	if (!host.dedicated && !SV_HasLocalClient ())
+		Cbuf_AddText ("connect local\n");
 }
 
 
@@ -864,23 +884,25 @@ void SV_InitOperatorCommands (void)
 	Cmd_AddCommand ("logfile", SV_Logfile_f);
 	Cmd_AddCommand ("fraglogfile", SV_Fraglogfile_f);
 
-	Cmd_AddCommand ("snap", SV_Snap_f);
+	// a listen server's client owns these names; the server's are sv_*
+	Cmd_AddCommand (host.dedicated ? "snap" : "sv_snap", SV_Snap_f);
+	Cmd_AddCommand (host.dedicated ? "say" : "sv_say", SV_ConSay_f);
+	Cmd_AddCommand (host.dedicated ? "serverinfo" : "sv_serverinfo", SV_Serverinfo_f);
+	Cmd_AddCommand (host.dedicated ? "user" : "sv_user", SV_User_f);
+
 	Cmd_AddCommand ("snapall", SV_SnapAll_f);
 	Cmd_AddCommand ("kick", SV_Kick_f);
 	Cmd_AddCommand ("status", SV_Status_f);
 
 	Cmd_AddCommand ("map", SV_Map_f);
+	Cmd_AddCommand ("killserver", SV_KillServer_f);
 	Cmd_AddCommand ("setmaster", SV_SetMaster_f);
 
-	Cmd_AddCommand ("say", SV_ConSay_f);
 	Cmd_AddCommand ("heartbeat", SV_Heartbeat_f);
-	Cmd_AddCommand ("quit", SV_Quit_f);
 	Cmd_AddCommand ("god", SV_God_f);
 	Cmd_AddCommand ("give", SV_Give_f);
 	Cmd_AddCommand ("noclip", SV_Noclip_f);
-	Cmd_AddCommand ("serverinfo", SV_Serverinfo_f);
 	Cmd_AddCommand ("localinfo", SV_Localinfo_f);
-	Cmd_AddCommand ("user", SV_User_f);
 	Cmd_AddCommand ("gamedir", SV_Gamedir_f);
 	Cmd_AddCommand ("sv_gamedir", SV_Gamedir);
 	Cmd_AddCommand ("floodprot", SV_Floodprot_f);

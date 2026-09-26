@@ -63,7 +63,8 @@ typedef struct cvar_s
 	char	*name;
 	char	*string;
 	bool archive;		// set to true to cause it to be saved to vars.rc
-	bool info;			// added to serverinfo or userinfo when changed
+	bool userinfo;		// the client's userinfo carries it
+	bool serverinfo;	// the server's serverinfo carries it
 	float	value;
 	struct cvar_s *next;
 } cvar_t;
@@ -74,8 +75,10 @@ void 	Cvar_RegisterVariable (cvar_t *variable);
 
 void 	Cvar_Set (char *var_name, char *value);
 
-void	Cvar_SetInfoHook (void (*hook)(char *name, char *value));
-// called when a cvar with the info flag changes
+// called when a userinfo or serverinfo cvar changes; a listen server has both
+typedef void (*cvar_info_hook_t) (char *name, char *value);
+void	Cvar_SetUserinfoHook (cvar_info_hook_t hook);
+void	Cvar_SetServerinfoHook (cvar_info_hook_t hook);
 // equivelant to "<name> <variable>" typed at the console
 
 void	Cvar_SetValue (char *var_name, float value);

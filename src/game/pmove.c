@@ -18,6 +18,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
+#include "cvar.h"
 #include "pmove.h"
 #include "print.h"
 #include "sys.h"
@@ -52,6 +53,20 @@ vec3_t	player_maxs = {16, 16, 32};
 
 #define	BUTTON_JUMP	2
 
+
+static cvar_t	cl_rollspeed = {.name = "cl_rollspeed", .string = "200"};
+static cvar_t	cl_rollangle = {.name = "cl_rollangle", .string = "2.0"};
+
+/*
+============
+PM_Init
+============
+*/
+void PM_Init (void)
+{
+	Cvar_RegisterVariable (&cl_rollspeed);
+	Cvar_RegisterVariable (&cl_rollangle);
+}
 
 /*
 ==================
@@ -889,7 +904,7 @@ PM_CalcRoll
 
 ===============
 */
-float PM_CalcRoll (const vec3_t angles, const vec3_t velocity, float rollangle, float rollspeed)
+float PM_CalcRoll (const vec3_t angles, const vec3_t velocity)
 {
 	vec3_t	fwd, rt, u;
 	float	sign;
@@ -900,10 +915,10 @@ float PM_CalcRoll (const vec3_t angles, const vec3_t velocity, float rollangle, 
 	sign = (float)(side < 0 ? -1 : 1);
 	side = fabsf(side);
 
-	if (side < rollspeed)
-		side = side * rollangle / rollspeed;
+	if (side < cl_rollspeed.value)
+		side = side * cl_rollangle.value / cl_rollspeed.value;
 	else
-		side = rollangle;
+		side = cl_rollangle.value;
 
 	return side*sign;
 }

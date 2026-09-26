@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // net_main.c -- the client's and the server's sockets, and the loopback between them
 
+#include "cvar.h"
 #include "net.h"
 #include "net_socket.h"
 #include "print.h"
@@ -104,6 +105,9 @@ SOCKETS
 
 static udpsocket_t	*net_sockets[2];	// indexed by end
 
+cvar_t	password = {.name = "password", .string = "", .userinfo = true};
+cvar_t	rcon_password = {.name = "rcon_password", .string = ""};
+
 /*
 ====================
 NET_Init / NET_Shutdown
@@ -113,6 +117,8 @@ void NET_Init (void)
 {
 	UDP_Init ();
 	Netchan_Init ();
+	Cvar_RegisterVariable (&password);
+	Cvar_RegisterVariable (&rcon_password);
 }
 
 void NET_Shutdown (void)

@@ -278,7 +278,7 @@ void SV_LinkEdict (edict_t *ent, bool touch_triggers)
 // link to PVS leafs
 	ent->num_leafs = 0;
 	if (ent->v.modelindex)
-		ent->num_leafs = CM_FindTouchedLeafs (ent->v.absmin, ent->v.absmax, ent->leafnums, MAX_ENT_LEAFS);
+		ent->num_leafs = CM_FindTouchedLeafs (sv.map, ent->v.absmin, ent->v.absmax, ent->leafnums, MAX_ENT_LEAFS);
 
 	if (ent->v.solid == SOLID_NOT)
 		return;

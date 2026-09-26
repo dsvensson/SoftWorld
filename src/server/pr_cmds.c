@@ -184,7 +184,7 @@ void PF_setmodel (void)
 // if it is an inline model, get the size information for it
 	if (m[0] == '*')
 	{
-		mod = CM_InlineModel (m);
+		mod = CM_InlineModel (sv.map, m);
 		if (!mod)
 			PR_RunError ("no inline model %s\n", m);
 		VectorCopy (mod->mins, e->v.mins);
@@ -587,7 +587,7 @@ int PF_newcheckclient (int check)
 
 // get the PVS for the entity
 	VectorAdd (ent->v.origin, ent->v.view_ofs, org);
-	memcpy (sv.checkpvs, CM_LeafPVS (CM_Leafnum (CM_PointInLeaf (org))), (size_t)sv.vis_rowbytes);
+	memcpy (sv.checkpvs, CM_LeafPVS (sv.map, CM_Leafnum (sv.map, CM_PointInLeaf (sv.map, org))), (size_t)sv.vis_rowbytes);
 
 	return i;
 }
@@ -633,7 +633,7 @@ void PF_checkclient (void)
 // if current entity can't possibly see the check entity, return 0
 	self = PROG_TO_EDICT(pr.global_struct->self);
 	VectorAdd (self->v.origin, self->v.view_ofs, view);
-	l = CM_Leafnum (CM_PointInLeaf (view)) - 1;
+	l = CM_Leafnum (sv.map, CM_PointInLeaf (sv.map, view)) - 1;
 	if ( (l<0) || !(sv.checkpvs[l>>3] & (1<<(l&7)) ) )
 	{
 c_notvis++;

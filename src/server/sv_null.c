@@ -8,7 +8,7 @@ of the License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 
@@ -17,16 +17,41 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
+// sv_null.c -- the server of the client-only program: there is none
 
-#pragma once
-// view.h
+#include "cmd.h"
+#include "print.h"
+#include "sv_public.h"
 
-#include "cvar.h"
-#include "mathlib.h"
+static void SV_NoServer_f (void)
+{
+	Con_Printf ("This program has no server; connect to one instead.\n");
+}
 
-extern	cvar_t		v_gamma;
+void SV_Init (void)
+{
+	Cmd_AddCommand ("map", SV_NoServer_f);
+}
 
-void V_Init (void);
-void V_RenderView (void);
-float V_CalcRoll (vec3_t angles, vec3_t velocity);
-void V_UpdatePalette (void);
+void SV_Shutdown (void)
+{
+}
+
+bool SV_Active (void)
+{
+	return false;
+}
+
+void SV_Kill (void)
+{
+}
+
+void SV_Frame (double time)
+{
+	(void)time;
+}
+
+double SV_NextFrameWait (void)
+{
+	return 1;
+}

@@ -31,8 +31,6 @@ when crossing a water boudnary.
 */
 
 
-cvar_t	cl_rollspeed = {.name = "cl_rollspeed", .string = "200"};
-cvar_t	cl_rollangle = {.name = "cl_rollangle", .string = "2.0"};
 
 static cvar_t	cl_bob = {.name = "cl_bob", .string = "0.02"};
 static cvar_t	cl_bobcycle = {.name = "cl_bobcycle", .string = "0.6"};
@@ -75,7 +73,7 @@ V_CalcRoll
 */
 float V_CalcRoll (vec3_t angles, vec3_t velocity)
 {
-	return PM_CalcRoll (angles, velocity, cl_rollangle.value, cl_rollspeed.value);
+	return PM_CalcRoll (angles, velocity);
 }
 
 
@@ -875,8 +873,7 @@ void V_Init (void)
 	Cvar_RegisterVariable (&cl_crossx);
 	Cvar_RegisterVariable (&cl_crossy);
 
-	Cvar_RegisterVariable (&cl_rollspeed);
-	Cvar_RegisterVariable (&cl_rollangle);
+	PM_Init ();
 	Cvar_RegisterVariable (&cl_bob);
 	Cvar_RegisterVariable (&cl_bobcycle);
 	Cvar_RegisterVariable (&cl_bobup);

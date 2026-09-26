@@ -42,6 +42,11 @@ typedef struct
 	unsigned short	port;		// network byte order
 } netadr_t;
 
+// the passwords of a server, and the ones its clients give; a listen
+// server's own client uses the same ones
+extern	cvar_t	password;		// for entering the game (userinfo "password")
+extern	cvar_t	rcon_password;	// for remote console commands
+
 void	NET_Init (void);
 void	NET_Shutdown (void);
 

@@ -3,3 +3,5 @@ sw_add_module(sw_client
 	console.c keys.c menu.c sbar.c screen.c skin.c view.c)
 target_link_libraries(sw_client PUBLIC sw_render sw_sound sw_game sw_net sw_common)
 target_include_directories(sw_client PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# the client may stop a local server (sv_public.h); which server it gets is the program's choice
+target_include_directories(sw_client PRIVATE ${PROJECT_SOURCE_DIR}/src/server)

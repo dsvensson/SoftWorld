@@ -849,7 +849,7 @@ void CL_LinkPlayers (void)
 		ent->angles[PITCH] = -state->viewangles[PITCH]/3;
 		ent->angles[YAW] = state->viewangles[YAW];
 		ent->angles[ROLL] = 0;
-		ent->angles[ROLL] = PM_CalcRoll (ent->angles, state->velocity, cl_rollangle.value, cl_rollspeed.value)*4;
+		ent->angles[ROLL] = PM_CalcRoll (ent->angles, state->velocity)*4;
 
 		// only predict half the move to minimize overruns
 		msec = (int)(500*(playertime - state->state_time));

@@ -192,7 +192,7 @@ void SV_CalcPHS (void)
 	Con_Printf ("Building PHS...\n");
 
 	// a row for every leaf with visibility, and one for leaf 0 outside the map
-	num = CM_NumVisLeafs () + 1;
+	num = CM_NumVisLeafs (sv.map) + 1;
 	rowwords = (num+31)>>5;
 	rowbytes = rowwords*4;
 	sv.vis_rowbytes = rowbytes;
@@ -203,7 +203,7 @@ void SV_CalcPHS (void)
 	vcount = 0;
 	for (i=0 ; i<num ; i++, scan+=rowbytes)
 	{
-		memcpy (scan, CM_LeafPVS (i), (size_t)rowbytes);
+		memcpy (scan, CM_LeafPVS (sv.map, i), (size_t)rowbytes);
 		if (i == 0)
 			continue;
 		for (j=0 ; j<num ; j++)
@@ -283,13 +283,24 @@ void SV_SpawnServer (char *server)
 {
 	edict_t		*ent;
 	int			i;
+	cmap_t		*oldmap;
 
 	Con_DPrintf ("SpawnServer: %s\n",server);
+
+	// the first map opens the server's port; a listen server can do without
+	if (NET_SocketAddress (NS_SERVER).type == NA_INVALID && !NET_OpenSocket (NS_SERVER, svs.port))
+	{
+		if (host.dedicated)
+			Sys_Error ("Couldn't open UDP port %i", svs.port);
+		Con_Printf ("Couldn't open UDP port %i: only this client can join\n", svs.port);
+	}
 	
 	SV_SaveSpawnparms ();
 
 	svs.spawncount++;		// any partially connected client will be
 							// restarted
+
+	oldmap = sv.map;		// freed once the new map is loaded, which may be the same
 
 	sv.state = ss_dead;
 
@@ -340,9 +351,12 @@ void SV_SpawnServer (char *server)
 	
 	Q_strncpyz (sv.name, server, sizeof(sv.name));
 	snprintf (sv.modelname, sizeof(sv.modelname), "maps/%s.bsp", server);
-	sv.worldmodel = CM_LoadMap (sv.modelname, &sv.map_checksum, &sv.map_checksum2);
-	if (!sv.worldmodel)
+	sv.map = CM_LoadMap (sv.modelname, &sv.map_checksum, &sv.map_checksum2);
+	if (oldmap)
+		CM_FreeMap (oldmap);
+	if (!sv.map)
 		SV_Error ("Couldn't load %s", sv.modelname);
+	sv.worldmodel = CM_WorldModel (sv.map);
 	SV_CalcPHS ();
 
 	//
@@ -355,10 +369,10 @@ void SV_SpawnServer (char *server)
 	sv.model_precache[0] = pr.strings;
 	sv.model_precache[1] = sv.modelname;
 	sv.models[1] = sv.worldmodel;
-	for (i=1 ; i<CM_NumInlineModels () ; i++)
+	for (i=1 ; i<CM_NumInlineModels (sv.map) ; i++)
 	{
 		sv.model_precache[1+i] = svs.localmodels[i];
-		sv.models[i+1] = CM_InlineModel (svs.localmodels[i]);
+		sv.models[i+1] = CM_InlineModel (sv.map, svs.localmodels[i]);
 	}
 
 	//check player/eyes models for hacks
@@ -388,7 +402,7 @@ void SV_SpawnServer (char *server)
 	SV_ProgStartFrame ();
 
 	// load and spawn all other entities
-	ED_LoadFromFile (CM_EntityString ());
+	ED_LoadFromFile (CM_EntityString (sv.map));
 
 	// look up some model indexes for specialized message compression
 	SV_FindModelNumbers ();

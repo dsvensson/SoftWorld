@@ -255,9 +255,14 @@ void Model_NextDownload (void)
 
 		cl.model_precache[i] = Mod_ForName (cl.model_name[i], false);
 		if (i == 1)
-			cl.clipmodels[i] = CM_LoadMap (cl.model_name[i], NULL, &cl.map_checksum2);
+		{
+			if (cl.map)
+				CM_FreeMap (cl.map);
+			cl.map = CM_LoadMap (cl.model_name[i], NULL, &cl.map_checksum2);
+			cl.clipmodels[i] = cl.map ? CM_WorldModel (cl.map) : NULL;
+		}
 		else if (cl.model_name[i][0] == '*')
-			cl.clipmodels[i] = CM_InlineModel (cl.model_name[i]);
+			cl.clipmodels[i] = CM_InlineModel (cl.map, cl.model_name[i]);
 		if (!strcmp (cl.model_name[i], "progs/player.mdl"))
 			CL_SetModelChecksum (cl.model_name[i], pmodel_name);
 		else if (!strcmp (cl.model_name[i], "progs/eyes.mdl"))
@@ -571,7 +576,7 @@ void CL_ParseServerData (void)
 
 	if (Q_strcasecmp (gamedirfile, str)) {
 		// save current config
-		Host_WriteConfiguration (); 
+		CL_WriteConfiguration (); 
 		cflag = true;
 	}
 

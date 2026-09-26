@@ -291,6 +291,7 @@ typedef struct
 	struct model_s		*model_precache[MAX_MODELS];
 	struct cmodel_s	*clipmodels[MAX_MODELS];	// the world and its inline models, for prediction
 	unsigned	map_checksum2;		// the server checks it on prespawn
+	struct cmap_s	*map;			// a reference the client holds
 	movevars_t	movevars;			// from the server, for prediction
 	struct sfx_s		*sound_precache[MAX_SOUNDS];
 
@@ -382,11 +383,9 @@ void Cmd_ForwardToServer (void);
 dlight_t *CL_AllocDlight (int key);
 void	CL_DecayLights (void);
 
-void CL_Init (void);
-void Host_WriteConfiguration (void);
+void CL_WriteConfiguration (void);
 
 
-void CL_Disconnect (void);
 void CL_Disconnect_f (void);
 void CL_NextDemo (void);
 

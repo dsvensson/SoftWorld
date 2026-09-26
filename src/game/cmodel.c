@@ -46,9 +46,7 @@ struct cleaf_s
 	byte		ambient_sound_level[NUM_AMBIENTS];
 };
 
-static arena_t	cm_arena;			// everything of the current map
-
-static struct
+struct cmap_s
 {
 	char		name[MAX_QPATH];
 	unsigned	filesum;			// of the whole file, to notice changes
@@ -74,7 +72,13 @@ static struct
 	byte		*novis;				// everything visible
 	byte		*pvs;
 	byte		*fatpvs;
-} cm;
+
+	arena_t		arena;				// everything of the map
+	int			refs;
+	struct cmap_s	*next;
+};
+
+static cmap_t	*cm_maps;			// the loaded maps
 
 /*
 ===============================================================================
@@ -84,7 +88,8 @@ LOADING
 ===============================================================================
 */
 
-static byte		*cm_base;			// the map file being loaded
+static cmap_t	*lm;				// the map being loaded
+static byte		*cm_base;			// its file
 static int		cm_filesize;
 
 /*
@@ -97,9 +102,9 @@ Checks that a lump lies within the file and holds whole elements
 static void *CM_Lump (const lump_t *l, size_t elemsize, int *count)
 {
 	if (l->fileofs < 0 || l->filelen < 0 || l->filelen > cm_filesize - l->fileofs)
-		Sys_Error ("CM_LoadMap: lump outside of %s", cm.name);
+		Sys_Error ("CM_LoadMap: lump outside of %s", lm->name);
 	if (l->filelen % elemsize)
-		Sys_Error ("CM_LoadMap: funny lump size in %s", cm.name);
+		Sys_Error ("CM_LoadMap: funny lump size in %s", lm->name);
 	*count = (int)(l->filelen / elemsize);
 	return cm_base + l->fileofs;
 }
@@ -111,9 +116,9 @@ static void CM_LoadPlanes (const lump_t *l)
 	int			i, j, count, bits;
 
 	in = CM_Lump (l, sizeof(*in), &count);
-	out = Arena_Alloc (&cm_arena, (size_t)count * sizeof(*out));
-	cm.planes = out;
-	cm.numplanes = count;
+	out = Arena_Alloc (&lm->arena, (size_t)count * sizeof(*out));
+	lm->planes = out;
+	lm->numplanes = count;
 
 	for (i=0 ; i<count ; i++, in++, out++)
 	{
@@ -136,11 +141,11 @@ static void CM_LoadVisibility (const lump_t *l)
 	int		count;
 
 	in = CM_Lump (l, 1, &count);
-	cm.vissize = count;
+	lm->vissize = count;
 	if (!count)
 		return;
-	cm.visdata = Arena_Alloc (&cm_arena, (size_t)count);
-	memcpy (cm.visdata, in, (size_t)count);
+	lm->visdata = Arena_Alloc (&lm->arena, (size_t)count);
+	memcpy (lm->visdata, in, (size_t)count);
 }
 
 static void CM_LoadLeafs (const lump_t *l)
@@ -151,18 +156,18 @@ static void CM_LoadLeafs (const lump_t *l)
 
 	in = CM_Lump (l, sizeof(*in), &count);
 	if (count < 1)
-		Sys_Error ("CM_LoadMap: %s has no leafs", cm.name);
-	out = Arena_Alloc (&cm_arena, (size_t)count * sizeof(*out));
-	cm.leafs = out;
-	cm.numleafs = count;
+		Sys_Error ("CM_LoadMap: %s has no leafs", lm->name);
+	out = Arena_Alloc (&lm->arena, (size_t)count * sizeof(*out));
+	lm->leafs = out;
+	lm->numleafs = count;
 
 	for (i=0 ; i<count ; i++, in++, out++)
 	{
 		out->contents = LittleLong (in->contents);
 
 		p = LittleLong (in->visofs);
-		if (cm.visdata && p >= 0 && p < cm.vissize)
-			out->compressed_vis = cm.visdata + p;
+		if (lm->visdata && p >= 0 && p < lm->vissize)
+			out->compressed_vis = lm->visdata + p;
 
 		for (j=0 ; j<NUM_AMBIENTS ; j++)
 			out->ambient_sound_level[j] = in->ambient_level[j];
@@ -177,17 +182,17 @@ static void CM_LoadNodes (const lump_t *l)
 
 	in = CM_Lump (l, sizeof(*in), &count);
 	if (count < 1)
-		Sys_Error ("CM_LoadMap: %s has no nodes", cm.name);
-	out = Arena_Alloc (&cm_arena, (size_t)count * sizeof(*out));
-	cm.nodes = out;
-	cm.numnodes = count;
+		Sys_Error ("CM_LoadMap: %s has no nodes", lm->name);
+	out = Arena_Alloc (&lm->arena, (size_t)count * sizeof(*out));
+	lm->nodes = out;
+	lm->numnodes = count;
 
 	for (i=0 ; i<count ; i++, in++, out++)
 	{
 		p = LittleLong (in->planenum);
-		if (p < 0 || p >= cm.numplanes)
-			Sys_Error ("CM_LoadMap: bad node plane in %s", cm.name);
-		out->plane = cm.planes + p;
+		if (p < 0 || p >= lm->numplanes)
+			Sys_Error ("CM_LoadMap: bad node plane in %s", lm->name);
+		out->plane = lm->planes + p;
 
 		for (j=0 ; j<2 ; j++)
 		{
@@ -195,15 +200,15 @@ static void CM_LoadNodes (const lump_t *l)
 			if (p >= 0)
 			{
 				if (p >= count)
-					Sys_Error ("CM_LoadMap: bad node child in %s", cm.name);
-				out->children[j] = cm.nodes + p;
+					Sys_Error ("CM_LoadMap: bad node child in %s", lm->name);
+				out->children[j] = lm->nodes + p;
 			}
 			else
 			{
 				p = -1 - p;
-				if (p >= cm.numleafs)
-					Sys_Error ("CM_LoadMap: bad leaf child in %s", cm.name);
-				out->children[j] = (cnode_t *)(cm.leafs + p);
+				if (p >= lm->numleafs)
+					Sys_Error ("CM_LoadMap: bad leaf child in %s", lm->name);
+				out->children[j] = (cnode_t *)(lm->leafs + p);
 			}
 		}
 	}
@@ -216,20 +221,20 @@ static void CM_LoadClipnodes (const lump_t *l)
 	int			i, j, count;
 
 	in = CM_Lump (l, sizeof(*in), &count);
-	out = Arena_Alloc (&cm_arena, (size_t)count * sizeof(*out));
-	cm.clipnodes = out;
-	cm.numclipnodes = count;
+	out = Arena_Alloc (&lm->arena, (size_t)count * sizeof(*out));
+	lm->clipnodes = out;
+	lm->numclipnodes = count;
 
 	for (i=0 ; i<count ; i++, in++, out++)
 	{
 		out->planenum = LittleLong (in->planenum);
-		if (out->planenum < 0 || out->planenum >= cm.numplanes)
-			Sys_Error ("CM_LoadMap: bad clipnode plane in %s", cm.name);
+		if (out->planenum < 0 || out->planenum >= lm->numplanes)
+			Sys_Error ("CM_LoadMap: bad clipnode plane in %s", lm->name);
 		for (j=0 ; j<2 ; j++)
 		{
 			out->children[j] = LittleShort (in->children[j]);
 			if (out->children[j] >= count)
-				Sys_Error ("CM_LoadMap: bad clipnode child in %s", cm.name);
+				Sys_Error ("CM_LoadMap: bad clipnode child in %s", lm->name);
 		}
 	}
 }
@@ -247,19 +252,19 @@ static void CM_MakeHull0 (void)
 	mclipnode_t	*out;
 	int			i, j;
 
-	out = Arena_Alloc (&cm_arena, (size_t)cm.numnodes * sizeof(*out));
-	cm.hull0nodes = out;
+	out = Arena_Alloc (&lm->arena, (size_t)lm->numnodes * sizeof(*out));
+	lm->hull0nodes = out;
 
-	for (i=0, in=cm.nodes ; i<cm.numnodes ; i++, in++, out++)
+	for (i=0, in=lm->nodes ; i<lm->numnodes ; i++, in++, out++)
 	{
-		out->planenum = (int)(in->plane - cm.planes);
+		out->planenum = (int)(in->plane - lm->planes);
 		for (j=0 ; j<2 ; j++)
 		{
 			child = in->children[j];
 			if (child->contents < 0)
 				out->children[j] = child->contents;
 			else
-				out->children[j] = (int)(child - cm.nodes);
+				out->children[j] = (int)(child - lm->nodes);
 		}
 	}
 }
@@ -270,8 +275,8 @@ static void CM_LoadEntities (const lump_t *l)
 	int		count;
 
 	in = CM_Lump (l, 1, &count);
-	cm.entitystring = Arena_Alloc (&cm_arena, (size_t)count + 1);
-	memcpy (cm.entitystring, in, (size_t)count);
+	lm->entitystring = Arena_Alloc (&lm->arena, (size_t)count + 1);
+	memcpy (lm->entitystring, in, (size_t)count);
 }
 
 static const vec3_t	hull0_size[2] = {{0, 0, 0}, {0, 0, 0}};
@@ -282,9 +287,9 @@ static void CM_SetHull (hull_t *hull, mclipnode_t *clipnodes, int numclipnodes, 
 	const vec3_t size[2])
 {
 	if (headnode >= numclipnodes)
-		Sys_Error ("CM_LoadMap: bad model headnode in %s", cm.name);
+		Sys_Error ("CM_LoadMap: bad model headnode in %s", lm->name);
 	hull->clipnodes = clipnodes;
-	hull->planes = cm.planes;
+	hull->planes = lm->planes;
 	hull->firstclipnode = headnode;
 	hull->lastclipnode = numclipnodes - 1;
 	VectorCopy (size[0], hull->clip_mins);
@@ -299,14 +304,14 @@ static void CM_LoadSubmodels (const lump_t *l)
 
 	in = CM_Lump (l, sizeof(*in), &count);
 	if (count < 1)
-		Sys_Error ("CM_LoadMap: %s has no models", cm.name);
-	out = Arena_Alloc (&cm_arena, (size_t)count * sizeof(*out));
-	cm.cmodels = out;
-	cm.numcmodels = count;
+		Sys_Error ("CM_LoadMap: %s has no models", lm->name);
+	out = Arena_Alloc (&lm->arena, (size_t)count * sizeof(*out));
+	lm->cmodels = out;
+	lm->numcmodels = count;
 
-	cm.numvisleafs = LittleLong (in->visleafs);
-	if (cm.numvisleafs < 0 || cm.numvisleafs >= cm.numleafs)
-		Sys_Error ("CM_LoadMap: bad visleafs in %s", cm.name);
+	lm->numvisleafs = LittleLong (in->visleafs);
+	if (lm->numvisleafs < 0 || lm->numvisleafs >= lm->numleafs)
+		Sys_Error ("CM_LoadMap: bad visleafs in %s", lm->name);
 
 	for (i=0 ; i<count ; i++, in++, out++)
 	{
@@ -315,9 +320,9 @@ static void CM_LoadSubmodels (const lump_t *l)
 			out->mins[j] = LittleFloat (in->mins[j]) - 1;
 			out->maxs[j] = LittleFloat (in->maxs[j]) + 1;
 		}
-		CM_SetHull (&out->hulls[0], cm.hull0nodes, cm.numnodes, LittleLong (in->headnode[0]), hull0_size);
-		CM_SetHull (&out->hulls[1], cm.clipnodes, cm.numclipnodes, LittleLong (in->headnode[1]), hull1_size);
-		CM_SetHull (&out->hulls[2], cm.clipnodes, cm.numclipnodes, LittleLong (in->headnode[2]), hull2_size);
+		CM_SetHull (&out->hulls[0], lm->hull0nodes, lm->numnodes, LittleLong (in->headnode[0]), hull0_size);
+		CM_SetHull (&out->hulls[1], lm->clipnodes, lm->numclipnodes, LittleLong (in->headnode[1]), hull1_size);
+		CM_SetHull (&out->hulls[2], lm->clipnodes, lm->numclipnodes, LittleLong (in->headnode[2]), hull2_size);
 	}
 }
 
@@ -328,12 +333,12 @@ static void CM_LoadBrushMap (void)
 	int			i, count;
 
 	if (cm_filesize < (int)sizeof(dheader_t))
-		Sys_Error ("CM_LoadMap: %s is too short", cm.name);
+		Sys_Error ("CM_LoadMap: %s is too short", lm->name);
 	header = (dheader_t *)cm_base;
 
 	i = LittleLong (header->version);
 	if (i != BSPVERSION)
-		Sys_Error ("CM_LoadMap: %s has wrong version number (%i should be %i)", cm.name, i, BSPVERSION);
+		Sys_Error ("CM_LoadMap: %s has wrong version number (%i should be %i)", lm->name, i, BSPVERSION);
 
 	for (i=0 ; i<(int)(sizeof(dheader_t)/4) ; i++)
 		((int *)header)[i] = LittleLong (((int *)header)[i]);
@@ -345,10 +350,10 @@ static void CM_LoadBrushMap (void)
 		if (i == LUMP_ENTITIES)
 			continue;
 		sum = LittleLong (Com_BlockChecksum (cm_base + header->lumps[i].fileofs, count));
-		cm.checksum ^= sum;
+		lm->checksum ^= sum;
 		if (i == LUMP_VISIBILITY || i == LUMP_LEAFS || i == LUMP_NODES)
 			continue;
-		cm.checksum2 ^= sum;
+		lm->checksum2 ^= sum;
 	}
 
 	CM_LoadPlanes (&header->lumps[LUMP_PLANES]);
@@ -361,11 +366,11 @@ static void CM_LoadBrushMap (void)
 	CM_LoadSubmodels (&header->lumps[LUMP_MODELS]);
 
 	// room for a row of bits for every leaf, read in whole 32 bit words
-	cm.visbytes = (((cm.numleafs + 31) >> 3) + 3) & ~3;
-	cm.novis = Arena_Alloc (&cm_arena, (size_t)cm.visbytes);
-	memset (cm.novis, 0xff, (size_t)cm.visbytes);
-	cm.pvs = Arena_Alloc (&cm_arena, (size_t)cm.visbytes);
-	cm.fatpvs = Arena_Alloc (&cm_arena, (size_t)cm.visbytes);
+	lm->visbytes = (((lm->numleafs + 31) >> 3) + 3) & ~3;
+	lm->novis = Arena_Alloc (&lm->arena, (size_t)lm->visbytes);
+	memset (lm->novis, 0xff, (size_t)lm->visbytes);
+	lm->pvs = Arena_Alloc (&lm->arena, (size_t)lm->visbytes);
+	lm->fatpvs = Arena_Alloc (&lm->arena, (size_t)lm->visbytes);
 }
 
 /*
@@ -373,8 +378,9 @@ static void CM_LoadBrushMap (void)
 CM_LoadMap
 =================
 */
-cmodel_t *CM_LoadMap (const char *name, unsigned *checksum, unsigned *checksum2)
+cmap_t *CM_LoadMap (const char *name, unsigned *checksum, unsigned *checksum2)
 {
+	cmap_t		*map;
 	byte		*buf;
 	int			filesize;
 	unsigned	filesum;
@@ -384,50 +390,80 @@ cmodel_t *CM_LoadMap (const char *name, unsigned *checksum, unsigned *checksum2)
 		return NULL;
 	filesum = Com_BlockChecksum (buf, filesize);
 
-	// a listen server and its client share the map, so only load it when it changed
-	if (strcmp (cm.name, name) || filesum != cm.filesum)
+	// a listen server and its client share a map they both use
+	for (map = cm_maps ; map ; map = map->next)
+		if (!strcmp (map->name, name) && map->filesum == filesum)
+			break;
+	if (!map)
 	{
-		if (!cm_arena.name)
-			Arena_Init (&cm_arena, "collision map");
-		Arena_Reset (&cm_arena);
-		memset (&cm, 0, sizeof(cm));
-		Q_strncpyz (cm.name, name, sizeof(cm.name));
-		cm.filesum = filesum;
+		map = Mem_Calloc (1, sizeof(*map));
+		Arena_Init (&map->arena, "collision map");
+		Q_strncpyz (map->name, name, sizeof(map->name));
+		map->filesum = filesum;
 
+		lm = map;
 		cm_base = buf;
 		cm_filesize = filesize;
 		CM_LoadBrushMap ();
 		cm_base = NULL;
+		lm = NULL;
+
+		map->next = cm_maps;
+		cm_maps = map;
 	}
 	Mem_Free (buf);
+	map->refs++;
 
 	if (checksum)
-		*checksum = cm.checksum;
+		*checksum = map->checksum;
 	if (checksum2)
-		*checksum2 = cm.checksum2;
-	return &cm.cmodels[0];
+		*checksum2 = map->checksum2;
+	return map;
 }
 
-cmodel_t *CM_InlineModel (const char *name)
+/*
+=================
+CM_FreeMap
+=================
+*/
+void CM_FreeMap (cmap_t *map)
+{
+	cmap_t	**link;
+
+	if (--map->refs > 0)
+		return;
+	for (link = &cm_maps ; *link != map ; link = &(*link)->next)
+		;
+	*link = map->next;
+	Arena_Free (&map->arena);
+	Mem_Free (map);
+}
+
+cmodel_t *CM_WorldModel (cmap_t *map)
+{
+	return &map->cmodels[0];
+}
+
+cmodel_t *CM_InlineModel (cmap_t *map, const char *name)
 {
 	int		num;
 
-	if (name[0] != '*' || !cm.numcmodels)
+	if (name[0] != '*' || !map->numcmodels)
 		return NULL;
 	num = atoi (name + 1);
-	if (num < 1 || num >= cm.numcmodels)
+	if (num < 1 || num >= map->numcmodels)
 		return NULL;
-	return &cm.cmodels[num];
+	return &map->cmodels[num];
 }
 
-int CM_NumInlineModels (void)
+int CM_NumInlineModels (const cmap_t *map)
 {
-	return cm.numcmodels;
+	return map->numcmodels;
 }
 
-char *CM_EntityString (void)
+char *CM_EntityString (const cmap_t *map)
 {
-	return cm.entitystring;
+	return map->entitystring;
 }
 
 /*
@@ -671,16 +707,16 @@ LEAFS AND VISIBILITY
 ===============================================================================
 */
 
-const cleaf_t *CM_PointInLeaf (const vec3_t p)
+const cleaf_t *CM_PointInLeaf (const cmap_t *map, const vec3_t p)
 {
 	cnode_t		*node;
 	mplane_t	*plane;
 	float		d;
 
-	if (!cm.numnodes)
-		Sys_Error ("CM_PointInLeaf: no map loaded");
+	if (!map->numnodes)
+		Sys_Error ("CM_PointInLeaf: empty map");
 
-	node = cm.nodes;
+	node = map->nodes;
 	while (node->contents >= 0)
 	{
 		plane = node->plane;
@@ -694,9 +730,9 @@ const cleaf_t *CM_PointInLeaf (const vec3_t p)
 	return (const cleaf_t *)node;
 }
 
-int CM_Leafnum (const cleaf_t *leaf)
+int CM_Leafnum (const cmap_t *map, const cleaf_t *leaf)
 {
-	return (int)(leaf - cm.leafs);
+	return (int)(leaf - map->leafs);
 }
 
 const byte *CM_LeafAmbientLevels (const cleaf_t *leaf)
@@ -704,9 +740,9 @@ const byte *CM_LeafAmbientLevels (const cleaf_t *leaf)
 	return leaf->ambient_sound_level;
 }
 
-int CM_NumVisLeafs (void)
+int CM_NumVisLeafs (const cmap_t *map)
 {
-	return cm.numvisleafs;
+	return map->numvisleafs;
 }
 
 /*
@@ -716,18 +752,18 @@ CM_LeafPVS
 Decompresses the leaf's row of the visibility matrix
 ===================
 */
-byte *CM_LeafPVS (int leafnum)
+byte *CM_LeafPVS (cmap_t *map, int leafnum)
 {
 	byte	*in, *inend, *out, *end;
 	int		c;
 
-	if (leafnum <= 0 || leafnum >= cm.numleafs || !cm.leafs[leafnum].compressed_vis)
-		return cm.novis;
+	if (leafnum <= 0 || leafnum >= map->numleafs || !map->leafs[leafnum].compressed_vis)
+		return map->novis;
 
-	in = cm.leafs[leafnum].compressed_vis;
-	inend = cm.visdata + cm.vissize;
-	out = cm.pvs;
-	end = cm.pvs + ((cm.numvisleafs + 7) >> 3);
+	in = map->leafs[leafnum].compressed_vis;
+	inend = map->visdata + map->vissize;
+	out = map->pvs;
+	end = map->pvs + ((map->numvisleafs + 7) >> 3);
 
 	while (out < end && in < inend)
 	{
@@ -743,9 +779,9 @@ byte *CM_LeafPVS (int leafnum)
 		while (c-- > 0 && out < end)
 			*out++ = 0;
 	}
-	memset (out, 0, (size_t)(cm.pvs + cm.visbytes - out));
+	memset (out, 0, (size_t)(map->pvs + map->visbytes - out));
 
-	return cm.pvs;
+	return map->pvs;
 }
 
 /*
@@ -759,7 +795,7 @@ crosses a waterline.
 =============================================================================
 */
 
-static void CM_AddToFatPVS (const vec3_t org, const cnode_t *node, int fatbytes)
+static void CM_AddToFatPVS (cmap_t *map, const vec3_t org, const cnode_t *node, int fatbytes)
 {
 	int			i;
 	byte		*pvs;
@@ -773,9 +809,9 @@ static void CM_AddToFatPVS (const vec3_t org, const cnode_t *node, int fatbytes)
 		{
 			if (node->contents != CONTENTS_SOLID)
 			{
-				pvs = CM_LeafPVS ((int)((const cleaf_t *)node - cm.leafs));
+				pvs = CM_LeafPVS (map, (int)((const cleaf_t *)node - map->leafs));
 				for (i=0 ; i<fatbytes ; i++)
-					cm.fatpvs[i] |= pvs[i];
+					map->fatpvs[i] |= pvs[i];
 			}
 			return;
 		}
@@ -788,7 +824,7 @@ static void CM_AddToFatPVS (const vec3_t org, const cnode_t *node, int fatbytes)
 			node = node->children[1];
 		else
 		{	// go down both
-			CM_AddToFatPVS (org, node->children[0], fatbytes);
+			CM_AddToFatPVS (map, org, node->children[0], fatbytes);
 			node = node->children[1];
 		}
 	}
@@ -802,18 +838,19 @@ Calculates a PVS that is the inclusive or of all leafs within 8 pixels of the
 given point.
 =============
 */
-byte *CM_FatPVS (const vec3_t org)
+byte *CM_FatPVS (cmap_t *map, const vec3_t org)
 {
 	int		fatbytes;
 
-	fatbytes = (cm.numvisleafs+31)>>3;
-	memset (cm.fatpvs, 0, (size_t)fatbytes);
-	CM_AddToFatPVS (org, cm.nodes, fatbytes);
-	return cm.fatpvs;
+	fatbytes = (map->numvisleafs+31)>>3;
+	memset (map->fatpvs, 0, (size_t)fatbytes);
+	CM_AddToFatPVS (map, org, map->nodes, fatbytes);
+	return map->fatpvs;
 }
 
 typedef struct
 {
+	const cmap_t	*map;
 	const float	*mins, *maxs;
 	int			*leafs;
 	int			count, maxcount;
@@ -831,7 +868,7 @@ static void CM_FindTouchedLeafs_r (touch_t *touch, const cnode_t *node)
 	{
 		if (touch->count == touch->maxcount)
 			return;
-		touch->leafs[touch->count++] = (int)((const cleaf_t *)node - cm.leafs) - 1;
+		touch->leafs[touch->count++] = (int)((const cleaf_t *)node - touch->map->leafs) - 1;
 		return;
 	}
 
@@ -845,11 +882,11 @@ static void CM_FindTouchedLeafs_r (touch_t *touch, const cnode_t *node)
 		CM_FindTouchedLeafs_r (touch, node->children[1]);
 }
 
-int CM_FindTouchedLeafs (const vec3_t mins, const vec3_t maxs, int *leafs, int maxleafs)
+int CM_FindTouchedLeafs (const cmap_t *map, const vec3_t mins, const vec3_t maxs, int *leafs, int maxleafs)
 {
-	touch_t	touch = {.mins = mins, .maxs = maxs, .leafs = leafs, .maxcount = maxleafs};
+	touch_t	touch = {.map = map, .mins = mins, .maxs = maxs, .leafs = leafs, .maxcount = maxleafs};
 
-	if (cm.numnodes)
-		CM_FindTouchedLeafs_r (&touch, cm.nodes);
+	if (map->numnodes)
+		CM_FindTouchedLeafs_r (&touch, map->nodes);
 	return touch.count;
 }

@@ -84,6 +84,7 @@ extern	pr_state_t	pr;
 //============================================================================
 
 void PR_Init (void);
+void PR_ResetStack (void);	// after an error left functions running
 
 void PR_ExecuteProgram (func_t fnum);
 void PR_LoadProgs (void);

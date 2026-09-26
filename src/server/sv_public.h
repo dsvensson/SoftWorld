@@ -8,7 +8,7 @@ of the License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 
@@ -19,14 +19,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #pragma once
-// view.h
+// sv_public.h -- what the host and the client see of the server. The
+// client-only program links sv_null.c, which has no server behind these.
 
-#include "cvar.h"
-#include "mathlib.h"
+#include "q_types.h"
 
-extern	cvar_t		v_gamma;
+void	SV_Init (void);			// registers the server's commands and variables
+void	SV_Shutdown (void);		// ends the game and closes the logs, at exit
 
-void V_Init (void);
-void V_RenderView (void);
-float V_CalcRoll (vec3_t angles, vec3_t velocity);
-void V_UpdatePalette (void);
+bool	SV_Active (void);		// a map is running
+void	SV_Kill (void);			// ends the game, telling the clients
+
+void	SV_Frame (double time);	// reads packets, runs physics and answers
+double	SV_NextFrameWait (void);	// seconds until the server needs a frame
