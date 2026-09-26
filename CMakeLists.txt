@@ -16,9 +16,12 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+option(SW_LTO "Link-time optimization in Release and RelWithDebInfo builds" ON)
 include(CheckIPOSupported)
 check_ipo_supported(RESULT sw_ipo_supported OUTPUT sw_ipo_output LANGUAGES C)
-if(sw_ipo_supported)
+if(NOT SW_LTO)
+	message(STATUS "Link-time optimization disabled")
+elseif(sw_ipo_supported)
 	set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 	set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
 else()
@@ -26,7 +29,7 @@ else()
 endif()
 
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN NOMINMAX)
-add_compile_options(/utf-8 /permissive-)
+add_compile_options(/utf-8 /permissive- /diagnostics:column)
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
 	# keep scalar and SIMD floating-point results identical
 	add_compile_options(/clang:-ffp-contract=off)
@@ -49,7 +52,7 @@ endforeach()
 set(SW_CLIENT_SOURCES
 	cl_cam.c cl_demo.c cl_ents.c cl_input.c cl_main.c cl_parse.c cl_pred.c cl_tent.c
 	cmd.c common.c console.c crc.c cvar.c
-	d_edge.c d_fill.c d_init.c d_modech.c d_part.c d_polyse.c d_scan.c d_sky.c d_sprite.c
+	d_edge.c d_init.c d_modech.c d_part.c d_polyse.c d_scan.c d_sky.c d_sprite.c
 	d_surf.c d_vars.c d_zpoint.c draw.c in_win.c keys.c mathlib.c md4.c menu.c model.c
 	net_chan.c net_wins.c pmove.c pmovetst.c
 	r_aclip.c r_alias.c r_bsp.c r_draw.c r_edge.c r_efrag.c r_light.c r_main.c r_misc.c

@@ -14,18 +14,15 @@
 
 viddef_t	vid;				// global video state
 
-unsigned short	d_8to16table[256];
-unsigned		d_8to24table[256];
-
 HWND		mainwindow;
 modestate_t	modestate = MS_UNINIT;
-qboolean	DDActive;			// never true: there is no exclusive fullscreen mode
+bool	DDActive;			// never true: there is no exclusive fullscreen mode
 
 int			window_center_x, window_center_y;
 RECT		window_rect;
 
-cvar_t		_windowed_mouse = {"_windowed_mouse", "1", true};
-cvar_t		vid_vsync = {"vid_vsync", "1", true};
+cvar_t		_windowed_mouse = {.name = "_windowed_mouse", .string = "1", .archive = true};
+cvar_t		vid_vsync = {.name = "vid_vsync", .string = "1", .archive = true};
 
 #define VID_BASE_WIDTH	320
 #define VID_BASE_HEIGHT	200
@@ -44,7 +41,7 @@ static bool						d3d_allow_tearing;
 
 static bool		vid_initialized;
 static bool		vid_fullscreen;
-static WINDOWPLACEMENT	vid_windowed_placement = {sizeof (WINDOWPLACEMENT)};
+static WINDOWPLACEMENT	vid_windowed_placement = {.length = sizeof (WINDOWPLACEMENT)};
 static int		client_width, client_height;
 static uint32_t	vid_palette32[256];		// B8G8R8A8 for each palette index
 static byte		*vid_surfcache;
@@ -292,7 +289,7 @@ static void VID_SetFullscreen (bool fullscreen)
 
 	if (fullscreen)
 	{
-		MONITORINFO	mi = {sizeof (mi)};
+		MONITORINFO	mi = {.cbSize = sizeof (mi)};
 
 		GetWindowPlacement (mainwindow, &vid_windowed_placement);
 		GetMonitorInfo (MonitorFromWindow (mainwindow, MONITOR_DEFAULTTONEAREST), &mi);
@@ -449,7 +446,6 @@ void VID_SetPalette (unsigned char *palette)
 	{
 		vid_palette32[i] = 0xFF000000u | ((uint32_t)palette[i * 3] << 16) |
 			((uint32_t)palette[i * 3 + 1] << 8) | (uint32_t)palette[i * 3 + 2];
-		d_8to24table[i] = vid_palette32[i];
 	}
 }
 
@@ -551,32 +547,6 @@ int VID_ForceUnlockedAndReturnState (void)
 }
 
 void VID_ForceLockState ([[maybe_unused]] int lk)
-{
-}
-
-int VID_SetMode ([[maybe_unused]] int modenum, [[maybe_unused]] unsigned char *palette)
-{
-	return true;
-}
-
-void VID_HandlePause ([[maybe_unused]] qboolean pause)
-{
-}
-
-/*
-================
-D_BeginDirectRect / D_EndDirectRect
-
-Used for the loading disc; the next full present shows it, so nothing is needed.
-================
-*/
-void D_BeginDirectRect ([[maybe_unused]] int x, [[maybe_unused]] int y, [[maybe_unused]] byte *pbitmap,
-	[[maybe_unused]] int width, [[maybe_unused]] int height)
-{
-}
-
-void D_EndDirectRect ([[maybe_unused]] int x, [[maybe_unused]] int y, [[maybe_unused]] int width,
-	[[maybe_unused]] int height)
 {
 }
 

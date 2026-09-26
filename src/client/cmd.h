@@ -18,6 +18,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
+#pragma once
+
 // cmd.h -- Command buffer and command execution
 
 //===========================================================================
@@ -73,7 +75,7 @@ void	Cmd_AddCommand (char *cmd_name, xcommand_t function);
 // if function is NULL, the command will be forwarded to the server
 // as a clc_stringcmd instead of executed locally
 
-qboolean Cmd_Exists (char *cmd_name);
+bool Cmd_Exists (char *cmd_name);
 // used by the cvar code to check for cvar / command name overlap
 
 char 	*Cmd_CompleteCommand (char *partial);
@@ -87,8 +89,6 @@ char	*Cmd_Args (void);
 // functions. Cmd_Argv () will return an empty string, not a NULL
 // if arg > argc, so string operations are allways safe.
 
-int Cmd_CheckParm (char *parm);
-// Returns the position (1 to argc-1) in the command's argument list
 // where the given parameter apears, or 0 if not present
 
 void Cmd_TokenizeString (char *text);
@@ -99,7 +99,8 @@ void	Cmd_ExecuteString (char *text);
 // Parses a single line of text into arguments and tries to execute it
 // as if it was typed at the console
 
-void	Cmd_ForwardToServer (void);
+void	Cmd_SetForwardHandler (void (*forward)(void));
+// commands registered with a NULL function are handed to this function
 // adds the current command line as a clc_stringcmd to the client message.
 // things like godmode, noclip, etc, are commands directed to the server,
 // so when they are typed in at the console, they will need to be forwarded.

@@ -52,11 +52,11 @@ void PM_InitBoxHull (void)
 		
 		box_clipnodes[i].children[side] = CONTENTS_EMPTY;
 		if (i != 5)
-			box_clipnodes[i].children[side^1] = i + 1;
+			box_clipnodes[i].children[side^1] = (short)(i + 1);
 		else
 			box_clipnodes[i].children[side^1] = CONTENTS_SOLID;
 		
-		box_planes[i].type = i>>1;
+		box_planes[i].type = (byte)(i>>1);
 		box_planes[i].normal[i>>1] = 1;
 	}
 	
@@ -173,7 +173,7 @@ PM_RecursiveHullCheck
 
 ==================
 */
-qboolean PM_RecursiveHullCheck (hull_t *hull, int num, float p1f, float p2f, vec3_t p1, vec3_t p2, pmtrace_t *trace)
+bool PM_RecursiveHullCheck (hull_t *hull, int num, float p1f, float p2f, vec3_t p1, vec3_t p2, pmtrace_t *trace)
 {
 	dclipnode_t	*node;
 	mplane_t	*plane;
@@ -220,23 +220,16 @@ qboolean PM_RecursiveHullCheck (hull_t *hull, int num, float p1f, float p2f, vec
 		t2 = DotProduct (plane->normal, p2) - plane->dist;
 	}
 	
-#if 1
 	if (t1 >= 0 && t2 >= 0)
 		return PM_RecursiveHullCheck (hull, node->children[0], p1f, p2f, p1, p2, trace);
 	if (t1 < 0 && t2 < 0)
 		return PM_RecursiveHullCheck (hull, node->children[1], p1f, p2f, p1, p2, trace);
-#else
-	if ( (t1 >= DIST_EPSILON && t2 >= DIST_EPSILON) || (t2 > t1 && t1 >= 0) )
-		return PM_RecursiveHullCheck (hull, node->children[0], p1f, p2f, p1, p2, trace);
-	if ( (t1 <= -DIST_EPSILON && t2 <= -DIST_EPSILON) || (t2 < t1 && t1 <= 0) )
-		return PM_RecursiveHullCheck (hull, node->children[1], p1f, p2f, p1, p2, trace);
-#endif
 
 // put the crosspoint DIST_EPSILON pixels on the near side
 	if (t1 < 0)
-		frac = (t1 + DIST_EPSILON)/(t1-t2);
+		frac = (float)((t1 + DIST_EPSILON)/(t1-t2));
 	else
-		frac = (t1 - DIST_EPSILON)/(t1-t2);
+		frac = (float)((t1 - DIST_EPSILON)/(t1-t2));
 	if (frac < 0)
 		frac = 0;
 	if (frac > 1)
@@ -252,14 +245,6 @@ qboolean PM_RecursiveHullCheck (hull_t *hull, int num, float p1f, float p2f, vec
 	if (!PM_RecursiveHullCheck (hull, node->children[side], p1f, midf, p1, mid, trace) )
 		return false;
 
-#ifdef PARANOID
-	if (PM_HullPointContents (pm_hullmodel, mid, node->children[side])
-	== CONTENTS_SOLID)
-	{
-		Con_Printf ("mid PointInHullSolid\n");
-		return false;
-	}
-#endif
 	
 	if (PM_HullPointContents (hull, node->children[side^1], mid)
 	!= CONTENTS_SOLID)
@@ -286,7 +271,7 @@ qboolean PM_RecursiveHullCheck (hull_t *hull, int num, float p1f, float p2f, vec
 	while (PM_HullPointContents (hull, hull->firstclipnode, mid)
 	== CONTENTS_SOLID)
 	{ // shouldn't really happen, but does occasionally
-		frac -= 0.1;
+		frac = (float)(frac - 0.1);
 		if (frac < 0)
 		{
 			trace->fraction = midf;
@@ -313,7 +298,7 @@ PM_TestPlayerPosition
 Returns false if the given player position is not valid (in solid)
 ================
 */
-qboolean PM_TestPlayerPosition (vec3_t pos)
+bool PM_TestPlayerPosition (vec3_t pos)
 {
 	int			i;
 	physent_t	*pe;

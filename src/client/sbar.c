@@ -44,8 +44,8 @@ qpic_t	*sb_face_quad;
 qpic_t	*sb_face_invuln;
 qpic_t	*sb_face_invis_invuln;
 
-qboolean	sb_showscores;
-qboolean	sb_showteamscores;
+bool	sb_showscores;
+bool	sb_showteamscores;
 
 int			sb_lines;			// scan lines to draw
 
@@ -53,7 +53,7 @@ void Sbar_DeathmatchOverlay (int start);
 void Sbar_TeamOverlay (void);
 void Sbar_MiniDeathmatchOverlay (void);
 
-static qboolean largegame = false;
+static bool largegame = false;
 
 /*
 ===============
@@ -305,13 +305,13 @@ int Sbar_itoa (int num, char *buf)
 	{
 		pow10 /= 10;
 		dig = num/pow10;
-		*str++ = '0'+dig;
+		*str++ = (char)('0'+dig);
 		num -= dig*pow10;
 	} while (pow10 != 1);
-	
+
 	*str = 0;
-	
-	return str-buf;
+
+	return (int)(str-buf);
 }
 
 
@@ -367,7 +367,7 @@ int scoreboardteams;
 Sbar_SortFrags
 ===============
 */
-void Sbar_SortFrags (qboolean includespec)
+void Sbar_SortFrags (bool includespec)
 {
 	int		i, j, k;
 		
@@ -424,7 +424,7 @@ void Sbar_SortTeams (void)
 		// find his team in the list
 		t[16] = 0;
 		strncpy(t, Info_ValueForKey(s->userinfo, "team"), 16);
-		if (!t || !t[0])
+		if (!t[0])
 			continue; // not on team
 		for (j = 0; j < scoreboardteams; j++)
 			if (!strcmp(teams[j].team, t)) {
@@ -434,7 +434,7 @@ void Sbar_SortTeams (void)
 			}
 		if (j == scoreboardteams) { // must add him
 			j = scoreboardteams++;
-			strcpy(teams[j].team, t);
+			Q_strncpyz(teams[j].team, t, sizeof(teams[j].team));
 			teams[j].frags = s->frags;
 			teams[j].players = 1;
 addpinginfo:
@@ -482,11 +482,11 @@ void Sbar_SoloScoreboard (void)
 	Sbar_DrawPic (0, 0, sb_scorebar);
 
 	// time
-	minutes = cl.time / 60;
-	seconds = cl.time - 60*minutes;
+	minutes = (int)(cl.time / 60);
+	seconds = (int)(cl.time - 60*minutes);
 	tens = seconds / 10;
 	units = seconds - 10*tens;
-	sprintf (str,"Time :%3i:%i%i", minutes, tens, units);
+	snprintf (str, sizeof(str), "Time :%3i:%i%i", minutes, tens, units);
 	Sbar_DrawString (184, 4, str);
 }
 
@@ -503,8 +503,8 @@ void Sbar_DrawInventory (void)
 	char	num[6];
 	float	time;
 	int		flashon;
-	qboolean	headsup;
-	qboolean    hudswap;
+	bool	headsup;
+	bool    hudswap;
 
 	headsup = !(cl_sbar.value || scr_viewsize.value<100);
 	hudswap = cl_hudswap.value; // Get that nasty float out :)
@@ -546,7 +546,7 @@ void Sbar_DrawInventory (void)
 // ammo counts
 	for (i=0 ; i<4 ; i++)
 	{
-		sprintf (num, "%3i",cl.stats[STAT_SHELLS+i] );
+		snprintf (num, sizeof(num), "%3i",cl.stats[STAT_SHELLS+i] );
 		if (headsup) {
 //			Sbar_DrawSubPic(3, -24, sb_ibar, 3, 0, 42,11);
 			Sbar_DrawSubPic((hudswap) ? 0 : (vid.width-42), -24 - (4-i)*11, sb_ibar, 3+(i*48), 0, 42, 11);
@@ -647,8 +647,8 @@ void Sbar_DrawFrags (void)
 
 	// draw number
 		f = s->frags;
-		sprintf (num, "%3i",f);
-		
+		snprintf (num, sizeof(num), "%3i",f);
+
 		Sbar_DrawCharacter ( (x+1)*8 , -24, num[0]);
 		Sbar_DrawCharacter ( (x+2)*8 , -24, num[1]);
 		Sbar_DrawCharacter ( (x+3)*8 , -24, num[2]);
@@ -767,7 +767,7 @@ Sbar_Draw
 */
 void Sbar_Draw (void)
 {
-	qboolean headsup;
+	bool headsup;
 	char st[512];
 
 	headsup = !(cl_sbar.value || scr_viewsize.value<100);
@@ -806,7 +806,7 @@ void Sbar_Draw (void)
 					Sbar_DrawNormal ();
 
 //					Sbar_DrawString (160-14*8+4,4, "SPECTATOR MODE - TRACK CAMERA");
-				sprintf(st, "Tracking %-.13s, [JUMP] for next",
+				snprintf(st, sizeof(st), "Tracking %-.13s, [JUMP] for next",
 						cl.players[spec_track].name);
 				Sbar_DrawString(0, -8, st);
 			}
@@ -829,63 +829,12 @@ void Sbar_Draw (void)
 	else if (sb_showteamscores)
 		Sbar_TeamOverlay();
 
-#ifdef GLQUAKE
-	if (sb_showscores || sb_showteamscores || 
-		cl.stats[STAT_HEALTH] <= 0)
-		sb_updates = 0;
-	// clear unused areas in gl
-#if 0
-	{
-		int x = (vid.width - 320)>>1;
-
-		// left
-		if (x > 0) {
-			Draw_TileClear (0, vid.height - sb_lines, x, sb_lines);
-			Draw_TileClear (x+320, vid.height - sb_lines, vid.width - x+320, sb_lines);
-		}
-	}
-#endif
-	if (vid.width > 320 && !headsup)
-		Draw_TileClear (320, vid.height - sb_lines, vid.width - 320, sb_lines);
-#endif
 
 	if (sb_lines > 0)
 		Sbar_MiniDeathmatchOverlay ();
 }
 
 //=============================================================================
-
-/*
-==================
-Sbar_IntermissionNumber
-
-==================
-*/
-void Sbar_IntermissionNumber (int x, int y, int num, int digits, int color)
-{
-	char			str[12];
-	char			*ptr;
-	int				l, frame;
-
-	l = Sbar_itoa (num, str);
-	ptr = str;
-	if (l > digits)
-		ptr += (l-digits);
-	if (l < digits)
-		x += (digits-l)*24;
-
-	while (*ptr)
-	{
-		if (*ptr == '-')
-			frame = STAT_MINUS;
-		else
-			frame = *ptr -'0';
-
-		Draw_TransPic (x,y,sb_nums[color][frame]);
-		x += 24;
-		ptr++;
-	}
-}
 
 /*
 ==================
@@ -898,7 +847,7 @@ added by Zoid
 void Sbar_TeamOverlay (void)
 {
 	qpic_t			*pic;
-	int				i, k, l;
+	int				i, k;
 	int				x, y;
 	char			num[12];
 	int				teamplay;
@@ -932,9 +881,7 @@ void Sbar_TeamOverlay (void)
 	Sbar_SortTeams();
 
 // draw the text
-	l = scoreboardlines;
-
-	for (i=0 ; i < scoreboardteams && y <= vid.height-10 ; i++)
+	for (i=0 ; i < scoreboardteams && (unsigned)y <= vid.height-10 ; i++)
 	{
 		k = teamsort[i];
 		tm = teams + k;
@@ -953,7 +900,7 @@ void Sbar_TeamOverlay (void)
 		if (pavg < 0 || pavg > 999)
 			pavg = 999;
 
-		sprintf (num, "%3i/%3i/%3i", plow, pavg, phigh);
+		snprintf (num, sizeof(num), "%3i/%3i/%3i", plow, pavg, phigh);
 		Draw_String ( x, y, num);
 
 	// draw team
@@ -962,11 +909,11 @@ void Sbar_TeamOverlay (void)
 		Draw_String (x + 104, y, team);
 
 	// draw total
-		sprintf (num, "%5i", tm->frags);
+		snprintf (num, sizeof(num), "%5i", tm->frags);
 		Draw_String (x + 104 + 40, y, num);
-		
+
 	// draw players
-		sprintf (num, "%5i", tm->players);
+		snprintf (num, sizeof(num), "%5i", tm->players);
 		Draw_String (x + 104 + 88, y, num);
 		
 		if (!strncmp(Info_ValueForKey(cl.players[cl.playernum].userinfo,
@@ -1055,7 +1002,7 @@ void Sbar_DeathmatchOverlay (int start)
 		y += 8;
 	}
 
-	for (i=0 ; i<l && y <= vid.height-10 ; i++)
+	for (i=0 ; i<l && (unsigned)y <= vid.height-10 ; i++)
 	{
 		k = fragsort[i];
 		s = &cl.players[k];
@@ -1066,12 +1013,12 @@ void Sbar_DeathmatchOverlay (int start)
 		p = s->ping;
 		if (p < 0 || p > 999)
 			p = 999;
-		sprintf (num, "%4i", p);
+		snprintf (num, sizeof(num), "%4i", p);
 		Draw_String ( x, y, num);
 
 		// draw pl
 		p = s->pl;
-		sprintf (num, "%3i", p);
+		snprintf (num, sizeof(num), "%3i", p);
 		if (p > 25)
 			Draw_Alt_String ( x+32, y, num);
 		else
@@ -1092,11 +1039,11 @@ void Sbar_DeathmatchOverlay (int start)
 
 		// draw time
 		if (cl.intermission)
-			total = cl.completed_time - s->entertime;
+			total = (int)(cl.completed_time - s->entertime);
 		else
-			total = realtime - s->entertime;
+			total = (int)(realtime - s->entertime);
 		minutes = (int)total/60;
-		sprintf (num, "%4i", minutes);
+		snprintf (num, sizeof(num), "%4i", minutes);
 		Draw_String ( x+64 , y, num);
 
 		// draw background
@@ -1113,8 +1060,8 @@ void Sbar_DeathmatchOverlay (int start)
 
 	// draw number
 		f = s->frags;
-		sprintf (num, "%3i",f);
-		
+		snprintf (num, sizeof(num), "%3i",f);
+
 		Draw_Character ( x+112 , y, num[0]);
 		Draw_Character ( x+120 , y, num[1]);
 		Draw_Character ( x+128 , y, num[2]);
@@ -1142,7 +1089,7 @@ void Sbar_DeathmatchOverlay (int start)
 		y += skip;
 	}
 
-	if (y >= vid.height-10) // we ran over the screen size, squish
+	if ((unsigned)y >= vid.height-10) // we ran over the screen size, squish
 		largegame = true;
 }
 
@@ -1165,7 +1112,7 @@ void Sbar_MiniDeathmatchOverlay (void)
 	int				teamplay;
 	char			team[5];
 	int				numlines;
-	char			name[16+1];
+	char			shortname[16+1];
 	team_t			*tm;
 
 	if (vid.width < 512 || !sb_lines)
@@ -1207,7 +1154,7 @@ void Sbar_MiniDeathmatchOverlay (void)
 
 	x = 324;
 
-	for (/* */ ; i < scoreboardlines && y < vid.height - 8 + 1; i++)
+	for (/* */ ; i < scoreboardlines && (unsigned)y < vid.height - 8 + 1; i++)
 	{
 		k = fragsort[i];
 		s = &cl.players[k];
@@ -1225,8 +1172,8 @@ void Sbar_MiniDeathmatchOverlay (void)
 
 	// draw number
 		f = s->frags;
-		sprintf (num, "%3i",f);
-		
+		snprintf (num, sizeof(num), "%3i",f);
+
 		Draw_Character ( x+8 , y, num[0]);
 		Draw_Character ( x+16, y, num[1]);
 		Draw_Character ( x+24, y, num[2]);
@@ -1246,12 +1193,12 @@ void Sbar_MiniDeathmatchOverlay (void)
 		}
 
 	// draw name
-		name[16] = 0;
-		strncpy(name, s->name, 16);
+		shortname[16] = 0;
+		strncpy(shortname, s->name, 16);
 		if (teamplay)
-			Draw_String (x+48+40, y, name);
+			Draw_String (x+48+40, y, shortname);
 		else
-			Draw_String (x+48, y, name);
+			Draw_String (x+48, y, shortname);
 		y += 8;
 	}
 
@@ -1261,13 +1208,13 @@ void Sbar_MiniDeathmatchOverlay (void)
 
 	// draw seperator
 	x += 208;
-	for (y = vid.height - sb_lines; y < vid.height - 6; y += 2)
+	for (y = vid.height - sb_lines; (unsigned)y < vid.height - 6; y += 2)
 		Draw_Character(x, y, 14);
 
 	x += 16;
 
 	y = vid.height - sb_lines;
-	for (i=0 ; i < scoreboardteams && y <= vid.height; i++)
+	for (i=0 ; i < scoreboardteams && (unsigned)y <= vid.height; i++)
 	{
 		k = teamsort[i];
 		tm = teams + k;
@@ -1278,7 +1225,7 @@ void Sbar_MiniDeathmatchOverlay (void)
 		Draw_String (x, y, team);
 
 	// draw total
-		sprintf (num, "%5i", tm->frags);
+		snprintf (num, sizeof(num), "%5i", tm->frags);
 		Draw_String (x + 40, y, num);
 		
 		if (!strncmp(Info_ValueForKey(cl.players[cl.playernum].userinfo,

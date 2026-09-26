@@ -17,9 +17,14 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
+
+#pragma once
 // net.h -- quake's interface to the networking layer
 
 #define	PORT_ANY	-1
+
+// which end of a connection a socket or channel belongs to
+typedef enum { NS_CLIENT, NS_SERVER } netsrc_t;
 
 typedef struct
 {
@@ -36,14 +41,14 @@ extern	cvar_t	hostname;
 
 void		NET_Init (int port);
 void		NET_Shutdown (void);
-qboolean	NET_GetPacket (void);
+bool	NET_GetPacket (void);
 void		NET_SendPacket (int length, void *data, netadr_t to);
 
-qboolean	NET_CompareAdr (netadr_t a, netadr_t b);
-qboolean	NET_CompareBaseAdr (netadr_t a, netadr_t b);
+bool	NET_CompareAdr (netadr_t a, netadr_t b);
+bool	NET_CompareBaseAdr (netadr_t a, netadr_t b);
 char		*NET_AdrToString (netadr_t a);
 char		*NET_BaseAdrToString (netadr_t a);
-qboolean	NET_StringToAdr (char *s, netadr_t *a);
+bool	NET_StringToAdr (char *s, netadr_t *a);
 void		NET_Sleep (int msec);
 
 //============================================================================
@@ -54,7 +59,7 @@ void		NET_Sleep (int msec);
 
 typedef struct
 {
-	qboolean	fatal_error;
+	bool	fatal_error;
 
 	float		last_received;		// for timeouts
 
@@ -67,6 +72,7 @@ typedef struct
 	int			good_count;			// cleared each level
 
 	netadr_t	remote_address;
+	netsrc_t	sock;			// NS_CLIENT channels send the qport, NS_SERVER read it
 	int			qport;
 
 // bandwidth estimator
@@ -102,9 +108,8 @@ void Netchan_Init (void);
 void Netchan_Transmit (netchan_t *chan, int length, byte *data);
 void Netchan_OutOfBand (netadr_t adr, int length, byte *data);
 void Netchan_OutOfBandPrint (netadr_t adr, char *format, ...);
-qboolean Netchan_Process (netchan_t *chan);
-void Netchan_Setup (netchan_t *chan, netadr_t adr, int qport);
+bool Netchan_Process (netchan_t *chan);
+void Netchan_Setup (netchan_t *chan, netadr_t adr, int qport, netsrc_t sock);
 
-qboolean Netchan_CanPacket (netchan_t *chan);
-qboolean Netchan_CanReliable (netchan_t *chan);
-
+bool Netchan_CanPacket (netchan_t *chan);
+bool Netchan_CanReliable (netchan_t *chan);

@@ -51,7 +51,7 @@ void W_CleanupName (char *in, char *out)
 			
 		if (c >= 'A' && c <= 'Z')
 			c += ('a' - 'A');
-		out[i] = c;
+		out[i] = (char)c;
 	}
 	
 	for ( ; i< 16 ; i++ )
@@ -88,7 +88,7 @@ void W_LoadWadFile (char *filename)
 	infotableofs = LittleLong(header->infotableofs);
 	wad_lumps = (lumpinfo_t *)(wad_base + infotableofs);
 	
-	for (i=0, lump_p = wad_lumps ; i<wad_numlumps ; i++,lump_p++)
+	for (i=0, lump_p = wad_lumps ; i<(unsigned)wad_numlumps ; i++,lump_p++)
 	{
 		lump_p->filepos = LittleLong(lump_p->filepos);
 		lump_p->size = LittleLong(lump_p->size);
@@ -104,13 +104,13 @@ void W_LoadWadFile (char *filename)
 W_GetLumpinfo
 =============
 */
-lumpinfo_t	*W_GetLumpinfo (char *name)
+lumpinfo_t	*W_GetLumpinfo (char *lumpname)
 {
 	int		i;
 	lumpinfo_t	*lump_p;
 	char	clean[16];
 	
-	W_CleanupName (name, clean);
+	W_CleanupName (lumpname, clean);
 	
 	for (lump_p=wad_lumps, i=0 ; i<wad_numlumps ; i++,lump_p++)
 	{
@@ -118,27 +118,15 @@ lumpinfo_t	*W_GetLumpinfo (char *name)
 			return lump_p;
 	}
 	
-	Sys_Error ("W_GetLumpinfo: %s not found", name);
+	Sys_Error ("W_GetLumpinfo: %s not found", lumpname);
 	return NULL;
 }
 
-void *W_GetLumpName (char *name)
+void *W_GetLumpName (char *lumpname)
 {
 	lumpinfo_t	*lump;
 	
-	lump = W_GetLumpinfo (name);
-	
-	return (void *)(wad_base + lump->filepos);
-}
-
-void *W_GetLumpNum (int num)
-{
-	lumpinfo_t	*lump;
-	
-	if (num < 0 || num > wad_numlumps)
-		Sys_Error ("W_GetLumpNum: bad number: %i", num);
-		
-	lump = wad_lumps + num;
+	lump = W_GetLumpinfo (lumpname);
 	
 	return (void *)(wad_base + lump->filepos);
 }

@@ -17,6 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
+
+#pragma once
 // d_local.h:  private rasterization driver defs
 
 #include "r_shared.h"
@@ -54,11 +56,10 @@ typedef struct sspan_s
 	int				u, v, count;
 } sspan_t;
 
-extern cvar_t	d_subdiv16;
 
 extern float	scale_for_mip;
 
-extern qboolean		d_roverwrapped;
+extern bool		d_roverwrapped;
 extern surfcache_t	*sc_rover;
 extern surfcache_t	*d_initial_rover;
 
@@ -71,24 +72,17 @@ extern fixed16_t	bbextents, bbextentt;
 
 
 void D_DrawSpans8 (espan_t *pspans);
-void D_DrawSpans16 (espan_t *pspans);
 void D_DrawZSpans (espan_t *pspans);
 void Turbulent8 (espan_t *pspan);
 void D_SpriteDrawSpans (sspan_t *pspan);
 
 void D_DrawSkyScans8 (espan_t *pspan);
-void D_DrawSkyScans16 (espan_t *pspan);
 
-void R_ShowSubDiv (void);
 extern void (*prealspandrawer)(void);
 surfcache_t	*D_CacheSurface (msurface_t *surface, int miplevel);
 
 extern int D_MipLevelForScale (float scale);
 
-#if id386
-extern void D_PolysetAff8Start (void);
-extern void D_PolysetAff8End (void);
-#endif
 
 extern short *d_pzbuffer;
 extern unsigned int d_zrowbytes, d_zwidth;
@@ -108,4 +102,3 @@ extern int		d_minmip;
 extern float	d_scalemip[3];
 
 extern void (*d_drawspans) (espan_t *pspan);
-

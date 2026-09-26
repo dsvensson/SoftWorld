@@ -32,7 +32,7 @@ int			con_totallines;		// total lines in console scrollback
 float		con_cursorspeed = 4;
 
 
-cvar_t		con_notifytime = {"con_notifytime","3"};		//seconds
+cvar_t		con_notifytime = {.name = "con_notifytime", .string = "3"};		//seconds
 
 #define	NUM_CON_TIMES 4
 float		con_times[NUM_CON_TIMES];	// realtime time the line was generated
@@ -41,7 +41,7 @@ float		con_times[NUM_CON_TIMES];	// realtime time the line was generated
 int			con_vislines;
 int			con_notifylines;		// scan lines to clear for notify lines
 
-qboolean	con_debuglog;
+bool	con_debuglog;
 
 #define		MAXCMDLINE	256
 extern	char	key_lines[32][MAXCMDLINE];
@@ -49,7 +49,7 @@ extern	int		edit_line;
 extern	int		key_linepos;
 		
 
-qboolean	con_initialized;
+bool	con_initialized;
 
 
 void Key_ClearTyping (void)
@@ -152,7 +152,7 @@ Con_Resize
 
 ================
 */
-void Con_Resize (console_t *con)
+void Con_Resize (console_t *cons)
 {
 	int		i, j, width, oldwidth, oldtotallines, numlines, numchars;
 	char	tbuf[CON_TEXTSIZE];
@@ -167,7 +167,7 @@ void Con_Resize (console_t *con)
 		width = 38;
 		con_linewidth = width;
 		con_totallines = CON_TEXTSIZE / con_linewidth;
-		Q_memset (con->text, ' ', CON_TEXTSIZE);
+		Q_memset (cons->text, ' ', CON_TEXTSIZE);
 	}
 	else
 	{
@@ -185,15 +185,15 @@ void Con_Resize (console_t *con)
 		if (con_linewidth < numchars)
 			numchars = con_linewidth;
 
-		Q_memcpy (tbuf, con->text, CON_TEXTSIZE);
-		Q_memset (con->text, ' ', CON_TEXTSIZE);
+		Q_memcpy (tbuf, cons->text, CON_TEXTSIZE);
+		Q_memset (cons->text, ' ', CON_TEXTSIZE);
 
 		for (i=0 ; i<numlines ; i++)
 		{
 			for (j=0 ; j<numchars ; j++)
 			{
-				con->text[(con_totallines - 1 - i) * con_linewidth + j] =
-						tbuf[((con->current - i + oldtotallines) %
+				cons->text[(con_totallines - 1 - i) * con_linewidth + j] =
+						tbuf[((cons->current - i + oldtotallines) %
 							  oldtotallines) * oldwidth + j];
 			}
 		}
@@ -201,8 +201,8 @@ void Con_Resize (console_t *con)
 		Con_ClearNotify ();
 	}
 
-	con->current = con_totallines - 1;
-	con->display = con->current;
+	cons->current = con_totallines - 1;
+	cons->display = cons->current;
 }
 
 					
@@ -314,7 +314,7 @@ void Con_Print (char *txt)
 			Con_Linefeed ();
 		// mark time for transparent overlay
 			if (con->current >= 0)
-				con_times[con->current % NUM_CON_TIMES] = realtime;
+				con_times[con->current % NUM_CON_TIMES] = (float)realtime;
 		}
 
 		switch (c)
@@ -330,7 +330,7 @@ void Con_Print (char *txt)
 
 		default:	// display character and advance
 			y = con->current % con_totallines;
-			con->text[y*con_linewidth+con->x] = c | mask | con_ormask;
+			con->text[y*con_linewidth+con->x] = (char)(c | mask | con_ormask);
 			con->x++;
 			if (con->x >= con_linewidth)
 				con->x = 0;
@@ -354,12 +354,12 @@ void Con_Printf (char *fmt, ...)
 {
 	va_list		argptr;
 	char		msg[MAXPRINTMSG];
-	static qboolean	inupdate;
+	static bool	inupdate;
 	
 	va_start (argptr,fmt);
-	vsprintf (msg,fmt,argptr);
+	vsnprintf (msg,sizeof(msg),fmt,argptr);
 	va_end (argptr);
-	
+
 // also echo to debugging console
 	Sys_Printf ("%s", msg);	// also echo to debugging console
 
@@ -403,9 +403,9 @@ void Con_DPrintf (char *fmt, ...)
 		return;			// don't confuse non-developers with techie stuff...
 
 	va_start (argptr,fmt);
-	vsprintf (msg,fmt,argptr);
+	vsnprintf (msg,sizeof(msg),fmt,argptr);
 	va_end (argptr);
-	
+
 	Con_Printf ("%s", msg);
 }
 
@@ -427,7 +427,6 @@ The input line scrolls horizontally if typing goes beyond the right edge
 */
 void Con_DrawInput (void)
 {
-	int		y;
 	int		i;
 	char	*text;
 
@@ -448,8 +447,6 @@ void Con_DrawInput (void)
 		text += 1 + key_linepos - con_linewidth;
 		
 // draw it
-	y = con_vislines-22;
-
 	for (i=0 ; i<con_linewidth ; i++)
 		Draw_Character ( (i+1)<<3, con_vislines - 22, text[i]);
 
@@ -482,7 +479,7 @@ void Con_DrawNotify (void)
 		time = con_times[i % NUM_CON_TIMES];
 		if (time == 0)
 			continue;
-		time = realtime - time;
+		time = (float)(realtime - time);
 		if (time > con_notifytime.value)
 			continue;
 		text = con->text + (i % con_totallines)*con_linewidth;
@@ -514,7 +511,7 @@ void Con_DrawNotify (void)
 		}
 
 		s = chat_buffer;
-		if (chat_bufferlen > (vid.width>>3)-(skip+1))
+		if ((unsigned)chat_bufferlen > (vid.width>>3)-(skip+1))
 			s += chat_bufferlen - ((vid.width>>3)-(skip+1));
 		x = 0;
 		while(s[x])
@@ -593,17 +590,17 @@ void Con_DrawConsole (int lines)
 			text = cls.downloadname;
 
 		x = con_linewidth - ((con_linewidth * 7) / 40);
-		y = x - strlen(text) - 8;
+		y = (int)(x - strlen(text) - 8);
 		i = con_linewidth/3;
-		if (strlen(text) > i) {
+		if (strlen(text) > (size_t)i) {
 			y = x - i - 11;
 			strncpy(dlbar, text, i);
 			dlbar[i] = 0;
-			strcat(dlbar, "...");
+			Q_strncatz(dlbar, "...", sizeof(dlbar));
 		} else
-			strcpy(dlbar, text);
-		strcat(dlbar, ": ");
-		i = strlen(dlbar);
+			Q_strncpyz(dlbar, text, sizeof(dlbar));
+		Q_strncatz(dlbar, ": ", sizeof(dlbar));
+		i = (int)strlen(dlbar);
 		dlbar[i++] = '\x80';
 		// where's the dot go?
 		if (cls.downloadpercent == 0)
@@ -619,11 +616,11 @@ void Con_DrawConsole (int lines)
 		dlbar[i++] = '\x82';
 		dlbar[i] = 0;
 
-		sprintf(dlbar + strlen(dlbar), " %02d%%", cls.downloadpercent);
+		snprintf(dlbar + strlen(dlbar), sizeof(dlbar) - strlen(dlbar), " %02d%%", cls.downloadpercent);
 
 		// draw it
 		y = con_vislines-22 + 8;
-		for (i = 0; i < strlen(dlbar); i++)
+		for (i = 0; i < (int)strlen(dlbar); i++)
 			Draw_Character ( (i+1)<<3, y, dlbar[i]);
 	}
 
@@ -631,42 +628,6 @@ void Con_DrawConsole (int lines)
 // draw the input prompt, user text, and cursor if desired
 	Con_DrawInput ();
 }
-
-
-/*
-==================
-Con_NotifyBox
-==================
-*/
-void Con_NotifyBox (char *text)
-{
-	double		t1, t2;
-
-// during startup for sound / cd warnings
-	Con_Printf("\n\n\35\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\37\n");
-
-	Con_Printf (text);
-
-	Con_Printf ("Press a key.\n");
-	Con_Printf("\35\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\37\n");
-
-	key_count = -2;		// wait for a key down and up
-	key_dest = key_console;
-
-	do
-	{
-		t1 = Sys_DoubleTime ();
-		SCR_UpdateScreen ();
-		Sys_SendKeyEvents ();
-		t2 = Sys_DoubleTime ();
-		realtime += t2-t1;		// make the cursor blink
-	} while (key_count < 0);
-
-	Con_Printf ("\n");
-	key_dest = key_game;
-	realtime = 0;				// put the cursor back to invisible
-}
-
 
 /*
 ==================
@@ -682,9 +643,9 @@ void Con_SafePrintf (char *fmt, ...)
 	int			temp;
 		
 	va_start (argptr,fmt);
-	vsprintf (msg,fmt,argptr);
+	vsnprintf (msg,sizeof(msg),fmt,argptr);
 	va_end (argptr);
-	
+
 	temp = scr_disabled_for_loading;
 	scr_disabled_for_loading = true;
 	Con_Printf ("%s", msg);

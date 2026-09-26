@@ -18,6 +18,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
+#pragma once
+
 //
 // these are the key numbers that should be passed to Key_Event
 //
@@ -127,11 +129,10 @@ extern	int		key_lastpress;
 
 extern char chat_buffer[];
 extern	int chat_bufferlen;
-extern	qboolean	chat_team;
+extern	bool	chat_team;
 
-void Key_Event (int key, qboolean down);
+void Key_Event (int key, bool down);
 void Key_Init (void);
 void Key_WriteBindings (FILE *f);
 void Key_SetBinding (int keynum, char *binding);
 void Key_ClearStates (void);
-

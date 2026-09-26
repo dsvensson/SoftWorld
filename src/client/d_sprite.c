@@ -27,7 +27,6 @@ static int		sprite_height;
 static int		minindex, maxindex;
 static sspan_t	*sprite_spans;
 
-#if	!id386
 
 /*
 =====================
@@ -188,7 +187,6 @@ NextSpan:
 	} while (pspan->count != DS_SPAN_LIST_END);
 }
 
-#endif
 
 
 /*
@@ -213,14 +211,14 @@ void D_SpriteScanLeftEdge (void)
 	if (lmaxindex == 0)
 		lmaxindex = r_spritedesc.nump;
 
-	vtop = ceil (r_spritedesc.pverts[i].v);
+	vtop = ceilf(r_spritedesc.pverts[i].v);
 
 	do
 	{
 		pvert = &r_spritedesc.pverts[i];
 		pnext = pvert - 1;
 
-		vbottom = ceil (pnext->v);
+		vbottom = ceilf(pnext->v);
 
 		if (vtop < vbottom)
 		{
@@ -275,7 +273,7 @@ void D_SpriteScanRightEdge (void)
 	if (vvert > r_refdef.fvrectbottom_adj)
 		vvert = r_refdef.fvrectbottom_adj;
 
-	vtop = ceil (vvert);
+	vtop = ceilf(vvert);
 
 	do
 	{
@@ -288,7 +286,7 @@ void D_SpriteScanRightEdge (void)
 		if (vnext > r_refdef.fvrectbottom_adj)
 			vnext = r_refdef.fvrectbottom_adj;
 
-		vbottom = ceil (vnext);
+		vbottom = ceilf(vnext);
 
 		if (vtop < vbottom)
 		{
@@ -350,7 +348,7 @@ void D_SpriteCalculateGradients (void)
 	TransformVector (r_spritedesc.vup, p_taxis);
 	VectorInverse (p_taxis);
 
-	distinv = 1.0 / (-DotProduct (modelorg, r_spritedesc.vpn));
+	distinv = 1.0f / (-DotProduct (modelorg, r_spritedesc.vpn));
 
 	d_sdivzstepu = p_saxis[0] * xscaleinv;
 	d_tdivzstepu = p_taxis[0] * xscaleinv;
@@ -397,8 +395,8 @@ void D_DrawSprite (void)
 
 // find the top and bottom vertices, and make sure there's at least one scan to
 // draw
-	ymin = 999999.9;
-	ymax = -999999.9;
+	ymin = 999999.9f;
+	ymax = -999999.9f;
 	pverts = r_spritedesc.pverts;
 
 	for (i=0 ; i<r_spritedesc.nump ; i++)
@@ -418,8 +416,8 @@ void D_DrawSprite (void)
 		pverts++;
 	}
 
-	ymin = ceil (ymin);
-	ymax = ceil (ymax);
+	ymin = ceilf(ymin);
+	ymax = ceilf(ymax);
 
 	if (ymin >= ymax)
 		return;		// doesn't cross any scans at all

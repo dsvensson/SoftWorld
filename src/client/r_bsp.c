@@ -25,7 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //
 // current entity info
 //
-qboolean		insubmodel;
+bool		insubmodel;
 entity_t		*currententity;
 vec3_t			modelorg, base_modelorg;
 								// modelorg is the viewpoint reletive to
@@ -50,7 +50,7 @@ static int			numbverts, numbedges;
 
 static mvertex_t	*pfrontenter, *pfrontexit;
 
-static qboolean		makeclippededge;
+static bool		makeclippededge;
 
 
 //===========================================================================
@@ -87,9 +87,9 @@ void R_RotateBmodel (void)
 
 // yaw
 	angle = currententity->angles[YAW];		
-	angle = angle * M_PI*2 / 360;
-	s = sin(angle);
-	c = cos(angle);
+	angle = (float)(angle * Q_PI*2 / 360);
+	s = sinf(angle);
+	c = cosf(angle);
 
 	temp1[0][0] = c;
 	temp1[0][1] = s;
@@ -104,9 +104,9 @@ void R_RotateBmodel (void)
 
 // pitch
 	angle = currententity->angles[PITCH];		
-	angle = angle * M_PI*2 / 360;
-	s = sin(angle);
-	c = cos(angle);
+	angle = (float)(angle * Q_PI*2 / 360);
+	s = sinf(angle);
+	c = cosf(angle);
 
 	temp2[0][0] = c;
 	temp2[0][1] = 0;
@@ -122,9 +122,9 @@ void R_RotateBmodel (void)
 
 // roll
 	angle = currententity->angles[ROLL];		
-	angle = angle * M_PI*2 / 360;
-	s = sin(angle);
-	c = cos(angle);
+	angle = (float)(angle * Q_PI*2 / 360);
+	s = sinf(angle);
+	c = cosf(angle);
 
 	temp1[0][0] = 1;
 	temp1[0][1] = 0;

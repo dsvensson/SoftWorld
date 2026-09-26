@@ -27,67 +27,37 @@ enum {m_none, m_main, m_singleplayer, m_load, m_save, m_multiplayer, m_setup, m_
 
 void M_Menu_Main_f (void);
 	void M_Menu_SinglePlayer_f (void);
-		void M_Menu_Load_f (void);
-		void M_Menu_Save_f (void);
 	void M_Menu_MultiPlayer_f (void);
-		void M_Menu_Setup_f (void);
-		void M_Menu_Net_f (void);
 	void M_Menu_Options_f (void);
 		void M_Menu_Keys_f (void);
 		void M_Menu_Video_f (void);
 	void M_Menu_Help_f (void);
 	void M_Menu_Quit_f (void);
-void M_Menu_SerialConfig_f (void);
-	void M_Menu_ModemConfig_f (void);
-void M_Menu_LanConfig_f (void);
-void M_Menu_GameOptions_f (void);
-void M_Menu_Search_f (void);
-void M_Menu_ServerList_f (void);
 
 void M_Main_Draw (void);
 	void M_SinglePlayer_Draw (void);
-		void M_Load_Draw (void);
-		void M_Save_Draw (void);
 	void M_MultiPlayer_Draw (void);
-		void M_Setup_Draw (void);
-		void M_Net_Draw (void);
 	void M_Options_Draw (void);
 		void M_Keys_Draw (void);
 		void M_Video_Draw (void);
 	void M_Help_Draw (void);
 	void M_Quit_Draw (void);
-void M_SerialConfig_Draw (void);
-	void M_ModemConfig_Draw (void);
-void M_LanConfig_Draw (void);
-void M_GameOptions_Draw (void);
-void M_Search_Draw (void);
-void M_ServerList_Draw (void);
 
 void M_Main_Key (int key);
 	void M_SinglePlayer_Key (int key);
-		void M_Load_Key (int key);
-		void M_Save_Key (int key);
 	void M_MultiPlayer_Key (int key);
-		void M_Setup_Key (int key);
-		void M_Net_Key (int key);
 	void M_Options_Key (int key);
 		void M_Keys_Key (int key);
 		void M_Video_Key (int key);
 	void M_Help_Key (int key);
 	void M_Quit_Key (int key);
-void M_SerialConfig_Key (int key);
-	void M_ModemConfig_Key (int key);
-void M_LanConfig_Key (int key);
-void M_GameOptions_Key (int key);
-void M_Search_Key (int key);
-void M_ServerList_Key (int key);
 
-qboolean	m_entersound;		// play after drawing a frame, so caching
+bool	m_entersound;		// play after drawing a frame, so caching
 								// won't disrupt the sound
-qboolean	m_recursiveDraw;
+bool	m_recursiveDraw;
 
 int			m_return_state;
-qboolean	m_return_onerror;
+bool	m_return_onerror;
 char		m_return_reason [32];
 
 #define StartingGame	(m_multiplayer_cursor == 1)
@@ -97,7 +67,6 @@ char		m_return_reason [32];
 #define	IPXConfig		(m_net_cursor == 2)
 #define	TCPIPConfig		(m_net_cursor == 3)
 
-void M_ConfigureNetSubsystem(void);
 
 //=============================================================================
 /* Support Routines */
@@ -146,37 +115,6 @@ void M_DrawPic (int x, int y, qpic_t *pic)
 
 byte identityTable[256];
 byte translationTable[256];
-
-void M_BuildTranslationTable(int top, int bottom)
-{
-	int		j;
-	byte	*dest, *source;
-
-	for (j = 0; j < 256; j++)
-		identityTable[j] = j;
-	dest = translationTable;
-	source = identityTable;
-	memcpy (dest, source, 256);
-
-	if (top < 128)	// the artists made some backwards ranges.  sigh.
-		memcpy (dest + TOP_RANGE, source + top, 16);
-	else
-		for (j=0 ; j<16 ; j++)
-			dest[TOP_RANGE+j] = source[top+15-j];
-
-	if (bottom < 128)
-		memcpy (dest + BOTTOM_RANGE, source + bottom, 16);
-	else
-		for (j=0 ; j<16 ; j++)
-			dest[BOTTOM_RANGE+j] = source[bottom+15-j];		
-}
-
-
-void M_DrawTransPicTranslate (int x, int y, qpic_t *pic)
-{
-	Draw_TransPicTranslate (x + ((vid.width - 320)>>1), y, pic, translationTable);
-}
-
 
 void M_DrawTextBox (int x, int y, int width, int lines)
 {
@@ -389,7 +327,7 @@ void M_AdjustSliders (int dir)
 		Cvar_SetValue ("viewsize", scr_viewsize.value);
 		break;
 	case 4:	// gamma
-		v_gamma.value -= dir * 0.05;
+		v_gamma.value -= dir * 0.05f;
 		if (v_gamma.value < 0.5)
 			v_gamma.value = 0.5;
 		if (v_gamma.value > 1)
@@ -397,7 +335,7 @@ void M_AdjustSliders (int dir)
 		Cvar_SetValue ("gamma", v_gamma.value);
 		break;
 	case 5:	// mouse speed
-		sensitivity.value += dir * 0.5;
+		sensitivity.value += dir * 0.5f;
 		if (sensitivity.value < 1)
 			sensitivity.value = 1;
 		if (sensitivity.value > 11)
@@ -405,11 +343,7 @@ void M_AdjustSliders (int dir)
 		Cvar_SetValue ("sensitivity", sensitivity.value);
 		break;
 	case 6:	// music volume
-#ifdef _WIN32
-		bgmvolume.value += dir * 1.0;
-#else
-		bgmvolume.value += dir * 0.1;
-#endif
+		bgmvolume.value += dir * 1.0f;
 		if (bgmvolume.value < 0)
 			bgmvolume.value = 0;
 		if (bgmvolume.value > 1)
@@ -417,7 +351,7 @@ void M_AdjustSliders (int dir)
 		Cvar_SetValue ("bgmvolume", bgmvolume.value);
 		break;
 	case 7:	// sfx volume
-		volume.value += dir * 0.1;
+		volume.value += dir * 0.1f;
 		if (volume.value < 0)
 			volume.value = 0;
 		if (volume.value > 1)
@@ -456,6 +390,7 @@ void M_AdjustSliders (int dir)
 
 	case 13:
 		Cvar_SetValue ("cl_hudswap", !cl_hudswap.value);
+		break;
 
 	case 15:	// _windowed_mouse
 		Cvar_SetValue ("_windowed_mouse", !_windowed_mouse.value);
@@ -476,17 +411,11 @@ void M_DrawSlider (int x, int y, float range)
 	for (i=0 ; i<SLIDER_RANGE ; i++)
 		M_DrawCharacter (x + i*8, y, 129);
 	M_DrawCharacter (x+i*8, y, 130);
-	M_DrawCharacter (x + (SLIDER_RANGE-1)*8 * range, y, 131);
+	M_DrawCharacter ((int)(x + (SLIDER_RANGE-1)*8 * range), y, 131);
 }
 
 void M_DrawCheckbox (int x, int y, int on)
 {
-#if 0
-	if (on)
-		M_DrawCharacter (x, y, 131);
-	else
-		M_DrawCharacter (x, y, 129);
-#endif
 	if (on)
 		M_Print (x, y, "on");
 	else
@@ -511,7 +440,7 @@ void M_Options_Draw (void)
 	M_DrawSlider (220, 56, r);
 
 	M_Print (16, 64, "            Brightness");
-	r = (1.0 - v_gamma.value) / 0.5;
+	r = (1.0f - v_gamma.value) / 0.5f;
 	M_DrawSlider (220, 64, r);
 
 	M_Print (16, 72, "           Mouse Speed");
@@ -533,29 +462,25 @@ void M_Options_Draw (void)
 	M_DrawCheckbox (220, 104, m_pitch.value < 0);
 
 	M_Print (16, 112, "            Lookspring");
-	M_DrawCheckbox (220, 112, lookspring.value);
+	M_DrawCheckbox (220, 112, (int)lookspring.value);
 
 	M_Print (16, 120, "            Lookstrafe");
-	M_DrawCheckbox (220, 120, lookstrafe.value);
+	M_DrawCheckbox (220, 120, (int)lookstrafe.value);
 
 	M_Print (16, 128, "    Use old status bar");
-	M_DrawCheckbox (220, 128, cl_sbar.value);
+	M_DrawCheckbox (220, 128, (int)cl_sbar.value);
 
 	M_Print (16, 136, "      HUD on left side");
-	M_DrawCheckbox (220, 136, cl_hudswap.value);
+	M_DrawCheckbox (220, 136, (int)cl_hudswap.value);
 
 	if (vid_menudrawfn)
 		M_Print (16, 144, "         Video Options");
 
-#ifdef _WIN32
 	if (modestate == MS_WINDOWED)
 	{
-#endif
 		M_Print (16, 152, "             Use Mouse");
-		M_DrawCheckbox (220, 152, _windowed_mouse.value);
-#ifdef _WIN32
+		M_DrawCheckbox (220, 152, (int)_windowed_mouse.value);
 	}
-#endif
 
 // cursor
 	M_DrawCharacter (200, 32 + options_cursor*8, 12+((int)(realtime*4)&1));
@@ -625,9 +550,7 @@ void M_Options_Key (int k)
 	}
 
 	if ((options_cursor == 15) 
-#ifdef _WIN32
 	&& (modestate != MS_WINDOWED)
-#endif
 	)
 	{
 		if (k == K_UPARROW)
@@ -684,7 +607,7 @@ void M_FindKeysForCommand (char *command, int *twokeys)
 	char	*b;
 
 	twokeys[0] = twokeys[1] = -1;
-	l = strlen(command);
+	l = (int)strlen(command);
 	count = 0;
 
 	for (j=0 ; j<256 ; j++)
@@ -708,7 +631,7 @@ void M_UnbindCommand (char *command)
 	int		l;
 	char	*b;
 
-	l = strlen(command);
+	l = (int)strlen(command);
 
 	for (j=0 ; j<256 ; j++)
 	{
@@ -723,9 +646,9 @@ void M_UnbindCommand (char *command)
 
 void M_Keys_Draw (void)
 {
-	int		i, l;
+	int		i;
 	int		keys[2];
-	char	*name;
+	char	*keyname;
 	int		x, y;
 	qpic_t	*p;
 
@@ -736,27 +659,25 @@ void M_Keys_Draw (void)
 		M_Print (12, 32, "Press a key or button for this action");
 	else
 		M_Print (18, 32, "Enter to change, backspace to clear");
-		
+
 // search for known bindings
-	for (i=0 ; i<NUMCOMMANDS ; i++)
+	for (i=0 ; i<(int)NUMCOMMANDS ; i++)
 	{
 		y = 48 + 8*i;
 
 		M_Print (16, y, bindnames[i][1]);
 
-		l = strlen (bindnames[i][0]);
-		
 		M_FindKeysForCommand (bindnames[i][0], keys);
-		
+
 		if (keys[0] == -1)
 		{
 			M_Print (140, y, "???");
 		}
 		else
 		{
-			name = Key_KeynumToString (keys[0]);
-			M_Print (140, y, name);
-			x = strlen(name) * 8;
+			keyname = Key_KeynumToString (keys[0]);
+			M_Print (140, y, keyname);
+			x = (int)(strlen(keyname) * 8);
 			if (keys[1] != -1)
 			{
 				M_Print (140 + x + 8, y, "or");
@@ -786,7 +707,7 @@ void M_Keys_Key (int k)
 		}
 		else if (k != '`')
 		{
-			sprintf (cmd, "bind %s \"%s\"\n", Key_KeynumToString (k), bindnames[keys_cursor][0]);			
+			snprintf (cmd, sizeof(cmd), "bind %s \"%s\"\n", Key_KeynumToString (k), bindnames[keys_cursor][0]);
 			Cbuf_InsertText (cmd);
 		}
 		
@@ -812,7 +733,7 @@ void M_Keys_Key (int k)
 	case K_RIGHTARROW:
 		S_LocalSound ("misc/menu1.wav");
 		keys_cursor++;
-		if (keys_cursor >= NUMCOMMANDS)
+		if (keys_cursor >= (int)NUMCOMMANDS)
 			keys_cursor = 0;
 		break;
 
@@ -907,51 +828,7 @@ void M_Help_Key (int key)
 
 int		msgNumber;
 int		m_quit_prevstate;
-qboolean	wasInMenus;
-
-char *quitMessage [] = 
-{
-/* .........1.........2.... */
-  "  Are you gonna quit    ",
-  "  this game just like   ",
-  "   everything else?     ",
-  "                        ",
- 
-  " Milord, methinks that  ",
-  "   thou art a lowly     ",
-  " quitter. Is this true? ",
-  "                        ",
-
-  " Do I need to bust your ",
-  "  face open for trying  ",
-  "        to quit?        ",
-  "                        ",
-
-  " Man, I oughta smack you",
-  "   for trying to quit!  ",
-  "     Press Y to get     ",
-  "      smacked out.      ",
- 
-  " Press Y to quit like a ",
-  "   big loser in life.   ",
-  "  Press N to stay proud ",
-  "    and successful!     ",
- 
-  "   If you press Y to    ",
-  "  quit, I will summon   ",
-  "  Satan all over your   ",
-  "      hard drive!       ",
- 
-  "  Um, Asmodeus dislikes ",
-  " his children trying to ",
-  " quit. Press Y to return",
-  "   to your Tinkertoys.  ",
- 
-  "  If you quit now, I'll ",
-  "  throw a blanket-party ",
-  "   for you next time!   ",
-  "                        "
-};
+bool	wasInMenus;
 
 void M_Menu_Quit_f (void)
 {
@@ -1089,7 +966,6 @@ void M_Quit_Draw (void)
 		M_Draw ();
 		m_state = m_quit;
 	}
-#if 1
 	M_DrawTextBox (0, 0, 38, 23);
 	y = 12;
 	for (p = cmsg; *p; p++, y += 8) {
@@ -1098,13 +974,6 @@ void M_Quit_Draw (void)
 		else
 			M_Print (16, y,	*p + 1);
 	}
-#else
-	M_DrawTextBox (56, 76, 24, 4);
-	M_Print (64, 84,  quitMessage[msgNumber*4+0]);
-	M_Print (64, 92,  quitMessage[msgNumber*4+1]);
-	M_Print (64, 100, quitMessage[msgNumber*4+2]);
-	M_Print (64, 108, quitMessage[msgNumber*4+3]);
-#endif
 }
 
 
@@ -1166,11 +1035,9 @@ void M_Draw (void)
 		break;
 
 	case m_load:
-//		M_Load_Draw ();
 		break;
 
 	case m_save:
-//		M_Save_Draw ();
 		break;
 
 	case m_multiplayer:
@@ -1178,11 +1045,9 @@ void M_Draw (void)
 		break;
 
 	case m_setup:
-//		M_Setup_Draw ();
 		break;
 
 	case m_net:
-//		M_Net_Draw ();
 		break;
 
 	case m_options:
@@ -1206,27 +1071,21 @@ void M_Draw (void)
 		break;
 
 	case m_serialconfig:
-//		M_SerialConfig_Draw ();
 		break;
 
 	case m_modemconfig:
-//		M_ModemConfig_Draw ();
 		break;
 
 	case m_lanconfig:
-//		M_LanConfig_Draw ();
 		break;
 
 	case m_gameoptions:
-//		M_GameOptions_Draw ();
 		break;
 
 	case m_search:
-//		M_Search_Draw ();
 		break;
 
 	case m_slist:
-//		M_ServerList_Draw ();
 		break;
 	}
 
@@ -1258,11 +1117,9 @@ void M_Keydown (int key)
 		return;
 
 	case m_load:
-//		M_Load_Key (key);
 		return;
 
 	case m_save:
-//		M_Save_Key (key);
 		return;
 
 	case m_multiplayer:
@@ -1270,11 +1127,9 @@ void M_Keydown (int key)
 		return;
 
 	case m_setup:
-//		M_Setup_Key (key);
 		return;
 
 	case m_net:
-//		M_Net_Key (key);
 		return;
 
 	case m_options:
@@ -1298,27 +1153,21 @@ void M_Keydown (int key)
 		return;
 
 	case m_serialconfig:
-//		M_SerialConfig_Key (key);
 		return;
 
 	case m_modemconfig:
-//		M_ModemConfig_Key (key);
 		return;
 
 	case m_lanconfig:
-//		M_LanConfig_Key (key);
 		return;
 
 	case m_gameoptions:
-//		M_GameOptions_Key (key);
 		return;
 
 	case m_search:
-//		M_Search_Key (key);
 		break;
 
 	case m_slist:
-//		M_ServerList_Key (key);
 		return;
 	}
 }

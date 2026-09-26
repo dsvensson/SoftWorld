@@ -18,6 +18,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
+#pragma once
+
 typedef struct
 {
 	vec3_t	normal;
@@ -26,9 +28,9 @@ typedef struct
 
 typedef struct
 {
-	qboolean	allsolid;	// if true, plane is not valid
-	qboolean	startsolid;	// if true, the initial point was in a solid area
-	qboolean	inopen, inwater;
+	bool	allsolid;	// if true, plane is not valid
+	bool	startsolid;	// if true, the initial point was in a solid area
+	bool	inopen, inwater;
 	float		fraction;		// time completed, 1.0 = didn't hit anything
 	vec3_t		endpos;			// final position
 	pmplane_t		plane;			// surface normal at impact
@@ -56,7 +58,7 @@ typedef struct
 	vec3_t	velocity;
 	int		oldbuttons;
 	float		waterjumptime;
-	qboolean	dead;
+	bool	dead;
 	int		spectator;
 
 	// world state
@@ -97,5 +99,5 @@ void Pmove_Init (void);
 int PM_HullPointContents (hull_t *hull, int num, vec3_t p);
 
 int PM_PointContents (vec3_t point);
-qboolean PM_TestPlayerPosition (vec3_t point);
+bool PM_TestPlayerPosition (vec3_t point);
 pmtrace_t PM_PlayerMove (vec3_t start, vec3_t stop);

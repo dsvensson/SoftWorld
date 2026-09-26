@@ -8,7 +8,8 @@
 			"generator": "Ninja Multi-Config",
 			"binaryDir": "${sourceDir}/build/${presetName}",
 			"cacheVariables": {
-				"CMAKE_CONFIGURATION_TYPES": "Debug;Release;RelWithDebInfo"
+				"CMAKE_CONFIGURATION_TYPES": "Debug;Release;RelWithDebInfo",
+				"CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
 			}
 		},
 		{

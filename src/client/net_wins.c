@@ -49,12 +49,12 @@ static void SockadrToNetadr (const struct sockaddr_in *s, netadr_t *a)
 	a->port = s->sin_port;
 }
 
-qboolean	NET_CompareBaseAdr (netadr_t a, netadr_t b)
+bool	NET_CompareBaseAdr (netadr_t a, netadr_t b)
 {
 	return memcmp (a.ip, b.ip, 4) == 0;
 }
 
-qboolean	NET_CompareAdr (netadr_t a, netadr_t b)
+bool	NET_CompareAdr (netadr_t a, netadr_t b)
 {
 	return memcmp (a.ip, b.ip, 4) == 0 && a.port == b.port;
 }
@@ -87,7 +87,7 @@ idnewt:28000
 192.246.40.70:28000
 =============
 */
-qboolean	NET_StringToAdr (char *s, netadr_t *a)
+bool	NET_StringToAdr (char *s, netadr_t *a)
 {
 	struct addrinfo	hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
 	struct addrinfo	*result;
@@ -117,7 +117,7 @@ qboolean	NET_StringToAdr (char *s, netadr_t *a)
 
 //=============================================================================
 
-qboolean NET_GetPacket (void)
+bool NET_GetPacket (void)
 {
 	int 	ret;
 	struct sockaddr_in	from;

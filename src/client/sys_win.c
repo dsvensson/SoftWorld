@@ -8,7 +8,7 @@ of the License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 
@@ -17,54 +17,36 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// sys_win.h
+// sys_win.c -- Win32 system interface for the client
 
 #include "quakedef.h"
 #include "winquake.h"
 #include "../platform/win/entry_win.h"
-#include <errno.h>
-#include <fcntl.h>
 #include <direct.h>
-#include <io.h>
-#include <limits.h>
 
 #define MAXIMUM_WIN_MEMORY	(256 * 1024 * 1024)	// temporary until the Hunk is gone
 
 #define PAUSE_SLEEP		50				// sleep time on pause or minimization
 #define NOT_FOCUS_SLEEP	20				// sleep time when not focus
 
-int		starttime;
-qboolean ActiveApp, Minimized;
-qboolean	WinNT;
-
-HWND	hwnd_dialog;		// startup dialog box
-
-static double		pfreq;
-static double		curtime = 0.0;
-static double		lastcurtime = 0.0;
-static int			lowshift;
-static HANDLE		hinput, houtput;
-
-HANDLE		qwclsemaphore;
+bool	ActiveApp, Minimized;
+HINSTANCE	global_hInstance;
 
 static HANDLE	tevent;
 
-void Sys_InitFloatTime (void);
-
-
-void Sys_DebugLog(char *file, char *fmt, ...)
+void Sys_DebugLog (char *file, char *fmt, ...)
 {
-    va_list argptr; 
-    static char data[1024];
-    int fd;
-    
-    va_start(argptr, fmt);
-    vsprintf(data, fmt, argptr);
-    va_end(argptr);
-    fd = open(file, O_WRONLY | O_CREAT | O_APPEND, 0666);
-    write(fd, data, strlen(data));
-    close(fd);
-};
+	va_list	argptr;
+	FILE	*f;
+
+	f = fopen (file, "a");
+	if (!f)
+		return;
+	va_start (argptr, fmt);
+	vfprintf (f, fmt, argptr);
+	va_end (argptr);
+	fclose (f);
+}
 
 /*
 ===============================================================================
@@ -77,31 +59,19 @@ FILE IO
 int	Sys_FileTime (char *path)
 {
 	FILE	*f;
-	int		t, retval;
 
-	t = VID_ForceUnlockedAndReturnState ();
-	
-	f = fopen(path, "rb");
+	f = fopen (path, "rb");
+	if (!f)
+		return -1;
 
-	if (f)
-	{
-		fclose(f);
-		retval = 1;
-	}
-	else
-	{
-		retval = -1;
-	}
-	
-	VID_ForceLockState (t);
-	return retval;
+	fclose (f);
+	return 1;
 }
 
 void Sys_mkdir (char *path)
 {
 	_mkdir (path);
 }
-
 
 /*
 ===============================================================================
@@ -118,93 +88,22 @@ Sys_Init
 */
 void Sys_Init (void)
 {
-	LARGE_INTEGER	PerformanceFreq;
-	unsigned int	lowpart, highpart;
-	OSVERSIONINFO	vinfo;
-
-#ifndef SERVERONLY
-	// allocate a named semaphore on the client so the
-	// front end can tell if it is alive
-
-	// mutex will fail if semephore allready exists
-    qwclsemaphore = CreateMutex(
-        NULL,         /* Security attributes */
-        0,            /* owner       */
-        "qwcl"); /* Semaphore name      */
-	if (!qwclsemaphore)
-		Sys_Error ("QWCL is already running on this system");
-	CloseHandle (qwclsemaphore);
-
-    qwclsemaphore = CreateSemaphore(
-        NULL,         /* Security attributes */
-        0,            /* Initial count       */
-        1,            /* Maximum count       */
-        "qwcl"); /* Semaphore name      */
-#endif
-
-
-#if 0
-	if (!QueryPerformanceFrequency (&PerformanceFreq))
-		Sys_Error ("No hardware timer available");
-
-// get 32 out of the 64 time bits such that we have around
-// 1 microsecond resolution
-	lowpart = (unsigned int)PerformanceFreq.LowPart;
-	highpart = (unsigned int)PerformanceFreq.HighPart;
-	lowshift = 0;
-
-	while (highpart || (lowpart > 2000000.0))
-	{
-		lowshift++;
-		lowpart >>= 1;
-		lowpart |= (highpart & 1) << 31;
-		highpart >>= 1;
-	}
-
-	pfreq = 1.0 / (double)lowpart;
-
-	Sys_InitFloatTime ();
-#endif
-
-	// make sure the timer is high precision, otherwise
-	// NT gets 18ms resolution
-	timeBeginPeriod( 1 );
-
-	vinfo.dwOSVersionInfoSize = sizeof(vinfo);
-
-	if (!GetVersionEx (&vinfo))
-		Sys_Error ("Couldn't get OS info");
-
-	if ((vinfo.dwMajorVersion < 4) ||
-		(vinfo.dwPlatformId == VER_PLATFORM_WIN32s))
-	{
-		Sys_Error ("QuakeWorld requires at least Win95 or NT 4.0");
-	}
-	
-	if (vinfo.dwPlatformId == VER_PLATFORM_WIN32_NT)
-		WinNT = true;
-	else
-		WinNT = false;
+	// make sure waits and timer events have 1 ms resolution
+	timeBeginPeriod (1);
 }
-
 
 void Sys_Error (char *error, ...)
 {
 	va_list		argptr;
-	char		text[1024], text2[1024];
-	DWORD		dummy;
+	char		text[1024];
 
 	Host_Shutdown ();
 
 	va_start (argptr, error);
-	vsprintf (text, error, argptr);
+	vsnprintf (text, sizeof(text), error, argptr);
 	va_end (argptr);
 
-	MessageBox(NULL, text, "Error", 0 /* MB_OK */ );
-
-#ifndef SERVERONLY
-	CloseHandle (qwclsemaphore);
-#endif
+	MessageBox (NULL, text, "Error", MB_OK | MB_ICONERROR);
 
 	exit (1);
 }
@@ -212,157 +111,78 @@ void Sys_Error (char *error, ...)
 void Sys_Printf (char *fmt, ...)
 {
 	va_list		argptr;
-	char		text[1024];
-	DWORD		dummy;
-	
-	va_start (argptr,fmt);
+
+	va_start (argptr, fmt);
 	vprintf (fmt, argptr);
 	va_end (argptr);
 }
 
 void Sys_Quit (void)
 {
-	VID_ForceUnlockedAndReturnState ();
-
-	Host_Shutdown();
-#ifndef SERVERONLY
+	Host_Shutdown ();
 	if (tevent)
 		CloseHandle (tevent);
-
-	if (qwclsemaphore)
-		CloseHandle (qwclsemaphore);
-#endif
 
 	exit (0);
 }
 
-
-#if 0
 /*
 ================
 Sys_DoubleTime
+
+Seconds since the first call, from the performance counter.
 ================
 */
 double Sys_DoubleTime (void)
 {
-	static int			sametimecount;
-	static unsigned int	oldtime;
-	static int			first = 1;
-	LARGE_INTEGER		PerformanceCount;
-	unsigned int		temp, t2;
-	double				time;
+	static LARGE_INTEGER	frequency, start;
+	LARGE_INTEGER			now;
 
-	Sys_PushFPCW_SetHigh ();
-
-	QueryPerformanceCounter (&PerformanceCount);
-
-	temp = ((unsigned int)PerformanceCount.LowPart >> lowshift) |
-		   ((unsigned int)PerformanceCount.HighPart << (32 - lowshift));
-
-	if (first)
+	if (!frequency.QuadPart)
 	{
-		oldtime = temp;
-		first = 0;
+		QueryPerformanceFrequency (&frequency);
+		QueryPerformanceCounter (&start);
 	}
-	else
-	{
-	// check for turnover or backward time
-		if ((temp <= oldtime) && ((oldtime - temp) < 0x10000000))
-		{
-			oldtime = temp;	// so we can't get stuck
-		}
-		else
-		{
-			t2 = temp - oldtime;
+	QueryPerformanceCounter (&now);
 
-			time = (double)t2 * pfreq;
-			oldtime = temp;
-
-			curtime += time;
-
-			if (curtime == lastcurtime)
-			{
-				sametimecount++;
-
-				if (sametimecount > 100000)
-				{
-					curtime += 1.0;
-					sametimecount = 0;
-				}
-			}
-			else
-			{
-				sametimecount = 0;
-			}
-
-			lastcurtime = curtime;
-		}
-	}
-
-	Sys_PopFPCW ();
-
-    return curtime;
+	return (double)(now.QuadPart - start.QuadPart) / (double)frequency.QuadPart;
 }
 
 /*
 ================
-Sys_InitFloatTime
+Sys_GetClipboardText
 ================
 */
-void Sys_InitFloatTime (void)
+char *Sys_GetClipboardText (void)
 {
-	int		j;
+	HANDLE	data;
+	char	*text, *copy = NULL;
 
-	Sys_DoubleTime ();
+	if (!OpenClipboard (NULL))
+		return NULL;
 
-	j = COM_CheckParm("-starttime");
-
-	if (j)
+	data = GetClipboardData (CF_TEXT);
+	if (data)
 	{
-		curtime = (double) (Q_atof(com_argv[j+1]));
+		text = GlobalLock (data);
+		if (text)
+		{
+			size_t	len = strlen (text) + 1;
+
+			copy = malloc (len);
+			if (copy)
+				memcpy (copy, text, len);
+			GlobalUnlock (data);
+		}
 	}
-	else
-	{
-		curtime = 0.0;
-	}
+	CloseClipboard ();
 
-	lastcurtime = curtime;
+	return copy;
 }
-
-#endif
-
-double Sys_DoubleTime (void)
-{
-	static DWORD starttime;
-	static qboolean first = true;
-	DWORD now;
-	double t;
-
-	now = timeGetTime();
-
-	if (first) {
-		first = false;
-		starttime = now;
-		return 0.0;
-	}
-	
-	if (now < starttime) // wrapped?
-		return (now / 1000.0) + (LONG_MAX - starttime / 1000.0);
-
-	if (now - starttime == 0)
-		return 0.0;
-
-	return (now - starttime) / 1000.0;
-}
-
-void Sys_Sleep (void)
-{
-}
-
 
 void Sys_SendKeyEvents (void)
 {
-    MSG        msg;
+	MSG		msg;
 
 	while (PeekMessage (&msg, NULL, 0, 0, PM_NOREMOVE))
 	{
@@ -371,64 +191,45 @@ void Sys_SendKeyEvents (void)
 
 		if (!GetMessage (&msg, NULL, 0, 0))
 			Sys_Quit ();
-      	TranslateMessage (&msg);
-      	DispatchMessage (&msg);
+		TranslateMessage (&msg);
+		DispatchMessage (&msg);
 	}
 }
 
-
-
-/*
-==============================================================================
-
- WINDOWS CRAP
-
-==============================================================================
-*/
-
 /*
 ==================
-WinMain
+SleepUntilInput
 ==================
 */
-void SleepUntilInput (int time)
+static void SleepUntilInput (int time)
 {
-
-	MsgWaitForMultipleObjects(1, &tevent, FALSE, time, QS_ALLINPUT);
+	MsgWaitForMultipleObjects (1, &tevent, FALSE, (DWORD)time, QS_ALLINPUT);
 }
 
-
-
 /*
 ==================
-WinMain
+Sys_WinMain
 ==================
 */
-HINSTANCE	global_hInstance;
-int			global_nCmdShow;
-char		*argv[MAX_NUM_ARGVS];
+static char	*argv[MAX_NUM_ARGVS];
 static char	*empty_string = "";
-HWND		hwnd_dialog;
 
-
-int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow)
+int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, [[maybe_unused]] int nCmdShow)
 {
-    MSG				msg;
 	quakeparms_t	parms;
 	double			time, oldtime, newtime;
 	static	char	cwd[1024];
 	int				t;
-	RECT			rect;
+	size_t			len;
 
 	global_hInstance = hInstance;
-	global_nCmdShow = nCmdShow;
-
 
 	if (!GetCurrentDirectory (sizeof(cwd), cwd))
 		Sys_Error ("Couldn't determine current directory");
 
-	if (cwd[Q_strlen(cwd)-1] == '/')
-		cwd[Q_strlen(cwd)-1] = 0;
+	len = strlen (cwd);
+	if (len && cwd[len-1] == '/')
+		cwd[len-1] = 0;
 
 	parms.basedir = cwd;
 	parms.cachedir = NULL;
@@ -454,7 +255,6 @@ int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow)
 				*lpCmdLine = 0;
 				lpCmdLine++;
 			}
-			
 		}
 	}
 
@@ -465,25 +265,18 @@ int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow)
 	parms.argc = com_argc;
 	parms.argv = com_argv;
 
-// take the greater of all the available memory or half the total memory,
-// but at least 8 Mb and no more than 16 Mb, unless they explicitly
-// request otherwise
 	parms.memsize = MAXIMUM_WIN_MEMORY;
 
-	if (COM_CheckParm ("-heapsize"))
-	{
-		t = COM_CheckParm("-heapsize") + 1;
-
-		if (t < com_argc)
-			parms.memsize = Q_atoi (com_argv[t]) * 1024;
-	}
+	t = COM_CheckParm ("-heapsize");
+	if (t && t + 1 < com_argc)
+		parms.memsize = Q_atoi (com_argv[t + 1]) * 1024;
 
 	parms.membase = malloc (parms.memsize);
 
 	if (!parms.membase)
 		Sys_Error ("Not enough memory free; check disk space\n");
 
-	tevent = CreateEvent(NULL, FALSE, FALSE, NULL);
+	tevent = CreateEvent (NULL, FALSE, FALSE, NULL);
 
 	if (!tevent)
 		Sys_Error ("Couldn't create event");
@@ -498,27 +291,23 @@ int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow)
 
 	oldtime = Sys_DoubleTime ();
 
-    /* main window message loop */
+	/* main window message loop */
 	while (1)
 	{
 	// yield the CPU for a little while when paused, minimized, or not the focus
-		if ((cl.paused && (!ActiveApp && !DDActive)) || Minimized || block_drawing)
+		if ((cl.paused && !ActiveApp) || Minimized || block_drawing)
 		{
 			SleepUntilInput (PAUSE_SLEEP);
 			scr_skipupdate = 1;		// no point in bothering to draw
 		}
-		else if (!ActiveApp && !DDActive)
+		else if (!ActiveApp)
 		{
 			SleepUntilInput (NOT_FOCUS_SLEEP);
 		}
 
 		newtime = Sys_DoubleTime ();
 		time = newtime - oldtime;
-		Host_Frame (time);
+		Host_Frame ((float)time);
 		oldtime = newtime;
 	}
-
-    /* return success of application */
-    return TRUE;
 }
-

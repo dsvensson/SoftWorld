@@ -45,7 +45,6 @@ void D_StartParticles (void)
 }
 
 
-#if	!id386
 
 /*
 ==============
@@ -72,7 +71,7 @@ void D_DrawParticle (particle_t *pparticle)
 
 // project the point
 // FIXME: preadjust xcenter and ycenter
-	zi = 1.0 / transformed[2];
+	zi = 1.0f / transformed[2];
 	u = (int)(xcenter + zi * transformed[0] + 0.5);
 	v = (int)(ycenter - zi * transformed[1] + 0.5);
 
@@ -104,8 +103,8 @@ void D_DrawParticle (particle_t *pparticle)
 		{
 			if (pz[0] <= izi)
 			{
-				pz[0] = izi;
-				pdest[0] = pparticle->color;
+				pz[0] = (short)izi;
+				pdest[0] = (byte)pparticle->color;
 			}
 		}
 		break;
@@ -117,14 +116,14 @@ void D_DrawParticle (particle_t *pparticle)
 		{
 			if (pz[0] <= izi)
 			{
-				pz[0] = izi;
-				pdest[0] = pparticle->color;
+				pz[0] = (short)izi;
+				pdest[0] = (byte)pparticle->color;
 			}
 
 			if (pz[1] <= izi)
 			{
-				pz[1] = izi;
-				pdest[1] = pparticle->color;
+				pz[1] = (short)izi;
+				pdest[1] = (byte)pparticle->color;
 			}
 		}
 		break;
@@ -136,20 +135,20 @@ void D_DrawParticle (particle_t *pparticle)
 		{
 			if (pz[0] <= izi)
 			{
-				pz[0] = izi;
-				pdest[0] = pparticle->color;
+				pz[0] = (short)izi;
+				pdest[0] = (byte)pparticle->color;
 			}
 
 			if (pz[1] <= izi)
 			{
-				pz[1] = izi;
-				pdest[1] = pparticle->color;
+				pz[1] = (short)izi;
+				pdest[1] = (byte)pparticle->color;
 			}
 
 			if (pz[2] <= izi)
 			{
-				pz[2] = izi;
-				pdest[2] = pparticle->color;
+				pz[2] = (short)izi;
+				pdest[2] = (byte)pparticle->color;
 			}
 		}
 		break;
@@ -161,26 +160,26 @@ void D_DrawParticle (particle_t *pparticle)
 		{
 			if (pz[0] <= izi)
 			{
-				pz[0] = izi;
-				pdest[0] = pparticle->color;
+				pz[0] = (short)izi;
+				pdest[0] = (byte)pparticle->color;
 			}
 
 			if (pz[1] <= izi)
 			{
-				pz[1] = izi;
-				pdest[1] = pparticle->color;
+				pz[1] = (short)izi;
+				pdest[1] = (byte)pparticle->color;
 			}
 
 			if (pz[2] <= izi)
 			{
-				pz[2] = izi;
-				pdest[2] = pparticle->color;
+				pz[2] = (short)izi;
+				pdest[2] = (byte)pparticle->color;
 			}
 
 			if (pz[3] <= izi)
 			{
-				pz[3] = izi;
-				pdest[3] = pparticle->color;
+				pz[3] = (short)izi;
+				pdest[3] = (byte)pparticle->color;
 			}
 		}
 		break;
@@ -194,8 +193,8 @@ void D_DrawParticle (particle_t *pparticle)
 			{
 				if (pz[i] <= izi)
 				{
-					pz[i] = izi;
-					pdest[i] = pparticle->color;
+					pz[i] = (short)izi;
+					pdest[i] = (byte)pparticle->color;
 				}
 			}
 		}
@@ -203,5 +202,4 @@ void D_DrawParticle (particle_t *pparticle)
 	}
 }
 
-#endif	// !id386
 

@@ -18,9 +18,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 #include "quakedef.h"
-#ifdef _WINDOWS
-#include <windows.h>
-#endif
 /*
 
 key up events are sent even if in console mode
@@ -42,11 +39,11 @@ keydest_t	key_dest;
 int		key_count;			// incremented every key event
 
 char	*keybindings[256];
-qboolean	consolekeys[256];	// if true, can't be rebound while in console
-qboolean	menubound[256];	// if true, can't be rebound while in menu
+bool	consolekeys[256];	// if true, can't be rebound while in console
+bool	menubound[256];	// if true, can't be rebound while in menu
 int		keyshift[256];		// key to map to if shift held down in console
 int		key_repeats[256];	// if > 1, it is autorepeating
-qboolean	keydown[256];
+bool	keydown[256];
 
 typedef struct
 {
@@ -150,7 +147,7 @@ keyname_t keynames[] =
 ==============================================================================
 */
 
-qboolean CheckForCommand (void)
+bool CheckForCommand (void)
 {
 	char	command[128];
 	char	*cmd, *s;
@@ -205,12 +202,8 @@ Interactive line editing and console scrollback
 */
 void Key_Console (int key)
 {
-#ifdef _WIN32
-	char	*cmd, *s;
 	int		i;
-	HANDLE	th;
-	char	*clipText, *textCopied;
-#endif
+	char	*clipText;
 	
 	if (key == K_ENTER)
 	{	// backslash text are commands, else chat
@@ -312,40 +305,32 @@ void Key_Console (int key)
 		return;
 	}
 	
-#ifdef _WIN32
-	if ((key=='V' || key=='v') && GetKeyState(VK_CONTROL)<0) {
-		if (OpenClipboard(NULL)) {
-			th = GetClipboardData(CF_TEXT);
-			if (th) {
-				clipText = GlobalLock(th);
-				if (clipText) {
-					textCopied = malloc(GlobalSize(th)+1);
-					strcpy(textCopied, clipText);
-	/* Substitutes a NULL for every token */strtok(textCopied, "\n\r\b");
-					i = strlen(textCopied);
-					if (i+key_linepos>=MAXCMDLINE)
-						i=MAXCMDLINE-key_linepos;
-					if (i>0) {
-						textCopied[i]=0;
-						strcat(key_lines[edit_line], textCopied);
-						key_linepos+=i;;
-					}
-					free(textCopied);
-				}
-				GlobalUnlock(th);
+	if ((key=='V' || key=='v') && keydown[K_CTRL])
+	{
+		clipText = Sys_GetClipboardText ();
+		if (clipText)
+		{
+			strtok (clipText, "\n\r\b");	// only the first line
+			i = (int)strlen (clipText);
+			if (i + key_linepos >= MAXCMDLINE)
+				i = MAXCMDLINE - 1 - key_linepos;
+			if (i > 0)
+			{
+				clipText[i] = 0;
+				Q_strncatz (key_lines[edit_line], clipText, sizeof(key_lines[edit_line]));
+				key_linepos += i;
 			}
-			CloseClipboard();
-		return;
+			free (clipText);
 		}
+		return;
 	}
-#endif
 
 	if (key < 32 || key > 127)
 		return;	// non printable
 		
 	if (key_linepos < MAXCMDLINE-1)
 	{
-		key_lines[edit_line][key_linepos] = key;
+		key_lines[edit_line][key_linepos] = (char)key;
 		key_linepos++;
 		key_lines[edit_line][key_linepos] = 0;
 	}
@@ -354,7 +339,7 @@ void Key_Console (int key)
 
 //============================================================================
 
-qboolean	chat_team;
+bool	chat_team;
 char		chat_buffer[MAXCMDLINE];
 int			chat_bufferlen = 0;
 
@@ -400,7 +385,7 @@ void Key_Message (int key)
 	if (chat_bufferlen == sizeof(chat_buffer)-1)
 		return; // all full
 
-	chat_buffer[chat_bufferlen++] = key;
+	chat_buffer[chat_bufferlen++] = (char)key;
 	chat_buffer[chat_bufferlen] = 0;
 }
 
@@ -451,7 +436,7 @@ char *Key_KeynumToString (int keynum)
 		return "<KEY NOT FOUND>";
 	if (keynum > 32 && keynum < 127)
 	{	// printable ascii
-		tinystr[0] = keynum;
+		tinystr[0] = (char)keynum;
 		tinystr[1] = 0;
 		return tinystr;
 	}
@@ -564,9 +549,9 @@ void Key_Bind_f (void)
 	cmd[0] = 0;		// start out with a null string
 	for (i=2 ; i< c ; i++)
 	{
-		strcat (cmd, Cmd_Argv(i));
+		Q_strncatz (cmd, Cmd_Argv(i), sizeof(cmd));
 		if (i != (c-1))
-			strcat (cmd, " ");
+			Q_strncatz (cmd, " ", sizeof(cmd));
 	}
 
 	Key_SetBinding (b, cmd);
@@ -675,7 +660,7 @@ Called by the system between frames for both key up and key down events
 Should NOT be called during an interrupt!
 ===================
 */
-void Key_Event (int key, qboolean down)
+void Key_Event (int key, bool down)
 {
 	char	*kb;
 	char	cmd[1024];
@@ -749,7 +734,7 @@ void Key_Event (int key, qboolean down)
 		kb = keybindings[key];
 		if (kb && kb[0] == '+')
 		{
-			sprintf (cmd, "-%s %i\n", kb+1, key);
+			snprintf (cmd, sizeof(cmd), "-%s %i\n", kb+1, key);
 			Cbuf_AddText (cmd);
 		}
 		if (keyshift[key] != key)
@@ -757,7 +742,7 @@ void Key_Event (int key, qboolean down)
 			kb = keybindings[keyshift[key]];
 			if (kb && kb[0] == '+')
 			{
-				sprintf (cmd, "-%s %i\n", kb+1, key);
+				snprintf (cmd, sizeof(cmd), "-%s %i\n", kb+1, key);
 				Cbuf_AddText (cmd);
 			}
 		}
@@ -785,7 +770,7 @@ void Key_Event (int key, qboolean down)
 		{
 			if (kb[0] == '+')
 			{	// button commands add keynum as a parm
-				sprintf (cmd, "%s %i\n", kb, key);
+				snprintf (cmd, sizeof(cmd), "%s %i\n", kb, key);
 				Cbuf_AddText (cmd);
 			}
 			else

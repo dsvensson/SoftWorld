@@ -102,8 +102,8 @@ void R_MakeSky (void)
 	unsigned	*pnewsky;
 	static int	xlast = -1, ylast = -1;
 
-	xshift = skytime*skyspeed;
-	yshift = skytime*skyspeed;
+	xshift = (int)(skytime*skyspeed);
+	yshift = (int)(skytime*skyspeed);
 
 	if ((xshift == xlast) && (yshift == ylast))
 		return;
@@ -118,21 +118,6 @@ void R_MakeSky (void)
 		baseofs = ((y+yshift) & SKYMASK) * 131;
 
 // FIXME: clean this up
-#if UNALIGNED_OK
-
-		for (x=0 ; x<SKYSIZE ; x += 4)
-		{
-			ofs = baseofs + ((x+xshift) & SKYMASK);
-
-		// PORT: unaligned dword access to bottommask and bottomsky
-
-			*pnewsky = (*(pnewsky + (128 / sizeof (unsigned))) &
-						*(unsigned *)&bottommask[ofs]) |
-						*(unsigned *)&bottomsky[ofs];
-			pnewsky++;
-		}
-
-#else
 
 		for (x=0 ; x<SKYSIZE ; x++)
 		{
@@ -144,114 +129,12 @@ void R_MakeSky (void)
 			pnewsky = (unsigned *)((byte *)pnewsky + 1);
 		}
 
-#endif
 
 		pnewsky += 128 / sizeof (unsigned);
 	}
 
 	r_skymade = 1;
 }
-
-
-/*
-=================
-R_GenSkyTile
-=================
-*/
-void R_GenSkyTile (void *pdest)
-{
-	int			x, y;
-	int			ofs, baseofs;
-	int			xshift, yshift;
-	unsigned	*pnewsky;
-	unsigned	*pd;
-
-	xshift = skytime*skyspeed;
-	yshift = skytime*skyspeed;
-
-	pnewsky = (unsigned *)&newsky[0];
-	pd = (unsigned *)pdest;
-
-	for (y=0 ; y<SKYSIZE ; y++)
-	{
-		baseofs = ((y+yshift) & SKYMASK) * 131;
-
-// FIXME: clean this up
-#if UNALIGNED_OK
-
-		for (x=0 ; x<SKYSIZE ; x += 4)
-		{
-			ofs = baseofs + ((x+xshift) & SKYMASK);
-
-		// PORT: unaligned dword access to bottommask and bottomsky
-
-			*pd = (*(pnewsky + (128 / sizeof (unsigned))) &
-				   *(unsigned *)&bottommask[ofs]) |
-				   *(unsigned *)&bottomsky[ofs];
-			pnewsky++;
-			pd++;
-		}
-
-#else
-
-		for (x=0 ; x<SKYSIZE ; x++)
-		{
-			ofs = baseofs + ((x+xshift) & SKYMASK);
-
-			*(byte *)pd = (*((byte *)pnewsky + 128) &
-						*(byte *)&bottommask[ofs]) |
-						*(byte *)&bottomsky[ofs];
-			pnewsky = (unsigned *)((byte *)pnewsky + 1);
-			pd = (unsigned *)((byte *)pd + 1);
-		}
-
-#endif
-
-		pnewsky += 128 / sizeof (unsigned);
-	}
-}
-
-
-/*
-=================
-R_GenSkyTile16
-=================
-*/
-void R_GenSkyTile16 (void *pdest)
-{
-	int				x, y;
-	int				ofs, baseofs;
-	int				xshift, yshift;
-	byte			*pnewsky;
-	unsigned short	*pd;
-
-	xshift = skytime * skyspeed;
-	yshift = skytime * skyspeed;
-
-	pnewsky = (byte *)&newsky[0];
-	pd = (unsigned short *)pdest;
-
-	for (y=0 ; y<SKYSIZE ; y++)
-	{
-		baseofs = ((y+yshift) & SKYMASK) * 131;
-
-// FIXME: clean this up
-// FIXME: do faster unaligned version?
-		for (x=0 ; x<SKYSIZE ; x++)
-		{
-			ofs = baseofs + ((x+xshift) & SKYMASK);
-
-			*pd = d_8to16table[(*(pnewsky + 128) &
-					*(byte *)&bottommask[ofs]) |
-					*(byte *)&bottomsky[ofs]];
-			pnewsky++;
-			pd++;
-		}
-
-		pnewsky += TILE_SIZE;
-	}
-}
-
 
 /*
 =============
@@ -263,15 +146,15 @@ void R_SetSkyFrame (void)
 	int		g, s1, s2;
 	float	temp;
 
-	skyspeed = iskyspeed;
-	skyspeed2 = iskyspeed2;
+	skyspeed = (float)iskyspeed;
+	skyspeed2 = (float)iskyspeed2;
 
 	g = GreatestCommonDivisor (iskyspeed, iskyspeed2);
 	s1 = iskyspeed / g;
 	s2 = iskyspeed2 / g;
-	temp = SKYSIZE * s1 * s2;
+	temp = (float)(SKYSIZE * s1 * s2);
 
-	skytime = cl.time - ((int)(cl.time / temp) * temp);
+	skytime = (float)(cl.time - ((int)(cl.time / temp) * temp));
 	
 
 	r_skymade = 0;

@@ -17,6 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
+
+#pragma once
 // world.h
 
 typedef struct
@@ -27,9 +29,9 @@ typedef struct
 
 typedef struct
 {
-	qboolean	allsolid;	// if true, plane is not valid
-	qboolean	startsolid;	// if true, the initial point was in a solid area
-	qboolean	inopen, inwater;
+	bool	allsolid;	// if true, plane is not valid
+	bool	startsolid;	// if true, the initial point was in a solid area
+	bool	inopen, inwater;
 	float	fraction;		// time completed, 1.0 = didn't hit anything
 	vec3_t	endpos;			// final position
 	plane_t	plane;			// surface normal at impact
@@ -64,7 +66,7 @@ void SV_UnlinkEdict (edict_t *ent);
 // so it doesn't clip against itself
 // flags ent->v.modified
 
-void SV_LinkEdict (edict_t *ent, qboolean touch_triggers);
+void SV_LinkEdict (edict_t *ent, bool touch_triggers);
 // Needs to be called any time an entity changes origin, mins, maxs, or solid
 // flags ent->v.modified
 // sets ent->v.absmin and ent->v.absmax
@@ -90,4 +92,3 @@ trace_t SV_Move (vec3_t start, vec3_t mins, vec3_t maxs, vec3_t end, int type, e
 // passedict is explicitly excluded from clipping checks (normally NULL)
 
 
-edict_t	*SV_TestPlayerPosition (edict_t *ent, vec3_t origin);

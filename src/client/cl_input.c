@@ -21,7 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
-cvar_t	cl_nodelta = {"cl_nodelta","0"};
+cvar_t	cl_nodelta = {.name = "cl_nodelta", .string = "0"};
 
 /*
 ===============================================================================
@@ -170,7 +170,7 @@ Returns 0.25 if a key was pressed and released during the frame,
 float CL_KeyState (kbutton_t *key)
 {
 	float		val;
-	qboolean	impulsedown, impulseup, down;
+	bool	impulsedown, impulseup, down;
 	
 	impulsedown = key->state & 2;
 	impulseup = key->state & 4;
@@ -178,25 +178,33 @@ float CL_KeyState (kbutton_t *key)
 	val = 0;
 	
 	if (impulsedown && !impulseup)
+	{
 		if (down)
 			val = 0.5;	// pressed and held this frame
 		else
 			val = 0;	//	I_Error ();
+	}
 	if (impulseup && !impulsedown)
+	{
 		if (down)
 			val = 0;	//	I_Error ();
 		else
 			val = 0;	// released this frame
+	}
 	if (!impulsedown && !impulseup)
+	{
 		if (down)
 			val = 1.0;	// held the entire frame
 		else
 			val = 0;	// up the entire frame
+	}
 	if (impulsedown && impulseup)
+	{
 		if (down)
 			val = 0.75;	// released and re-pressed this frame
 		else
 			val = 0.25;	// pressed and released this frame
+	}
 
 	key->state &= 1;		// clear impulses
 	
@@ -208,17 +216,17 @@ float CL_KeyState (kbutton_t *key)
 
 //==========================================================================
 
-cvar_t	cl_upspeed = {"cl_upspeed","200"};
-cvar_t	cl_forwardspeed = {"cl_forwardspeed","200", true};
-cvar_t	cl_backspeed = {"cl_backspeed","200", true};
-cvar_t	cl_sidespeed = {"cl_sidespeed","350"};
+cvar_t	cl_upspeed = {.name = "cl_upspeed", .string = "200"};
+cvar_t	cl_forwardspeed = {.name = "cl_forwardspeed", .string = "200", .archive = true};
+cvar_t	cl_backspeed = {.name = "cl_backspeed", .string = "200", .archive = true};
+cvar_t	cl_sidespeed = {.name = "cl_sidespeed", .string = "350"};
 
-cvar_t	cl_movespeedkey = {"cl_movespeedkey","2.0"};
+cvar_t	cl_movespeedkey = {.name = "cl_movespeedkey", .string = "2.0"};
 
-cvar_t	cl_yawspeed = {"cl_yawspeed","140"};
-cvar_t	cl_pitchspeed = {"cl_pitchspeed","150"};
+cvar_t	cl_yawspeed = {.name = "cl_yawspeed", .string = "140"};
+cvar_t	cl_pitchspeed = {.name = "cl_pitchspeed", .string = "150"};
 
-cvar_t	cl_anglespeedkey = {"cl_anglespeedkey","1.5"};
+cvar_t	cl_anglespeedkey = {.name = "cl_anglespeedkey", .string = "1.5"};
 
 
 /*
@@ -234,9 +242,9 @@ void CL_AdjustAngles (void)
 	float	up, down;
 	
 	if (in_speed.state & 1)
-		speed = host_frametime * cl_anglespeedkey.value;
+		speed = (float)(host_frametime * cl_anglespeedkey.value);
 	else
-		speed = host_frametime;
+		speed = (float)host_frametime;
 
 	if (!(in_strafe.state & 1))
 	{
@@ -288,31 +296,31 @@ void CL_BaseMove (usercmd_t *cmd)
 	VectorCopy (cl.viewangles, cmd->angles);
 	if (in_strafe.state & 1)
 	{
-		cmd->sidemove += cl_sidespeed.value * CL_KeyState (&in_right);
-		cmd->sidemove -= cl_sidespeed.value * CL_KeyState (&in_left);
+		cmd->sidemove = (short)(cmd->sidemove + cl_sidespeed.value * CL_KeyState (&in_right));
+		cmd->sidemove = (short)(cmd->sidemove - cl_sidespeed.value * CL_KeyState (&in_left));
 	}
 
-	cmd->sidemove += cl_sidespeed.value * CL_KeyState (&in_moveright);
-	cmd->sidemove -= cl_sidespeed.value * CL_KeyState (&in_moveleft);
+	cmd->sidemove = (short)(cmd->sidemove + cl_sidespeed.value * CL_KeyState (&in_moveright));
+	cmd->sidemove = (short)(cmd->sidemove - cl_sidespeed.value * CL_KeyState (&in_moveleft));
 
-	cmd->upmove += cl_upspeed.value * CL_KeyState (&in_up);
-	cmd->upmove -= cl_upspeed.value * CL_KeyState (&in_down);
+	cmd->upmove = (short)(cmd->upmove + cl_upspeed.value * CL_KeyState (&in_up));
+	cmd->upmove = (short)(cmd->upmove - cl_upspeed.value * CL_KeyState (&in_down));
 
 	if (! (in_klook.state & 1) )
-	{	
-		cmd->forwardmove += cl_forwardspeed.value * CL_KeyState (&in_forward);
-		cmd->forwardmove -= cl_backspeed.value * CL_KeyState (&in_back);
-	}	
+	{
+		cmd->forwardmove = (short)(cmd->forwardmove + cl_forwardspeed.value * CL_KeyState (&in_forward));
+		cmd->forwardmove = (short)(cmd->forwardmove - cl_backspeed.value * CL_KeyState (&in_back));
+	}
 
 //
 // adjust for speed key
 //
 	if (in_speed.state & 1)
 	{
-		cmd->forwardmove *= cl_movespeedkey.value;
-		cmd->sidemove *= cl_movespeedkey.value;
-		cmd->upmove *= cl_movespeedkey.value;
-	}	
+		cmd->forwardmove = (short)(cmd->forwardmove * cl_movespeedkey.value);
+		cmd->sidemove = (short)(cmd->sidemove * cl_movespeedkey.value);
+		cmd->upmove = (short)(cmd->upmove * cl_movespeedkey.value);
+	}
 }
 
 int MakeChar (int i)
@@ -353,26 +361,26 @@ void CL_FinishMove (usercmd_t *cmd)
 	in_jump.state &= ~2;
 
 	// send milliseconds of time to apply the move
-	ms = host_frametime * 1000;
+	ms = (int)(host_frametime * 1000);
 	if (ms > 250)
 		ms = 100;		// time was unreasonable
-	cmd->msec = ms;
+	cmd->msec = (byte)ms;
 
 	VectorCopy (cl.viewangles, cmd->angles);
 
-	cmd->impulse = in_impulse;
+	cmd->impulse = (byte)in_impulse;
 	in_impulse = 0;
 
 
 //
 // chop down so no extra bits are kept that the server wouldn't get
 //
-	cmd->forwardmove = MakeChar (cmd->forwardmove);
-	cmd->sidemove = MakeChar (cmd->sidemove);
-	cmd->upmove = MakeChar (cmd->upmove);
+	cmd->forwardmove = (short)MakeChar (cmd->forwardmove);
+	cmd->sidemove = (short)MakeChar (cmd->sidemove);
+	cmd->upmove = (short)MakeChar (cmd->upmove);
 
 	for (i=0 ; i<3 ; i++)
-		cmd->angles[i] = ((int)(cmd->angles[i]*65536.0/360)&65535) * (360.0/65536.0);
+		cmd->angles[i] = (float)(((int)(cmd->angles[i]*65536.0/360)&65535) * (360.0/65536.0));
 }
 
 /*
@@ -520,14 +528,5 @@ void CL_InitInput (void)
 	Cmd_AddCommand ("-mlook", IN_MLookUp);
 
 	Cvar_RegisterVariable (&cl_nodelta);
-}
-
-/*
-============
-CL_ClearStates
-============
-*/
-void CL_ClearStates (void)
-{
 }
 

@@ -82,15 +82,6 @@ void ClientReliableWrite_Angle(client_t *cl, float f)
 		MSG_WriteAngle(&cl->netchan.message, f);
 }
 
-void ClientReliableWrite_Angle16(client_t *cl, float f)
-{
-	if (cl->num_backbuf) {
-		MSG_WriteAngle16(&cl->backbuf, f);
-		ClientReliable_FinishWrite(cl);
-	} else
-		MSG_WriteAngle16(&cl->netchan.message, f);
-}
-
 void ClientReliableWrite_Byte(client_t *cl, int c)
 {
 	if (cl->num_backbuf) {

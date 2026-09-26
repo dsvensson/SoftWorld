@@ -25,7 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <direct.h>
 
 
-cvar_t	sys_nostdout = {"sys_nostdout","0"};
+cvar_t	sys_nostdout = {.name = "sys_nostdout", .string = "0"};
 
 /*
 ================
@@ -68,7 +68,7 @@ void Sys_Error (char *error, ...)
 	char		text[1024];
 
 	va_start (argptr,error);
-	vsprintf (text, error,argptr);
+	vsnprintf (text, sizeof(text), error,argptr);
 	va_end (argptr);
 
 //    MessageBox(NULL, text, "Error", 0 /* MB_OK */ );
@@ -92,7 +92,7 @@ double Sys_DoubleTime (void)
 	_ftime( &tstruct );
  
 	if (!starttime)
-		starttime = tstruct.time;
+		starttime = (int)tstruct.time;
 	t = (tstruct.time-starttime) + tstruct.millitm*0.001;
 	
 	return t;
@@ -114,11 +114,11 @@ char *Sys_ConsoleInput (void)
 	while (_kbhit())
 	{
 		c = _getch();
-		putch (c);
+		_putch (c);
 		if (c == '\r')
 		{
 			text[len] = 0;
-			putch ('\n');
+			_putch ('\n');
 			len = 0;
 			return text;
 		}
@@ -126,14 +126,14 @@ char *Sys_ConsoleInput (void)
 		{
 			if (len)
 			{
-				putch (' ');
-				putch (c);
+				_putch (' ');
+				_putch (c);
 				len--;
 				text[len] = 0;
 			}
 			continue;
 		}
-		text[len] = c;
+		text[len] = (char)c;
 		len++;
 		text[len] = 0;
 		if (len == sizeof(text))
@@ -197,7 +197,6 @@ int Sys_ConsoleMain (int argc, char **argv)
 {
 	quakeparms_t	parms;
 	double			newtime, time, oldtime;
-	static	char	cwd[1024];
 	int				t;
 
 	COM_InitArgv (argc, argv);
@@ -226,7 +225,7 @@ int Sys_ConsoleMain (int argc, char **argv)
 	SV_Init (&parms);
 
 // run one frame immediately for first heartbeat
-	SV_Frame (0.1);		
+	SV_Frame (0.1f);		
 
 //
 // main loop
@@ -245,7 +244,7 @@ int Sys_ConsoleMain (int argc, char **argv)
 		time = newtime - oldtime;
 		oldtime = newtime;
 		
-		SV_Frame (time);				
+		SV_Frame ((float)time);
 	}	
 
 	return true;

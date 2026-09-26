@@ -20,48 +20,17 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "winquake.h"
 
-cvar_t	cl_nopred = {"cl_nopred","0"};
-cvar_t	cl_pushlatency = {"pushlatency","-999"};
+cvar_t	cl_nopred = {.name = "cl_nopred", .string = "0"};
+cvar_t	cl_pushlatency = {.name = "pushlatency", .string = "-999"};
 
 extern	frame_t		*view_frame;
-
-/*
-=================
-CL_NudgePosition
-
-If pmove.origin is in a solid position,
-try nudging slightly on all axis to
-allow for the cut precision of the net coordinates
-=================
-*/
-void CL_NudgePosition (void)
-{
-	vec3_t	base;
-	int		x, y;
-
-	if (PM_HullPointContents (&cl.model_precache[1]->hulls[1], 0, pmove.origin) == CONTENTS_EMPTY)
-		return;
-
-	VectorCopy (pmove.origin, base);
-	for (x=-1 ; x<=1 ; x++)
-	{
-		for (y=-1 ; y<=1 ; y++)
-		{
-			pmove.origin[0] = base[0] + x * 1.0/8;
-			pmove.origin[1] = base[1] + y * 1.0/8;
-			if (PM_HullPointContents (&cl.model_precache[1]->hulls[1], 0, pmove.origin) == CONTENTS_EMPTY)
-				return;
-		}
-	}
-	Con_DPrintf ("CL_NudgePosition: stuck\n");
-}
 
 /*
 ==============
 CL_PredictUsercmd
 ==============
 */
-void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u, qboolean spectator)
+void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u, bool spectator)
 {
 	// split up very long moves
 	if (u->msec > 50)
@@ -146,10 +115,8 @@ void CL_PredictMove (void)
 		char		text[1024];
 
 		cls.state = ca_active;
-		sprintf (text, "QuakeWorld: %s", cls.servername);
-#ifdef _WIN32
+		snprintf (text, sizeof(text), "QuakeWorld: %s", cls.servername);
 		SetWindowText (mainwindow, text);
-#endif
 	}
 
 	if (cl_nopred.value)
@@ -186,7 +153,7 @@ void CL_PredictMove (void)
 		f = 0;
 	else
 	{
-		f = (cl.time - from->senttime) / (to->senttime - from->senttime);
+		f = (float)((cl.time - from->senttime) / (to->senttime - from->senttime));
 
 		if (f < 0)
 			f = 0;

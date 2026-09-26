@@ -140,7 +140,7 @@ CL_GetDemoMessage
   FIXME...
 ====================
 */
-qboolean CL_GetDemoMessage (void)
+bool CL_GetDemoMessage (void)
 {
 	int		r, i, j;
 	float	f;
@@ -164,7 +164,7 @@ qboolean CL_GetDemoMessage (void)
 			return 0;		// allready read this frame's message
 		}
 		if (!cls.td_starttime && cls.state == ca_active) {
-			cls.td_starttime = Sys_DoubleTime();
+			cls.td_starttime = (float)Sys_DoubleTime();
 			cls.td_startframe = host_framecount;
 		}
 		realtime = demotime; // warp
@@ -196,7 +196,7 @@ qboolean CL_GetDemoMessage (void)
 		// user sent input
 		i = cls.netchan.outgoing_sequence & UPDATE_MASK;
 		pcmd = &cl.frames[i].cmd;
-		r = fread (pcmd, sizeof(*pcmd), 1, cls.demofile);
+		r = (int)fread (pcmd, sizeof(*pcmd), 1, cls.demofile);
 		if (r != 1)
 		{
 			CL_StopPlayback ();
@@ -213,7 +213,7 @@ qboolean CL_GetDemoMessage (void)
 		cls.netchan.outgoing_sequence++;
 		for (i=0 ; i<3 ; i++)
 		{
-			r = fread (&f, 4, 1, cls.demofile);
+			r = (int)fread (&f, 4, 1, cls.demofile);
 			cl.viewangles[i] = LittleFloat (f);
 		}
 		break;
@@ -225,7 +225,7 @@ qboolean CL_GetDemoMessage (void)
 	//Con_Printf("read: %ld bytes\n", net_message.cursize);
 		if (net_message.cursize > MAX_MSGLEN)
 			Sys_Error ("Demo message > MAX_MSGLEN");
-		r = fread (net_message.data, net_message.cursize, 1, cls.demofile);
+		r = (int)fread (net_message.data, net_message.cursize, 1, cls.demofile);
 		if (r != 1)
 		{
 			CL_StopPlayback ();
@@ -256,7 +256,7 @@ CL_GetMessage
 Handles recording and playback of demos, on top of NET_ code
 ====================
 */
-qboolean CL_GetMessage (void)
+bool CL_GetMessage (void)
 {
 	if	(cls.demoplayback)
 		return CL_GetDemoMessage ();
@@ -376,9 +376,9 @@ record <demoname> <server>
 void CL_Record_f (void)
 {
 	int		c;
-	char	name[MAX_OSPATH];
+	char	demopath[MAX_OSPATH];
 	sizebuf_t	buf;
-	char	buf_data[MAX_MSGLEN];
+	byte	buf_data[MAX_MSGLEN];
 	int n, i, j;
 	char *s;
 	entity_t *ent;
@@ -402,21 +402,21 @@ void CL_Record_f (void)
 	if (cls.demorecording)
 		CL_Stop_f();
   
-	sprintf (name, "%s/%s", com_gamedir, Cmd_Argv(1));
+	snprintf (demopath, sizeof(demopath), "%s/%s", com_gamedir, Cmd_Argv(1));
 
 //
 // open the demo file
 //
-	COM_DefaultExtension (name, ".qwd");
+	COM_DefaultExtension (demopath, ".qwd");
 
-	cls.demofile = fopen (name, "wb");
+	cls.demofile = fopen (demopath, "wb");
 	if (!cls.demofile)
 	{
 		Con_Printf ("ERROR: couldn't open.\n");
 		return;
 	}
 
-	Con_Printf ("recording to %s.\n", name);
+	Con_Printf ("recording to %s.\n", demopath);
 	cls.demorecording = true;
 
 /*-------------------------------------------------*/
@@ -635,19 +635,6 @@ void CL_Record_f (void)
 		}
 	}
 
-#if 0
-	MSG_WriteByte (&buf, svc_updatestatlong);
-	MSG_WriteByte (&buf, STAT_TOTALMONSTERS);
-	MSG_WriteLong (&buf, cl.stats[STAT_TOTALMONSTERS]);
-
-	MSG_WriteByte (&buf, svc_updatestatlong);
-	MSG_WriteByte (&buf, STAT_SECRETS);
-	MSG_WriteLong (&buf, cl.stats[STAT_SECRETS]);
-
-	MSG_WriteByte (&buf, svc_updatestatlong);
-	MSG_WriteByte (&buf, STAT_MONSTERS);
-	MSG_WriteLong (&buf, cl.stats[STAT_MONSTERS]);
-#endif
 
 	// get the client to check and download skins
 	// when that is completed, a begin command will be issued
@@ -671,7 +658,7 @@ record <demoname>
 void CL_ReRecord_f (void)
 {
 	int		c;
-	char	name[MAX_OSPATH];
+	char	demopath[MAX_OSPATH];
 
 	c = Cmd_Argc();
 	if (c != 2)
@@ -687,22 +674,22 @@ void CL_ReRecord_f (void)
 
 	if (cls.demorecording)
 		CL_Stop_f();
-  
-	sprintf (name, "%s/%s", com_gamedir, Cmd_Argv(1));
+
+	snprintf (demopath, sizeof(demopath), "%s/%s", com_gamedir, Cmd_Argv(1));
 
 //
 // open the demo file
 //
-	COM_DefaultExtension (name, ".qwd");
+	COM_DefaultExtension (demopath, ".qwd");
 
-	cls.demofile = fopen (name, "wb");
+	cls.demofile = fopen (demopath, "wb");
 	if (!cls.demofile)
 	{
 		Con_Printf ("ERROR: couldn't open.\n");
 		return;
 	}
 
-	Con_Printf ("recording to %s.\n", name);
+	Con_Printf ("recording to %s.\n", demopath);
 	cls.demorecording = true;
 
 	CL_Disconnect();
@@ -719,7 +706,7 @@ play [demoname]
 */
 void CL_PlayDemo_f (void)
 {
-	char	name[256];
+	char	demoname[256];
 
 	if (Cmd_Argc() != 2)
 	{
@@ -731,15 +718,15 @@ void CL_PlayDemo_f (void)
 // disconnect from server
 //
 	CL_Disconnect ();
-	
+
 //
 // open the demo file
 //
-	strcpy (name, Cmd_Argv(1));
-	COM_DefaultExtension (name, ".qwd");
+	Q_strncpyz (demoname, Cmd_Argv(1), sizeof(demoname));
+	COM_DefaultExtension (demoname, ".qwd");
 
-	Con_Printf ("Playing demo from %s.\n", name);
-	COM_FOpenFile (name, &cls.demofile);
+	Con_Printf ("Playing demo from %s.\n", demoname);
+	COM_FOpenFile (demoname, &cls.demofile);
 	if (!cls.demofile)
 	{
 		Con_Printf ("ERROR: couldn't open.\n");
@@ -749,7 +736,7 @@ void CL_PlayDemo_f (void)
 
 	cls.demoplayback = true;
 	cls.state = ca_demostart;
-	Netchan_Setup (&cls.netchan, net_from, 0);
+	Netchan_Setup (&cls.netchan, net_from, 0, NS_CLIENT);
 	realtime = 0;
 }
 
@@ -768,7 +755,7 @@ void CL_FinishTimeDemo (void)
 	
 // the first frame didn't count
 	frames = (host_framecount - cls.td_startframe) - 1;
-	time = Sys_DoubleTime() - cls.td_starttime;
+	time = (float)(Sys_DoubleTime() - cls.td_starttime);
 	if (!time)
 		time = 1;
 	Con_Printf ("%i frames %5.1f seconds %5.1f fps\n", frames, time, frames/time);

@@ -17,6 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
+
+#pragma once
 // input.h -- external (non-keyboard) input devices
 
 void IN_Init (void);
@@ -33,7 +35,4 @@ void IN_Accumulate (void);
 
 void IN_ClearStates (void);
 // add additional movement on top of the keyboard move cmd
-
-void IN_ModeChanged (void);
-// called whenever screen dimensions change
 

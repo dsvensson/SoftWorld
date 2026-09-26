@@ -31,39 +31,35 @@ when crossing a water boudnary.
 
 */
 
-cvar_t	lcd_x = {"lcd_x", "0"};	// FIXME: make this work sometime...
 
-cvar_t	cl_rollspeed = {"cl_rollspeed", "200"};
-cvar_t	cl_rollangle = {"cl_rollangle", "2.0"};
+cvar_t	cl_rollspeed = {.name = "cl_rollspeed", .string = "200"};
+cvar_t	cl_rollangle = {.name = "cl_rollangle", .string = "2.0"};
 
-cvar_t	cl_bob = {"cl_bob","0.02", false};
-cvar_t	cl_bobcycle = {"cl_bobcycle","0.6", false};
-cvar_t	cl_bobup = {"cl_bobup","0.5", false};
+cvar_t	cl_bob = {.name = "cl_bob", .string = "0.02"};
+cvar_t	cl_bobcycle = {.name = "cl_bobcycle", .string = "0.6"};
+cvar_t	cl_bobup = {.name = "cl_bobup", .string = "0.5"};
 
-cvar_t	v_kicktime = {"v_kicktime", "0.5", false};
-cvar_t	v_kickroll = {"v_kickroll", "0.6", false};
-cvar_t	v_kickpitch = {"v_kickpitch", "0.6", false};
+cvar_t	v_kicktime = {.name = "v_kicktime", .string = "0.5"};
+cvar_t	v_kickroll = {.name = "v_kickroll", .string = "0.6"};
+cvar_t	v_kickpitch = {.name = "v_kickpitch", .string = "0.6"};
 
-cvar_t	v_iyaw_cycle = {"v_iyaw_cycle", "2", false};
-cvar_t	v_iroll_cycle = {"v_iroll_cycle", "0.5", false};
-cvar_t	v_ipitch_cycle = {"v_ipitch_cycle", "1", false};
-cvar_t	v_iyaw_level = {"v_iyaw_level", "0.3", false};
-cvar_t	v_iroll_level = {"v_iroll_level", "0.1", false};
-cvar_t	v_ipitch_level = {"v_ipitch_level", "0.3", false};
+cvar_t	v_iyaw_cycle = {.name = "v_iyaw_cycle", .string = "2"};
+cvar_t	v_iroll_cycle = {.name = "v_iroll_cycle", .string = "0.5"};
+cvar_t	v_ipitch_cycle = {.name = "v_ipitch_cycle", .string = "1"};
+cvar_t	v_iyaw_level = {.name = "v_iyaw_level", .string = "0.3"};
+cvar_t	v_iroll_level = {.name = "v_iroll_level", .string = "0.1"};
+cvar_t	v_ipitch_level = {.name = "v_ipitch_level", .string = "0.3"};
 
-cvar_t	v_idlescale = {"v_idlescale", "0", false};
+cvar_t	v_idlescale = {.name = "v_idlescale", .string = "0"};
 
-cvar_t	crosshair = {"crosshair", "0", true};
-cvar_t	crosshaircolor = {"crosshaircolor", "79", true};
+cvar_t	crosshair = {.name = "crosshair", .string = "0", .archive = true};
+cvar_t	crosshaircolor = {.name = "crosshaircolor", .string = "79", .archive = true};
 
-cvar_t  cl_crossx = {"cl_crossx", "0", true};
-cvar_t  cl_crossy = {"cl_crossy", "0", true};
+cvar_t  cl_crossx = {.name = "cl_crossx", .string = "0", .archive = true};
+cvar_t  cl_crossy = {.name = "cl_crossy", .string = "0", .archive = true};
 
-#ifdef GLQUAKE
-cvar_t	gl_cshiftpercent = {"gl_cshiftpercent", "100", false};
-#endif
 
-cvar_t  v_contentblend = {"v_contentblend", "1", false};
+cvar_t  v_contentblend = {.name = "v_contentblend", .string = "1"};
 
 float	v_dmg_time, v_dmg_roll, v_dmg_pitch;
 
@@ -87,8 +83,8 @@ float V_CalcRoll (vec3_t angles, vec3_t velocity)
 	
 	AngleVectors (angles, forward, right, up);
 	side = DotProduct (velocity, right);
-	sign = side < 0 ? -1 : 1;
-	side = fabs(side);
+	sign = (float)(side < 0 ? -1 : 1);
+	side = fabsf(side);
 	
 	value = cl_rollangle.value;
 
@@ -121,18 +117,18 @@ float V_CalcBob (void)
 		return bob;		// just use old value
 
 	bobtime += host_frametime;
-	cycle = bobtime - (int)(bobtime/cl_bobcycle.value)*cl_bobcycle.value;
+	cycle = (float)(bobtime - (int)(bobtime/cl_bobcycle.value)*cl_bobcycle.value);
 	cycle /= cl_bobcycle.value;
 	if (cycle < cl_bobup.value)
-		cycle = M_PI * cycle / cl_bobup.value;
+		cycle = (float)(Q_PI * cycle / cl_bobup.value);
 	else
-		cycle = M_PI + M_PI*(cycle-cl_bobup.value)/(1.0 - cl_bobup.value);
+		cycle = (float)(Q_PI + Q_PI*(cycle-cl_bobup.value)/(1.0f - cl_bobup.value));
 
 // bob is proportional to simulated velocity in the xy plane
 // (don't count Z, or jumping messes it up)
 
-	bob = sqrt(cl.simvel[0]*cl.simvel[0] + cl.simvel[1]*cl.simvel[1]) * cl_bob.value;
-	bob = bob*0.3 + bob*0.7*sin(cycle);
+	bob = sqrtf(cl.simvel[0]*cl.simvel[0] + cl.simvel[1]*cl.simvel[1]) * cl_bob.value;
+	bob = bob*0.3f + bob*0.7f*sinf(cycle);
 	if (bob > 4)
 		bob = 4;
 	else if (bob < -7)
@@ -145,18 +141,16 @@ float V_CalcBob (void)
 //=============================================================================
 
 
-cvar_t	v_centermove = {"v_centermove", "0.15", false};
-cvar_t	v_centerspeed = {"v_centerspeed","500"};
+cvar_t	v_centermove = {.name = "v_centermove", .string = "0.15"};
+cvar_t	v_centerspeed = {.name = "v_centerspeed", .string = "500"};
 
 
 void V_StartPitchDrift (void)
 {
-#if 1
 	if (cl.laststop == cl.time)
 	{
 		return;		// something else is keeping it from drifting
 	}
-#endif
 	if (cl.nodrift || !cl.pitchvel)
 	{
 		cl.pitchvel = v_centerspeed.value;
@@ -199,10 +193,10 @@ void V_DriftPitch (void)
 // don't count small mouse motion
 	if (cl.nodrift)
 	{
-		if ( fabs(cl.frames[(cls.netchan.outgoing_sequence-1)&UPDATE_MASK].cmd.forwardmove) < 200)
+		if ( abs(cl.frames[(cls.netchan.outgoing_sequence-1)&UPDATE_MASK].cmd.forwardmove) < 200)
 			cl.driftmove = 0;
 		else
-			cl.driftmove += host_frametime;
+			cl.driftmove = (float)(cl.driftmove + host_frametime);
 	
 		if ( cl.driftmove > v_centermove.value)
 		{
@@ -219,8 +213,8 @@ void V_DriftPitch (void)
 		return;
 	}
 
-	move = host_frametime * cl.pitchvel;
-	cl.pitchvel += host_frametime * v_centerspeed.value;
+	move = (float)(host_frametime * cl.pitchvel);
+	cl.pitchvel = (float)(cl.pitchvel + host_frametime * v_centerspeed.value);
 	
 //Con_Printf ("move: %f (%f)\n", move, host_frametime);
 
@@ -262,15 +256,11 @@ cshift_t	cshift_water = { {130,80,50}, 128 };
 cshift_t	cshift_slime = { {0,25,5}, 150 };
 cshift_t	cshift_lava = { {255,80,0}, 150 };
 
-cvar_t		v_gamma = {"gamma", "1", true};
+cvar_t		v_gamma = {.name = "gamma", .string = "1", .archive = true};
 
 byte		gammatable[256];	// palette is sent through this
 
 
-#ifdef	GLQUAKE
-byte		ramps[3][256];
-float		v_blend[4];		// rgba 0.0 - 1.0
-#endif	// GLQUAKE
 
 void BuildGammaTable (float g)
 {
@@ -279,18 +269,18 @@ void BuildGammaTable (float g)
 	if (g == 1.0)
 	{
 		for (i=0 ; i<256 ; i++)
-			gammatable[i] = i;
+			gammatable[i] = (byte)i;
 		return;
 	}
 	
 	for (i=0 ; i<256 ; i++)
 	{
-		inf = 255 * pow ( (i+0.5)/255.5 , g ) + 0.5;
+		inf = (int)(255 * pow ( (i+0.5)/255.5 , g ) + 0.5);
 		if (inf < 0)
 			inf = 0;
 		if (inf > 255)
 			inf = 255;
-		gammatable[i] = inf;
+		gammatable[i] = (byte)inf;
 	}
 }
 
@@ -299,7 +289,7 @@ void BuildGammaTable (float g)
 V_CheckGamma
 =================
 */
-qboolean V_CheckGamma (void)
+bool V_CheckGamma (void)
 {
 	static float oldgammavalue;
 	
@@ -334,13 +324,13 @@ void V_ParseDamage (void)
 	for (i=0 ; i<3 ; i++)
 		from[i] = MSG_ReadCoord ();
 
-	count = blood*0.5 + armor*0.5;
+	count = blood*0.5f + armor*0.5f;
 	if (count < 10)
 		count = 10;
 
-	cl.faceanimtime = cl.time + 0.2;		// but sbar face into pain frame
+	cl.faceanimtime = (float)(cl.time + 0.2f);		// but sbar face into pain frame
 
-	cl.cshifts[CSHIFT_DAMAGE].percent += 3*count;
+	cl.cshifts[CSHIFT_DAMAGE].percent = (int)(cl.cshifts[CSHIFT_DAMAGE].percent + 3*count);
 	if (cl.cshifts[CSHIFT_DAMAGE].percent < 0)
 		cl.cshifts[CSHIFT_DAMAGE].percent = 0;
 	if (cl.cshifts[CSHIFT_DAMAGE].percent > 150)
@@ -488,141 +478,12 @@ void V_CalcPowerupCshift (void)
 V_CalcBlend
 =============
 */
-#ifdef	GLQUAKE
-void V_CalcBlend (void)
-{
-	float	r, g, b, a, a2;
-	int		j;
-
-	r = 0;
-	g = 0;
-	b = 0;
-	a = 0;
-
-	for (j=0 ; j<NUM_CSHIFTS ; j++)	
-	{
-		if (!gl_cshiftpercent.value)
-			continue;
-
-		a2 = ((cl.cshifts[j].percent * gl_cshiftpercent.value) / 100.0) / 255.0;
-
-//		a2 = (cl.cshifts[j].percent/2)/255.0;
-		if (!a2)
-			continue;
-		a = a + a2*(1-a);
-//Con_Printf ("j:%i a:%f\n", j, a);
-		a2 = a2/a;
-		r = r*(1-a2) + cl.cshifts[j].destcolor[0]*a2;
-		g = g*(1-a2) + cl.cshifts[j].destcolor[1]*a2;
-		b = b*(1-a2) + cl.cshifts[j].destcolor[2]*a2;
-	}
-
-	v_blend[0] = r/255.0;
-	v_blend[1] = g/255.0;
-	v_blend[2] = b/255.0;
-	v_blend[3] = a;
-	if (v_blend[3] > 1)
-		v_blend[3] = 1;
-	if (v_blend[3] < 0)
-		v_blend[3] = 0;
-}
-#endif
 
 /*
 =============
 V_UpdatePalette
 =============
 */
-#ifdef	GLQUAKE
-void V_UpdatePalette (void)
-{
-	int		i, j;
-	qboolean	new;
-	byte	*basepal, *newpal;
-	byte	pal[768];
-	float	r,g,b,a;
-	int		ir, ig, ib;
-	qboolean force;
-
-	V_CalcPowerupCshift ();
-	
-	new = false;
-	
-	for (i=0 ; i<NUM_CSHIFTS ; i++)
-	{
-		if (cl.cshifts[i].percent != cl.prev_cshifts[i].percent)
-		{
-			new = true;
-			cl.prev_cshifts[i].percent = cl.cshifts[i].percent;
-		}
-		for (j=0 ; j<3 ; j++)
-			if (cl.cshifts[i].destcolor[j] != cl.prev_cshifts[i].destcolor[j])
-			{
-				new = true;
-				cl.prev_cshifts[i].destcolor[j] = cl.cshifts[i].destcolor[j];
-			}
-	}
-
-// drop the damage value
-	cl.cshifts[CSHIFT_DAMAGE].percent -= host_frametime*150;
-	if (cl.cshifts[CSHIFT_DAMAGE].percent <= 0)
-		cl.cshifts[CSHIFT_DAMAGE].percent = 0;
-
-// drop the bonus value
-	cl.cshifts[CSHIFT_BONUS].percent -= host_frametime*100;
-	if (cl.cshifts[CSHIFT_BONUS].percent <= 0)
-		cl.cshifts[CSHIFT_BONUS].percent = 0;
-
-	force = V_CheckGamma ();
-	if (!new && !force)
-		return;
-
-	V_CalcBlend ();
-
-//Con_Printf("b: %4.2f %4.2f %4.2f %4.6f\n", v_blend[0],	v_blend[1],	v_blend[2],	v_blend[3]);
-
-	a = v_blend[3];
-	r = 255*v_blend[0]*a;
-	g = 255*v_blend[1]*a;
-	b = 255*v_blend[2]*a;
-
-	a = 1-a;
-	for (i=0 ; i<256 ; i++)
-	{
-		ir = i*a + r;
-		ig = i*a + g;
-		ib = i*a + b;
-		if (ir > 255)
-			ir = 255;
-		if (ig > 255)
-			ig = 255;
-		if (ib > 255)
-			ib = 255;
-
-		ramps[0][i] = gammatable[ir];
-		ramps[1][i] = gammatable[ig];
-		ramps[2][i] = gammatable[ib];
-	}
-
-	basepal = host_basepal;
-	newpal = pal;
-	
-	for (i=0 ; i<256 ; i++)
-	{
-		ir = basepal[0];
-		ig = basepal[1];
-		ib = basepal[2];
-		basepal += 3;
-		
-		newpal[0] = ramps[0][ir];
-		newpal[1] = ramps[1][ig];
-		newpal[2] = ramps[2][ib];
-		newpal += 3;
-	}
-
-	VID_ShiftPalette (pal);	
-}
-#else	// !GLQUAKE
 /*
 =============
 V_UpdatePalette
@@ -631,11 +492,11 @@ V_UpdatePalette
 void V_UpdatePalette (void)
 {
 	int		i, j;
-	qboolean	new;
+	bool	new;
 	byte	*basepal, *newpal;
 	byte	pal[768];
 	int		r,g,b;
-	qboolean force;
+	bool force;
 
 	V_CalcPowerupCshift ();
 	
@@ -657,12 +518,12 @@ void V_UpdatePalette (void)
 	}
 	
 // drop the damage value
-	cl.cshifts[CSHIFT_DAMAGE].percent -= host_frametime*150;
+	cl.cshifts[CSHIFT_DAMAGE].percent = (int)(cl.cshifts[CSHIFT_DAMAGE].percent - host_frametime*150);
 	if (cl.cshifts[CSHIFT_DAMAGE].percent <= 0)
 		cl.cshifts[CSHIFT_DAMAGE].percent = 0;
 
 // drop the bonus value
-	cl.cshifts[CSHIFT_BONUS].percent -= host_frametime*100;
+	cl.cshifts[CSHIFT_BONUS].percent = (int)(cl.cshifts[CSHIFT_BONUS].percent - host_frametime*100);
 	if (cl.cshifts[CSHIFT_BONUS].percent <= 0)
 		cl.cshifts[CSHIFT_BONUS].percent = 0;
 
@@ -696,7 +557,6 @@ void V_UpdatePalette (void)
 	VID_ShiftPalette (pal);	
 }
 
-#endif	// !GLQUAKE
 
 /* 
 ============================================================================== 
@@ -728,17 +588,17 @@ void CalcGunAngle (void)
 	yaw = r_refdef.viewangles[YAW];
 	pitch = -r_refdef.viewangles[PITCH];
 
-	yaw = angledelta(yaw - r_refdef.viewangles[YAW]) * 0.4;
+	yaw = angledelta(yaw - r_refdef.viewangles[YAW]) * 0.4f;
 	if (yaw > 10)
 		yaw = 10;
 	if (yaw < -10)
 		yaw = -10;
-	pitch = angledelta(-pitch - r_refdef.viewangles[PITCH]) * 0.4;
+	pitch = angledelta(-pitch - r_refdef.viewangles[PITCH]) * 0.4f;
 	if (pitch > 10)
 		pitch = 10;
 	if (pitch < -10)
 		pitch = -10;
-	move = host_frametime*20;
+	move = (float)(host_frametime*20);
 	if (yaw > oldyaw)
 	{
 		if (oldyaw + move < yaw)
@@ -770,30 +630,6 @@ void CalcGunAngle (void)
 
 /*
 ==============
-V_BoundOffsets
-==============
-*/
-void V_BoundOffsets (void)
-{
-// absolutely bound refresh reletive to entity clipping hull
-// so the view can never be inside a solid wall
-
-	if (r_refdef.vieworg[0] < cl.simorg[0] - 14)
-		r_refdef.vieworg[0] = cl.simorg[0] - 14;
-	else if (r_refdef.vieworg[0] > cl.simorg[0] + 14)
-		r_refdef.vieworg[0] = cl.simorg[0] + 14;
-	if (r_refdef.vieworg[1] < cl.simorg[1] - 14)
-		r_refdef.vieworg[1] = cl.simorg[1] - 14;
-	else if (r_refdef.vieworg[1] > cl.simorg[1] + 14)
-		r_refdef.vieworg[1] = cl.simorg[1] + 14;
-	if (r_refdef.vieworg[2] < cl.simorg[2] - 22)
-		r_refdef.vieworg[2] = cl.simorg[2] - 22;
-	else if (r_refdef.vieworg[2] > cl.simorg[2] + 30)
-		r_refdef.vieworg[2] = cl.simorg[2] + 30;
-}
-
-/*
-==============
 V_AddIdle
 
 Idle swaying
@@ -801,13 +637,13 @@ Idle swaying
 */
 void V_AddIdle (void)
 {
-	r_refdef.viewangles[ROLL] += v_idlescale.value * sin(cl.time*v_iroll_cycle.value) * v_iroll_level.value;
-	r_refdef.viewangles[PITCH] += v_idlescale.value * sin(cl.time*v_ipitch_cycle.value) * v_ipitch_level.value;
-	r_refdef.viewangles[YAW] += v_idlescale.value * sin(cl.time*v_iyaw_cycle.value) * v_iyaw_level.value;
+	r_refdef.viewangles[ROLL] += v_idlescale.value * (float)sin(cl.time*v_iroll_cycle.value) * v_iroll_level.value;
+	r_refdef.viewangles[PITCH] += v_idlescale.value * (float)sin(cl.time*v_ipitch_cycle.value) * v_ipitch_level.value;
+	r_refdef.viewangles[YAW] += v_idlescale.value * (float)sin(cl.time*v_iyaw_cycle.value) * v_iyaw_level.value;
 
-	cl.viewent.angles[ROLL] -= v_idlescale.value * sin(cl.time*v_iroll_cycle.value) * v_iroll_level.value;
-	cl.viewent.angles[PITCH] -= v_idlescale.value * sin(cl.time*v_ipitch_cycle.value) * v_ipitch_level.value;
-	cl.viewent.angles[YAW] -= v_idlescale.value * sin(cl.time*v_iyaw_cycle.value) * v_iyaw_level.value;
+	cl.viewent.angles[ROLL] -= v_idlescale.value * (float)sin(cl.time*v_iroll_cycle.value) * v_iroll_level.value;
+	cl.viewent.angles[PITCH] -= v_idlescale.value * (float)sin(cl.time*v_ipitch_cycle.value) * v_ipitch_level.value;
+	cl.viewent.angles[YAW] -= v_idlescale.value * (float)sin(cl.time*v_iyaw_cycle.value) * v_iyaw_level.value;
 }
 
 
@@ -829,7 +665,7 @@ void V_CalcViewRoll (void)
 	{
 		r_refdef.viewangles[ROLL] += v_dmg_time/v_kicktime.value*v_dmg_roll;
 		r_refdef.viewangles[PITCH] += v_dmg_time/v_kicktime.value*v_dmg_pitch;
-		v_dmg_time -= host_frametime;
+		v_dmg_time = (float)(v_dmg_time - host_frametime);
 	}
 
 }
@@ -921,7 +757,7 @@ void V_CalcRefdef (void)
 
 	for (i=0 ; i<3 ; i++)
 	{
-		view->origin[i] += forward[i]*bob*0.4;
+		view->origin[i] += forward[i]*bob*0.4f;
 //		view->origin[i] += right[i]*bob*0.4;
 //		view->origin[i] += up[i]*bob*0.8;
 	}
@@ -953,7 +789,7 @@ void V_CalcRefdef (void)
 	{
 		float steptime;
 		
-		steptime = host_frametime;
+		steptime = (float)host_frametime;
 	
 		oldz += steptime * 80;
 		if (oldz > cl.simorg[2])
@@ -974,7 +810,7 @@ DropPunchAngle
 */
 void DropPunchAngle (void)
 {
-	cl.punchangle -= 10*host_frametime;
+	cl.punchangle = (float)(cl.punchangle - 10*host_frametime);
 	if (cl.punchangle < 0)
 		cl.punchangle = 0;
 }
@@ -1014,10 +850,8 @@ cl.simangles[ROLL] = 0;	// FIXME @@@
 	R_PushDlights ();
 	R_RenderView ();
 	
-#ifndef GLQUAKE
 	if (crosshair.value)
 		Draw_Crosshair();
-#endif
 		
 }
 
@@ -1051,9 +885,6 @@ void V_Init (void)
 	Cvar_RegisterVariable (&crosshair);
 	Cvar_RegisterVariable (&cl_crossx);
 	Cvar_RegisterVariable (&cl_crossy);
-#ifdef GLQUAKE
-	Cvar_RegisterVariable (&gl_cshiftpercent);
-#endif
 
 	Cvar_RegisterVariable (&cl_rollspeed);
 	Cvar_RegisterVariable (&cl_rollangle);

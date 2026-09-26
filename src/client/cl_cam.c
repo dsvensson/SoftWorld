@@ -36,18 +36,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define MAX_ANGLE_TURN 10
 
 static vec3_t desired_position; // where the camera wants to be
-static qboolean locked = false;
+static bool locked = false;
 static int oldbuttons;
 
 // track high fragger
-cvar_t cl_hightrack = {"cl_hightrack", "0" };
+cvar_t cl_hightrack = {.name = "cl_hightrack", .string = "0"};
 
-cvar_t cl_chasecam = {"cl_chasecam", "0"};
+cvar_t cl_chasecam = {.name = "cl_chasecam", .string = "0"};
 
-//cvar_t cl_camera_maxpitch = {"cl_camera_maxpitch", "10" };
-//cvar_t cl_camera_maxyaw = {"cl_camera_maxyaw", "30" };
+//cvar_t cl_camera_maxpitch = {.name = "cl_camera_maxpitch", .string = "10"};
+//cvar_t cl_camera_maxyaw = {.name = "cl_camera_maxyaw", .string = "30"};
 
-qboolean cam_forceview;
+bool cam_forceview;
 vec3_t cam_viewangles;
 double cam_lastviewtime;
 
@@ -69,12 +69,12 @@ static void vectoangles(vec3_t vec, vec3_t ang)
 	}
 	else
 	{
-		yaw = (int) (atan2(vec[1], vec[0]) * 180 / M_PI);
+		yaw = (float)((int) (atan2(vec[1], vec[0]) * 180 / Q_PI));
 		if (yaw < 0)
 			yaw += 360;
 
-		forward = sqrt (vec[0]*vec[0] + vec[1]*vec[1]);
-		pitch = (int) (atan2(vec[2], forward) * 180 / M_PI);
+		forward = sqrtf(vec[0]*vec[0] + vec[1]*vec[1]);
+		pitch = (float)((int) (atan2(vec[2], forward) * 180 / Q_PI));
 		if (pitch < 0)
 			pitch += 360;
 	}
@@ -86,11 +86,11 @@ static void vectoangles(vec3_t vec, vec3_t ang)
 
 static float vlen(vec3_t v)
 {
-	return sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+	return sqrtf(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
 }
 
 // returns true if weapon model should be drawn in camera mode
-qboolean Cam_DrawViewModel(void)
+bool Cam_DrawViewModel(void)
 {
 	if (!cl.spectator)
 		return true;
@@ -101,7 +101,7 @@ qboolean Cam_DrawViewModel(void)
 }
 
 // returns true if we should draw this player, we don't if we are chase camming
-qboolean Cam_DrawPlayer(int playernum)
+bool Cam_DrawPlayer(int playernum)
 {
 	if (cl.spectator && autocam && locked && cl_chasecam.value && 
 		spec_track == playernum)
@@ -124,7 +124,7 @@ void Cam_Lock(int playernum)
 {
 	char st[40];
 
-	sprintf(st, "ptrack %i", playernum);
+	snprintf(st, sizeof(st), "ptrack %i", playernum);
 	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
 	MSG_WriteString (&cls.netchan.message, st);
 	spec_track = playernum;
@@ -135,20 +135,13 @@ void Cam_Lock(int playernum)
 
 pmtrace_t Cam_DoTrace(vec3_t vec1, vec3_t vec2)
 {
-#if 0
-	memset(&pmove, 0, sizeof(pmove));
-
-	pmove.numphysent = 1;
-	VectorCopy (vec3_origin, pmove.physents[0].origin);
-	pmove.physents[0].model = cl.worldmodel;
-#endif
 
 	VectorCopy (vec1, pmove.origin);
 	return PM_PlayerMove(pmove.origin, vec2);
 }
 	
 // Returns distance or 9999 if invalid for some reason
-static float Cam_TryFlyby(player_state_t *self, player_state_t *player, vec3_t vec, qboolean checkvis)
+static float Cam_TryFlyby(player_state_t *self, player_state_t *player, vec3_t vec, bool checkvis)
 {
 	vec3_t v;
 	pmtrace_t trace;
@@ -166,12 +159,12 @@ static float Cam_TryFlyby(player_state_t *self, player_state_t *player, vec3_t v
 		return 9999;
 	VectorCopy(trace.endpos, vec);
 	VectorSubtract(trace.endpos, player->origin, v);
-	len = sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+	len = sqrtf(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
 	if (len < 32 || len > 800)
 		return 9999;
 	if (checkvis) {
 		VectorSubtract(trace.endpos, self->origin, v);
-		len = sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+		len = sqrtf(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
 
 		trace = Cam_DoTrace(self->origin, vec);
 		if (trace.fraction != 1 || trace.inwater)
@@ -181,7 +174,7 @@ static float Cam_TryFlyby(player_state_t *self, player_state_t *player, vec3_t v
 }
 
 // Is player visible?
-static qboolean Cam_IsVisible(player_state_t *player, vec3_t vec)
+static bool Cam_IsVisible(player_state_t *player, vec3_t vec)
 {
 	pmtrace_t trace;
 	vec3_t v;
@@ -198,7 +191,7 @@ static qboolean Cam_IsVisible(player_state_t *player, vec3_t vec)
 	return true;
 }
 
-static qboolean InitFlyby(player_state_t *self, player_state_t *player, int checkvis) 
+static bool InitFlyby(player_state_t *self, player_state_t *player, int checkvis) 
 {
     float f, max;
     vec3_t vec, vec2;
@@ -391,76 +384,7 @@ void Cam_Track(usercmd_t *cmd)
 	}
 }
 
-#if 0
-static float adjustang(float current, float ideal, float speed)
-{
-	float move;
 
-	current = anglemod(current);
-	ideal = anglemod(ideal);
-
-	if (current == ideal)
-		return current;
-
-	move = ideal - current;
-	if (ideal > current)
-	{
-		if (move >= 180)
-			move = move - 360;
-	}
-	else
-	{
-		if (move <= -180)
-			move = move + 360;
-	}
-	if (move > 0)
-	{
-		if (move > speed)
-			move = speed;
-	}
-	else
-	{
-		if (move < -speed)
-			move = -speed;
-	}
-
-//Con_Printf("c/i: %4.2f/%4.2f move: %4.2f\n", current, ideal, move);
-	return anglemod (current + move);
-}
-#endif
-
-#if 0
-void Cam_SetView(void)
-{
-	return;
-	player_state_t *player, *self;
-	frame_t *frame;
-	vec3_t vec, vec2;
-
-	if (cls.state != ca_active || !cl.spectator || 
-		!autocam || !locked)
-		return;
-
-	frame = &cl.frames[cls.netchan.incoming_sequence & UPDATE_MASK];
-	player = frame->playerstate + spec_track;
-	self = frame->playerstate + cl.playernum;
-
-	VectorSubtract(player->origin, cl.simorg, vec);
-	if (cam_forceview) {
-		cam_forceview = false;
-		vectoangles(vec, cam_viewangles);
-		cam_viewangles[0] = -cam_viewangles[0];
-	} else {
-		vectoangles(vec, vec2);
-		vec2[PITCH] = -vec2[PITCH];
-
-		cam_viewangles[PITCH] = adjustang(cam_viewangles[PITCH], vec2[PITCH], cl_camera_maxpitch.value);
-		cam_viewangles[YAW] = adjustang(cam_viewangles[YAW], vec2[YAW], cl_camera_maxyaw.value);
-	}
-	VectorCopy(cam_viewangles, cl.viewangles);
-	VectorCopy(cl.viewangles, cl.simangles);
-}
-#endif
 
 void Cam_FinishMove(usercmd_t *cmd)
 {
@@ -474,27 +398,6 @@ void Cam_FinishMove(usercmd_t *cmd)
 	if (!cl.spectator) // only in spectator mode
 		return;
 
-#if 0
-	if (autocam && locked) {
-		frame = &cl.frames[cls.netchan.incoming_sequence & UPDATE_MASK];
-		player = frame->playerstate + spec_track;
-		self = frame->playerstate + cl.playernum;
-
-		VectorSubtract(player->origin, self->origin, vec);
-		if (cam_forceview) {
-			cam_forceview = false;
-			vectoangles(vec, cam_viewangles);
-			cam_viewangles[0] = -cam_viewangles[0];
-		} else {
-			vectoangles(vec, vec2);
-			vec2[PITCH] = -vec2[PITCH];
-
-			cam_viewangles[PITCH] = adjustang(cam_viewangles[PITCH], vec2[PITCH], cl_camera_maxpitch.value);
-			cam_viewangles[YAW] = adjustang(cam_viewangles[YAW], vec2[YAW], cl_camera_maxyaw.value);
-		}
-		VectorCopy(cam_viewangles, cl.viewangles);
-	}
-#endif
 
 	if (cmd->buttons & BUTTON_ATTACK) {
 		if (!(oldbuttons & BUTTON_ATTACK)) {

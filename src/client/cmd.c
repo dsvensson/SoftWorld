@@ -21,7 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
-void Cmd_ForwardToServer (void);
+static void (*cmd_forward)(void);	// sends forwarded commands to the server
 
 #define	MAX_ALIAS_NAME	32
 
@@ -34,9 +34,9 @@ typedef struct cmdalias_s
 
 cmdalias_t	*cmd_alias;
 
-qboolean	cmd_wait;
+bool	cmd_wait;
 
-cvar_t cl_warncmd = {"cl_warncmd", "0"};
+cvar_t cl_warncmd = {.name = "cl_warncmd", .string = "0"};
 
 //=============================================================================
 
@@ -327,9 +327,11 @@ Creates a new command that executes a command string (possibly ; seperated)
 char *CopyString (char *in)
 {
 	char	*out;
-	
-	out = Z_Malloc (strlen(in)+1);
-	strcpy (out, in);
+	size_t	size;
+
+	size = strlen(in)+1;
+	out = Z_Malloc ((int)size);
+	Q_strncpyz (out, in, size);
 	return out;
 }
 
@@ -371,18 +373,18 @@ void Cmd_Alias_f (void)
 		a->next = cmd_alias;
 		cmd_alias = a;
 	}
-	strcpy (a->name, s);	
+	Q_strncpyz (a->name, s, sizeof(a->name));
 
 // copy the rest of the command line
 	cmd[0] = 0;		// start out with a null string
 	c = Cmd_Argc();
 	for (i=2 ; i< c ; i++)
 	{
-		strcat (cmd, Cmd_Argv(i));
+		Q_strncatz (cmd, Cmd_Argv(i), sizeof(cmd));
 		if (i != c)
-			strcat (cmd, " ");
+			Q_strncatz (cmd, " ", sizeof(cmd));
 	}
-	strcat (cmd, "\n");
+	Q_strncatz (cmd, "\n", sizeof(cmd));
 	
 	a->value = CopyString (cmd);
 }
@@ -545,7 +547,7 @@ void	Cmd_AddCommand (char *cmd_name, xcommand_t function)
 Cmd_Exists
 ============
 */
-qboolean	Cmd_Exists (char *cmd_name)
+bool	Cmd_Exists (char *cmd_name)
 {
 	cmd_function_t	*cmd;
 
@@ -595,64 +597,18 @@ char *Cmd_CompleteCommand (char *partial)
 	return NULL;
 }
 
-#ifndef SERVERONLY		// FIXME
+
 /*
-===================
-Cmd_ForwardToServer
+============
+Cmd_SetForwardHandler
 
-adds the current command line as a clc_stringcmd to the client message.
-things like godmode, noclip, etc, are commands directed to the server,
-so when they are typed in at the console, they will need to be forwarded.
-===================
+Commands registered without a function are passed to this handler.
+============
 */
-void Cmd_ForwardToServer (void)
+void Cmd_SetForwardHandler (void (*forward)(void))
 {
-	if (cls.state == ca_disconnected)
-	{
-		Con_Printf ("Can't \"%s\", not connected\n", Cmd_Argv(0));
-		return;
-	}
-	
-	if (cls.demoplayback)
-		return;		// not really connected
-
-	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
-	SZ_Print (&cls.netchan.message, Cmd_Argv(0));
-	if (Cmd_Argc() > 1)
-	{
-		SZ_Print (&cls.netchan.message, " ");
-		SZ_Print (&cls.netchan.message, Cmd_Args());
-	}
+	cmd_forward = forward;
 }
-
-// don't forward the first argument
-void Cmd_ForwardToServer_f (void)
-{
-	if (cls.state == ca_disconnected)
-	{
-		Con_Printf ("Can't \"%s\", not connected\n", Cmd_Argv(0));
-		return;
-	}
-
-	if (Q_strcasecmp(Cmd_Argv(1), "snap") == 0) {
-		Cbuf_InsertText ("snap\n");
-		return;
-	}
-	
-	if (cls.demoplayback)
-		return;		// not really connected
-
-	if (Cmd_Argc() > 1)
-	{
-		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
-		SZ_Print (&cls.netchan.message, Cmd_Args());
-	}
-}
-#else
-void Cmd_ForwardToServer (void)
-{
-}
-#endif
 
 /*
 ============
@@ -679,7 +635,10 @@ void	Cmd_ExecuteString (char *text)
 		if (!Q_strcasecmp (cmd_argv[0],cmd->name))
 		{
 			if (!cmd->function)
-				Cmd_ForwardToServer ();
+			{
+				if (cmd_forward)
+					cmd_forward ();
+			}
 			else
 				cmd->function ();
 			return;
@@ -702,30 +661,6 @@ void	Cmd_ExecuteString (char *text)
 	
 }
 
-
-
-/*
-================
-Cmd_CheckParm
-
-Returns the position (1 to argc-1) in the command's argument list
-where the given parameter apears, or 0 if not present
-================
-*/
-int Cmd_CheckParm (char *parm)
-{
-	int i;
-	
-	if (!parm)
-		Sys_Error ("Cmd_CheckParm: NULL");
-
-	for (i = 1; i < Cmd_Argc (); i++)
-		if (! Q_strcasecmp (parm, Cmd_Argv (i)))
-			return i;
-			
-	return 0;
-}
-
 /*
 ============
 Cmd_Init
@@ -741,8 +676,5 @@ void Cmd_Init (void)
 	Cmd_AddCommand ("echo",Cmd_Echo_f);
 	Cmd_AddCommand ("alias",Cmd_Alias_f);
 	Cmd_AddCommand ("wait", Cmd_Wait_f);
-#ifndef SERVERONLY
-	Cmd_AddCommand ("cmd", Cmd_ForwardToServer_f);
-#endif
 }
 

@@ -17,14 +17,12 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-#ifndef GLQUAKE
+
+#pragma once
 // r_shared.h: general refresh-related stuff shared between the refresh and the
 // driver
 
 // FIXME: clean up and move into d_iface.h
-
-#ifndef _R_SHARED_H_
-#define _R_SHARED_H_
 
 #define	MAXVERTS	16					// max points in a surface polygon
 #define MAXWORKINGVERTS	(MAXVERTS+4)	// max points in an intermediate
@@ -39,7 +37,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 //===================================================================
 
-extern void	R_DrawLine (polyvert_t *polyvert0, polyvert_t *polyvert1);
 
 extern int		cachewidth;
 extern pixel_t	*cacheblock;
@@ -89,7 +86,7 @@ typedef struct surf_s
 	void		*data;				// associated data like msurface_t
 	entity_t	*entity;
 	float		nearzi;				// nearest 1/z on surface, for mipmapping
-	qboolean	insubmodel;
+	bool	insubmodel;
 	float		d_ziorigin, d_zistepu, d_zistepv;
 
 	int			pad[2];				// to 64 bytes
@@ -118,8 +115,6 @@ extern	float	xscaleshrink, yscaleshrink;
 extern	int d_lightstylevalue[256]; // 8.8 frac of base light value
 
 extern void TransformVector (vec3_t in, vec3_t out);
-extern void SetUpForLineScan(fixed8_t startvertu, fixed8_t startvertv,
-	fixed8_t endvertu, fixed8_t endvertv);
 
 extern int	r_skymade;
 extern void R_MakeSky (void);
@@ -148,7 +143,3 @@ typedef struct edge_s
 	float			nearzi;
 	medge_t			*owner;
 } edge_t;
-
-#endif	// _R_SHARED_H_
-
-#endif	// GLQUAKE

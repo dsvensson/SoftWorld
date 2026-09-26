@@ -235,7 +235,7 @@ void PM_GroundMove (void)
 {
 	vec3_t	start, dest;
 	pmtrace_t	trace;
-	vec3_t	original, originalvel, down, up, downvel;
+	vec3_t	original, originalvel, down, uporg, downvel;
 	float	downdist, updist;
 
 	pmove.velocity[2] = 0;
@@ -292,13 +292,13 @@ void PM_GroundMove (void)
 	{
 		VectorCopy (trace.endpos, pmove.origin);
 	}
-	VectorCopy (pmove.origin, up);
+	VectorCopy (pmove.origin, uporg);
 
 	// decide which one went farther
 	downdist = (down[0] - original[0])*(down[0] - original[0])
 		+ (down[1] - original[1])*(down[1] - original[1]);
-	updist = (up[0] - original[0])*(up[0] - original[0])
-		+ (up[1] - original[1])*(up[1] - original[1]);
+	updist = (uporg[0] - original[0])*(uporg[0] - original[0])
+		+ (uporg[1] - original[1])*(uporg[1] - original[1]);
 
 	if (downdist > updist)
 	{
@@ -335,7 +335,7 @@ void PM_Friction (void)
 
 	vel = pmove.velocity;
 	
-	speed = sqrt(vel[0]*vel[0] +vel[1]*vel[1] + vel[2]*vel[2]);
+	speed = (float)sqrt(vel[0]*vel[0] +vel[1]*vel[1] + vel[2]*vel[2]);
 	if (speed < 1)
 	{
 		vel[0] = 0;
@@ -469,7 +469,7 @@ void PM_WaterMove (void)
 		VectorScale (wishvel, movevars.maxspeed/wishspeed, wishvel);
 		wishspeed = movevars.maxspeed;
 	}
-	wishspeed *= 0.7;
+	wishspeed = (float)(wishspeed * 0.7);
 
 //
 // water acceleration
@@ -623,7 +623,7 @@ void PM_CatagorizePosition (void)
 	{
 		watertype = cont;
 		waterlevel = 1;
-		point[2] = pmove.origin[2] + (player_mins[2] + player_maxs[2])*0.5;
+		point[2] = pmove.origin[2] + (player_mins[2] + player_maxs[2])*0.5f;
 		cont = PM_PointContents (point);
 		if (cont <= CONTENTS_WATER)
 		{
@@ -742,7 +742,7 @@ void NudgePosition (void)
 	VectorCopy (pmove.origin, base);
 
 	for (i=0 ; i<3 ; i++)
-		pmove.origin[i] = ((int)(pmove.origin[i]*8)) * 0.125;
+		pmove.origin[i] = ((int)(pmove.origin[i]*8)) * 0.125f;
 //	pmove.origin[2] += 0.124;
 
 //	if (pmove.dead)
@@ -756,9 +756,9 @@ void NudgePosition (void)
 		{
 			for (y=0 ; y<=2 ; y++)
 			{
-				pmove.origin[0] = base[0] + (sign[x] * 1.0/8);
-				pmove.origin[1] = base[1] + (sign[y] * 1.0/8);
-				pmove.origin[2] = base[2] + (sign[z] * 1.0/8);
+				pmove.origin[0] = base[0] + (sign[x] * 1.0f/8);
+				pmove.origin[1] = base[1] + (sign[y] * 1.0f/8);
+				pmove.origin[2] = base[2] + (sign[z] * 1.0f/8);
 				if (PM_TestPlayerPosition (pmove.origin))
 					return;
 			}
@@ -775,16 +775,13 @@ SpectatorMove
 */
 void SpectatorMove (void)
 {
-	float	speed, drop, friction, control, newspeed, accel;
+	float	speed, drop, friction, control, newspeed;
 	float	currentspeed, addspeed, accelspeed;
 	int			i;
 	vec3_t		wishvel;
 	float		fmove, smove;
 	vec3_t		wishdir;
 	float		wishspeed;
-#ifndef SERVERONLY
-	extern float	server_version;	// version of server we connected to
-#endif
 
 	// friction
 
@@ -797,7 +794,7 @@ void SpectatorMove (void)
 	{
 		drop = 0;
 
-		friction = movevars.friction*1.5;	// extra friction
+		friction = movevars.friction*1.5f;	// extra friction
 		control = speed < movevars.stopspeed ? movevars.stopspeed : speed;
 		drop += control*friction*frametime;
 
@@ -861,7 +858,7 @@ were contacted during the move.
 */
 void PlayerMove (void)
 {
-	frametime = pmove.cmd.msec * 0.001;
+	frametime = (float)(pmove.cmd.msec * 0.001);
 	pmove.numtouch = 0;
 
 	AngleVectors (pmove.angles, forward, right, up);

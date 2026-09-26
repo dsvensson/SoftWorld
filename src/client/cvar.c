@@ -19,11 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // cvar.c -- dynamic variable tracking
 
-#ifdef SERVERONLY 
-#include "qwsvdef.h"
-#else
 #include "quakedef.h"
-#endif
 
 cvar_t	*cvar_vars;
 char	*cvar_null_string = "";
@@ -105,9 +101,20 @@ char *Cvar_CompleteVariable (char *partial)
 }
 
 
-#ifdef SERVERONLY
-void SV_SendServerInfoChange(char *key, char *value);
-#endif
+static void (*cvar_info_hook)(char *name, char *value);
+
+/*
+============
+Cvar_SetInfoHook
+
+Called whenever a cvar flagged as info changes (the client puts them in its
+userinfo, the server in its serverinfo).
+============
+*/
+void Cvar_SetInfoHook (void (*hook)(char *name, char *value))
+{
+	cvar_info_hook = hook;
+}
 
 /*
 ============
@@ -125,24 +132,8 @@ void Cvar_Set (char *var_name, char *value)
 		return;
 	}
 
-#ifdef SERVERONLY
-	if (var->info)
-	{
-		Info_SetValueForKey (svs.info, var_name, value, MAX_SERVERINFO_STRING);
-		SV_SendServerInfoChange(var_name, value);
-//		SV_BroadcastCommand ("fullserverinfo \"%s\"\n", svs.info);
-	}
-#else
-	if (var->info)
-	{
-		Info_SetValueForKey (cls.userinfo, var_name, value, MAX_INFO_STRING);
-		if (cls.state >= ca_connected)
-		{
-			MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
-			SZ_Print (&cls.netchan.message, va("setinfo \"%s\" \"%s\"\n", var_name, value));
-		}
-	}
-#endif
+	if (var->info && cvar_info_hook)
+		cvar_info_hook (var_name, value);
 	
 	Z_Free (var->string);	// free the old value string
 	
@@ -160,7 +151,7 @@ void Cvar_SetValue (char *var_name, float value)
 {
 	char	val[32];
 	
-	sprintf (val, "%f",value);
+	snprintf (val, sizeof(val), "%f",value);
 	Cvar_Set (var_name, val);
 }
 
@@ -195,7 +186,7 @@ void Cvar_RegisterVariable (cvar_t *variable)
 	cvar_vars = variable;
 
 // copy the value off, because future sets will Z_Free it
-	strcpy (value, variable->string);
+	Q_strncpyz (value, variable->string, sizeof(value));
 	variable->string = Z_Malloc (1);	
 	
 // set it through the function to be consistant
@@ -209,7 +200,7 @@ Cvar_Command
 Handles variable inspection and changing from the console
 ============
 */
-qboolean	Cvar_Command (void)
+bool	Cvar_Command (void)
 {
 	cvar_t			*v;
 

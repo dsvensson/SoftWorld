@@ -29,16 +29,15 @@ vec3_t		viewlightvec;
 alight_t	r_viewlighting = {128, 192, viewlightvec};
 float		r_time1;
 int			r_numallocatededges;
-qboolean	r_drawpolys;
-qboolean	r_drawculledpolys;
-qboolean	r_worldpolysbacktofront;
-qboolean	r_recursiveaffinetriangles = true;
-int			r_pixbytes = 1;
+bool	r_drawpolys;
+bool	r_drawculledpolys;
+bool	r_worldpolysbacktofront;
+bool	r_recursiveaffinetriangles = true;
 float		r_aliasuvscale = 1.0;
 int			r_outofsurfaces;
 int			r_outofedges;
 
-qboolean	r_dowarp, r_dowarpold, r_viewchanged;
+bool	r_dowarp, r_dowarpold, r_viewchanged;
 
 int			numbtofpolys;
 btofpoly_t	*pbtofpolys;
@@ -46,14 +45,14 @@ mvertex_t	*r_pcurrentvertbase;
 
 int			c_surf;
 int			r_maxsurfsseen, r_maxedgesseen, r_cnumsurfs;
-qboolean	r_surfsonstack;
+bool	r_surfsonstack;
 int			r_clipflags;
 
 byte		*r_warpbuffer;
 
 byte		*r_stack_start;
 
-qboolean	r_fov_greater_than_90;
+bool	r_fov_greater_than_90;
 
 entity_t	r_worldentity;
 
@@ -97,7 +96,6 @@ int		r_wholepolycount;
 int			*pfrustum_indexes[4];
 int			r_frustum_indexes[4*6];
 
-int		reinit_surfcache = 1;	// if 1, surface cache is currently empty and
 								// must be reinitialized for current cache size
 
 mleaf_t		*r_viewleaf, *r_oldviewleaf;
@@ -113,34 +111,32 @@ float	se_time1, se_time2, de_time1, de_time2, dv_time1, dv_time2;
 
 void R_MarkLeaves (void);
 
-cvar_t	r_draworder = {"r_draworder","0"};
-cvar_t	r_speeds = {"r_speeds","0"};
-cvar_t	r_timegraph = {"r_timegraph","0"};
-cvar_t	r_netgraph = {"r_netgraph","0"};
-cvar_t	r_zgraph = {"r_zgraph","0"};
-cvar_t	r_graphheight = {"r_graphheight","15"};
-cvar_t	r_clearcolor = {"r_clearcolor","2"};
-cvar_t	r_waterwarp = {"r_waterwarp","1"};
-cvar_t	r_fullbright = {"r_fullbright","0"};
-cvar_t	r_drawentities = {"r_drawentities","1"};
-cvar_t	r_drawviewmodel = {"r_drawviewmodel","1"};
-cvar_t	r_aliasstats = {"r_polymodelstats","0"};
-cvar_t	r_dspeeds = {"r_dspeeds","0"};
-cvar_t	r_drawflat = {"r_drawflat", "0"};
-cvar_t	r_ambient = {"r_ambient", "0"};
-cvar_t	r_reportsurfout = {"r_reportsurfout", "0"};
-cvar_t	r_maxsurfs = {"r_maxsurfs", "0"};
-cvar_t	r_numsurfs = {"r_numsurfs", "0"};
-cvar_t	r_reportedgeout = {"r_reportedgeout", "0"};
-cvar_t	r_maxedges = {"r_maxedges", "0"};
-cvar_t	r_numedges = {"r_numedges", "0"};
-cvar_t	r_aliastransbase = {"r_aliastransbase", "200"};
-cvar_t	r_aliastransadj = {"r_aliastransadj", "100"};
+cvar_t	r_draworder = {.name = "r_draworder", .string = "0"};
+cvar_t	r_speeds = {.name = "r_speeds", .string = "0"};
+cvar_t	r_timegraph = {.name = "r_timegraph", .string = "0"};
+cvar_t	r_netgraph = {.name = "r_netgraph", .string = "0"};
+cvar_t	r_zgraph = {.name = "r_zgraph", .string = "0"};
+cvar_t	r_graphheight = {.name = "r_graphheight", .string = "15"};
+cvar_t	r_clearcolor = {.name = "r_clearcolor", .string = "2"};
+cvar_t	r_waterwarp = {.name = "r_waterwarp", .string = "1"};
+cvar_t	r_fullbright = {.name = "r_fullbright", .string = "0"};
+cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1"};
+cvar_t	r_drawviewmodel = {.name = "r_drawviewmodel", .string = "1"};
+cvar_t	r_aliasstats = {.name = "r_polymodelstats", .string = "0"};
+cvar_t	r_dspeeds = {.name = "r_dspeeds", .string = "0"};
+cvar_t	r_drawflat = {.name = "r_drawflat", .string = "0"};
+cvar_t	r_ambient = {.name = "r_ambient", .string = "0"};
+cvar_t	r_reportsurfout = {.name = "r_reportsurfout", .string = "0"};
+cvar_t	r_maxsurfs = {.name = "r_maxsurfs", .string = "0"};
+cvar_t	r_numsurfs = {.name = "r_numsurfs", .string = "0"};
+cvar_t	r_reportedgeout = {.name = "r_reportedgeout", .string = "0"};
+cvar_t	r_maxedges = {.name = "r_maxedges", .string = "0"};
+cvar_t	r_numedges = {.name = "r_numedges", .string = "0"};
+cvar_t	r_aliastransbase = {.name = "r_aliastransbase", .string = "200"};
+cvar_t	r_aliastransadj = {.name = "r_aliastransadj", .string = "100"};
 
 extern cvar_t	scr_fov;
 
-void CreatePassages (void);
-void SetVisibilityByPassages (void);
 
 void R_NetGraph (void);
 void R_ZGraph (void);
@@ -235,10 +231,6 @@ void R_Init (void)
 	R_InitParticles ();
 
 // TODO: collect 386-specific code in one place
-#if	id386
-	Sys_MakeCodeWriteable ((long)R_EdgeCodeStart,
-					     (long)R_EdgeCodeEnd - (long)R_EdgeCodeStart);
-#endif	// id386
 
 	D_Init ();
 }
@@ -263,7 +255,7 @@ void R_NewMap (void)
 	r_viewleaf = NULL;
 	R_ClearParticles ();
 
-	r_cnumsurfs = r_maxsurfs.value;
+	r_cnumsurfs = (int)r_maxsurfs.value;
 
 	if (r_cnumsurfs <= MINSURFACES)
 		r_cnumsurfs = MINSURFACES;
@@ -286,7 +278,7 @@ void R_NewMap (void)
 	r_maxedgesseen = 0;
 	r_maxsurfsseen = 0;
 
-	r_numallocatededges = r_maxedges.value;
+	r_numallocatededges = (int)r_maxedges.value;
 
 	if (r_numallocatededges < MINEDGES)
 		r_numallocatededges = MINEDGES;
@@ -315,7 +307,7 @@ void R_SetVrect (vrect_t *pvrectin, vrect_t *pvrect, int lineadj)
 {
 	int		h;
 	float	size;
-	qboolean full = false;
+	bool full = false;
 
 	if (scr_viewsize.value >= 100.0) {
 		size = 100.0;
@@ -341,14 +333,14 @@ void R_SetVrect (vrect_t *pvrectin, vrect_t *pvrect, int lineadj)
 	if (full)
 		pvrect->width = pvrectin->width;
 	else
-		pvrect->width = pvrectin->width * size;
+		pvrect->width = (int)(pvrectin->width * size);
 	if (pvrect->width < 96)
 	{
-		size = 96.0 / pvrectin->width;
+		size = 96.0f / pvrectin->width;
 		pvrect->width = 96;	// min for icons
 	}
 	pvrect->width &= ~7;
-	pvrect->height = pvrectin->height * size;
+	pvrect->height = (int)(pvrectin->height * size);
 	if (cl_sbar.value || !full) {
 		if (pvrect->height > pvrectin->height - lineadj)
 			pvrect->height = pvrectin->height - lineadj;
@@ -383,20 +375,20 @@ void R_ViewChanged (vrect_t *pvrect, int lineadj, float aspect)
 
 	R_SetVrect (pvrect, &r_refdef.vrect, lineadj);
 
-	r_refdef.horizontalFieldOfView = 2.0 * tan (r_refdef.fov_x/360*M_PI);
+	r_refdef.horizontalFieldOfView = 2.0f * tanf((float)(r_refdef.fov_x/360*Q_PI));
 	r_refdef.fvrectx = (float)r_refdef.vrect.x;
-	r_refdef.fvrectx_adj = (float)r_refdef.vrect.x - 0.5;
+	r_refdef.fvrectx_adj = (float)r_refdef.vrect.x - 0.5f;
 	r_refdef.vrect_x_adj_shift20 = (r_refdef.vrect.x<<20) + (1<<19) - 1;
 	r_refdef.fvrecty = (float)r_refdef.vrect.y;
-	r_refdef.fvrecty_adj = (float)r_refdef.vrect.y - 0.5;
+	r_refdef.fvrecty_adj = (float)r_refdef.vrect.y - 0.5f;
 	r_refdef.vrectright = r_refdef.vrect.x + r_refdef.vrect.width;
 	r_refdef.vrectright_adj_shift20 = (r_refdef.vrectright<<20) + (1<<19) - 1;
 	r_refdef.fvrectright = (float)r_refdef.vrectright;
-	r_refdef.fvrectright_adj = (float)r_refdef.vrectright - 0.5;
-	r_refdef.vrectrightedge = (float)r_refdef.vrectright - 0.99;
+	r_refdef.fvrectright_adj = (float)r_refdef.vrectright - 0.5f;
+	r_refdef.vrectrightedge = (float)r_refdef.vrectright - 0.99f;
 	r_refdef.vrectbottom = r_refdef.vrect.y + r_refdef.vrect.height;
 	r_refdef.fvrectbottom = (float)r_refdef.vrectbottom;
-	r_refdef.fvrectbottom_adj = (float)r_refdef.vrectbottom - 0.5;
+	r_refdef.fvrectbottom_adj = (float)r_refdef.vrectbottom - 0.5f;
 
 	r_refdef.aliasvrect.x = (int)(r_refdef.vrect.x * r_aliasuvscale);
 	r_refdef.aliasvrect.y = (int)(r_refdef.vrect.y * r_aliasuvscale);
@@ -425,53 +417,53 @@ void R_ViewChanged (vrect_t *pvrect, int lineadj, float aspect)
 // the polygon rasterization will never render in the first row or column
 // but will definately render in the [range] row and column, so adjust the
 // buffer origin to get an exact edge to edge fill
-	xcenter = ((float)r_refdef.vrect.width * XCENTERING) +
-			r_refdef.vrect.x - 0.5;
+	xcenter = (float)(((float)r_refdef.vrect.width * XCENTERING) +
+			r_refdef.vrect.x - 0.5f);
 	aliasxcenter = xcenter * r_aliasuvscale;
-	ycenter = ((float)r_refdef.vrect.height * YCENTERING) +
-			r_refdef.vrect.y - 0.5;
+	ycenter = (float)(((float)r_refdef.vrect.height * YCENTERING) +
+			r_refdef.vrect.y - 0.5f);
 	aliasycenter = ycenter * r_aliasuvscale;
 
 	xscale = r_refdef.vrect.width / r_refdef.horizontalFieldOfView;
 	aliasxscale = xscale * r_aliasuvscale;
-	xscaleinv = 1.0 / xscale;
+	xscaleinv = 1.0f / xscale;
 	yscale = xscale * pixelAspect;
 	aliasyscale = yscale * r_aliasuvscale;
-	yscaleinv = 1.0 / yscale;
+	yscaleinv = 1.0f / yscale;
 	xscaleshrink = (r_refdef.vrect.width-6)/r_refdef.horizontalFieldOfView;
 	yscaleshrink = xscaleshrink*pixelAspect;
 
 // left side clip
-	screenedge[0].normal[0] = -1.0 / (xOrigin*r_refdef.horizontalFieldOfView);
+	screenedge[0].normal[0] = -1.0f / (xOrigin*r_refdef.horizontalFieldOfView);
 	screenedge[0].normal[1] = 0;
 	screenedge[0].normal[2] = 1;
 	screenedge[0].type = PLANE_ANYZ;
 	
 // right side clip
 	screenedge[1].normal[0] =
-			1.0 / ((1.0-xOrigin)*r_refdef.horizontalFieldOfView);
+			1.0f / ((1.0f-xOrigin)*r_refdef.horizontalFieldOfView);
 	screenedge[1].normal[1] = 0;
 	screenedge[1].normal[2] = 1;
 	screenedge[1].type = PLANE_ANYZ;
 	
 // top side clip
 	screenedge[2].normal[0] = 0;
-	screenedge[2].normal[1] = -1.0 / (yOrigin*verticalFieldOfView);
+	screenedge[2].normal[1] = -1.0f / (yOrigin*verticalFieldOfView);
 	screenedge[2].normal[2] = 1;
 	screenedge[2].type = PLANE_ANYZ;
 	
 // bottom side clip
 	screenedge[3].normal[0] = 0;
-	screenedge[3].normal[1] = 1.0 / ((1.0-yOrigin)*verticalFieldOfView);
+	screenedge[3].normal[1] = 1.0f / ((1.0f-yOrigin)*verticalFieldOfView);
 	screenedge[3].normal[2] = 1;	
 	screenedge[3].type = PLANE_ANYZ;
 	
 	for (i=0 ; i<4 ; i++)
 		VectorNormalize (screenedge[i].normal);
 
-	res_scale = sqrt ((double)(r_refdef.vrect.width * r_refdef.vrect.height) /
-			          (320.0 * 152.0)) *
-			(2.0 / r_refdef.horizontalFieldOfView);
+	res_scale = (float)(sqrt ((double)(r_refdef.vrect.width * r_refdef.vrect.height) /
+			          (320.0f * 152.0f)) *
+			(2.0 / r_refdef.horizontalFieldOfView));
 	r_aliastransition = r_aliastransbase.value * res_scale;
 	r_resfudge = r_aliastransadj.value * res_scale;
 
@@ -481,22 +473,6 @@ void R_ViewChanged (vrect_t *pvrect, int lineadj, float aspect)
 		r_fov_greater_than_90 = true;
 
 // TODO: collect 386-specific code in one place
-#if id386
-	if (r_pixbytes == 1)
-	{
-		Sys_MakeCodeWriteable ((long)R_Surf8Start,
-						     (long)R_Surf8End - (long)R_Surf8Start);
-		colormap = vid.colormap;
-		R_Surf8Patch ();
-	}
-	else
-	{
-		Sys_MakeCodeWriteable ((long)R_Surf16Start,
-						     (long)R_Surf16End - (long)R_Surf16Start);
-		colormap = vid.colormap16;
-		R_Surf16Patch ();
-	}
-#endif	// id386
 
 	D_ViewChanged ();
 }
@@ -593,7 +569,7 @@ void R_DrawEntitiesOnList (void)
 						add = cl_dlights[lnum].radius - Length(dist);
 	
 						if (add > 0)
-							lighting.ambientlight += add;
+							lighting.ambientlight = (int)(lighting.ambientlight + add);
 					}
 				}
 	
@@ -669,7 +645,7 @@ void R_DrawViewModel (void)
 		VectorSubtract (currententity->origin, dl->origin, dist);
 		add = dl->radius - Length(dist);
 		if (add > 0)
-			r_viewlighting.ambientlight += add;
+			r_viewlighting.ambientlight = (int)(r_viewlighting.ambientlight + add);
 	}
 
 // clamp lighting so it doesn't overbright as much
@@ -916,7 +892,7 @@ void R_EdgeDrawing (void)
 
 	if (r_dspeeds.value)
 	{
-		rw_time1 = Sys_DoubleTime ();
+		rw_time1 = (float)Sys_DoubleTime ();
 	}
 
 	R_RenderWorld ();
@@ -930,7 +906,7 @@ void R_EdgeDrawing (void)
 
 	if (r_dspeeds.value)
 	{
-		rw_time2 = Sys_DoubleTime ();
+		rw_time2 = (float)Sys_DoubleTime ();
 		db_time1 = rw_time2;
 	}
 
@@ -938,7 +914,7 @@ void R_EdgeDrawing (void)
 
 	if (r_dspeeds.value)
 	{
-		db_time2 = Sys_DoubleTime ();
+		db_time2 = (float)Sys_DoubleTime ();
 		se_time1 = db_time2;
 	}
 
@@ -968,15 +944,11 @@ void R_RenderView_ (void)
 	r_warpbuffer = warpbuffer;
 
 	if (r_timegraph.value || r_speeds.value || r_dspeeds.value)
-		r_time1 = Sys_DoubleTime ();
+		r_time1 = (float)Sys_DoubleTime ();
 
 	R_SetupFrame ();
 
-#ifdef PASSAGES
-SetVisibilityByPassages ();
-#else
 	R_MarkLeaves ();	// done here so we know if we're in water
-#endif
 
 // make FDIV fast. This reduces timing precision after we've been running for a
 // while, so we don't do it globally.  This also sets chop mode, and we do it
@@ -1004,7 +976,7 @@ SetVisibilityByPassages ();
 	
 	if (r_dspeeds.value)
 	{
-		se_time2 = Sys_DoubleTime ();
+		se_time2 = (float)Sys_DoubleTime ();
 		de_time1 = se_time2;
 	}
 
@@ -1012,7 +984,7 @@ SetVisibilityByPassages ();
 
 	if (r_dspeeds.value)
 	{
-		de_time2 = Sys_DoubleTime ();
+		de_time2 = (float)Sys_DoubleTime ();
 		dv_time1 = de_time2;
 	}
 
@@ -1020,14 +992,14 @@ SetVisibilityByPassages ();
 
 	if (r_dspeeds.value)
 	{
-		dv_time2 = Sys_DoubleTime ();
-		dp_time1 = Sys_DoubleTime ();
+		dv_time2 = (float)Sys_DoubleTime ();
+		dp_time1 = (float)Sys_DoubleTime ();
 	}
 
 	R_DrawParticles ();
 
 	if (r_dspeeds.value)
-		dp_time2 = Sys_DoubleTime ();
+		dp_time2 = (float)Sys_DoubleTime ();
 
 	if (r_dowarp)
 		D_WarpScreen ();
@@ -1066,7 +1038,7 @@ void R_RenderView (void)
 	int		dummy;
 	int		delta;
 	
-	delta = (byte *)&dummy - r_stack_start;
+	delta = (int)((byte *)&dummy - r_stack_start);
 	if (delta < -10000 || delta > 10000)
 		Sys_Error ("R_RenderView: called without enough stack");
 
@@ -1093,8 +1065,8 @@ void R_InitTurb (void)
 	
 	for (i=0 ; i<1280 ; i++)
 	{
-		sintable[i] = AMP + sin(i*3.14159*2/CYCLE)*AMP;
-		intsintable[i] = AMP2 + sin(i*3.14159*2/CYCLE)*AMP2;	// AMP2, not 20
+		sintable[i] = (int)(AMP + sin(i*3.14159*2/CYCLE)*AMP);
+		intsintable[i] = (int)(AMP2 + sin(i*3.14159*2/CYCLE)*AMP2);	// AMP2, not 20
 	}
 }
 

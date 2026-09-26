@@ -20,8 +20,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
-cvar_t		baseskin = {"baseskin", "base"};
-cvar_t		noskins = {"noskins", "0"};
+cvar_t		baseskin = {.name = "baseskin", .string = "base"};
+cvar_t		noskins = {.name = "noskins", .string = "0"};
 
 char		allskins[128];
 #define	MAX_CACHED_SKINS		128
@@ -41,27 +41,27 @@ void Skin_Find (player_info_t *sc)
 {
 	skin_t		*skin;
 	int			i;
-	char		name[128], *s;
+	char		skinname[128], *s;
 
 	if (allskins[0])
-		strcpy (name, allskins);
+		Q_strncpyz (skinname, allskins, sizeof(skinname));
 	else
 	{
 		s = Info_ValueForKey (sc->userinfo, "skin");
 		if (s && s[0])
-			strcpy (name, s);
+			Q_strncpyz (skinname, s, sizeof(skinname));
 		else
-			strcpy (name, baseskin.string);
+			Q_strncpyz (skinname, baseskin.string, sizeof(skinname));
 	}
 
-	if (strstr (name, "..") || *name == '.')
-		strcpy (name, "base");
+	if (strstr (skinname, "..") || *skinname == '.')
+		Q_strncpyz (skinname, "base", sizeof(skinname));
 
-	COM_StripExtension (name, name);
+	COM_StripExtension (skinname, skinname);
 
 	for (i=0 ; i<numskins ; i++)
 	{
-		if (!strcmp (name, skins[i].name))
+		if (!strcmp (skinname, skins[i].name))
 		{
 			sc->skin = &skins[i];
 			Skin_Cache (sc->skin);
@@ -80,7 +80,7 @@ void Skin_Find (player_info_t *sc)
 	numskins++;
 
 	memset (skin, 0, sizeof(*skin));
-	strncpy(skin->name, name, sizeof(skin->name) - 1);
+	strncpy(skin->name, skinname, sizeof(skin->name) - 1);
 }
 
 
@@ -93,7 +93,7 @@ Returns a pointer to the skin bitmap, or NULL to use the default
 */
 byte	*Skin_Cache (skin_t *skin)
 {
-	char	name[1024];
+	char	skinpath[1024];
 	byte	*raw;
 	byte	*out, *pix;
 	pcx_t	*pcx;
@@ -117,13 +117,13 @@ byte	*Skin_Cache (skin_t *skin)
 //
 // load the pic from disk
 //
-	sprintf (name, "skins/%s.pcx", skin->name);
-	raw = COM_LoadTempFile (name);
+	snprintf (skinpath, sizeof(skinpath), "skins/%s.pcx", skin->name);
+	raw = COM_LoadTempFile (skinpath);
 	if (!raw)
 	{
-		Con_Printf ("Couldn't load skin %s\n", name);
-		sprintf (name, "skins/%s.pcx", baseskin.string);
-		raw = COM_LoadTempFile (name);
+		Con_Printf ("Couldn't load skin %s\n", skinpath);
+		snprintf (skinpath, sizeof(skinpath), "skins/%s.pcx", baseskin.string);
+		raw = COM_LoadTempFile (skinpath);
 		if (!raw)
 		{
 			skin->failedload = true;
@@ -145,7 +145,7 @@ byte	*Skin_Cache (skin_t *skin)
 		|| pcx->ymax >= 200)
 	{
 		skin->failedload = true;
-		Con_Printf ("Bad skin %s\n", name);
+		Con_Printf ("Bad skin %s\n", skinpath);
 		return NULL;
 	}
 	
@@ -164,7 +164,7 @@ byte	*Skin_Cache (skin_t *skin)
 			{
 				Cache_Free (&skin->cache);
 				skin->failedload = true;
-				Con_Printf ("Skin %s was malformed.  You should delete it.\n", name);
+				Con_Printf ("Skin %s was malformed.  You should delete it.\n", skinpath);
 				return NULL;
 			}
 			dataByte = *raw++;
@@ -176,7 +176,7 @@ byte	*Skin_Cache (skin_t *skin)
 				{
 					Cache_Free (&skin->cache);
 					skin->failedload = true;
-					Con_Printf ("Skin %s was malformed.  You should delete it.\n", name);
+					Con_Printf ("Skin %s was malformed.  You should delete it.\n", skinpath);
 					return NULL;
 				}
 				dataByte = *raw++;
@@ -188,11 +188,11 @@ byte	*Skin_Cache (skin_t *skin)
 			if (runLength + x > pcx->xmax + 2) {
 				Cache_Free (&skin->cache);
 				skin->failedload = true;
-				Con_Printf ("Skin %s was malformed.  You should delete it.\n", name);
+				Con_Printf ("Skin %s was malformed.  You should delete it.\n", skinpath);
 				return NULL;
 			}
 			while(runLength-- > 0)
-				pix[x++] = dataByte;
+				pix[x++] = (byte)dataByte;
 		}
 
 	}
@@ -201,7 +201,7 @@ byte	*Skin_Cache (skin_t *skin)
 	{
 		Cache_Free (&skin->cache);
 		skin->failedload = true;
-		Con_Printf ("Skin %s was malformed.  You should delete it.\n", name);
+		Con_Printf ("Skin %s was malformed.  You should delete it.\n", skinpath);
 		return NULL;
 	}
 
@@ -248,9 +248,6 @@ void Skin_NextDownload (void)
 		if (!sc->name[0])
 			continue;
 		Skin_Cache (sc->skin);
-#ifdef GLQUAKE
-		sc->skin = NULL;
-#endif
 	}
 
 	if (cls.state != ca_active)
@@ -296,6 +293,6 @@ Sets all skins to one specific one
 */
 void	Skin_AllSkins_f (void)
 {
-	strcpy (allskins, Cmd_Argv(1));
+	Q_strncpyz (allskins, Cmd_Argv(1), sizeof(allskins));
 	Skin_Skins_f ();
 }

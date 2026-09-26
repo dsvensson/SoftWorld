@@ -210,35 +210,6 @@ void *Z_TagMalloc (int size, int tag)
 	return (void *) ((byte *)base + sizeof(memblock_t));
 }
 
-
-/*
-========================
-Z_Print
-========================
-*/
-void Z_Print (memzone_t *zone)
-{
-	memblock_t	*block;
-	
-	Con_Printf ("zone size: %i  location: %p\n",mainzone->size,mainzone);
-	
-	for (block = zone->blocklist.next ; ; block = block->next)
-	{
-		Con_Printf ("block:%p    size:%7i    tag:%3i\n",
-			block, block->size, block->tag);
-		
-		if (block->next == &zone->blocklist)
-			break;			// all blocks have been hit	
-		if ( (byte *)block + block->size != (byte *)block->next)
-			Con_Printf ("ERROR: block size does not touch the next block\n");
-		if ( block->next->prev != block)
-			Con_Printf ("ERROR: next block doesn't have proper back link\n");
-		if (!block->tag && !block->next->tag)
-			Con_Printf ("ERROR: two consecutive free blocks\n");
-	}
-}
-
-
 /*
 ========================
 Z_CheckHeap
@@ -278,10 +249,9 @@ int		hunk_size;
 int		hunk_low_used;
 int		hunk_high_used;
 
-qboolean	hunk_tempactive;
+bool	hunk_tempactive;
 int		hunk_tempmark;
 
-void R_FreeTextures (void);
 
 /*
 ==============
@@ -305,104 +275,14 @@ void Hunk_Check (void)
 }
 
 /*
-==============
-Hunk_Print
-
-If "all" is specified, every single allocation is printed.
-Otherwise, allocations with the same name will be totaled up before printing.
-==============
-*/
-void Hunk_Print (qboolean all)
-{
-	hunk_t	*h, *next, *endlow, *starthigh, *endhigh;
-	int		count, sum;
-	int		totalblocks;
-	char	name[9];
-
-	name[8] = 0;
-	count = 0;
-	sum = 0;
-	totalblocks = 0;
-	
-	h = (hunk_t *)hunk_base;
-	endlow = (hunk_t *)(hunk_base + hunk_low_used);
-	starthigh = (hunk_t *)(hunk_base + hunk_size - hunk_high_used);
-	endhigh = (hunk_t *)(hunk_base + hunk_size);
-
-	Con_Printf ("          :%8i total hunk size\n", hunk_size);
-	Con_Printf ("-------------------------\n");
-
-	while (1)
-	{
-	//
-	// skip to the high hunk if done with low hunk
-	//
-		if ( h == endlow )
-		{
-			Con_Printf ("-------------------------\n");
-			Con_Printf ("          :%8i REMAINING\n", hunk_size - hunk_low_used - hunk_high_used);
-			Con_Printf ("-------------------------\n");
-			h = starthigh;
-		}
-		
-	//
-	// if totally done, break
-	//
-		if ( h == endhigh )
-			break;
-
-	//
-	// run consistancy checks
-	//
-		if (h->sentinal != HUNK_SENTINAL)
-			Sys_Error ("Hunk_Check: trahsed sentinal");
-		if (h->size < 16 || h->size + (byte *)h - hunk_base > hunk_size)
-			Sys_Error ("Hunk_Check: bad size");
-			
-		next = (hunk_t *)((byte *)h+h->size);
-		count++;
-		totalblocks++;
-		sum += h->size;
-
-	//
-	// print the single block
-	//
-		memcpy (name, h->name, 8);
-		if (all)
-			Con_Printf ("%8p :%8i %8s\n",h, h->size, name);
-			
-	//
-	// print the total
-	//
-		if (next == endlow || next == endhigh || 
-		strncmp (h->name, next->name, 8) )
-		{
-			if (!all)
-				Con_Printf ("          :%8i %8s (TOTAL)\n",sum, name);
-			count = 0;
-			sum = 0;
-		}
-
-		h = next;
-	}
-
-	Con_Printf ("-------------------------\n");
-	Con_Printf ("%8i total blocks\n", totalblocks);
-	
-}
-
-/*
 ===================
 Hunk_AllocName
 ===================
 */
-void *Hunk_AllocName (int size, char *name)
+void *Hunk_AllocName (int size, char *blockname)
 {
 	hunk_t	*h;
 	
-#ifdef PARANOID
-	Hunk_Check ();
-#endif
 
 	if (size < 0)
 		Sys_Error ("Hunk_Alloc: bad size: %i", size);
@@ -411,11 +291,7 @@ void *Hunk_AllocName (int size, char *name)
 	
 	if (hunk_size - hunk_low_used - hunk_high_used < size)
 //		Sys_Error ("Hunk_Alloc: failed on %i bytes",size);
-#ifdef _WIN32
 	  	Sys_Error ("Not enough RAM allocated.  Try starting using \"-heapsize 16000\" on the QuakeWorld command line.");
-#else
-	  	Sys_Error ("Not enough RAM allocated.  Try starting using \"-mem 16\" on the QuakeWorld command line.");
-#endif
 	
 	h = (hunk_t *)(hunk_base + hunk_low_used);
 	hunk_low_used += size;
@@ -426,7 +302,7 @@ void *Hunk_AllocName (int size, char *name)
 	
 	h->size = size;
 	h->sentinal = HUNK_SENTINAL;
-	Q_strncpy (h->name, name, 8);
+	Q_strncpy (h->name, blockname, 8);
 	
 	return (void *)(h+1);
 }
@@ -484,7 +360,7 @@ void Hunk_FreeToHighMark (int mark)
 Hunk_HighAllocName
 ===================
 */
-void *Hunk_HighAllocName (int size, char *name)
+void *Hunk_HighAllocName (int size, char *blockname)
 {
 	hunk_t	*h;
 
@@ -497,9 +373,6 @@ void *Hunk_HighAllocName (int size, char *name)
 		hunk_tempactive = false;
 	}
 
-#ifdef PARANOID
-	Hunk_Check ();
-#endif
 
 	size = sizeof(hunk_t) + ((size+15)&~15);
 
@@ -517,7 +390,7 @@ void *Hunk_HighAllocName (int size, char *name)
 	memset (h, 0, size);
 	h->size = size;
 	h->sentinal = HUNK_SENTINAL;
-	Q_strncpy (h->name, name, 8);
+	Q_strncpy (h->name, blockname, 8);
 
 	return (void *)(h+1);
 }
@@ -568,7 +441,7 @@ typedef struct cache_system_s
 	struct cache_system_s	*lru_prev, *lru_next;	// for LRU flushing	
 } cache_system_t;
 
-cache_system_t *Cache_TryAlloc (int size, qboolean nobottom);
+cache_system_t *Cache_TryAlloc (int size, bool nobottom);
 
 cache_system_t	cache_head;
 
@@ -682,7 +555,7 @@ Looks for a free block of memory between the high and low hunk marks
 Size should already include the header and padding
 ============
 */
-cache_system_t *Cache_TryAlloc (int size, qboolean nobottom)
+cache_system_t *Cache_TryAlloc (int size, bool nobottom)
 {
 	cache_system_t	*cs, *new;
 	
@@ -767,23 +640,6 @@ void Cache_Flush (void)
 		Cache_Free ( cache_head.next->user );	// reclaim the space
 }
 
-
-/*
-============
-Cache_Print
-
-============
-*/
-void Cache_Print (void)
-{
-	cache_system_t	*cd;
-
-	for (cd = cache_head.next ; cd != &cache_head ; cd = cd->next)
-	{
-		Con_Printf ("%8i : %s\n", cd->size, cd->name);
-	}
-}
-
 /*
 ============
 Cache_Report
@@ -793,16 +649,6 @@ Cache_Report
 void Cache_Report (void)
 {
 	Con_DPrintf ("%4.1f megabyte data cache\n", (hunk_size - hunk_high_used - hunk_low_used) / (float)(1024*1024) );
-}
-
-/*
-============
-Cache_Compact
-
-============
-*/
-void Cache_Compact (void)
-{
 }
 
 /*
@@ -873,7 +719,7 @@ void *Cache_Check (cache_user_t *c)
 Cache_Alloc
 ==============
 */
-void *Cache_Alloc (cache_user_t *c, int size, char *name)
+void *Cache_Alloc (cache_user_t *c, int size, char *blockname)
 {
 	cache_system_t	*cs;
 
@@ -891,7 +737,7 @@ void *Cache_Alloc (cache_user_t *c, int size, char *name)
 		cs = Cache_TryAlloc (size, false);
 		if (cs)
 		{
-			strncpy (cs->name, name, sizeof(cs->name)-1);
+			strncpy (cs->name, blockname, sizeof(cs->name)-1);
 			c->data = (void *)(cs+1);
 			cs->user = c;
 			break;

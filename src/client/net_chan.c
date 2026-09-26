@@ -20,10 +20,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
-#ifdef _WIN32
-#include "winquake.h"
-#endif
-
 #define	PACKET_HEADER	8
 
 /*
@@ -76,9 +72,9 @@ to the new value before sending out any replies.
 */
 
 int		net_drop;
-cvar_t	showpackets = {"showpackets", "0"};
-cvar_t	showdrop = {"showdrop", "0"};
-cvar_t	qport = {"qport", "0"};
+cvar_t	showpackets = {.name = "showpackets", .string = "0"};
+cvar_t	showdrop = {.name = "showdrop", .string = "0"};
+cvar_t	qport = {.name = "qport", .string = "0"};
 
 /*
 ===============
@@ -91,16 +87,12 @@ void Netchan_Init (void)
 	int		port;
 
 	// pick a port value that should be nice and random
-#ifdef _WIN32
-	port = ((int)(timeGetTime()*1000) * time(NULL)) & 0xffff;
-#else
-	port = ((int)(getpid()+getuid()*1000) * time(NULL)) & 0xffff;
-#endif
+	port = ((int)(Sys_DoubleTime()*1000) * (int)time(NULL)) & 0xffff;
 
 	Cvar_RegisterVariable (&showpackets);
 	Cvar_RegisterVariable (&showdrop);
 	Cvar_RegisterVariable (&qport);
-	Cvar_SetValue("qport", port);
+	Cvar_SetValue("qport", (float)port);
 }
 
 /*
@@ -124,11 +116,7 @@ void Netchan_OutOfBand (netadr_t adr, int length, byte *data)
 	SZ_Write (&send, data, length);
 
 // send the datagram
-	//zoid, no input in demo playback mode
-#ifndef SERVERONLY
-	if (!cls.demoplayback)
-#endif
-		NET_SendPacket (send.cursize, send.data, adr);
+	NET_SendPacket (send.cursize, send.data, adr);
 }
 
 /*
@@ -144,11 +132,11 @@ void Netchan_OutOfBandPrint (netadr_t adr, char *format, ...)
 	static char		string[8192];		// ??? why static?
 	
 	va_start (argptr, format);
-	vsprintf (string, format,argptr);
+	vsnprintf (string, sizeof(string), format,argptr);
 	va_end (argptr);
 
 
-	Netchan_OutOfBand (adr, strlen(string), (byte *)string);
+	Netchan_OutOfBand (adr, (int)strlen(string), (byte *)string);
 }
 
 
@@ -159,18 +147,19 @@ Netchan_Setup
 called to open a channel to a remote system
 ==============
 */
-void Netchan_Setup (netchan_t *chan, netadr_t adr, int qport)
+void Netchan_Setup (netchan_t *chan, netadr_t adr, int remoteqport, netsrc_t sock)
 {
 	memset (chan, 0, sizeof(*chan));
-	
+
 	chan->remote_address = adr;
-	chan->last_received = realtime;
-	
+	chan->last_received = (float)realtime;
+
 	chan->message.data = chan->message_buf;
 	chan->message.allowoverflow = true;
 	chan->message.maxsize = sizeof(chan->message_buf);
 
-	chan->qport = qport;
+	chan->qport = remoteqport;
+	chan->sock = sock;
 	
 	chan->rate = 1.0/2500;
 }
@@ -184,7 +173,7 @@ Returns true if the bandwidth choke isn't active
 ================
 */
 #define	MAX_BACKUP	200
-qboolean Netchan_CanPacket (netchan_t *chan)
+bool Netchan_CanPacket (netchan_t *chan)
 {
 	if (chan->cleartime < realtime + MAX_BACKUP*chan->rate)
 		return true;
@@ -199,16 +188,12 @@ Netchan_CanReliable
 Returns true if the bandwidth choke isn't 
 ================
 */
-qboolean Netchan_CanReliable (netchan_t *chan)
+bool Netchan_CanReliable (netchan_t *chan)
 {
 	if (chan->reliable_length)
 		return false;			// waiting for ack
 	return Netchan_CanPacket (chan);
 }
-
-#ifdef SERVERONLY
-qboolean ServerPaused(void);
-#endif
 
 /*
 ===============
@@ -224,7 +209,7 @@ void Netchan_Transmit (netchan_t *chan, int length, byte *data)
 {
 	sizebuf_t	send;
 	byte		send_buf[MAX_MSGLEN + PACKET_HEADER];
-	qboolean	send_reliable;
+	bool	send_reliable;
 	unsigned	w1, w2;
 	int			i;
 
@@ -268,9 +253,8 @@ void Netchan_Transmit (netchan_t *chan, int length, byte *data)
 	MSG_WriteLong (&send, w2);
 
 	// send the qport if we are a client
-#ifndef SERVERONLY
-	MSG_WriteShort (&send, cls.qport);
-#endif
+	if (chan->sock == NS_CLIENT)
+		MSG_WriteShort (&send, chan->qport);
 
 // copy the reliable message to the packet first
 	if (send_reliable)
@@ -288,20 +272,12 @@ void Netchan_Transmit (netchan_t *chan, int length, byte *data)
 	chan->outgoing_size[i] = send.cursize;
 	chan->outgoing_time[i] = realtime;
 
-	//zoid, no input in demo playback mode
-#ifndef SERVERONLY
-	if (!cls.demoplayback)
-#endif
-		NET_SendPacket (send.cursize, send.data, chan->remote_address);
+	NET_SendPacket (send.cursize, send.data, chan->remote_address);
 
 	if (chan->cleartime < realtime)
 		chan->cleartime = realtime + send.cursize*chan->rate;
 	else
 		chan->cleartime += send.cursize*chan->rate;
-#ifdef SERVERONLY
-	if (ServerPaused())
-		chan->cleartime = realtime;
-#endif
 
 	if (showpackets.value)
 		Con_Printf ("--> s=%i(%i) a=%i(%i) %i\n"
@@ -321,20 +297,12 @@ called when the current net_message is from remote_address
 modifies net_message so that it points to the packet payload
 =================
 */
-qboolean Netchan_Process (netchan_t *chan)
+bool Netchan_Process (netchan_t *chan)
 {
 	unsigned		sequence, sequence_ack;
 	unsigned		reliable_ack, reliable_message;
-#ifdef SERVERONLY
-	int			qport;
-#endif
-	int i;
 
-	if (
-#ifndef SERVERONLY
-			!cls.demoplayback && 
-#endif
-			!NET_CompareAdr (net_from, chan->remote_address))
+	if (!NET_CompareAdr (net_from, chan->remote_address))
 		return false;
 	
 // get sequence numbers		
@@ -343,9 +311,8 @@ qboolean Netchan_Process (netchan_t *chan)
 	sequence_ack = MSG_ReadLong ();
 
 	// read the qport if we are a server
-#ifdef SERVERONLY
-	qport = MSG_ReadShort ();
-#endif
+	if (chan->sock == NS_SERVER)
+		MSG_ReadShort ();
 
 	reliable_message = sequence >> 31;
 	reliable_ack = sequence_ack >> 31;
@@ -362,34 +329,6 @@ qboolean Netchan_Process (netchan_t *chan)
 			, net_message.cursize);
 
 // get a rate estimation
-#if 0
-	if (chan->outgoing_sequence - sequence_ack < MAX_LATENT)
-	{
-		int				i;
-		double			time, rate;
-	
-		i = sequence_ack & (MAX_LATENT - 1);
-		time = realtime - chan->outgoing_time[i];
-		time -= 0.1;	// subtract 100 ms
-		if (time <= 0)
-		{	// gotta be a digital link for <100 ms ping
-			if (chan->rate > 1.0/5000)
-				chan->rate = 1.0/5000;
-		}
-		else
-		{
-			if (chan->outgoing_size[i] < 512)
-			{	// only deal with small messages
-				rate = chan->outgoing_size[i]/time;
-				if (rate > 5000)
-					rate = 5000;
-				rate = 1.0/rate;
-				if (chan->rate > rate)
-					chan->rate = rate;
-			}
-		}
-	}
-#endif
 
 //
 // discard stale or duplicated packets
@@ -439,13 +378,13 @@ qboolean Netchan_Process (netchan_t *chan)
 // the message can now be read from the current message pointer
 // update statistics counters
 //
-	chan->frame_latency = chan->frame_latency*OLD_AVG
-		+ (chan->outgoing_sequence-sequence_ack)*(1.0-OLD_AVG);
-	chan->frame_rate = chan->frame_rate*OLD_AVG
-		+ (realtime-chan->last_received)*(1.0-OLD_AVG);		
+	chan->frame_latency = (float)(chan->frame_latency*OLD_AVG
+		+ (chan->outgoing_sequence-sequence_ack)*(1.0f-OLD_AVG));
+	chan->frame_rate = (float)(chan->frame_rate*OLD_AVG
+		+ (realtime-chan->last_received)*(1.0f-OLD_AVG));
 	chan->good_count += 1;
 
-	chan->last_received = realtime;
+	chan->last_received = (float)realtime;
 
 	return true;
 }

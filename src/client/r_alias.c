@@ -86,7 +86,7 @@ void R_AliasProjectFinalVert (finalvert_t *fv, auxvert_t *av);
 R_AliasCheckBBox
 ================
 */
-qboolean R_AliasCheckBBox (void)
+bool R_AliasCheckBBox (void)
 {
 	int					i, flags, frame, numv;
 	aliashdr_t			*pahdr;
@@ -94,7 +94,7 @@ qboolean R_AliasCheckBBox (void)
 	finalvert_t			*pv0, *pv1, viewpts[16];
 	auxvert_t			*pa0, *pa1, viewaux[16];
 	maliasframedesc_t	*pframedesc;
-	qboolean			zclipped, zfullyclipped;
+	bool			zclipped, zfullyclipped;
 	unsigned			anyclip, allclip;
 	int					minz;
 	
@@ -154,7 +154,7 @@ qboolean R_AliasCheckBBox (void)
 		else
 		{
 			if (viewaux[i].fv[2] < minz)
-				minz = viewaux[i].fv[2];
+				minz = (int)viewaux[i].fv[2];
 			viewpts[i].flags = 0;
 			zfullyclipped = false;
 		}
@@ -207,7 +207,7 @@ qboolean R_AliasCheckBBox (void)
 		if (viewpts[i].flags & ALIAS_Z_CLIP)
 			continue;
 
-		zi = 1.0 / viewaux[i].fv[2];
+		zi = 1.0f / viewaux[i].fv[2];
 
 	// FIXME: do with chop mode in ASM, or convert to float
 		v0 = (viewaux[i].fv[0] * xscale * zi) + xcenter;
@@ -396,10 +396,10 @@ void R_AliasSetUpTransform (int trivial_accept)
 	{
 		for (i=0 ; i<4 ; i++)
 		{
-			aliastransform[0][i] *= aliasxscale *
-					(1.0 / ((float)0x8000 * 0x10000));
-			aliastransform[1][i] *= aliasyscale *
-					(1.0 / ((float)0x8000 * 0x10000));
+			aliastransform[0][i] = (float)(aliastransform[0][i] *
+					(aliasxscale * (1.0 / ((float)0x8000 * 0x10000))));
+			aliastransform[1][i] = (float)(aliastransform[1][i] *
+					(aliasyscale * (1.0 / ((float)0x8000 * 0x10000))));
 			aliastransform[2][i] *= 1.0 / ((float)0x8000 * 0x10000);
 
 		}
@@ -449,7 +449,6 @@ void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
 }
 
 
-#if	!id386
 
 /*
 ================
@@ -467,18 +466,18 @@ void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
 	for (i=0 ; i<r_anumverts ; i++, fv++, pverts++, pstverts++)
 	{
 	// transform and project
-		zi = 1.0 / (DotProduct(pverts->v, aliastransform[2]) +
+		zi = 1.0f / (DotProduct(pverts->v, aliastransform[2]) +
 				aliastransform[2][3]);
 
 	// x, y, and z are scaled down by 1/2**31 in the transform, so 1/z is
 	// scaled up by 1/2**31, and the scaling cancels out for x and y in the
 	// projection
-		fv->v[5] = zi;
+		fv->v[5] = (int)zi;
 
-		fv->v[0] = ((DotProduct(pverts->v, aliastransform[0]) +
-				aliastransform[0][3]) * zi) + aliasxcenter;
-		fv->v[1] = ((DotProduct(pverts->v, aliastransform[1]) +
-				aliastransform[1][3]) * zi) + aliasycenter;
+		fv->v[0] = (int)(((DotProduct(pverts->v, aliastransform[0]) +
+				aliastransform[0][3]) * zi) + aliasxcenter);
+		fv->v[1] = (int)(((DotProduct(pverts->v, aliastransform[1]) +
+				aliastransform[1][3]) * zi) + aliasycenter);
 
 		fv->v[2] = pstverts->s;
 		fv->v[3] = pstverts->t;
@@ -503,7 +502,6 @@ void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
 	}
 }
 
-#endif
 
 
 /*
@@ -516,12 +514,12 @@ void R_AliasProjectFinalVert (finalvert_t *fv, auxvert_t *av)
 	float	zi;
 
 // project points
-	zi = 1.0 / av->fv[2];
+	zi = 1.0f / av->fv[2];
 
-	fv->v[5] = zi * ziscale;
+	fv->v[5] = (int)(zi * ziscale);
 
-	fv->v[0] = (av->fv[0] * aliasxscale * zi) + aliasxcenter;
-	fv->v[1] = (av->fv[1] * aliasyscale * zi) + aliasycenter;
+	fv->v[0] = (int)((av->fv[0] * aliasxscale * zi) + aliasxcenter);
+	fv->v[1] = (int)((av->fv[1] * aliasyscale * zi) + aliasycenter);
 }
 
 
@@ -586,7 +584,7 @@ void R_AliasSetupSkin (void)
 		numskins = paliasskingroup->numskins;
 		fullskininterval = pskinintervals[numskins-1];
 	
-		skintime = cl.time + currententity->syncbase;
+		skintime = (float)(cl.time + currententity->syncbase);
 	
 	// when loading in Mod_LoadAliasSkinGroup, we guaranteed all interval
 	// values are positive, so we don't have to worry about division by 0
@@ -644,7 +642,7 @@ void R_AliasSetupLighting (alight_t *plighting)
 	if (r_ambientlight < LIGHT_MIN)
 		r_ambientlight = LIGHT_MIN;
 
-	r_shadelight = plighting->shadelight;
+	r_shadelight = (float)plighting->shadelight;
 
 	if (r_shadelight < 0)
 		r_shadelight = 0;
@@ -691,7 +689,7 @@ void R_AliasSetupFrame (void)
 	numframes = paliasgroup->numframes;
 	fullinterval = pintervals[numframes-1];
 
-	time = cl.time + currententity->syncbase;
+	time = (float)(cl.time + currententity->syncbase);
 
 //
 // when loading in Mod_LoadAliasGroup, we guaranteed all interval values
@@ -748,9 +746,6 @@ void R_AliasDrawModel (alight_t *plighting)
 	}
 	else
 	{
-#if id386
-		D_Aff8Patch (currententity->colormap);
-#endif
 	}
 
 	acolormap = currententity->colormap;

@@ -94,7 +94,7 @@ explosion_t *CL_AllocExplosion (void)
 		if (!cl_explosions[i].model)
 			return &cl_explosions[i];
 // find the oldest explosion
-	time = cl.time;
+	time = (float)cl.time;
 	index = 0;
 
 	for (i=0 ; i<MAX_EXPLOSIONS ; i++)
@@ -134,7 +134,7 @@ void CL_ParseBeam (model_t *m)
 		{
 			b->entity = ent;
 			b->model = m;
-			b->endtime = cl.time + 0.2;
+			b->endtime = (float)(cl.time + 0.2f);
 			VectorCopy (start, b->start);
 			VectorCopy (end, b->end);
 			return;
@@ -147,7 +147,7 @@ void CL_ParseBeam (model_t *m)
 		{
 			b->entity = ent;
 			b->model = m;
-			b->endtime = cl.time + 0.2;
+			b->endtime = (float)(cl.time + 0.2f);
 			VectorCopy (start, b->start);
 			VectorCopy (end, b->end);
 			return;
@@ -239,12 +239,12 @@ void CL_ParseTEnt (void)
 		dl = CL_AllocDlight (0);
 		VectorCopy (pos, dl->origin);
 		dl->radius = 350;
-		dl->die = cl.time + 0.5;
+		dl->die = (float)(cl.time + 0.5f);
 		dl->decay = 300;
-		dl->color[0] = 0.2;
-		dl->color[1] = 0.1;
-		dl->color[2] = 0.05;
-		dl->color[3] = 0.7;
+		dl->color[0] = 0.2f;
+		dl->color[1] = 0.1f;
+		dl->color[2] = 0.05f;
+		dl->color[3] = 0.7f;
 	
 	// sound
 		S_StartSound (-1, 0, cl_sfx_r_exp3, pos, 1, 1);
@@ -252,7 +252,7 @@ void CL_ParseTEnt (void)
 	// sprite
 		ex = CL_AllocExplosion ();
 		VectorCopy (pos, ex->origin);
-		ex->start = cl.time;
+		ex->start = (float)cl.time;
 		ex->model = Mod_ForName ("progs/s_explod.spr", true);
 		break;
 		
@@ -383,12 +383,12 @@ void CL_UpdateBeams (void)
 		}
 		else
 		{
-			yaw = (int) (atan2(dist[1], dist[0]) * 180 / M_PI);
+			yaw = (float)((int) (atan2(dist[1], dist[0]) * 180 / Q_PI));
 			if (yaw < 0)
 				yaw += 360;
 	
-			forward = sqrt (dist[0]*dist[0] + dist[1]*dist[1]);
-			pitch = (int) (atan2(dist[2], forward) * 180 / M_PI);
+			forward = sqrtf(dist[0]*dist[0] + dist[1]*dist[1]);
+			pitch = (float)((int) (atan2(dist[2], forward) * 180 / Q_PI));
 			if (pitch < 0)
 				pitch += 360;
 		}
@@ -405,7 +405,7 @@ void CL_UpdateBeams (void)
 			ent->model = b->model;
 			ent->angles[0] = pitch;
 			ent->angles[1] = yaw;
-			ent->angles[2] = rand()%360;
+			ent->angles[2] = (vec_t)(rand()%360);
 
 			for (i=0 ; i<3 ; i++)
 				org[i] += dist[i]*30;
@@ -431,7 +431,7 @@ void CL_UpdateExplosions (void)
 	{
 		if (!ex->model)
 			continue;
-		f = 10*(cl.time - ex->start);
+		f = (int)(10*(cl.time - ex->start));
 		if (f >= ex->model->numframes)
 		{
 			ex->model = NULL;

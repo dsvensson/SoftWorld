@@ -59,11 +59,11 @@ void SV_FlushRedirect (void)
 		send[4] = A2C_PRINT;
 		memcpy (send+5, outputbuf, strlen(outputbuf)+1);
 
-		NET_SendPacket (strlen(send)+1, send, net_from);
+		NET_SendPacket ((int)strlen(send)+1, send, net_from);
 	}
 	else if (sv_redirected == RD_CLIENT)
 	{
-		ClientReliableWrite_Begin (host_client, svc_print, strlen(outputbuf)+3);
+		ClientReliableWrite_Begin (host_client, svc_print, (int)strlen(outputbuf)+3);
 		ClientReliableWrite_Byte (host_client, PRINT_HIGH);
 		ClientReliableWrite_String (host_client, outputbuf);
 	}
@@ -109,7 +109,7 @@ void Con_Printf (char *fmt, ...)
 	char		msg[MAXPRINTMSG];
 	
 	va_start (argptr,fmt);
-	vsprintf (msg,fmt,argptr);
+	vsnprintf (msg,sizeof(msg),fmt,argptr);
 	va_end (argptr);
 
 	// add to redirected message
@@ -117,7 +117,7 @@ void Con_Printf (char *fmt, ...)
 	{
 		if (strlen (msg) + strlen(outputbuf) > sizeof(outputbuf) - 1)
 			SV_FlushRedirect ();
-		strcat (outputbuf, msg);
+		Q_strncatz (outputbuf, msg, sizeof(outputbuf));
 		return;
 	}
 
@@ -142,9 +142,9 @@ void Con_DPrintf (char *fmt, ...)
 		return;
 
 	va_start (argptr,fmt);
-	vsprintf (msg,fmt,argptr);
+	vsnprintf (msg,sizeof(msg),fmt,argptr);
 	va_end (argptr);
-	
+
 	Con_Printf ("%s", msg);
 }
 
@@ -158,7 +158,7 @@ EVENT MESSAGES
 
 static void SV_PrintToClient(client_t *cl, int level, char *string)
 {
-	ClientReliableWrite_Begin (cl, svc_print, strlen(string)+3);
+	ClientReliableWrite_Begin (cl, svc_print, (int)strlen(string)+3);
 	ClientReliableWrite_Byte (cl, level);
 	ClientReliableWrite_String (cl, string);
 }
@@ -180,7 +180,7 @@ void SV_ClientPrintf (client_t *cl, int level, char *fmt, ...)
 		return;
 	
 	va_start (argptr,fmt);
-	vsprintf (string, fmt,argptr);
+	vsnprintf (string, sizeof(string), fmt,argptr);
 	va_end (argptr);
 
 	SV_PrintToClient(cl, level, string);
@@ -201,7 +201,7 @@ void SV_BroadcastPrintf (int level, char *fmt, ...)
 	int			i;
 
 	va_start (argptr,fmt);
-	vsprintf (string, fmt,argptr);
+	vsnprintf (string, sizeof(string), fmt,argptr);
 	va_end (argptr);
 	
 	Sys_Printf ("%s", string);	// print to the console
@@ -232,7 +232,7 @@ void SV_BroadcastCommand (char *fmt, ...)
 	if (!sv.state)
 		return;
 	va_start (argptr,fmt);
-	vsprintf (string, fmt,argptr);
+	vsnprintf (string, sizeof(string), fmt,argptr);
 	va_end (argptr);
 
 	MSG_WriteByte (&sv.reliable_datagram, svc_stufftext);
@@ -259,13 +259,13 @@ void SV_Multicast (vec3_t origin, int to)
 	mleaf_t		*leaf;
 	int			leafnum;
 	int			j;
-	qboolean	reliable;
+	bool	reliable;
 
 	leaf = Mod_PointInLeaf (origin, sv.worldmodel);
 	if (!leaf)
 		leafnum = 0;
 	else
-		leafnum = leaf - sv.worldmodel->leafs;
+		leafnum = (int)(leaf - sv.worldmodel->leafs);
 
 	reliable = false;
 
@@ -311,7 +311,7 @@ void SV_Multicast (vec3_t origin, int to)
 		if (leaf)
 		{
 			// -1 is because pvs rows are 1 based, not 0 based like leafs
-			leafnum = leaf - sv.worldmodel->leafs - 1;
+			leafnum = (int)(leaf - sv.worldmodel->leafs - 1);
 			if ( !(mask[leafnum>>3] & (1<<(leafnum&7)) ) )
 			{
 //				Con_Printf ("supressed multicast\n");
@@ -350,12 +350,11 @@ void SV_StartSound (edict_t *entity, int channel, char *sample, int volume,
     float attenuation)
 {       
     int         sound_num;
-    int			field_mask;
     int			i;
 	int			ent;
 	vec3_t		origin;
-	qboolean	use_phs;
-	qboolean	reliable = false;
+	bool	use_phs;
+	bool	reliable = false;
 
 	if (volume < 0 || volume > 255)
 		SV_Error ("SV_StartSound: volume = %i", volume);
@@ -395,7 +394,6 @@ void SV_StartSound (edict_t *entity, int channel, char *sample, int volume,
 
 	channel = (ent<<3) | channel;
 
-	field_mask = 0;
 	if (volume != DEFAULT_SOUND_PACKET_VOLUME)
 		channel |= SND_VOLUME;
 	if (attenuation != DEFAULT_SOUND_PACKET_ATTENUATION)
@@ -405,7 +403,7 @@ void SV_StartSound (edict_t *entity, int channel, char *sample, int volume,
 	if (entity->v.solid == SOLID_BSP)
 	{
 		for (i=0 ; i<3 ; i++)
-			origin[i] = entity->v.origin[i]+0.5*(entity->v.mins[i]+entity->v.maxs[i]);
+			origin[i] = entity->v.origin[i]+0.5f*(entity->v.mins[i]+entity->v.maxs[i]);
 	}
 	else
 	{
@@ -417,7 +415,7 @@ void SV_StartSound (edict_t *entity, int channel, char *sample, int volume,
 	if (channel & SND_VOLUME)
 		MSG_WriteByte (&sv.multicast, volume);
 	if (channel & SND_ATTENUATION)
-		MSG_WriteByte (&sv.multicast, attenuation*64);
+		MSG_WriteByte (&sv.multicast, (int)(attenuation*64));
 	MSG_WriteByte (&sv.multicast, sound_num);
 	for (i=0 ; i<3 ; i++)
 		MSG_WriteCoord (&sv.multicast, origin[i]);
@@ -488,10 +486,10 @@ void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
 	{
 		other = PROG_TO_EDICT(ent->v.dmg_inflictor);
 		MSG_WriteByte (msg, svc_damage);
-		MSG_WriteByte (msg, ent->v.dmg_save);
-		MSG_WriteByte (msg, ent->v.dmg_take);
+		MSG_WriteByte (msg, (int)ent->v.dmg_save);
+		MSG_WriteByte (msg, (int)ent->v.dmg_take);
 		for (i=0 ; i<3 ; i++)
-			MSG_WriteCoord (msg, other->v.origin[i] + 0.5*(other->v.mins[i] + other->v.maxs[i]));
+			MSG_WriteCoord (msg, other->v.origin[i] + 0.5f*(other->v.mins[i] + other->v.maxs[i]));
 	
 		ent->v.dmg_take = 0;
 		ent->v.dmg_save = 0;
@@ -529,16 +527,16 @@ void SV_UpdateClientStats (client_t *client)
 	if (client->spectator && client->spec_track > 0)
 		ent = svs.clients[client->spec_track - 1].edict;
 
-	stats[STAT_HEALTH] = ent->v.health;
+	stats[STAT_HEALTH] = (int)ent->v.health;
 	stats[STAT_WEAPON] = SV_ModelIndex(PR_GetString(ent->v.weaponmodel));
-	stats[STAT_AMMO] = ent->v.currentammo;
-	stats[STAT_ARMOR] = ent->v.armorvalue;
-	stats[STAT_SHELLS] = ent->v.ammo_shells;
-	stats[STAT_NAILS] = ent->v.ammo_nails;
-	stats[STAT_ROCKETS] = ent->v.ammo_rockets;
-	stats[STAT_CELLS] = ent->v.ammo_cells;
+	stats[STAT_AMMO] = (int)ent->v.currentammo;
+	stats[STAT_ARMOR] = (int)ent->v.armorvalue;
+	stats[STAT_SHELLS] = (int)ent->v.ammo_shells;
+	stats[STAT_NAILS] = (int)ent->v.ammo_nails;
+	stats[STAT_ROCKETS] = (int)ent->v.ammo_rockets;
+	stats[STAT_CELLS] = (int)ent->v.ammo_cells;
 	if (!client->spectator)
-		stats[STAT_ACTIVEWEAPON] = ent->v.weapon;
+		stats[STAT_ACTIVEWEAPON] = (int)ent->v.weapon;
 	// stuff the sigil bits into the high bits of items for sbar
 	stats[STAT_ITEMS] = (int)ent->v.items | ((int)pr_global_struct->serverflags << 28);
 
@@ -566,7 +564,7 @@ void SV_UpdateClientStats (client_t *client)
 SV_SendClientDatagram
 =======================
 */
-qboolean SV_SendClientDatagram (client_t *client)
+bool SV_SendClientDatagram (client_t *client)
 {
 	byte		buf[MAX_DATAGRAM];
 	sizebuf_t	msg;
@@ -639,10 +637,10 @@ void SV_UpdateToReliableMessages (void)
 					continue;
 				ClientReliableWrite_Begin(client, svc_updatefrags, 4);
 				ClientReliableWrite_Byte(client, i);
-				ClientReliableWrite_Short(client, host_client->edict->v.frags);
+				ClientReliableWrite_Short(client, (int)host_client->edict->v.frags);
 			}
 
-			host_client->old_frags = host_client->edict->v.frags;
+			host_client->old_frags = (int)host_client->edict->v.frags;
 		}
 
 		// maxspeed/entgravity changes
@@ -686,9 +684,6 @@ void SV_UpdateToReliableMessages (void)
 	SZ_Clear (&sv.datagram);
 }
 
-#ifdef _WIN32
-#pragma optimize( "", off )
-#endif
 
 
 
@@ -775,13 +770,13 @@ void SV_SendClientMessages (void)
 			SV_SendClientDatagram (c);
 		else
 			Netchan_Transmit (&c->netchan, 0, NULL);	// just update reliable
-			
+
+		// don't let rate limiting build up while the game is paused
+		if (sv.paused)
+			c->netchan.cleartime = realtime;
 	}
 }
 
-#ifdef _WIN32
-#pragma optimize( "", on )
-#endif
 
 
 

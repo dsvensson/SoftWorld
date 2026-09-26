@@ -92,24 +92,24 @@ void D_DrawSolidSurface (surf_t *surf, int color)
 		pdest = (byte *)d_viewbuffer + screenwidth*span->v;
 		u = span->u;
 		u2 = span->u + span->count - 1;
-		((byte *)pdest)[u] = pix;
+		((byte *)pdest)[u] = (byte)pix;
 
 		if (u2 - u < 8)
 		{
 			for (u++ ; u <= u2 ; u++)
-				((byte *)pdest)[u] = pix;
+				((byte *)pdest)[u] = (byte)pix;
 		}
 		else
 		{
 			for (u++ ; u & 3 ; u++)
-				((byte *)pdest)[u] = pix;
+				((byte *)pdest)[u] = (byte)pix;
 
 			u2 -= 4;
 			for ( ; u <= u2 ; u+=4)
 				*(int *)((byte *)pdest + u) = pix;
 			u2 += 4;
 			for ( ; u <= u2 ; u++)
-				((byte *)pdest)[u] = pix;
+				((byte *)pdest)[u] = (byte)pix;
 		}
 	}
 }
@@ -122,15 +122,12 @@ D_CalcGradients
 */
 void D_CalcGradients (msurface_t *pface)
 {
-	mplane_t	*pplane;
 	float		mipscale;
 	vec3_t		p_temp1;
 	vec3_t		p_saxis, p_taxis;
 	float		t;
 
-	pplane = pface->plane;
-
-	mipscale = 1.0 / (float)(1 << miplevel);
+	mipscale = 1.0f / (float)(1 << miplevel);
 
 	TransformVector (pface->texinfo->vecs[0], p_saxis);
 	TransformVector (pface->texinfo->vecs[1], p_taxis);
@@ -151,12 +148,12 @@ void D_CalcGradients (msurface_t *pface)
 	VectorScale (transformed_modelorg, mipscale, p_temp1);
 
 	t = 0x10000*mipscale;
-	sadjust = ((fixed16_t)(DotProduct (p_temp1, p_saxis) * 0x10000 + 0.5)) -
+	sadjust = (fixed16_t)(((fixed16_t)(DotProduct (p_temp1, p_saxis) * 0x10000 + 0.5)) -
 			((pface->texturemins[0] << 16) >> miplevel)
-			+ pface->texinfo->vecs[0][3]*t;
-	tadjust = ((fixed16_t)(DotProduct (p_temp1, p_taxis) * 0x10000 + 0.5)) -
+			+ pface->texinfo->vecs[0][3]*t);
+	tadjust = (fixed16_t)(((fixed16_t)(DotProduct (p_temp1, p_taxis) * 0x10000 + 0.5)) -
 			((pface->texturemins[1] << 16) >> miplevel)
-			+ pface->texinfo->vecs[1][3]*t;
+			+ pface->texinfo->vecs[1][3]*t);
 
 //
 // -1 (-epsilon) so we never wander off the edge of the texture
@@ -195,11 +192,7 @@ void D_DrawSurfaces (void)
 			d_zistepv = s->d_zistepv;
 			d_ziorigin = s->d_ziorigin;
 
-#ifdef __alpha__
-			D_DrawSolidSurface (s, (int)((uintptr_t)s->data & 0xFF));
-#else
-			D_DrawSolidSurface (s, (int)s->data & 0xFF);
-#endif
+			D_DrawSolidSurface (s, (int)((intptr_t)s->data & 0xFF));
 			D_DrawZSpans (s->spans);
 		}
 	}
@@ -232,7 +225,7 @@ void D_DrawSurfaces (void)
 			// effectively at infinity distance from the viewpoint
 				d_zistepu = 0;
 				d_zistepv = 0;
-				d_ziorigin = -0.9;
+				d_ziorigin = -0.9f;
 
 				D_DrawSolidSurface (s, (int)r_clearcolor.value & 0xFF);
 				D_DrawZSpans (s->spans);

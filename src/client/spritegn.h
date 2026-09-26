@@ -17,6 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
+
+#pragma once
 //
 // spritegn.h: header file for sprite generation program
 //
@@ -42,29 +44,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // <endrepeat>
 //-------------------------------------------------------
 
-#ifdef INCLUDELIBS
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <math.h>
-#include <string.h>
-
-#include "cmdlib.h"
-#include "scriplib.h"
-#include "dictlib.h"
-#include "trilib.h"
-#include "lbmlib.h"
-#include "mathlib.h"
-
-#endif
 
 #define SPRITE_VERSION	1
 
-// must match definition in modelgen.h
-#ifndef SYNCTYPE_T
-#define SYNCTYPE_T
-typedef enum {ST_SYNC=0, ST_RAND } synctype_t;
-#endif
+#include "modelgen.h"	// synctype_t
 
 // TODO: shorten these?
 typedef struct {
@@ -107,4 +90,3 @@ typedef struct {
 
 #define IDSPRITEHEADER	(('P'<<24)+('S'<<16)+('D'<<8)+'I')
 														// little-endian "IDSP"
-

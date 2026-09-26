@@ -116,7 +116,6 @@ int CL_CalcNet (void)
 	int		a, i;
 	frame_t	*frame;
 	int lost;
-	char st[80];
 
 	for (i=cls.netchan.outgoing_sequence-UPDATE_BACKUP+1
 		; i <= cls.netchan.outgoing_sequence
@@ -130,7 +129,7 @@ int CL_CalcNet (void)
 		else if (frame->invalid)
 			packet_latency[i&NET_TIMINGSMASK] = 9998;	// invalid delta
 		else
-			packet_latency[i&NET_TIMINGSMASK] = (frame->receivedtime - frame->senttime)*20;
+			packet_latency[i&NET_TIMINGSMASK] = (int)((frame->receivedtime - frame->senttime)*20);
 	}
 
 	lost = 0;
@@ -153,7 +152,7 @@ Returns true if the file exists, otherwise it attempts
 to start a download from the server.
 ===============
 */
-qboolean	CL_CheckOrDownloadFile (char *filename)
+bool	CL_CheckOrDownloadFile (char *filename)
 {
 	FILE	*f;
 
@@ -179,14 +178,14 @@ qboolean	CL_CheckOrDownloadFile (char *filename)
 	if (cls.demoplayback)
 		return true;
 
-	strcpy (cls.downloadname, filename);
+	Q_strncpyz (cls.downloadname, filename, sizeof(cls.downloadname));
 	Con_Printf ("Downloading %s...\n", cls.downloadname);
 
 	// download to a temp name, and only rename
 	// to the real name when done, so if interrupted
 	// a runt file wont be left
 	COM_StripExtension (cls.downloadname, cls.downloadtempname);
-	strcat (cls.downloadtempname, ".tmp");
+	Q_strncatz (cls.downloadtempname, ".tmp", sizeof(cls.downloadtempname));
 
 	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
 	MSG_WriteString (&cls.netchan.message, va("download %s", cls.downloadname));
@@ -334,7 +333,7 @@ A download message has been received from the server
 void CL_ParseDownload (void)
 {
 	int		size, percent;
-	byte	name[1024];
+	char	filepath[1024];
 	int		r;
 
 
@@ -365,13 +364,13 @@ void CL_ParseDownload (void)
 	if (!cls.download)
 	{
 		if (strncmp(cls.downloadtempname,"skins/",6))
-			sprintf (name, "%s/%s", com_gamedir, cls.downloadtempname);
+			snprintf (filepath, sizeof(filepath), "%s/%s", com_gamedir, cls.downloadtempname);
 		else
-			sprintf (name, "qw/%s", cls.downloadtempname);
+			snprintf (filepath, sizeof(filepath), "qw/%s", cls.downloadtempname);
 
-		COM_CreatePath (name);
+		COM_CreatePath (filepath);
 
-		cls.download = fopen (name, "wb");
+		cls.download = fopen (filepath, "wb");
 		if (!cls.download)
 		{
 			msg_readcount += size;
@@ -388,14 +387,6 @@ void CL_ParseDownload (void)
 	{
 // change display routines by zoid
 		// request next block
-#if 0
-		Con_Printf (".");
-		if (10*(percent/10) != cls.downloadpercent)
-		{
-			cls.downloadpercent = 10*(percent/10);
-			Con_Printf ("%i%%", cls.downloadpercent);
-		}
-#endif
 		cls.downloadpercent = percent;
 
 		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
@@ -406,20 +397,17 @@ void CL_ParseDownload (void)
 		char	oldn[MAX_OSPATH];
 		char	newn[MAX_OSPATH];
 
-#if 0
-		Con_Printf ("100%%\n");
-#endif
 
 		fclose (cls.download);
 
 		// rename the temp file to it's final name
 		if (strcmp(cls.downloadtempname, cls.downloadname)) {
 			if (strncmp(cls.downloadtempname,"skins/",6)) {
-				sprintf (oldn, "%s/%s", com_gamedir, cls.downloadtempname);
-				sprintf (newn, "%s/%s", com_gamedir, cls.downloadname);
+				snprintf (oldn, sizeof(oldn), "%s/%s", com_gamedir, cls.downloadtempname);
+				snprintf (newn, sizeof(newn), "%s/%s", com_gamedir, cls.downloadname);
 			} else {
-				sprintf (oldn, "qw/%s", cls.downloadtempname);
-				sprintf (newn, "qw/%s", cls.downloadname);
+				snprintf (oldn, sizeof(oldn), "qw/%s", cls.downloadtempname);
+				snprintf (newn, sizeof(newn), "qw/%s", cls.downloadname);
 			}
 			r = rename (oldn, newn);
 			if (r)
@@ -495,7 +483,7 @@ Con_DPrintf("Upload starting of %d...\n", size);
 	CL_NextUpload();
 } 
 
-qboolean CL_IsUploading(void)
+bool CL_IsUploading(void)
 {
 	if (upload_data)
 		return true;
@@ -527,7 +515,7 @@ void CL_ParseServerData (void)
 	char	*str;
 	FILE	*f;
 	char	fn[MAX_OSPATH];
-	qboolean	cflag = false;
+	bool	cflag = false;
 	extern	char	gamedirfile[MAX_OSPATH];
 	int protover;
 	
@@ -549,7 +537,7 @@ void CL_ParseServerData (void)
 	// game directory
 	str = MSG_ReadString ();
 
-	if (stricmp(gamedirfile, str)) {
+	if (Q_strcasecmp (gamedirfile, str)) {
 		// save current config
 		Host_WriteConfiguration (); 
 		cflag = true;
@@ -560,7 +548,7 @@ void CL_ParseServerData (void)
 	//ZOID--run the autoexec.cfg in the gamedir
 	//if it exists
 	if (cflag) {
-		sprintf(fn, "%s/%s", com_gamedir, "config.cfg");
+		snprintf(fn, sizeof(fn), "%s/%s", com_gamedir, "config.cfg");
 		if ((f = fopen(fn, "r")) != NULL) {
 			fclose(f);
 			Cbuf_AddText ("cl_warncmd 0\n");
@@ -631,7 +619,7 @@ void CL_ParseSoundlist (void)
 		numsounds++;
 		if (numsounds == MAX_SOUNDS)
 			Host_EndGame ("Server sent too many sound_precache");
-		strcpy (cl.sound_name[numsounds], str);
+		Q_strncpyz (cl.sound_name[numsounds], str, sizeof(cl.sound_name[numsounds]));
 	}
 
 	n = MSG_ReadByte();
@@ -670,7 +658,7 @@ void CL_ParseModellist (void)
 		nummodels++;
 		if (nummodels==MAX_MODELS)
 			Host_EndGame ("Server sent too many model_precache");
-		strcpy (cl.model_name[nummodels], str);
+		Q_strncpyz (cl.model_name[nummodels], str, sizeof(cl.model_name[nummodels]));
 
 		if (!strcmp(cl.model_name[nummodels],"progs/spike.mdl"))
 			cl_spikeindex = nummodels;
@@ -767,7 +755,7 @@ void CL_ParseStaticSound (void)
 	vol = MSG_ReadByte ();
 	atten = MSG_ReadByte ();
 	
-	S_StaticSound (cl.sound_precache[sound_num], org, vol, atten);
+	S_StaticSound (cl.sound_precache[sound_num], org, (float)vol, (float)atten);
 }
 
 
@@ -790,19 +778,19 @@ void CL_ParseStartSoundPacket(void)
     vec3_t  pos;
     int 	channel, ent;
     int 	sound_num;
-    int 	volume;
-    float 	attenuation;  
+    int 	packetvolume;
+    float 	attenuation;
  	int		i;
-	           
-    channel = MSG_ReadShort(); 
+
+    channel = MSG_ReadShort();
 
     if (channel & SND_VOLUME)
-		volume = MSG_ReadByte ();
+		packetvolume = MSG_ReadByte ();
 	else
-		volume = DEFAULT_SOUND_PACKET_VOLUME;
+		packetvolume = DEFAULT_SOUND_PACKET_VOLUME;
 	
     if (channel & SND_ATTENUATION)
-		attenuation = MSG_ReadByte () / 64.0;
+		attenuation = MSG_ReadByte () / 64.0f;
 	else
 		attenuation = DEFAULT_SOUND_PACKET_ATTENUATION;
 	
@@ -817,7 +805,7 @@ void CL_ParseStartSoundPacket(void)
 	if (ent > MAX_EDICTS)
 		Host_EndGame ("CL_ParseStartSoundPacket: ent = %i", ent);
 	
-    S_StartSound (ent, channel, cl.sound_precache[sound_num], pos, volume/255.0, attenuation);
+    S_StartSound (ent, channel, cl.sound_precache[sound_num], pos, packetvolume/255.0f, attenuation);
 }       
 
 
@@ -847,7 +835,7 @@ void CL_ParseClientdata (void)
 	frame->receivedtime = realtime;
 
 // calculate latency
-	latency = frame->receivedtime - frame->senttime;
+	latency = (float)(frame->receivedtime - frame->senttime);
 
 	if (latency < 0 || latency > 1.0)
 	{
@@ -859,7 +847,7 @@ void CL_ParseClientdata (void)
 		if (latency < cls.latency)
 			cls.latency = latency;
 		else
-			cls.latency += 0.001;	// drift up, so correction are needed
+			cls.latency += 0.001f;	// drift up, so correction are needed
 	}	
 }
 
@@ -870,12 +858,6 @@ CL_NewTranslation
 */
 void CL_NewTranslation (int slot)
 {
-#ifdef GLQUAKE
-	if (slot > MAX_CLIENTS)
-		Sys_Error ("CL_NewTranslation: slot > MAX_CLIENTS");
-
-	R_TranslatePlayerSkin(slot);
-#else
 
 	int		i, j;
 	int		top, bottom;
@@ -888,9 +870,9 @@ void CL_NewTranslation (int slot)
 
 	player = &cl.players[slot];
 
-	strcpy(s, Info_ValueForKey(player->userinfo, "skin"));
+	Q_strncpyz(s, Info_ValueForKey(player->userinfo, "skin"), sizeof(s));
 	COM_StripExtension(s, s);
-	if (player->skin && !stricmp(s, player->skin->name))
+	if (player->skin && !Q_strcasecmp (s, player->skin->name))
 		player->skin = NULL;
 
 	if (player->_topcolor != player->topcolor ||
@@ -925,7 +907,6 @@ void CL_NewTranslation (int slot)
 					dest[BOTTOM_RANGE+j] = source[bottom+15-j];		
 		}
 	}
-#endif
 }
 
 /*
@@ -996,7 +977,7 @@ void CL_SetInfo (void)
 
 	Con_DPrintf("SETINFO %s: %s=%s\n", player->name, key, value);
 
-	Info_SetValueForKey (player->userinfo, key, value, MAX_INFO_STRING);
+	Info_SetValueForKey (player->userinfo, key, value, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 
 	CL_ProcessUserInfo (slot, player);
 }
@@ -1008,8 +989,6 @@ CL_ServerInfo
 */
 void CL_ServerInfo (void)
 {
-	int		slot;
-	player_info_t	*player;
 	char key[MAX_MSGLEN];
 	char value[MAX_MSGLEN];
 
@@ -1020,7 +999,7 @@ void CL_ServerInfo (void)
 
 	Con_DPrintf("SERVERINFO: %s=%s\n", key, value);
 
-	Info_SetValueForKey (cl.serverinfo, key, value, MAX_SERVERINFO_STRING);
+	Info_SetValueForKey (cl.serverinfo, key, value, MAX_SERVERINFO_STRING, INFO_CHARSET_USERINFO);
 }
 
 /*
@@ -1041,7 +1020,7 @@ void CL_SetStat (int stat, int value)
 		Sbar_Changed ();
 		for (j=0 ; j<32 ; j++)
 			if ( (value & (1<<j)) && !(cl.stats[stat] & (1<<j)))
-				cl.item_gettime[j] = cl.time;
+				cl.item_gettime[j] = (float)cl.time;
 	}
 
 	cl.stats[stat] = value;
@@ -1064,11 +1043,6 @@ void CL_MuzzleFlash (void)
 	if ((unsigned)(i-1) >= MAX_CLIENTS)
 		return;
 
-#ifdef GLQUAKE
-	// don't draw our own muzzle flash in gl if flashblending
-	if (i-1 == cl.playernum && gl_flashblend.value)
-		return;
-#endif
 
 	pl = &cl.frames[parsecountmod].playerstate[i-1];
 
@@ -1077,13 +1051,13 @@ void CL_MuzzleFlash (void)
 	AngleVectors (pl->viewangles, fv, rv, uv);
 		
 	VectorMA (dl->origin, 18, fv, dl->origin);
-	dl->radius = 200 + (rand()&31);
+	dl->radius = (float)(200 + (rand()&31));
 	dl->minlight = 32;
-	dl->die = cl.time + 0.1;
-	dl->color[0] = 0.2;
-	dl->color[1] = 0.1;
-	dl->color[2] = 0.05;
-	dl->color[3] = 0.7;
+	dl->die = (float)(cl.time + 0.1f);
+	dl->color[0] = 0.2f;
+	dl->color[1] = 0.1f;
+	dl->color[2] = 0.05f;
+	dl->color[3] = 0.7f;
 }
 
 
@@ -1229,7 +1203,7 @@ void CL_ParseServerMessage (void)
 			i = MSG_ReadByte ();
 			if (i >= MAX_CLIENTS)
 				Host_EndGame ("CL_ParseServerMessage: svc_updatepl > MAX_SCOREBOARD");
-			cl.players[i].pl = MSG_ReadByte ();
+			cl.players[i].pl = (byte)MSG_ReadByte ();
 			break;
 			
 		case svc_updateentertime:
@@ -1237,7 +1211,7 @@ void CL_ParseServerMessage (void)
 			i = MSG_ReadByte ();
 			if (i >= MAX_CLIENTS)
 				Host_EndGame ("CL_ParseServerMessage: svc_updateentertime > MAX_SCOREBOARD");
-			cl.players[i].entertime = realtime - MSG_ReadFloat ();
+			cl.players[i].entertime = (float)(realtime - MSG_ReadFloat ());
 			break;
 			
 		case svc_spawnbaseline:
@@ -1280,7 +1254,7 @@ void CL_ParseServerMessage (void)
 
 		case svc_intermission:
 			cl.intermission = 1;
-			cl.completed_time = realtime;
+			cl.completed_time = (int)realtime;
 			vid.recalc_refdef = true;	// go to full screen
 			for (i=0 ; i<3 ; i++)
 				cl.simorg[i] = MSG_ReadCoord ();			
@@ -1291,7 +1265,7 @@ void CL_ParseServerMessage (void)
 
 		case svc_finale:
 			cl.intermission = 2;
-			cl.completed_time = realtime;
+			cl.completed_time = (int)realtime;
 			vid.recalc_refdef = true;	// go to full screen
 			SCR_CenterPrint (MSG_ReadString ());			
 			break;

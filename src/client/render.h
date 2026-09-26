@@ -18,6 +18,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
+#pragma once
+
 // refresh.h -- public interface to refresh functions
 
 #define	TOP_RANGE		16			// soldier uniform colors
@@ -98,7 +100,6 @@ typedef struct
 //
 // refresh
 //
-extern	int		reinit_surfcache;
 
 
 extern	refdef_t	r_refdef;
@@ -110,23 +111,19 @@ extern	entity_t	r_worldentity;
 
 void R_Init (void);
 void R_InitTextures (void);
-void R_InitEfrags (void);
 void R_RenderView (void);		// must set r_refdef first
 void R_ViewChanged (vrect_t *pvrect, int lineadj, float aspect);
 								// called whenever r_refdef or vid change
 void R_InitSky (struct texture_s *mt);	// called at level load
 
 void R_AddEfrags (entity_t *ent);
-void R_RemoveEfrags (entity_t *ent);
 
 void R_NewMap (void);
 
 
-void R_ParseParticleEffect (void);
 void R_RunParticleEffect (vec3_t org, vec3_t dir, int color, int count);
 void R_RocketTrail (vec3_t start, vec3_t end, int type);
 
-void R_EntityParticles (entity_t *ent);
 void R_BlobExplosion (vec3_t org);
 void R_ParticleExplosion (vec3_t org);
 void R_LavaSplash (vec3_t org);
@@ -136,18 +133,14 @@ void R_PushDlights (void);
 void R_InitParticles (void);
 void R_ClearParticles (void);
 void R_DrawParticles (void);
-void R_DrawWaterSurfaces (void);
 
 
 //
 // surface cache related
 //
-extern	int		reinit_surfcache;	// if 1, surface cache is currently empty and
-extern qboolean	r_cache_thrash;	// set if thrashing the surface cache
+extern bool	r_cache_thrash;	// set if thrashing the surface cache
 
 int	D_SurfaceCacheForRes (int width, int height);
 void D_FlushCaches (void);
-void D_DeleteSurfaceCache (void);
 void D_InitCaches (void *buffer, int size);
 void R_SetVrect (vrect_t *pvrect, vrect_t *pvrectin, int lineadj);
-

@@ -99,8 +99,8 @@ void SV_CreateBaseline (void)
 	//
 		VectorCopy (svent->v.origin, svent->baseline.origin);
 		VectorCopy (svent->v.angles, svent->baseline.angles);
-		svent->baseline.frame = svent->v.frame;
-		svent->baseline.skinnum = svent->v.skin;
+		svent->baseline.frame = (int)svent->v.frame;
+		svent->baseline.skinnum = (int)svent->v.skin;
 		if (entnum > 0 && entnum <= MAX_CLIENTS)
 		{
 			svent->baseline.colormap = entnum;
@@ -155,7 +155,7 @@ void SV_SaveSpawnparms (void)
 		return;		// no progs loaded yet
 
 	// serverflags is the only game related thing maintained
-	svs.serverflags = pr_global_struct->serverflags;
+	svs.serverflags = (int)pr_global_struct->serverflags;
 
 	for (i=0, host_client = svs.clients ; i<MAX_CLIENTS ; i++, host_client++)
 	{
@@ -315,7 +315,7 @@ void SV_SpawnServer (char *server)
 	sv.signon.data = sv.signon_buffers[0];
 	sv.num_signon_buffers = 1;
 
-	strcpy (sv.name, server);
+	Q_strncpyz (sv.name, server, sizeof(sv.name));
 
 	// load progs to get entity field count
 	// which determines how big each edict is
@@ -336,8 +336,8 @@ void SV_SpawnServer (char *server)
 
 	sv.time = 1.0;
 	
-	strcpy (sv.name, server);
-	sprintf (sv.modelname,"maps/%s.bsp", server);
+	Q_strncpyz (sv.name, server, sizeof(sv.name));
+	snprintf (sv.modelname, sizeof(sv.modelname), "maps/%s.bsp", server);
 	sv.worldmodel = Mod_ForName (sv.modelname, true);
 	SV_CalcPHS ();
 
@@ -378,7 +378,7 @@ void SV_SpawnServer (char *server)
 
 	pr_global_struct->mapname = PR_SetString(sv.name);
 	// serverflags are for cross level information (sigils)
-	pr_global_struct->serverflags = svs.serverflags;
+	pr_global_struct->serverflags = (float)svs.serverflags;
 	
 	// run the frame start qc function to let progs check cvars
 	SV_ProgStartFrame ();
@@ -405,7 +405,7 @@ void SV_SpawnServer (char *server)
 	SV_CreateBaseline ();
 	sv.signon_buffer_size[sv.num_signon_buffers-1] = sv.signon.cursize;
 
-	Info_SetValueForKey (svs.info, "map", sv.name, MAX_SERVERINFO_STRING);
+	Info_SetValueForKey (svs.info, "map", sv.name, MAX_SERVERINFO_STRING, SV_InfoCharset ());
 	Con_DPrintf ("Server spawned.\n");
 }
 

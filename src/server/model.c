@@ -30,7 +30,7 @@ char	loadname[32];	// for hunk tags
 void Mod_LoadSpriteModel (model_t *mod, void *buffer);
 void Mod_LoadBrushModel (model_t *mod, void *buffer);
 void Mod_LoadAliasModel (model_t *mod, void *buffer);
-model_t *Mod_LoadModel (model_t *mod, qboolean crash);
+model_t *Mod_LoadModel (model_t *mod, bool crash);
 
 byte	mod_novis[MAX_MAP_LEAFS/8];
 
@@ -98,9 +98,6 @@ byte *Mod_DecompressVis (byte *in, model_t *model)
 	row = (model->numleafs+7)>>3;	
 	out = decompressed;
 
-#if 0
-	memcpy (out, in, row);
-#else
 	if (!in)
 	{	// no vis info, so make all visible
 		while (row)
@@ -127,7 +124,6 @@ byte *Mod_DecompressVis (byte *in, model_t *model)
 			c--;
 		}
 	} while (out - decompressed < row);
-#endif
 	
 	return decompressed;
 }
@@ -179,7 +175,7 @@ model_t *Mod_FindName (char *name)
 	{
 		if (mod_numknown == MAX_MOD_KNOWN)
 			SV_Error ("mod_numknown == MAX_MOD_KNOWN");
-		strcpy (mod->name, name);
+		Q_strncpyz (mod->name, name, sizeof(mod->name));
 		mod->needload = true;
 		mod_numknown++;
 	}
@@ -195,7 +191,7 @@ Mod_LoadModel
 Loads a model into the cache
 ==================
 */
-model_t *Mod_LoadModel (model_t *mod, qboolean crash)
+model_t *Mod_LoadModel (model_t *mod, bool crash)
 {
 	void	*d;
 	unsigned *buf;
@@ -250,7 +246,7 @@ Mod_ForName
 Loads in a model for the given name
 ==================
 */
-model_t *Mod_ForName (char *name, qboolean crash)
+model_t *Mod_ForName (char *name, bool crash)
 {
 	model_t	*mod;
 	
@@ -583,23 +579,16 @@ void Mod_LoadTexinfo (lump_t *l)
 
 	for ( i=0 ; i<count ; i++, in++, out++)
 	{
-#if 0
-		for (j=0 ; j<8 ; j++)
-			out->vecs[0][j] = LittleFloat (in->vecs[0][j]);
-		len1 = Length (in->vecs[0]);
-		len2 = Length (in->vecs[1]);
-#else
 		for (j=0 ; j<4 ; j++) {
 			out->vecs[0][j] = LittleFloat (in->vecs[0][j]);
 			out->vecs[1][j] = LittleFloat (in->vecs[1][j]);
 		}
 		len1 = Length (out->vecs[0]);
 		len2 = Length (out->vecs[1]);
-#endif
 		if (len1 + len2 < 2 /*0.001*/)
 			out->mipadjust = 1;
 		else
-			out->mipadjust = 1 / floor( (len1+len2)/2 );
+			out->mipadjust = 1 / floorf( (len1+len2)/2 );
 
 		miptex = LittleLong (in->miptex);
 		out->flags = LittleLong (in->flags);
@@ -666,11 +655,11 @@ void CalcSurfaceExtents (msurface_t *s)
 
 	for (i=0 ; i<2 ; i++)
 	{	
-		bmins[i] = floor(mins[i]/16);
-		bmaxs[i] = ceil(maxs[i]/16);
+		bmins[i] = (int)floor(mins[i]/16);
+		bmaxs[i] = (int)ceil(maxs[i]/16);
 
-		s->texturemins[i] = bmins[i] * 16;
-		s->extents[i] = (bmaxs[i] - bmins[i]) * 16;
+		s->texturemins[i] = (short)(bmins[i] * 16);
+		s->extents[i] = (short)((bmaxs[i] - bmins[i]) * 16);
 		if ( !(tex->flags & TEX_SPECIAL) && s->extents[i] > 256)
 			SV_Error ("Bad surface extents");
 	}
@@ -934,14 +923,14 @@ void Mod_MakeHull0 (void)
 
 	for (i=0 ; i<count ; i++, out++, in++)
 	{
-		out->planenum = in->plane - loadmodel->planes;
+		out->planenum = (int)(in->plane - loadmodel->planes);
 		for (j=0 ; j<2 ; j++)
 		{
 			child = in->children[j];
 			if (child->contents < 0)
-				out->children[j] = child->contents;
+				out->children[j] = (short)child->contents;
 			else
-				out->children[j] = child - loadmodel->nodes;
+				out->children[j] = (short)(child - loadmodel->nodes);
 		}
 	}
 }
@@ -1031,8 +1020,8 @@ void Mod_LoadPlanes (lump_t *l)
 		}
 
 		out->dist = LittleFloat (in->dist);
-		out->type = LittleLong (in->type);
-		out->signbits = bits;
+		out->type = (byte)LittleLong (in->type);
+		out->signbits = (byte)bits;
 	}
 }
 
@@ -1059,7 +1048,7 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 // swap all the lumps
 	mod_base = (byte *)header;
 
-	for (i=0 ; i<sizeof(dheader_t)/4 ; i++)
+	for (i=0 ; i<(int)(sizeof(dheader_t)/4) ; i++)
 		((int *)header)[i] = LittleLong ( ((int *)header)[i]);
 
 // load into heap
@@ -1126,10 +1115,10 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 		{	// duplicate the basic information
 			char	name[10];
 
-			sprintf (name, "*%i", i+1);
+			snprintf (name, sizeof(name), "*%i", i+1);
 			loadmodel = Mod_FindName (name);
 			*loadmodel = *mod;
-			strcpy (loadmodel->name, name);
+			Q_strncpyz (loadmodel->name, name, sizeof(loadmodel->name));
 			mod = loadmodel;
 		}
 	}

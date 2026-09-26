@@ -22,44 +22,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 
-
-/*
-===============
-R_CheckVariables
-===============
-*/
-void R_CheckVariables (void)
-{
-#if 0
-	static float	oldbright;
-
-	if (r_fullbright.value != oldbright)
-	{
-		oldbright = r_fullbright.value;
-		D_FlushCaches ();	// so all lighting changes
-	}
-#endif
-}
-
-
-/*
-============
-Show
-
-Debugging use
-============
-*/
-void Show (void)
-{
-	vrect_t	vr;
-
-	vr.x = vr.y = 0;
-	vr.width = vid.width;
-	vr.height = vid.height;
-	vr.pnext = NULL;
-	VID_Update (&vr);
-}
-
 /*
 ====================
 R_TimeRefresh_f
@@ -74,12 +36,12 @@ void R_TimeRefresh_f (void)
 	int			startangle;
 	vrect_t		vr;
 
-	startangle = r_refdef.viewangles[1];
+	startangle = (int)r_refdef.viewangles[1];
 	
-	start = Sys_DoubleTime ();
+	start = (float)Sys_DoubleTime ();
 	for (i=0 ; i<128 ; i++)
 	{
-		r_refdef.viewangles[1] = i/128.0*360.0;
+		r_refdef.viewangles[1] = i/128.0f*360.0f;
 
 		VID_LockBuffer ();
 
@@ -94,11 +56,11 @@ void R_TimeRefresh_f (void)
 		vr.pnext = NULL;
 		VID_Update (&vr);
 	}
-	stop = Sys_DoubleTime ();
+	stop = (float)Sys_DoubleTime ();
 	time = stop-start;
 	Con_Printf ("%f seconds (%f fps)\n", time, 128/time);
 	
-	r_refdef.viewangles[1] = startangle;
+	r_refdef.viewangles[1] = (vec_t)startangle;
 }
 
 /*
@@ -122,7 +84,7 @@ void R_LineGraph (int x, int y, int h)
 	
 	dest = vid.buffer + vid.rowbytes*y + x;
 	
-	s = r_graphheight.value;
+	s = (int)r_graphheight.value;
 
 	if (h == 10000)
 		color = 0x6f;	// yellow
@@ -138,16 +100,9 @@ void R_LineGraph (int x, int y, int h)
 	
 	for (i=0 ; i<h ; i++, dest -= vid.rowbytes*2)
 	{
-		dest[0] = color;
+		dest[0] = (byte)color;
 //		*(dest-vid.rowbytes) = 0x30;
 	}
-#if 0
-	for ( ; i<s ; i++, dest -= vid.rowbytes*2)
-	{
-		dest[0] = 0x30;
-		*(dest-vid.rowbytes) = 0x30;
-	}
-#endif
 }
 
 /*
@@ -168,9 +123,9 @@ void R_TimeGraph (void)
 	static byte	r_timings[MAX_TIMINGS];
 	int		x;
 	
-	r_time2 = Sys_DoubleTime ();
+	r_time2 = (float)Sys_DoubleTime ();
 
-	a = (r_time2-r_time1)/0.01;
+	a = (int)((r_time2-r_time1)/0.01);
 //a = fabs(mouse_y * 0.05);
 //a = (int)((r_refdef.vieworg[2] + 1024)/1)%(int)r_graphheight.value;
 //a = (int)((pmove.velocity[2] + 500)/10);
@@ -180,7 +135,7 @@ void R_TimeGraph (void)
 //a = (int)(cl.simangles[YAW] * 64/360) & 63;
 a = graphval;
 
-	r_timings[timex] = a;
+	r_timings[timex] = (byte)a;
 	a = timex;
 
 	if (r_refdef.vrect.width <= MAX_TIMINGS)
@@ -210,7 +165,6 @@ R_NetGraph
 void R_NetGraph (void)
 {
 	int		a, x, y, y2, w, i;
-	frame_t	*frame;
 	int lost;
 	char st[80];
 
@@ -219,7 +173,7 @@ void R_NetGraph (void)
 	else
 		w = NET_TIMINGS;
 
-	x =	-((vid.width - 320)>>1);
+	x =	-(int)((vid.width - 320)>>1);
 	y = vid.height - sb_lines - 24 - (int)r_graphheight.value*2 - 2;
 
 	M_DrawTextBox (x, y, (w+7)/8, ((int)r_graphheight.value*2+7)/8 + 1);
@@ -233,7 +187,7 @@ void R_NetGraph (void)
 		i = (cls.netchan.outgoing_sequence-a) & NET_TIMINGSMASK;
 		R_LineGraph (x+w-1-a, y, packet_latency[i]);
 	}
-	sprintf(st, "%3i%% packet loss", lost);
+	snprintf(st, sizeof(st), "%3i%% packet loss", lost);
 	Draw_String(8, y2, st);
 }
 
@@ -272,7 +226,7 @@ void R_PrintTimes (void)
 	float	r_time2;
 	float		ms;
 
-	r_time2 = Sys_DoubleTime ();
+	r_time2 = (float)Sys_DoubleTime ();
 
 	ms = 1000* (r_time2 - r_time1);
 	
@@ -291,7 +245,7 @@ void R_PrintDSpeeds (void)
 {
 	float	ms, dp_time, r_time2, rw_time, db_time, se_time, de_time, dv_time;
 
-	r_time2 = Sys_DoubleTime ();
+	r_time2 = (float)Sys_DoubleTime ();
 
 	dp_time = (dp_time2 - dp_time1) * 1000;
 	rw_time = (rw_time2 - rw_time1) * 1000;
@@ -316,30 +270,6 @@ void R_PrintAliasStats (void)
 {
 	Con_Printf ("%3i polygon model drawn\n", r_amodels_drawn);
 }
-
-
-void WarpPalette (void)
-{
-	int		i,j;
-	byte	newpalette[768];
-	int		basecolor[3];
-	
-	basecolor[0] = 130;
-	basecolor[1] = 80;
-	basecolor[2] = 50;
-
-// pull the colors halfway to bright brown
-	for (i=0 ; i<256 ; i++)
-	{
-		for (j=0 ; j<3 ; j++)
-		{
-			newpalette[i*3+j] = (host_basepal[i*3+j] + basecolor[j])/2;
-		}
-	}
-	
-	VID_ShiftPalette (newpalette);
-}
-
 
 /*
 ===================
@@ -368,7 +298,6 @@ void R_TransformFrustum (void)
 }
 
 
-#if !id386
 
 /*
 ================
@@ -381,25 +310,6 @@ void TransformVector (vec3_t in, vec3_t out)
 	out[1] = DotProduct(in,vup);
 	out[2] = DotProduct(in,vpn);		
 }
-
-#endif
-
-
-/*
-================
-R_TransformPlane
-================
-*/
-void R_TransformPlane (mplane_t *p, float *normal, float *dist)
-{
-	float	d;
-	
-	d = DotProduct (r_origin, p->normal);
-	*dist = p->dist - d;
-// TODO: when we have rotating entities, this will need to use the view matrix
-	TransformVector (p->normal, normal);
-}
-
 
 /*
 ===============
@@ -455,7 +365,7 @@ r_drawflat.value = 0;
 	if (r_numsurfs.value)
 	{
 		if ((surface_p - surfaces) > r_maxsurfsseen)
-			r_maxsurfsseen = surface_p - surfaces;
+			r_maxsurfsseen = (int)(surface_p - surfaces);
 
 		Con_Printf ("Used %d of %d surfs; %d max\n", surface_p - surfaces,
 				surf_max - surfaces, r_maxsurfsseen);
@@ -463,7 +373,7 @@ r_drawflat.value = 0;
 
 	if (r_numedges.value)
 	{
-		edgecount = edge_p - r_edges;
+		edgecount = (int)(edge_p - r_edges);
 
 		if (edgecount > r_maxedgesseen)
 			r_maxedgesseen = edgecount;
@@ -472,15 +382,14 @@ r_drawflat.value = 0;
 				r_numallocatededges, r_maxedgesseen);
 	}
 
-	r_refdef.ambientlight = r_ambient.value;
+	r_refdef.ambientlight = (int)r_ambient.value;
 
 	if (r_refdef.ambientlight < 0)
 		r_refdef.ambientlight = 0;
 
 //	if (!sv.active)
-		r_draworder.value = 0;	// don't let cheaters look behind walls
+	r_draworder.value = 0;	// don't let cheaters look behind walls
 		
-	R_CheckVariables ();
 	
 	R_AnimateLight ();
 
@@ -489,14 +398,6 @@ r_drawflat.value = 0;
 	numbtofpolys = 0;
 
 // debugging
-#if 0
-r_refdef.vieworg[0]=  80;
-r_refdef.vieworg[1]=      64;
-r_refdef.vieworg[2]=      40;
-r_refdef.viewangles[0]=    0;
-r_refdef.viewangles[1]=    46.763641357;
-r_refdef.viewangles[2]=    0;
-#endif
 
 // build the transformation matrix for the given view angles
 	VectorCopy (r_refdef.vieworg, modelorg);
@@ -515,8 +416,8 @@ r_refdef.viewangles[2]=    0;
 	{
 		if (r_dowarp)
 		{
-			if ((vid.width <= vid.maxwarpwidth) &&
-				(vid.height <= vid.maxwarpheight))
+			if ((vid.width <= (unsigned)vid.maxwarpwidth) &&
+				(vid.height <= (unsigned)vid.maxwarpheight))
 			{
 				vrect.x = 0;
 				vrect.y = 0;
@@ -527,18 +428,18 @@ r_refdef.viewangles[2]=    0;
 			}
 			else
 			{
-				w = vid.width;
-				h = vid.height;
+				w = (float)vid.width;
+				h = (float)vid.height;
 
 				if (w > vid.maxwarpwidth)
 				{
 					h *= (float)vid.maxwarpwidth / w;
-					w = vid.maxwarpwidth;
+					w = (float)vid.maxwarpwidth;
 				}
 
 				if (h > vid.maxwarpheight)
 				{
-					h = vid.maxwarpheight;
+					h = (float)vid.maxwarpheight;
 					w *= (float)vid.maxwarpheight / h;
 				}
 

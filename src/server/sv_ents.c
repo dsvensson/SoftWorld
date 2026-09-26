@@ -95,7 +95,7 @@ int		numnails;
 
 extern	int	sv_nailmodel, sv_supernailmodel, sv_playermodel;
 
-qboolean SV_AddNailUpdate (edict_t *ent)
+bool SV_AddNailUpdate (edict_t *ent)
 {
 	if (ent->v.modelindex != sv_nailmodel
 		&& ent->v.modelindex != sv_supernailmodel)
@@ -129,12 +129,12 @@ void SV_EmitNailUpdate (sizebuf_t *msg)
 		p = (int)(16*ent->v.angles[0]/360)&15;
 		yaw = (int)(256*ent->v.angles[1]/360)&255;
 
-		bits[0] = x;
-		bits[1] = (x>>8) | (y<<4);
-		bits[2] = (y>>4);
-		bits[3] = z;
-		bits[4] = (z>>8) | (p<<4);
-		bits[5] = yaw;
+		bits[0] = (byte)x;
+		bits[1] = (byte)((x>>8) | (y<<4));
+		bits[2] = (byte)((y>>4));
+		bits[3] = (byte)z;
+		bits[4] = (byte)((z>>8) | (p<<4));
+		bits[5] = (byte)yaw;
 
 		for (i=0 ; i<6 ; i++)
 			MSG_WriteByte (msg, bits[i]);
@@ -152,7 +152,7 @@ Writes part of a packetentities message.
 Can delta from either a baseline or a previous packet_entity
 ==================
 */
-void SV_WriteDelta (entity_state_t *from, entity_state_t *to, sizebuf_t *msg, qboolean force)
+void SV_WriteDelta (entity_state_t *from, entity_state_t *to, sizebuf_t *msg, bool force)
 {
 	int		bits;
 	int		i;
@@ -388,11 +388,11 @@ void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizeb
 		for (i=0 ; i<3 ; i++)
 			MSG_WriteCoord (msg, ent->v.origin[i]);
 		
-		MSG_WriteByte (msg, ent->v.frame);
+		MSG_WriteByte (msg, (int)ent->v.frame);
 
 		if (pflags & PF_MSEC)
 		{
-			msec = 1000*(sv.time - cl->localtime);
+			msec = (int)(1000*(sv.time - cl->localtime));
 			if (msec > 255)
 				msec = 255;
 			MSG_WriteByte (msg, msec);
@@ -417,19 +417,19 @@ void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizeb
 
 		for (i=0 ; i<3 ; i++)
 			if (pflags & (PF_VELOCITY1<<i) )
-				MSG_WriteShort (msg, ent->v.velocity[i]);
+				MSG_WriteShort (msg, (int)ent->v.velocity[i]);
 
 		if (pflags & PF_MODEL)
-			MSG_WriteByte (msg, ent->v.modelindex);
+			MSG_WriteByte (msg, (int)ent->v.modelindex);
 
 		if (pflags & PF_SKINNUM)
-			MSG_WriteByte (msg, ent->v.skin);
+			MSG_WriteByte (msg, (int)ent->v.skin);
 
 		if (pflags & PF_EFFECTS)
-			MSG_WriteByte (msg, ent->v.effects);
+			MSG_WriteByte (msg, (int)ent->v.effects);
 
 		if (pflags & PF_WEAPONFRAME)
-			MSG_WriteByte (msg, ent->v.weaponframe);
+			MSG_WriteByte (msg, (int)ent->v.weaponframe);
 	}
 }
 
@@ -500,11 +500,11 @@ void SV_WriteEntitiesToClient (client_t *client, sizebuf_t *msg)
 		state->flags = 0;
 		VectorCopy (ent->v.origin, state->origin);
 		VectorCopy (ent->v.angles, state->angles);
-		state->modelindex = ent->v.modelindex;
-		state->frame = ent->v.frame;
-		state->colormap = ent->v.colormap;
-		state->skinnum = ent->v.skin;
-		state->effects = ent->v.effects;
+		state->modelindex = (int)ent->v.modelindex;
+		state->frame = (int)ent->v.frame;
+		state->colormap = (int)ent->v.colormap;
+		state->skinnum = (int)ent->v.skin;
+		state->effects = (int)ent->v.effects;
 	}
 
 	// encode the packet entities as a delta from the

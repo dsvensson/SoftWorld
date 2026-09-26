@@ -17,6 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
+
+#pragma once
 // cvar.h
 
 /*
@@ -57,8 +59,8 @@ typedef struct cvar_s
 {
 	char	*name;
 	char	*string;
-	qboolean archive;		// set to true to cause it to be saved to vars.rc
-	qboolean info;			// added to serverinfo or userinfo when changed
+	bool archive;		// set to true to cause it to be saved to vars.rc
+	bool info;			// added to serverinfo or userinfo when changed
 	float	value;
 	struct cvar_s *next;
 } cvar_t;
@@ -68,6 +70,9 @@ void 	Cvar_RegisterVariable (cvar_t *variable);
 // archive elements set.
 
 void 	Cvar_Set (char *var_name, char *value);
+
+void	Cvar_SetInfoHook (void (*hook)(char *name, char *value));
+// called when a cvar with the info flag changes
 // equivelant to "<name> <variable>" typed at the console
 
 void	Cvar_SetValue (char *var_name, float value);
@@ -83,7 +88,7 @@ char 	*Cvar_CompleteVariable (char *partial);
 // attempts to match a partial variable name for command line completion
 // returns NULL if nothing fits
 
-qboolean Cvar_Command (void);
+bool Cvar_Command (void);
 // called by Cmd_ExecuteString when Cmd_Argv(0) doesn't match a known
 // command.  Returns true if the command was a variable reference that
 // was handled. (print or change)

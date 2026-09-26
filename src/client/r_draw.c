@@ -46,9 +46,9 @@ clipplane_t	world_clipplanes[16];
 
 medge_t			*r_pedge;
 
-qboolean		r_leftclipped, r_rightclipped;
-static qboolean	makeleftedge, makerightedge;
-qboolean		r_nearzionly;
+bool		r_leftclipped, r_rightclipped;
+static bool	makeleftedge, makerightedge;
+bool		r_nearzionly;
 
 int		sintable[1280];
 int		intsintable[1280];
@@ -67,10 +67,9 @@ float			r_nearzi;
 float			r_u1, r_v1, r_lzi1;
 int				r_ceilv1;
 
-qboolean	r_lastvertvalid;
+bool	r_lastvertvalid;
 
 
-#if	!id386
 
 /*
 ================
@@ -104,9 +103,9 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		TransformVector (local, transformed);
 	
 		if (transformed[2] < NEAR_CLIP)
-			transformed[2] = NEAR_CLIP;
+			transformed[2] = (vec_t)NEAR_CLIP;
 	
-		lzi0 = 1.0 / transformed[2];
+		lzi0 = 1.0f / transformed[2];
 	
 	// FIXME: build x/yscale into transform?
 		scale = xscale * lzi0;
@@ -133,9 +132,9 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	TransformVector (local, transformed);
 
 	if (transformed[2] < NEAR_CLIP)
-		transformed[2] = NEAR_CLIP;
+		transformed[2] = (vec_t)NEAR_CLIP;
 
-	r_lzi1 = 1.0 / transformed[2];
+	r_lzi1 = 1.0f / transformed[2];
 
 	scale = xscale * r_lzi1;
 	r_u1 = (xcenter + scale*transformed[0]);
@@ -193,7 +192,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		v = ceilv0;
 		v2 = r_ceilv1 - 1;
 
-		edge->surfs[0] = surface_p - surfaces;
+		edge->surfs[0] = (unsigned short)(surface_p - surfaces);
 		edge->surfs[1] = 0;
 
 		u_step = ((r_u1 - u0) / (r_v1 - v0));
@@ -206,14 +205,14 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		v = r_ceilv1;
 
 		edge->surfs[0] = 0;
-		edge->surfs[1] = surface_p - surfaces;
+		edge->surfs[1] = (unsigned short)(surface_p - surfaces);
 
 		u_step = ((u0 - r_u1) / (v0 - r_v1));
 		u = r_u1 + ((float)v - r_v1) * u_step;
 	}
 
-	edge->u_step = u_step*0x100000;
-	edge->u = u*0x100000 + 0xFFFFF;
+	edge->u_step = (fixed16_t)(u_step*0x100000);
+	edge->u = (fixed16_t)(u*0x100000 + 0xFFFFF);
 
 // we need to do this to avoid stepping off the edges if a very nearly
 // horizontal edge is less than epsilon above a scan, and numeric error causes
@@ -352,7 +351,6 @@ void R_ClipEdge (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip)
 	R_EmitEdge (pv0, pv1);
 }
 
-#endif	// !id386
 
 
 /*
@@ -367,9 +365,9 @@ void R_EmitCachedEdge (void)
 	pedge_t = (edge_t *)((uintptr_t)r_edges + r_pedge->cachededgeoffset);
 
 	if (!pedge_t->surfs[0])
-		pedge_t->surfs[0] = surface_p - surfaces;
+		pedge_t->surfs[0] = (unsigned short)(surface_p - surfaces);
 	else
-		pedge_t->surfs[1] = surface_p - surfaces;
+		pedge_t->surfs[1] = (unsigned short)(surface_p - surfaces);
 
 	if (pedge_t->nearzi > r_nearzi)	// for mipmap finding
 		r_nearzi = pedge_t->nearzi;
@@ -443,7 +441,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 				if (r_pedge->cachededgeoffset & FULLY_CLIPPED_CACHED)
 				{
 					if ((r_pedge->cachededgeoffset & FRAMECOUNT_MASK) ==
-						r_framecount)
+						(unsigned)r_framecount)
 					{
 						r_lastvertvalid = false;
 						continue;
@@ -464,7 +462,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 			}
 
 		// assume it's cacheable
-			cacheoffset = (byte *)edge_p - (byte *)r_edges;
+			cacheoffset = (unsigned int)((byte *)edge_p - (byte *)r_edges);
 			r_leftclipped = r_rightclipped = false;
 			R_ClipEdge (&r_pcurrentvertbase[r_pedge->v[0]],
 						&r_pcurrentvertbase[r_pedge->v[1]],
@@ -487,7 +485,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 				if (r_pedge->cachededgeoffset & FULLY_CLIPPED_CACHED)
 				{
 					if ((r_pedge->cachededgeoffset & FRAMECOUNT_MASK) ==
-						r_framecount)
+						(unsigned)r_framecount)
 					{
 						r_lastvertvalid = false;
 						continue;
@@ -510,7 +508,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 			}
 
 		// assume it's cacheable
-			cacheoffset = (byte *)edge_p - (byte *)r_edges;
+			cacheoffset = (unsigned int)((byte *)edge_p - (byte *)r_edges);
 			r_leftclipped = r_rightclipped = false;
 			R_ClipEdge (&r_pcurrentvertbase[r_pedge->v[1]],
 						&r_pcurrentvertbase[r_pedge->v[0]],
@@ -563,7 +561,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 // FIXME: cache this?
 	TransformVector (pplane->normal, p_normal);
 // FIXME: cache this?
-	distinv = 1.0 / (pplane->dist - DotProduct (modelorg, pplane->normal));
+	distinv = 1.0f / (pplane->dist - DotProduct (modelorg, pplane->normal));
 
 	surface_p->d_zistepu = p_normal[0] * xscaleinv * distinv;
 	surface_p->d_zistepv = -p_normal[1] * yscaleinv * distinv;
@@ -678,7 +676,7 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 // FIXME: cache this?
 	TransformVector (pplane->normal, p_normal);
 // FIXME: cache this?
-	distinv = 1.0 / (pplane->dist - DotProduct (modelorg, pplane->normal));
+	distinv = 1.0f / (pplane->dist - DotProduct (modelorg, pplane->normal));
 
 	surface_p->d_zistepu = p_normal[0] * xscaleinv * distinv;
 	surface_p->d_zistepv = -p_normal[1] * yscaleinv * distinv;
@@ -708,7 +706,7 @@ void R_RenderPoly (msurface_t *fa, int clipflags)
 	mvertex_t	verts[2][100];	//FIXME: do real number
 	polyvert_t	pverts[100];	//FIXME: do real number, safely
 	int			vertpage, newverts, newpage, lastvert;
-	qboolean	visible;
+	bool	visible;
 
 // FIXME: clean this up and make it faster
 // FIXME: guard against running out of vertices
@@ -833,9 +831,9 @@ void R_RenderPoly (msurface_t *fa, int clipflags)
 		TransformVector (local, transformed);
 
 		if (transformed[2] < NEAR_CLIP)
-			transformed[2] = NEAR_CLIP;
+			transformed[2] = (vec_t)NEAR_CLIP;
 
-		lzi = 1.0 / transformed[2];
+		lzi = 1.0f / transformed[2];
 
 		if (lzi > r_nearzi)	// for mipmap finding
 			r_nearzi = lzi;

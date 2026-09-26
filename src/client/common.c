@@ -21,11 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <ctype.h>
 
-#ifdef SERVERONLY 
-#include "qwsvdef.h"
-#else
 #include "quakedef.h"
-#endif
 
 #define MAX_NUM_ARGVS	50
 #define NUM_SAFE_ARGVS	5
@@ -38,13 +34,12 @@ static char	*argvdummy = " ";
 static char	*safeargvs[NUM_SAFE_ARGVS] =
 	{"-stdvid", "-nolan", "-nosound", "-nojoy", "-nomouse"};
 
-cvar_t	registered = {"registered","0"};
+cvar_t	registered = {.name = "registered", .string = "0"};
 
-qboolean	com_modified;	// set true if using non-id files
+bool	com_modified;	// set true if using non-id files
 
 int		static_registered = 1;	// only for startup check, then set
 
-qboolean		msg_suppress_1 = 0;
 
 void COM_InitFilesystem (void);
 void COM_Path_f (void);
@@ -54,7 +49,6 @@ void COM_Path_f (void);
 #define	PAK0_COUNT		339
 #define	PAK0_CRC		52883
 
-qboolean		standard_quake = true, rogue, hipnotic;
 
 char	gamedirfile[MAX_OSPATH];
 
@@ -117,13 +111,6 @@ void InsertLinkBefore (link_t *l, link_t *before)
 	l->prev->next = l;
 	l->next->prev = l;
 }
-void InsertLinkAfter (link_t *l, link_t *after)
-{
-	l->next = after->next;
-	l->prev = after;
-	l->prev->next = l;
-	l->next->prev = l;
-}
 
 /*
 ============================================================================
@@ -133,162 +120,27 @@ void InsertLinkAfter (link_t *l, link_t *after)
 ============================================================================
 */
 
-#if 0
-void Q_memset (void *dest, int fill, int count)
-{
-	int		i;
-	
-	if ( (((uintptr_t)dest | count) & 3) == 0)
-	{
-		count >>= 2;
-		fill = fill | (fill<<8) | (fill<<16) | (fill<<24);
-		for (i=0 ; i<count ; i++)
-			((int *)dest)[i] = fill;
-	}
-	else
-		for (i=0 ; i<count ; i++)
-			((byte *)dest)[i] = fill;
-}
 
-void Q_memcpy (void *dest, void *src, int count)
+int Q_strncasecmp (const char *s1, const char *s2, size_t n)
 {
-	int		i;
-	
-	if (( ( (uintptr_t)dest | (uintptr_t)src | count) & 3) == 0 )
-	{
-		count>>=2;
-		for (i=0 ; i<count ; i++)
-			((int *)dest)[i] = ((int *)src)[i];
-	}
-	else
-		for (i=0 ; i<count ; i++)
-			((byte *)dest)[i] = ((byte *)src)[i];
-}
+	int		c1, c2;
 
-int Q_memcmp (void *m1, void *m2, int count)
-{
-	while(count)
+	while (n--)
 	{
-		count--;
-		if (((byte *)m1)[count] != ((byte *)m2)[count])
-			return -1;
+		c1 = tolower ((unsigned char)*s1++);
+		c2 = tolower ((unsigned char)*s2++);
+		if (c1 != c2)
+			return c1 < c2 ? -1 : 1;
+		if (!c1)
+			return 0;
 	}
 	return 0;
 }
 
-void Q_strcpy (char *dest, char *src)
+int Q_strcasecmp (const char *s1, const char *s2)
 {
-	while (*src)
-	{
-		*dest++ = *src++;
-	}
-	*dest++ = 0;
+	return Q_strncasecmp (s1, s2, SIZE_MAX);
 }
-
-void Q_strncpy (char *dest, char *src, int count)
-{
-	while (*src && count--)
-	{
-		*dest++ = *src++;
-	}
-	if (count)
-		*dest++ = 0;
-}
-
-int Q_strlen (char *str)
-{
-	int		count;
-	
-	count = 0;
-	while (str[count])
-		count++;
-
-	return count;
-}
-
-char *Q_strrchr(char *s, char c)
-{
-    int len = Q_strlen(s);
-    s += len;
-    while (len--)
-        if (*--s == c) return s;
-    return 0;
-}
-
-void Q_strcat (char *dest, char *src)
-{
-	dest += Q_strlen(dest);
-	Q_strcpy (dest, src);
-}
-
-int Q_strcmp (char *s1, char *s2)
-{
-	while (1)
-	{
-		if (*s1 != *s2)
-			return -1;		// strings not equal	
-		if (!*s1)
-			return 0;		// strings are equal
-		s1++;
-		s2++;
-	}
-	
-	return -1;
-}
-
-int Q_strncmp (char *s1, char *s2, int count)
-{
-	while (1)
-	{
-		if (!count--)
-			return 0;
-		if (*s1 != *s2)
-			return -1;		// strings not equal	
-		if (!*s1)
-			return 0;		// strings are equal
-		s1++;
-		s2++;
-	}
-	
-	return -1;
-}
-
-int Q_strncasecmp (char *s1, char *s2, int n)
-{
-	int		c1, c2;
-	
-	while (1)
-	{
-		c1 = *s1++;
-		c2 = *s2++;
-
-		if (!n--)
-			return 0;		// strings are equal until end point
-		
-		if (c1 != c2)
-		{
-			if (c1 >= 'a' && c1 <= 'z')
-				c1 -= ('a' - 'A');
-			if (c2 >= 'a' && c2 <= 'z')
-				c2 -= ('a' - 'A');
-			if (c1 != c2)
-				return -1;		// strings not equal
-		}
-		if (!c1)
-			return 0;		// strings are equal
-//		s1++;
-//		s2++;
-	}
-	
-	return -1;
-}
-
-int Q_strcasecmp (char *s1, char *s2)
-{
-	return Q_strncasecmp (s1, s2, 99999);
-}
-
-#endif
 
 void Q_strncpyz (char *dest, const char *src, size_t size)
 {
@@ -301,6 +153,14 @@ void Q_strncpyz (char *dest, const char *src, size_t size)
 		len = size - 1;
 	memcpy (dest, src, len);
 	dest[len] = 0;
+}
+
+void Q_strncatz (char *dest, const char *src, size_t size)
+{
+	size_t	len = strlen (dest);
+
+	if (len < size)
+		Q_strncpyz (dest + len, src, size - len);
 }
 
 int Q_atoi (char *str)
@@ -395,18 +255,18 @@ float Q_atof (char *str)
 			else if (c >= 'A' && c <= 'F')
 				val = (val*16) + c - 'A' + 10;
 			else
-				return val*sign;
+				return (float)(val*sign);
 		}
 	}
-	
+
 //
 // check for character
 //
 	if (str[0] == '\'')
 	{
-		return sign * str[1];
+		return (float)(sign * str[1]);
 	}
-	
+
 //
 // assume decimal
 //
@@ -427,14 +287,14 @@ float Q_atof (char *str)
 	}
 
 	if (decimal == -1)
-		return val*sign;
+		return (float)(val*sign);
 	while (total > decimal)
 	{
 		val /= 10;
 		total--;
 	}
-	
-	return val*sign;
+
+	return (float)(val*sign);
 }
 
 /*
@@ -445,7 +305,7 @@ float Q_atof (char *str)
 ============================================================================
 */
 
-qboolean	bigendien;
+bool	bigendien;
 
 short	(*BigShort) (short l);
 short	(*LittleShort) (short l);
@@ -525,40 +385,28 @@ void MSG_WriteChar (sizebuf_t *sb, int c)
 {
 	byte	*buf;
 	
-#ifdef PARANOID
-	if (c < -128 || c > 127)
-		Sys_Error ("MSG_WriteChar: range error");
-#endif
 
 	buf = SZ_GetSpace (sb, 1);
-	buf[0] = c;
+	buf[0] = (byte)c;
 }
 
 void MSG_WriteByte (sizebuf_t *sb, int c)
 {
 	byte	*buf;
 	
-#ifdef PARANOID
-	if (c < 0 || c > 255)
-		Sys_Error ("MSG_WriteByte: range error");
-#endif
 
 	buf = SZ_GetSpace (sb, 1);
-	buf[0] = c;
+	buf[0] = (byte)c;
 }
 
 void MSG_WriteShort (sizebuf_t *sb, int c)
 {
 	byte	*buf;
 	
-#ifdef PARANOID
-	if (c < ((short)0x8000) || c > (short)0x7fff)
-		Sys_Error ("MSG_WriteShort: range error");
-#endif
 
 	buf = SZ_GetSpace (sb, 2);
 	buf[0] = c&0xff;
-	buf[1] = c>>8;
+	buf[1] = (byte)(c>>8);
 }
 
 void MSG_WriteLong (sizebuf_t *sb, int c)
@@ -663,7 +511,7 @@ void MSG_WriteDeltaUsercmd (sizebuf_t *buf, usercmd_t *from, usercmd_t *cmd)
 // reading functions
 //
 int			msg_readcount;
-qboolean	msg_badread;
+bool	msg_badread;
 
 void MSG_BeginReading (void)
 {
@@ -778,9 +626,9 @@ char *MSG_ReadString (void)
 		c = MSG_ReadChar ();
 		if (c == -1 || c == 0)
 			break;
-		string[l] = c;
+		string[l] = (char)c;
 		l++;
-	} while (l < sizeof(string)-1);
+	} while (l < (int)sizeof(string)-1);
 	
 	string[l] = 0;
 	
@@ -798,9 +646,9 @@ char *MSG_ReadStringLine (void)
 		c = MSG_ReadChar ();
 		if (c == -1 || c == 0 || c == '\n')
 			break;
-		string[l] = c;
+		string[l] = (char)c;
 		l++;
-	} while (l < sizeof(string)-1);
+	} while (l < (int)sizeof(string)-1);
 	
 	string[l] = 0;
 	
@@ -809,17 +657,17 @@ char *MSG_ReadStringLine (void)
 
 float MSG_ReadCoord (void)
 {
-	return MSG_ReadShort() * (1.0/8);
+	return MSG_ReadShort() * (1.0f/8);
 }
 
 float MSG_ReadAngle (void)
 {
-	return MSG_ReadChar() * (360.0/256);
+	return (float)(MSG_ReadChar() * (360.0/256));
 }
 
 float MSG_ReadAngle16 (void)
 {
-	return MSG_ReadShort() * (360.0/65536);
+	return (float)(MSG_ReadShort() * (360.0/65536));
 }
 
 void MSG_ReadDeltaUsercmd (usercmd_t *from, usercmd_t *move)
@@ -840,21 +688,21 @@ void MSG_ReadDeltaUsercmd (usercmd_t *from, usercmd_t *move)
 		
 // read movement
 	if (bits & CM_FORWARD)
-		move->forwardmove = MSG_ReadShort ();
+		move->forwardmove = (short)MSG_ReadShort ();
 	if (bits & CM_SIDE)
-		move->sidemove = MSG_ReadShort ();
+		move->sidemove = (short)MSG_ReadShort ();
 	if (bits & CM_UP)
-		move->upmove = MSG_ReadShort ();
+		move->upmove = (short)MSG_ReadShort ();
 	
 // read buttons
 	if (bits & CM_BUTTONS)
-		move->buttons = MSG_ReadByte ();
+		move->buttons = (byte)MSG_ReadByte ();
 
 	if (bits & CM_IMPULSE)
-		move->impulse = MSG_ReadByte ();
+		move->impulse = (byte)MSG_ReadByte ();
 
 // read time to run command
-	move->msec = MSG_ReadByte ();
+	move->msec = (byte)MSG_ReadByte ();
 }
 
 
@@ -909,26 +757,6 @@ void SZ_Print (sizebuf_t *buf, char *data)
 
 //============================================================================
 
-
-/*
-============
-COM_SkipPath
-============
-*/
-char *COM_SkipPath (char *pathname)
-{
-	char	*last;
-	
-	last = pathname;
-	while (*pathname)
-	{
-		if (*pathname=='/')
-			last = pathname+1;
-		pathname++;
-	}
-	return last;
-}
-
 /*
 ============
 COM_StripExtension
@@ -939,27 +767,6 @@ void COM_StripExtension (char *in, char *out)
 	while (*in && *in != '.')
 		*out++ = *in++;
 	*out = 0;
-}
-
-/*
-============
-COM_FileExtension
-============
-*/
-char *COM_FileExtension (char *in)
-{
-	static char exten[8];
-	int		i;
-
-	while (*in && *in != '.')
-		in++;
-	if (!*in)
-		return "";
-	in++;
-	for (i=0 ; i<7 && *in ; i++,in++)
-		exten[i] = *in;
-	exten[i] = 0;
-	return exten;
 }
 
 /*
@@ -1069,7 +876,7 @@ skipwhite:
 				com_token[len] = 0;
 				return data;
 			}
-			com_token[len] = c;
+			com_token[len] = (char)c;
 			len++;
 		}
 	}
@@ -1077,7 +884,7 @@ skipwhite:
 // parse a regular word
 	do
 	{
-		com_token[len] = c;
+		com_token[len] = (char)c;
 		data++;
 		len++;
 		c = *data;
@@ -1133,11 +940,6 @@ void COM_CheckRegistered (void)
 	if (!h)
 	{
 		Con_Printf ("Playing shareware version.\n");
-#ifndef SERVERONLY
-// FIXME DEBUG -- only temporary
-		if (com_modified)
-			Sys_Error ("You must have the registered version to play QuakeWorld");
-#endif
 		return;
 	}
 
@@ -1162,7 +964,7 @@ COM_InitArgv
 */
 void COM_InitArgv (int argc, char **argv)
 {
-	qboolean	safe;
+	bool	safe;
 	int			i;
 
 	safe = false;
@@ -1257,23 +1059,14 @@ char	*va(char *format, ...)
 	static char		string[1024];
 	
 	va_start (argptr, format);
-	vsprintf (string, format,argptr);
+	vsnprintf (string, sizeof(string), format,argptr);
 	va_end (argptr);
 
-	return string;	
+	return string;
 }
 
 
 /// just for debugging
-int	memsearch (byte *start, int count, int search)
-{
-	int		i;
-	
-	for (i=0 ; i<count ; i++)
-		if (start[i] == search)
-			return i;
-	return -1;
-}
 
 /*
 =============================================================================
@@ -1400,19 +1193,19 @@ The filename will be prefixed by the current game directory
 void COM_WriteFile (char *filename, void *data, int len)
 {
 	FILE	*f;
-	char	name[MAX_OSPATH];
-	
-	sprintf (name, "%s/%s", com_gamedir, filename);
-	
-	f = fopen (name, "wb");
+	char	fullpath[MAX_OSPATH];
+
+	snprintf (fullpath, sizeof(fullpath), "%s/%s", com_gamedir, filename);
+
+	f = fopen (fullpath, "wb");
 	if (!f) {
 		Sys_mkdir(com_gamedir);
-		f = fopen (name, "wb");
+		f = fopen (fullpath, "wb");
 		if (!f)
 			Sys_Error ("Error opening %s", filename);
 	}
-	
-	Sys_Printf ("COM_WriteFile: %s\n", name);
+
+	Sys_Printf ("COM_WriteFile: %s\n", fullpath);
 	fwrite (data, 1, len, f);
 	fclose (f);
 }
@@ -1438,42 +1231,6 @@ void	COM_CreatePath (char *path)
 			*ofs = '/';
 		}
 	}
-}
-
-
-/*
-===========
-COM_CopyFile
-
-Copies a file over from the net to the local cache, creating any directories
-needed.  This is for the convenience of developers using ISDN from home.
-===========
-*/
-void COM_CopyFile (char *netpath, char *cachepath)
-{
-	FILE	*in, *out;
-	int		remaining, count;
-	char	buf[4096];
-	
-	remaining = COM_FileOpenRead (netpath, &in);		
-	COM_CreatePath (cachepath);	// create directories up to the cache file
-	out = fopen(cachepath, "wb");
-	if (!out)
-		Sys_Error ("Error opening %s", cachepath);
-	
-	while (remaining)
-	{
-		if (remaining < sizeof(buf))
-			count = remaining;
-		else
-			count = sizeof(buf);
-		fread (buf, 1, count, in);
-		fwrite (buf, 1, count, out);
-		remaining -= count;
-	}
-
-	fclose (in);
-	fclose (out);
 }
 
 /*
@@ -1529,7 +1286,7 @@ int COM_FOpenFile (char *filename, FILE **file)
 					continue;
 			}
 			
-			sprintf (netpath, "%s/%s",search->filename, filename);
+			snprintf (netpath, sizeof(netpath), "%s/%s",search->filename, filename);
 			
 			findtime = Sys_FileTime (netpath);
 			if (findtime == -1)
@@ -1600,14 +1357,8 @@ byte *COM_LoadFile (char *path, int usehunk)
 		Sys_Error ("COM_LoadFile: not enough space for %s", path);
 		
 	((byte *)buf)[len] = 0;
-#ifndef SERVERONLY
-	Draw_BeginDisc ();
-#endif
 	fread (buf, 1, len, h);
 	fclose (h);
-#ifndef SERVERONLY
-	Draw_EndDisc ();
-#endif
 
 	return buf;
 }
@@ -1696,13 +1447,13 @@ pack_t *COM_LoadPackFile (char *packfile)
 // parse the directory
 	for (i=0 ; i<numpackfiles ; i++)
 	{
-		strcpy (newfiles[i].name, info[i].name);
+		Q_strncpyz (newfiles[i].name, info[i].name, sizeof(newfiles[i].name));
 		newfiles[i].filepos = LittleLong(info[i].filepos);
 		newfiles[i].filelen = LittleLong(info[i].filelen);
 	}
 
 	pack = Z_Malloc (sizeof (pack_t));
-	strcpy (pack->filename, packfile);
+	Q_strncpyz (pack->filename, packfile, sizeof(pack->filename));
 	pack->handle = packhandle;
 	pack->numfiles = numpackfiles;
 	pack->files = newfiles;
@@ -1729,16 +1480,16 @@ void COM_AddGameDirectory (char *dir)
 	char			*p;
 
 	if ((p = strrchr(dir, '/')) != NULL)
-		strcpy(gamedirfile, ++p);
+		Q_strncpyz(gamedirfile, ++p, sizeof(gamedirfile));
 	else
-		strcpy(gamedirfile, p);
-	strcpy (com_gamedir, dir);
+		Q_strncpyz(gamedirfile, dir, sizeof(gamedirfile));
+	Q_strncpyz (com_gamedir, dir, sizeof(com_gamedir));
 
 //
 // add the directory to the search path
 //
 	search = Hunk_Alloc (sizeof(searchpath_t));
-	strcpy (search->filename, dir);
+	Q_strncpyz (search->filename, dir, sizeof(search->filename));
 	search->next = com_searchpaths;
 	com_searchpaths = search;
 
@@ -1747,7 +1498,7 @@ void COM_AddGameDirectory (char *dir)
 //
 	for (i=0 ; ; i++)
 	{
-		sprintf (pakfile, "%s/pak%i.pak", dir, i);
+		snprintf (pakfile, sizeof(pakfile), "%s/pak%i.pak", dir, i);
 		pak = COM_LoadPackFile (pakfile);
 		if (!pak)
 			break;
@@ -1782,7 +1533,7 @@ void COM_Gamedir (char *dir)
 
 	if (!strcmp(gamedirfile, dir))
 		return;		// still the same
-	strcpy (gamedirfile, dir);
+	Q_strncpyz (gamedirfile, dir, sizeof(gamedirfile));
 
 	//
 	// free up any current game dir info
@@ -1808,13 +1559,13 @@ void COM_Gamedir (char *dir)
 	if (!strcmp(dir,"id1") || !strcmp(dir, "qw"))
 		return;
 
-	sprintf (com_gamedir, "%s/%s", com_basedir, dir);
+	snprintf (com_gamedir, sizeof(com_gamedir), "%s/%s", com_basedir, dir);
 
 	//
 	// add the directory to the search path
 	//
 	search = Z_Malloc (sizeof(searchpath_t));
-	strcpy (search->filename, com_gamedir);
+	Q_strncpyz (search->filename, com_gamedir, sizeof(search->filename));
 	search->next = com_searchpaths;
 	com_searchpaths = search;
 
@@ -1823,7 +1574,7 @@ void COM_Gamedir (char *dir)
 	//
 	for (i=0 ; ; i++)
 	{
-		sprintf (pakfile, "%s/pak%i.pak", com_gamedir, i);
+		snprintf (pakfile, sizeof(pakfile), "%s/pak%i.pak", com_gamedir, i);
 		pak = COM_LoadPackFile (pakfile);
 		if (!pak)
 			break;
@@ -1849,9 +1600,9 @@ void COM_InitFilesystem (void)
 //
 	i = COM_CheckParm ("-basedir");
 	if (i && i < com_argc-1)
-		strcpy (com_basedir, com_argv[i+1]);
+		Q_strncpyz (com_basedir, com_argv[i+1], sizeof(com_basedir));
 	else
-		strcpy (com_basedir, host_parms.basedir);
+		Q_strncpyz (com_basedir, host_parms.basedir, sizeof(com_basedir));
 
 //
 // start up with id1 by default
@@ -1962,7 +1713,7 @@ void Info_RemoveKey (char *s, char *key)
 
 		if (!strcmp (key, pkey) )
 		{
-			strcpy (start, s);	// remove this part
+			memmove (start, s, strlen (s) + 1);	// remove this part
 			return;
 		}
 
@@ -2017,13 +1768,10 @@ void Info_RemovePrefixedKeys (char *start, char prefix)
 }
 
 
-void Info_SetValueForStarKey (char *s, char *key, char *value, int maxsize)
+void Info_SetValueForStarKey (char *s, char *key, char *value, int maxsize, info_charset_t charset)
 {
 	char	new[1024], *v;
 	int		c;
-#ifdef SERVERONLY
-	extern cvar_t sv_highchars;
-#endif
 
 	if (strstr (key, "\\") || strstr (value, "\\") )
 	{
@@ -2047,7 +1795,7 @@ void Info_SetValueForStarKey (char *s, char *key, char *value, int maxsize)
 	if (*(v = Info_ValueForKey(s, key))) {
 		// key exists, make sure we have enough room for new value, if we don't,
 		// don't change it!
-		if (strlen(value) - strlen(v) + strlen(s) > maxsize) {
+		if (strlen(value) - strlen(v) + strlen(s) > (size_t)maxsize) {
 			Con_Printf ("Info string length exceeded\n");
 			return;
 		}
@@ -2056,7 +1804,7 @@ void Info_SetValueForStarKey (char *s, char *key, char *value, int maxsize)
 	if (!value || !strlen(value))
 		return;
 
-	sprintf (new, "\\%s\\%s", key, value);
+	snprintf (new, sizeof(new), "\\%s\\%s", key, value);
 
 	if ((int)(strlen(new) + strlen(s)) > maxsize)
 	{
@@ -2070,31 +1818,32 @@ void Info_SetValueForStarKey (char *s, char *key, char *value, int maxsize)
 	while (*v)
 	{
 		c = (unsigned char)*v++;
-#ifndef SERVERONLY
-		// client only allows highbits on name
-		if (stricmp(key, "name") != 0) {
+		if (charset == INFO_CHARSET_USERINFO)
+		{
+			// clients only allow highbits on name
+			if (Q_strcasecmp(key, "name") != 0) {
+				c &= 127;
+				if (c < 32 || c > 127)
+					continue;
+				// auto lowercase team
+				if (Q_strcasecmp(key, "team") == 0)
+					c = tolower(c);
+			}
+		}
+		else if (charset == INFO_CHARSET_ASCII)
+		{
 			c &= 127;
 			if (c < 32 || c > 127)
 				continue;
-			// auto lowercase team
-			if (stricmp(key, "team") == 0)
-				c = tolower(c);
 		}
-#else
-		if (!sv_highchars.value) {
-			c &= 127;
-			if (c < 32 || c > 127)
-				continue;
-		}
-#endif
 //		c &= 127;		// strip high bits
 		if (c > 13) // && c < 127)
-			*s++ = c;
+			*s++  = (char)c;
 	}
 	*s = 0;
 }
 
-void Info_SetValueForKey (char *s, char *key, char *value, int maxsize)
+void Info_SetValueForKey (char *s, char *key, char *value, int maxsize, info_charset_t charset)
 {
 	if (key[0] == '*')
 	{
@@ -2102,7 +1851,7 @@ void Info_SetValueForKey (char *s, char *key, char *value, int maxsize)
 		return;
 	}
 
-	Info_SetValueForStarKey (s, key, value, maxsize);
+	Info_SetValueForStarKey (s, key, value, maxsize, charset);
 }
 
 void Info_Print (char *s)
@@ -2120,7 +1869,7 @@ void Info_Print (char *s)
 		while (*s && *s != '\\')
 			*o++ = *s++;
 
-		l = o - key;
+		l = (int)(o - key);
 		if (l < 20)
 		{
 			memset (o, ' ', 20-l);
@@ -2186,55 +1935,6 @@ static byte chktbl[1024 + 4] = {
 0x00,0x00,0x00,0x00
 };
 
-static byte chkbuf[16 + 60 + 4];
-
-static unsigned last_mapchecksum = 0;
-
-#if 0
-/*
-====================
-COM_BlockSequenceCheckByte
-
-For proxy protecting
-====================
-*/
-byte	COM_BlockSequenceCheckByte (byte *base, int length, int sequence, unsigned mapchecksum)
-{
-	int		checksum;
-	byte	*p;
-
-	if (last_mapchecksum != mapchecksum) {
-		last_mapchecksum = mapchecksum;
-		chktbl[1024] = (mapchecksum & 0xff000000) >> 24;
-		chktbl[1025] = (mapchecksum & 0x00ff0000) >> 16;
-		chktbl[1026] = (mapchecksum & 0x0000ff00) >> 8;
-		chktbl[1027] = (mapchecksum & 0x000000ff);
-
-		Com_BlockFullChecksum (chktbl, sizeof(chktbl), chkbuf);
-	}
-
-	p = chktbl + (sequence % (sizeof(chktbl) - 8));
-
-	if (length > 60)
-		length = 60;
-	memcpy (chkbuf + 16, base, length);
-
-	length += 16;
-
-	chkbuf[length] = (sequence & 0xff) ^ p[0];
-	chkbuf[length+1] = p[1];
-	chkbuf[length+2] = ((sequence>>8) & 0xff) ^ p[2];
-	chkbuf[length+3] = p[3];
-
-	length += 4;
-
-	checksum = LittleLong(Com_BlockChecksum (chkbuf, length));
-
-	checksum &= 0xff;
-
-	return checksum;
-}
-#endif
 
 /*
 ====================
@@ -2266,7 +1966,7 @@ byte	COM_BlockSequenceCRCByte (byte *base, int length, int sequence)
 
 	crc &= 0xff;
 
-	return crc;
+	return (byte)crc;
 }
 
 // char *date = "Oct 24 1996";

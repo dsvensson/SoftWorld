@@ -25,11 +25,11 @@ edict_t	*sv_player;
 
 usercmd_t	cmd;
 
-cvar_t	cl_rollspeed = {"cl_rollspeed", "200"};
-cvar_t	cl_rollangle = {"cl_rollangle", "2.0"};
-cvar_t	sv_spectalk = {"sv_spectalk", "1"};
+cvar_t	cl_rollspeed = {.name = "cl_rollspeed", .string = "200"};
+cvar_t	cl_rollangle = {.name = "cl_rollangle", .string = "2.0"};
+cvar_t	sv_spectalk = {.name = "sv_spectalk", .string = "1"};
 
-cvar_t	sv_mapcheck	= {"sv_mapcheck", "1"};
+cvar_t	sv_mapcheck	= {.name = "sv_mapcheck", .string = "1"};
 
 extern	vec3_t	player_mins;
 
@@ -109,7 +109,7 @@ void SV_New_f (void)
 
 	// send music
 	MSG_WriteByte (&host_client->netchan.message, svc_cdtrack);
-	MSG_WriteByte (&host_client->netchan.message, sv.edicts->v.sounds);
+	MSG_WriteByte (&host_client->netchan.message, (int)sv.edicts->v.sounds);
 
 	// send server info string
 	MSG_WriteByte (&host_client->netchan.message, svc_stufftext);
@@ -240,7 +240,7 @@ void SV_PreSpawn_f (void)
 	}
 	
 	buf = atoi(Cmd_Argv(2));
-	if (buf >= sv.num_signon_buffers)
+	if (buf >= (unsigned)sv.num_signon_buffers)
 		buf = 0;
 
 	if (!buf) {
@@ -274,7 +274,7 @@ void SV_PreSpawn_f (void)
 		sv.signon_buffer_size[buf]);
 
 	buf++;
-	if (buf == sv.num_signon_buffers)
+	if (buf == (unsigned)sv.num_signon_buffers)
 	{	// all done prespawning
 		MSG_WriteByte (&host_client->netchan.message, svc_stufftext);
 		MSG_WriteString (&host_client->netchan.message, va("cmd spawn %i 0\n",svs.spawncount) );
@@ -340,7 +340,7 @@ void SV_Spawn_f (void)
 	for (i=0 ; i<MAX_LIGHTSTYLES ; i++)
 	{
 		ClientReliableWrite_Begin (host_client, svc_lightstyle, 
-			3 + (sv.lightstyles[i] ? strlen(sv.lightstyles[i]) : 1));
+			(int)(3 + (sv.lightstyles[i] ? strlen(sv.lightstyles[i]) : 1)));
 		ClientReliableWrite_Byte (host_client, (char)i);
 		ClientReliableWrite_String (host_client, sv.lightstyles[i]);
 	}
@@ -349,7 +349,7 @@ void SV_Spawn_f (void)
 	ent = host_client->edict;
 
 	memset (&ent->v, 0, progs->entityfields * 4);
-	ent->v.colormap = NUM_FOR_EDICT(ent);
+	ent->v.colormap = (float)NUM_FOR_EDICT(ent);
 	ent->v.team = 0;	// FIXME
 	ent->v.netname = PR_SetString(host_client->name);
 
@@ -369,19 +369,19 @@ void SV_Spawn_f (void)
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_TOTALSECRETS);
-	ClientReliableWrite_Long (host_client, pr_global_struct->total_secrets);
+	ClientReliableWrite_Long (host_client, (int)pr_global_struct->total_secrets);
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_TOTALMONSTERS);
-	ClientReliableWrite_Long (host_client, pr_global_struct->total_monsters);
+	ClientReliableWrite_Long (host_client, (int)pr_global_struct->total_monsters);
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_SECRETS);
-	ClientReliableWrite_Long (host_client, pr_global_struct->found_secrets);
+	ClientReliableWrite_Long (host_client, (int)pr_global_struct->found_secrets);
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_MONSTERS);
-	ClientReliableWrite_Long (host_client, pr_global_struct->killed_monsters);
+	ClientReliableWrite_Long (host_client, (int)pr_global_struct->killed_monsters);
 
 	// get the client to check and download skins
 	// when that is completed, a begin command will be issued
@@ -450,7 +450,7 @@ void SV_Begin_f (void)
 				(&pr_global_struct->parm1)[i] = host_client->spawn_parms[i];
 	
 			// call the spawn function
-			pr_global_struct->time = sv.time;
+			pr_global_struct->time = (float)sv.time;
 			pr_global_struct->self = EDICT_TO_PROG(sv_player);
 			PR_ExecuteProgram (SpectatorConnect);
 		}
@@ -462,12 +462,12 @@ void SV_Begin_f (void)
 			(&pr_global_struct->parm1)[i] = host_client->spawn_parms[i];
 
 		// call the spawn function
-		pr_global_struct->time = sv.time;
+		pr_global_struct->time = (float)sv.time;
 		pr_global_struct->self = EDICT_TO_PROG(sv_player);
 		PR_ExecuteProgram (pr_global_struct->ClientConnect);
 
 		// actually spawn the player
-		pr_global_struct->time = sv.time;
+		pr_global_struct->time = (float)sv.time;
 		pr_global_struct->self = EDICT_TO_PROG(sv_player);
 		PR_ExecuteProgram (pr_global_struct->PutClientInServer);	
 	}
@@ -494,19 +494,6 @@ void SV_Begin_f (void)
 		SV_ClientPrintf(host_client, PRINT_HIGH, "Server is paused.\n");
 	}
 
-#if 0
-//
-// send a fixangle over the reliable channel to make sure it gets there
-// Never send a roll angle, because savegames can catch the server
-// in a state where it is expecting the client to correct the angle
-// and it won't happen if the game was just loaded, so you wind up
-// with a permanent head tilt
-	ent = EDICT_NUM( 1 + (host_client - svs.clients) );
-	MSG_WriteByte (&host_client->netchan.message, svc_setangle);
-	for (i=0 ; i < 2 ; i++)
-		MSG_WriteAngle (&host_client->netchan.message, ent->v.angles[i] );
-	MSG_WriteAngle (&host_client->netchan.message, 0 );
-#endif
 }
 
 //=============================================================================
@@ -529,7 +516,7 @@ void SV_NextDownload_f (void)
 	r = host_client->downloadsize - host_client->downloadcount;
 	if (r > 768)
 		r = 768;
-	r = fread (buffer, 1, r, host_client->download);
+	r = (int)fread (buffer, 1, r, host_client->download);
 	ClientReliableWrite_Begin (host_client, svc_download, 6+r);
 	ClientReliableWrite_Short (host_client, r);
 
@@ -560,10 +547,10 @@ void OutofBandPrintf(netadr_t where, char *fmt, ...)
 	send[3] = 0xff;
 	send[4] = A2C_PRINT;
 	va_start (argptr, fmt);
-	vsprintf (send+5, fmt, argptr);
+	vsnprintf (send+5, sizeof(send)-5, fmt, argptr);
 	va_end (argptr);
 
-	NET_SendPacket (strlen(send)+1, send, where);
+	NET_SendPacket ((int)strlen(send)+1, send, where);
 }
 
 /*
@@ -573,11 +560,8 @@ SV_NextUpload
 */
 void SV_NextUpload (void)
 {
-	byte	buffer[1024];
-	int		r;
 	int		percent;
 	int		size;
-	client_t *client;
 
 	if (!*host_client->uploadfn) {
 		SV_ClientPrintf(host_client, PRINT_HIGH, "Upload denied\n");
@@ -721,7 +705,7 @@ void SV_BeginDownload_f(void)
 SV_Say
 ==================
 */
-void SV_Say (qboolean team)
+void SV_Say (bool team)
 {
 	client_t *client;
 	int		j, tmp;
@@ -739,11 +723,11 @@ void SV_Say (qboolean team)
 	}
 
 	if (host_client->spectator && (!sv_spectalk.value || team))
-		sprintf (text, "[SPEC] %s: ", host_client->name);
+		snprintf (text, sizeof(text), "[SPEC] %s: ", host_client->name);
 	else if (team)
-		sprintf (text, "(%s): ", host_client->name);
+		snprintf (text, sizeof(text), "(%s): ", host_client->name);
 	else {
-		sprintf (text, "%s: ", host_client->name);
+		snprintf (text, sizeof(text), "%s: ", host_client->name);
 	}
 
 	if (fp_messages) {
@@ -781,8 +765,8 @@ void SV_Say (qboolean team)
 		p[Q_strlen(p)-1] = 0;
 	}
 
-	Q_strcat(text, p);
-	Q_strcat(text, "\n");
+	Q_strncatz(text, p, sizeof(text));
+	Q_strncatz(text, "\n", sizeof(text));
 
 	Sys_Printf ("%s", text);
 
@@ -876,7 +860,7 @@ void SV_Kill_f (void)
 		return;
 	}
 	
-	pr_global_struct->time = sv.time;
+	pr_global_struct->time = (float)sv.time;
 	pr_global_struct->self = EDICT_TO_PROG(sv_player);
 	PR_ExecuteProgram (pr_global_struct->ClientKill);
 }
@@ -914,8 +898,6 @@ SV_Pause_f
 */
 void SV_Pause_f (void)
 {
-	int i;
-	client_t *cl;
 	char st[sizeof(host_client->name) + 32];
 
 	if (!pausable.value) {
@@ -929,9 +911,9 @@ void SV_Pause_f (void)
 	}
 
 	if (sv.paused)
-		sprintf (st, "%s paused the game\n", host_client->name);
+		snprintf (st, sizeof(st), "%s paused the game\n", host_client->name);
 	else
-		sprintf (st, "%s unpaused the game\n", host_client->name);
+		snprintf (st, sizeof(st), "%s unpaused the game\n", host_client->name);
 
 	SV_TogglePause(st);
 }
@@ -971,7 +953,7 @@ void SV_PTrack_f (void)
 	{
 		// turn off tracking
 		host_client->spec_track = 0;
-		ent = EDICT_NUM(host_client - svs.clients + 1);
+		ent = EDICT_NUM((int)(host_client - svs.clients) + 1);
 		tent = EDICT_NUM(0);
 		ent->v.goalentity = EDICT_TO_PROG(tent);
 		return;
@@ -982,14 +964,14 @@ void SV_PTrack_f (void)
 		svs.clients[i].spectator) {
 		SV_ClientPrintf (host_client, PRINT_HIGH, "Invalid client to track\n");
 		host_client->spec_track = 0;
-		ent = EDICT_NUM(host_client - svs.clients + 1);
+		ent = EDICT_NUM((int)(host_client - svs.clients) + 1);
 		tent = EDICT_NUM(0);
 		ent->v.goalentity = EDICT_TO_PROG(tent);
 		return;
 	}
 	host_client->spec_track = i + 1; // now tracking
 
-	ent = EDICT_NUM(host_client - svs.clients + 1);
+	ent = EDICT_NUM((int)(host_client - svs.clients) + 1);
 	tent = EDICT_NUM(i + 1);
 	ent->v.goalentity = EDICT_TO_PROG(tent);
 }
@@ -1074,9 +1056,9 @@ void SV_SetInfo_f (void)
 	if (Cmd_Argv(1)[0] == '*')
 		return;		// don't set priveledged values
 
-	strcpy(oldval, Info_ValueForKey(host_client->userinfo, Cmd_Argv(1)));
+	Q_strncpyz(oldval, Info_ValueForKey(host_client->userinfo, Cmd_Argv(1)), sizeof(oldval));
 
-	Info_SetValueForKey (host_client->userinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_INFO_STRING);
+	Info_SetValueForKey (host_client->userinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_INFO_STRING, SV_InfoCharset ());
 // name is extracted below in ExtractFromUserInfo
 //	strncpy (host_client->name, Info_ValueForKey (host_client->userinfo, "name")
 //		, sizeof(host_client->name)-1);	
@@ -1089,7 +1071,7 @@ void SV_SetInfo_f (void)
 	// process any changed values
 	SV_ExtractFromUserinfo (host_client);
 
-	i = host_client - svs.clients;
+	i = (int)(host_client - svs.clients);
 	MSG_WriteByte (&sv.reliable_datagram, svc_setinfo);
 	MSG_WriteByte (&sv.reliable_datagram, i);
 	MSG_WriteString (&sv.reliable_datagram, Cmd_Argv(1));
@@ -1208,8 +1190,8 @@ float V_CalcRoll (vec3_t angles, vec3_t velocity)
 	
 	AngleVectors (angles, forward, right, up);
 	side = DotProduct (velocity, right);
-	sign = side < 0 ? -1 : 1;
-	side = fabs(side);
+	sign = (float)(side < 0 ? -1 : 1);
+	side = fabsf(side);
 	
 	value = cl_rollangle.value;
 
@@ -1294,62 +1276,6 @@ void AddLinksToPmove ( areanode_t *node )
 		AddLinksToPmove ( node->children[1] );
 }
 
-
-/*
-================
-AddAllEntsToPmove
-
-For debugging
-================
-*/
-void AddAllEntsToPmove (void)
-{
-	int			e;
-	edict_t		*check;
-	int			i;
-	physent_t	*pe;
-	int			pl;
-
-	pl = EDICT_TO_PROG(sv_player);
-	check = NEXT_EDICT(sv.edicts);
-	for (e=1 ; e<sv.num_edicts ; e++, check = NEXT_EDICT(check))
-	{
-		if (check->free)
-			continue;
-		if (check->v.owner == pl)
-			continue;
-		if (check->v.solid == SOLID_BSP 
-			|| check->v.solid == SOLID_BBOX 
-			|| check->v.solid == SOLID_SLIDEBOX)
-		{
-			if (check == sv_player)
-				continue;
-
-			for (i=0 ; i<3 ; i++)
-				if (check->v.absmin[i] > pmove_maxs[i]
-				|| check->v.absmax[i] < pmove_mins[i])
-					break;
-			if (i != 3)
-				continue;
-			pe = &pmove.physents[pmove.numphysent];
-
-			VectorCopy (check->v.origin, pe->origin);
-			pmove.physents[pmove.numphysent].info = e;
-			if (check->v.solid == SOLID_BSP)
-				pe->model = sv.models[(int)(check->v.modelindex)];
-			else
-			{
-				pe->model = NULL;
-				VectorCopy (check->v.mins, pe->mins);
-				VectorCopy (check->v.maxs, pe->maxs);
-			}
-
-			if (++pmove.numphysent == MAX_PHYSENTS)
-				break;
-		}
-	}
-}
-
 /*
 ===========
 SV_PreRunCmd
@@ -1380,9 +1306,9 @@ void SV_RunCmd (usercmd_t *ucmd)
 	if (cmd.msec > 50)
 	{
 		oldmsec = ucmd->msec;
-		cmd.msec = oldmsec/2;
+		cmd.msec = (byte)(oldmsec/2);
 		SV_RunCmd (&cmd);
-		cmd.msec = oldmsec/2;
+		cmd.msec = (byte)(oldmsec/2);
 		cmd.impulse = 0;
 		SV_RunCmd (&cmd);
 		return;
@@ -1391,8 +1317,8 @@ void SV_RunCmd (usercmd_t *ucmd)
 	if (!sv_player->v.fixangle)
 		VectorCopy (ucmd->angles, sv_player->v.v_angle);
 
-	sv_player->v.button0 = ucmd->buttons & 1;
-	sv_player->v.button2 = (ucmd->buttons & 2)>>1;
+	sv_player->v.button0 = (float)(ucmd->buttons & 1);
+	sv_player->v.button2 = (float)((ucmd->buttons & 2)>>1);
 	if (ucmd->impulse)
 		sv_player->v.impulse = ucmd->impulse;
 
@@ -1416,9 +1342,9 @@ void SV_RunCmd (usercmd_t *ucmd)
 
 	if (!host_client->spectator)
 	{
-		pr_global_struct->frametime = host_frametime;
+		pr_global_struct->frametime = (float)host_frametime;
 
-		pr_global_struct->time = sv.time;
+		pr_global_struct->time = (float)sv.time;
 		pr_global_struct->self = EDICT_TO_PROG(sv_player);
 		PR_ExecuteProgram (pr_global_struct->PlayerPreThink);
 
@@ -1446,48 +1372,25 @@ void SV_RunCmd (usercmd_t *ucmd)
 		pmove_mins[i] = pmove.origin[i] - 256;
 		pmove_maxs[i] = pmove.origin[i] + 256;
 	}
-#if 1
 	AddLinksToPmove ( sv_areanodes );
-#else
-	AddAllEntsToPmove ();
-#endif
 
-#if 0
-{
-	int before, after;
-
-before = PM_TestPlayerPosition (pmove.origin);
 	PlayerMove ();
-after = PM_TestPlayerPosition (pmove.origin);
-
-if (sv_player->v.health > 0 && before && !after )
-	Con_Printf ("player %s got stuck in playermove!!!!\n", host_client->name);
-}
-#else
-	PlayerMove ();
-#endif
 
 	host_client->oldbuttons = pmove.oldbuttons;
 	sv_player->v.teleport_time = pmove.waterjumptime;
-	sv_player->v.waterlevel = waterlevel;
-	sv_player->v.watertype = watertype;
+	sv_player->v.waterlevel = (float)waterlevel;
+	sv_player->v.watertype = (float)watertype;
 	if (onground != -1)
 	{
-		sv_player->v.flags = (int)sv_player->v.flags | FL_ONGROUND;
+		sv_player->v.flags = (float)((int)sv_player->v.flags | FL_ONGROUND);
 		sv_player->v.groundentity = EDICT_TO_PROG(EDICT_NUM(pmove.physents[onground].info));
 	}
 	else
-		sv_player->v.flags = (int)sv_player->v.flags & ~FL_ONGROUND;
+		sv_player->v.flags = (float)((int)sv_player->v.flags & ~FL_ONGROUND);
 	for (i=0 ; i<3 ; i++)
 		sv_player->v.origin[i] = pmove.origin[i] - (sv_player->v.mins[i] - player_mins[i]);
 
-#if 0
-	// truncate velocity the same way the net protocol will
-	for (i=0 ; i<3 ; i++)
-		sv_player->v.velocity[i] = (int)pmove.velocity[i];
-#else
 	VectorCopy (pmove.velocity, sv_player->v.velocity);
-#endif
 
 	VectorCopy (pmove.angles, sv_player->v.v_angle);
 
@@ -1522,12 +1425,12 @@ void SV_PostRunCmd(void)
 	// run post-think
 
 	if (!host_client->spectator) {
-		pr_global_struct->time = sv.time;
+		pr_global_struct->time = (float)sv.time;
 		pr_global_struct->self = EDICT_TO_PROG(sv_player);
 		PR_ExecuteProgram (pr_global_struct->PlayerPostThink);
 		SV_RunNewmis ();
 	} else if (SpectatorThink) {
-		pr_global_struct->time = sv.time;
+		pr_global_struct->time = (float)sv.time;
 		pr_global_struct->self = EDICT_TO_PROG(sv_player);
 		PR_ExecuteProgram (SpectatorThink);
 	}
@@ -1548,14 +1451,14 @@ void SV_ExecuteClientMessage (client_t *cl)
 	usercmd_t	oldest, oldcmd, newcmd;
 	client_frame_t	*frame;
 	vec3_t o;
-	qboolean	move_issued = false; //only allow one move command
+	bool	move_issued = false; //only allow one move command
 	int		checksumIndex;
 	byte	checksum, calculatedChecksum;
 	int		seq_hash;
 
 	// calc ping time
 	frame = &cl->frames[cl->netchan.incoming_acknowledged & UPDATE_MASK];
-	frame->ping_time = realtime - frame->senttime;
+	frame->ping_time = (float)(realtime - frame->senttime);
 
 	// make sure the reply sequence number matches the incoming
 	// sequence number 

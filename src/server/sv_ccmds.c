@@ -20,7 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "qwsvdef.h"
 
-qboolean	sv_allow_cheats;
+bool	sv_allow_cheats;
 
 int fp_messages=4, fp_persecond=4, fp_secondsdead=10;
 char fp_msg[255] = { 0 };
@@ -104,7 +104,7 @@ void SV_Logfile_f (void)
 		return;
 	}
 
-	sprintf (name, "%s/qconsole.log", com_gamedir);
+	snprintf (name, sizeof(name), "%s/qconsole.log", com_gamedir);
 	Con_Printf ("Logging text to %s.\n", name);
 	sv_logfile = fopen (name, "w");
 	if (!sv_logfile)
@@ -133,7 +133,7 @@ void SV_Fraglogfile_f (void)
 	// find an unused name
 	for (i=0 ; i<1000 ; i++)
 	{
-		sprintf (name, "%s/frag_%i.log", com_gamedir, i);
+		snprintf (name, sizeof(name), "%s/frag_%i.log", com_gamedir, i);
 		sv_fraglogfile = fopen (name, "r");
 		if (!sv_fraglogfile)
 		{	// can't read it, so create this one
@@ -162,7 +162,7 @@ SV_SetPlayer
 Sets host_client and sv_player to the player with idnum Cmd_Argv(1)
 ==================
 */
-qboolean SV_SetPlayer (void)
+bool SV_SetPlayer (void)
 {
 	client_t	*cl;
 	int			i;
@@ -204,7 +204,7 @@ void SV_God_f (void)
 	if (!SV_SetPlayer ())
 		return;
 
-	sv_player->v.flags = (int)sv_player->v.flags ^ FL_GODMODE;
+	sv_player->v.flags = (float)((int)sv_player->v.flags ^ FL_GODMODE);
 	if (!((int)sv_player->v.flags & FL_GODMODE) )
 		SV_ClientPrintf (host_client, PRINT_HIGH, "godmode OFF\n");
 	else
@@ -268,23 +268,23 @@ void SV_Give_f (void)
 	case '7':
 	case '8':
 	case '9':
-		sv_player->v.items = (int)sv_player->v.items | IT_SHOTGUN<< (t[0] - '2');
+		sv_player->v.items = (float)((int)sv_player->v.items | IT_SHOTGUN<< (t[0] - '2'));
 		break;
 	
 	case 's':
-		sv_player->v.ammo_shells = v;
+		sv_player->v.ammo_shells = (float)v;
 		break;		
 	case 'n':
-		sv_player->v.ammo_nails = v;
+		sv_player->v.ammo_nails = (float)v;
 		break;		
 	case 'r':
-		sv_player->v.ammo_rockets = v;
+		sv_player->v.ammo_rockets = (float)v;
 		break;		
 	case 'h':
-		sv_player->v.health = v;
+		sv_player->v.health = (float)v;
 		break;		
 	case 'c':
-		sv_player->v.ammo_cells = v;
+		sv_player->v.ammo_cells = (float)v;
 		break;		
 	}
 }
@@ -310,18 +310,11 @@ void SV_Map_f (void)
 		Con_Printf ("map <levelname> : continue game on a new level\n");
 		return;
 	}
-	strcpy (level, Cmd_Argv(1));
+	Q_strncpyz (level, Cmd_Argv(1), sizeof(level));
 
-#if 0
-	if (!strcmp (level, "e1m8"))
-	{	// QuakeWorld can't go to e1m8
-		SV_BroadcastPrintf (PRINT_HIGH, "can't go to low grav level in QuakeWorld...\n");
-		strcpy (level, "e1m5");
-	}
-#endif
 
 	// check to make sure the level exists
-	sprintf (expanded, "maps/%s.bsp", level);
+	snprintf (expanded, sizeof(expanded), "maps/%s.bsp", level);
 	COM_FOpenFile (expanded, &f);
 	if (!f)
 	{
@@ -386,10 +379,10 @@ void SV_Status_f (void)
 	char		*s;
 
 
-	cpu = (svs.stats.latched_active+svs.stats.latched_idle);
+	cpu = (float)(svs.stats.latched_active+svs.stats.latched_idle);
 	if (cpu)
-		cpu = 100*svs.stats.latched_active/cpu;
-	avg = 1000*svs.stats.latched_active / STATFRAMES;
+		cpu = (float)(100*svs.stats.latched_active/cpu);
+	avg = (float)(1000*svs.stats.latched_active / STATFRAMES);
 	pak = (float)svs.stats.latched_packets/ STATFRAMES;
 
 	Con_Printf ("net address      : %s\n",NET_AdrToString (net_local_adr));
@@ -445,12 +438,12 @@ void SV_Status_f (void)
 
 			s = NET_BaseAdrToString ( cl->netchan.remote_address);
 			Con_Printf ("%s", s);
-			l = 16 - strlen(s);
+			l = (int)(16 - strlen(s));
 			for (j=0 ; j<l ; j++)
 				Con_Printf (" ");
 			
 			Con_Printf ("%s", cl->name);
-			l = 16 - strlen(cl->name);
+			l = (int)(16 - strlen(cl->name));
 			for (j=0 ; j<l ; j++)
 				Con_Printf (" ");
 			if (cl->state == cs_connected)
@@ -494,7 +487,7 @@ void SV_ConSay_f(void)
 	if (Cmd_Argc () < 2)
 		return;
 
-	Q_strcpy (text, "console: ");
+	Q_strncpyz (text, "console: ", sizeof(text));
 	p = Cmd_Args();
 
 	if (*p == '"')
@@ -503,7 +496,7 @@ void SV_ConSay_f(void)
 		p[Q_strlen(p)-1] = 0;
 	}
 
-	Q_strcat(text, p);
+	Q_strncatz(text, p, sizeof(text));
 
 	for (j = 0, client = svs.clients; j < MAX_CLIENTS; j++, client++)
 	{
@@ -564,7 +557,7 @@ void SV_Serverinfo_f (void)
 		Con_Printf ("Star variables cannot be changed.\n");
 		return;
 	}
-	Info_SetValueForKey (svs.info, Cmd_Argv(1), Cmd_Argv(2), MAX_SERVERINFO_STRING);
+	Info_SetValueForKey (svs.info, Cmd_Argv(1), Cmd_Argv(2), MAX_SERVERINFO_STRING, SV_InfoCharset ());
 
 	// if this is a cvar, change it too	
 	var = Cvar_FindVar (Cmd_Argv(1));
@@ -607,7 +600,7 @@ void SV_Localinfo_f (void)
 		Con_Printf ("Star variables cannot be changed.\n");
 		return;
 	}
-	Info_SetValueForKey (localinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_LOCALINFO_STRING);
+	Info_SetValueForKey (localinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_LOCALINFO_STRING, SV_InfoCharset ());
 }
 
 
@@ -664,7 +657,7 @@ void SV_Gamedir (void)
 		return;
 	}
 
-	Info_SetValueForStarKey (svs.info, "*gamedir", dir, MAX_SERVERINFO_STRING);
+	Info_SetValueForStarKey (svs.info, "*gamedir", dir, MAX_SERVERINFO_STRING, SV_InfoCharset ());
 }
 
 /*
@@ -724,7 +717,7 @@ void SV_Floodprotmsg_f (void)
 		Con_Printf("Usage: floodprotmsg \"<message>\"\n");
 		return;
 	}
-	sprintf(fp_msg, "%s", Cmd_Argv(1));
+	snprintf(fp_msg, sizeof(fp_msg), "%s", Cmd_Argv(1));
 }
   
 /*
@@ -761,7 +754,7 @@ void SV_Gamedir_f (void)
 	}
 
 	COM_Gamedir (dir);
-	Info_SetValueForStarKey (svs.info, "*gamedir", dir, MAX_SERVERINFO_STRING);
+	Info_SetValueForStarKey (svs.info, "*gamedir", dir, MAX_SERVERINFO_STRING, SV_InfoCharset ());
 }
 
 /*
@@ -788,17 +781,17 @@ void SV_Snap (int uid)
 		return;
 	}
 
-	sprintf(pcxname, "%d-00.pcx", uid);
+	snprintf(pcxname, sizeof(pcxname), "%d-00.pcx", uid);
 
-	sprintf(checkname, "%s/snap", gamedirfile);
+	snprintf(checkname, sizeof(checkname), "%s/snap", gamedirfile);
 	Sys_mkdir(gamedirfile);
 	Sys_mkdir(checkname);
-		
-	for (i=0 ; i<=99 ; i++) 
-	{ 
-		pcxname[strlen(pcxname) - 6] = i/10 + '0'; 
-		pcxname[strlen(pcxname) - 5] = i%10 + '0'; 
-		sprintf (checkname, "%s/snap/%s", gamedirfile, pcxname);
+
+	for (i=0 ; i<=99 ; i++)
+	{
+		pcxname[strlen(pcxname) - 6] = (char)(i/10 + '0');
+		pcxname[strlen(pcxname) - 5] = (char)(i%10 + '0');
+		snprintf (checkname, sizeof(checkname), "%s/snap/%s", gamedirfile, pcxname);
 		if (Sys_FileTime(checkname) == -1)
 			break;	// file doesn't exist
 	} 
@@ -807,7 +800,7 @@ void SV_Snap (int uid)
 		Con_Printf ("Snap: Couldn't create a file, clean some out.\n"); 
 		return;
 	}
-	strcpy(cl->uploadfn, checkname);
+	Q_strncpyz(cl->uploadfn, checkname, sizeof(cl->uploadfn));
 
 	memcpy(&cl->snap_from, &net_from, sizeof(net_from));
 	if (sv_redirected != RD_NONE)
@@ -868,7 +861,7 @@ void SV_InitOperatorCommands (void)
 	if (COM_CheckParm ("-cheats"))
 	{
 		sv_allow_cheats = true;
-		Info_SetValueForStarKey (svs.info, "*cheats", "ON", MAX_SERVERINFO_STRING);
+		Info_SetValueForStarKey (svs.info, "*cheats", "ON", MAX_SERVERINFO_STRING, SV_InfoCharset ());
 	}
 
 	Cmd_AddCommand ("logfile", SV_Logfile_f);

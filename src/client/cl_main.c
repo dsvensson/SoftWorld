@@ -21,62 +21,57 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "winquake.h"
-#ifdef _WIN32
 #include "winsock.h"
-#else
-#include <netinet/in.h>
-#endif
 
 
 // we need to declare some mouse variables here, because the menu system
 // references them even when on a unix system.
 
-qboolean	noclip_anglehack;		// remnant from old quake
+bool	noclip_anglehack;		// remnant from old quake
 
 
-cvar_t	rcon_password = {"rcon_password", "", false};
+cvar_t	rcon_password = {.name = "rcon_password", .string = ""};
 
-cvar_t	rcon_address = {"rcon_address", ""};
+cvar_t	rcon_address = {.name = "rcon_address", .string = ""};
 
-cvar_t	cl_timeout = {"cl_timeout", "60"};
+cvar_t	cl_timeout = {.name = "cl_timeout", .string = "60"};
 
-cvar_t	cl_shownet = {"cl_shownet","0"};	// can be 0, 1, or 2
+cvar_t	cl_shownet = {.name = "cl_shownet", .string = "0"};	// can be 0, 1, or 2
 
-cvar_t	cl_sbar		= {"cl_sbar", "0", true};
-cvar_t	cl_hudswap	= {"cl_hudswap", "0", true};
-cvar_t	cl_maxfps	= {"cl_maxfps", "0", true};
+cvar_t	cl_sbar		= {.name = "cl_sbar", .string = "0", .archive = true};
+cvar_t	cl_hudswap	= {.name = "cl_hudswap", .string = "0", .archive = true};
+cvar_t	cl_maxfps	= {.name = "cl_maxfps", .string = "0", .archive = true};
 
-cvar_t	lookspring = {"lookspring","0", true};
-cvar_t	lookstrafe = {"lookstrafe","0", true};
-cvar_t	sensitivity = {"sensitivity","3", true};
+cvar_t	lookspring = {.name = "lookspring", .string = "0", .archive = true};
+cvar_t	lookstrafe = {.name = "lookstrafe", .string = "0", .archive = true};
+cvar_t	sensitivity = {.name = "sensitivity", .string = "3", .archive = true};
 
-cvar_t	m_pitch = {"m_pitch","0.022", true};
-cvar_t	m_yaw = {"m_yaw","0.022"};
-cvar_t	m_forward = {"m_forward","1"};
-cvar_t	m_side = {"m_side","0.8"};
+cvar_t	m_pitch = {.name = "m_pitch", .string = "0.022", .archive = true};
+cvar_t	m_yaw = {.name = "m_yaw", .string = "0.022"};
+cvar_t	m_forward = {.name = "m_forward", .string = "1"};
+cvar_t	m_side = {.name = "m_side", .string = "0.8"};
 
-cvar_t	entlatency = {"entlatency", "20"};
-cvar_t	cl_predict_players = {"cl_predict_players", "1"};
-cvar_t	cl_predict_players2 = {"cl_predict_players2", "1"};
-cvar_t	cl_solid_players = {"cl_solid_players", "1"};
+cvar_t	cl_predict_players = {.name = "cl_predict_players", .string = "1"};
+cvar_t	cl_predict_players2 = {.name = "cl_predict_players2", .string = "1"};
+cvar_t	cl_solid_players = {.name = "cl_solid_players", .string = "1"};
 
-cvar_t  localid = {"localid", ""};
+cvar_t  localid = {.name = "localid", .string = ""};
 
-static qboolean allowremotecmd = true;
+static bool allowremotecmd = true;
 
 //
 // info mirrors
 //
-cvar_t	password = {"password", "", false, true};
-cvar_t	spectator = {"spectator", "", false, true};
-cvar_t	name = {"name","unnamed", true, true};
-cvar_t	team = {"team","", true, true};
-cvar_t	skin = {"skin","", true, true};
-cvar_t	topcolor = {"topcolor","0", true, true};
-cvar_t	bottomcolor = {"bottomcolor","0", true, true};
-cvar_t	rate = {"rate","2500", true, true};
-cvar_t	noaim = {"noaim","0", true, true};
-cvar_t	msg = {"msg","1", true, true};
+cvar_t	password = {.name = "password", .string = "", .info = true};
+cvar_t	spectator = {.name = "spectator", .string = "", .info = true};
+cvar_t	name = {.name = "name", .string = "unnamed", .archive = true, .info = true};
+cvar_t	team = {.name = "team", .string = "", .archive = true, .info = true};
+cvar_t	skin = {.name = "skin", .string = "", .archive = true, .info = true};
+cvar_t	topcolor = {.name = "topcolor", .string = "0", .archive = true, .info = true};
+cvar_t	bottomcolor = {.name = "bottomcolor", .string = "0", .archive = true, .info = true};
+cvar_t	rate = {.name = "rate", .string = "2500", .archive = true, .info = true};
+cvar_t	noaim = {.name = "noaim", .string = "0", .archive = true, .info = true};
+cvar_t	msg = {.name = "msg", .string = "1", .archive = true, .info = true};
 
 extern cvar_t cl_hightrack;
 
@@ -101,8 +96,8 @@ double			connect_time = -1;		// for connection retransmits
 
 quakeparms_t host_parms;
 
-qboolean	host_initialized;		// true if into command execution
-qboolean	nomaster;
+bool	host_initialized;		// true if into command execution
+bool	nomaster;
 
 double		host_frametime;
 double		realtime;				// without any filtering or bounding
@@ -116,15 +111,14 @@ byte		*host_colormap;
 
 netadr_t	master_adr;				// address of the master server
 
-cvar_t	host_speeds = {"host_speeds","0"};			// set for running times
-cvar_t	show_fps = {"show_fps","0"};			// set for running times
-cvar_t	developer = {"developer","0"};
+cvar_t	host_speeds = {.name = "host_speeds", .string = "0"};			// set for running times
+cvar_t	show_fps = {.name = "show_fps", .string = "0"};			// set for running times
+cvar_t	developer = {.name = "developer", .string = "0"};
 
 int			fps_count;
 
 jmp_buf 	host_abort;
 
-void Master_Connect_f (void);
 
 float	server_version = 0;	// version of server we connected to
 
@@ -205,14 +199,14 @@ void CL_SendConnectPacket (void)
 
 	connect_time = realtime+t2-t1;	// for retransmit requests
 
-	cls.qport = Cvar_VariableValue("qport");
+	cls.qport = (int)Cvar_VariableValue("qport");
 
-	Info_SetValueForStarKey (cls.userinfo, "*ip", NET_AdrToString(adr), MAX_INFO_STRING);
+	Info_SetValueForStarKey (cls.userinfo, "*ip", NET_AdrToString(adr), MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 
 //	Con_Printf ("Connecting to %s...\n", cls.servername);
-	sprintf (data, "%c%c%c%cconnect %i %i %i \"%s\"\n",
+	snprintf (data, sizeof(data), "%c%c%c%cconnect %i %i %i \"%s\"\n",
 		255, 255, 255, 255,	PROTOCOL_VERSION, cls.qport, cls.challenge, cls.userinfo);
-	NET_SendPacket (strlen(data), data, adr);
+	NET_SendPacket ((int)strlen(data), data, adr);
 }
 
 /*
@@ -251,8 +245,8 @@ void CL_CheckForResend (void)
 	connect_time = realtime+t2-t1;	// for retransmit requests
 
 	Con_Printf ("Connecting to %s...\n", cls.servername);
-	sprintf (data, "%c%c%c%cgetchallenge\n", 255, 255, 255, 255);
-	NET_SendPacket (strlen(data), data, adr);
+	snprintf (data, sizeof(data), "%c%c%c%cgetchallenge\n", 255, 255, 255, 255);
+	NET_SendPacket ((int)strlen(data), data, adr);
 }
 
 void CL_BeginServerConnect(void)
@@ -307,21 +301,21 @@ void CL_Rcon_f (void)
 		return;
 	}
 
-	message[0] = 255;
-	message[1] = 255;
-	message[2] = 255;
-	message[3] = 255;
+	message[0] = '\xff';
+	message[1] = '\xff';
+	message[2] = '\xff';
+	message[3] = '\xff';
 	message[4] = 0;
 
-	strcat (message, "rcon ");
+	Q_strncatz (message, "rcon ", sizeof(message));
 
-	strcat (message, rcon_password.string);
-	strcat (message, " ");
+	Q_strncatz (message, rcon_password.string, sizeof(message));
+	Q_strncatz (message, " ", sizeof(message));
 
 	for (i=1 ; i<Cmd_Argc() ; i++)
 	{
-		strcat (message, Cmd_Argv(i));
-		strcat (message, " ");
+		Q_strncatz (message, Cmd_Argv(i), sizeof(message));
+		Q_strncatz (message, " ", sizeof(message));
 	}
 
 	if (cls.state >= ca_connected)
@@ -339,7 +333,7 @@ void CL_Rcon_f (void)
 		NET_StringToAdr (rcon_address.string, &to);
 	}
 	
-	NET_SendPacket (strlen(message)+1, message
+	NET_SendPacket ((int)strlen(message)+1, message
 		, to);
 }
 
@@ -397,9 +391,7 @@ void CL_Disconnect (void)
 
 	connect_time = -1;
 
-#ifdef _WIN32
 	SetWindowText (mainwindow, "QuakeWorld: disconnected");
-#endif
 
 // stop sounds (especially looping!)
 	S_StopAllSounds (true);
@@ -413,7 +405,7 @@ void CL_Disconnect (void)
 			CL_Stop_f ();
 
 		final[0] = clc_stringcmd;
-		strcpy (final+1, "drop");
+		Q_strncpyz ((char *)final+1, "drop", sizeof(final)-1);
 		Netchan_Transmit (&cls.netchan, 6, final);
 		Netchan_Transmit (&cls.netchan, 6, final);
 		Netchan_Transmit (&cls.netchan, 6, final);
@@ -531,9 +523,9 @@ void CL_Color_f (void)
 	if (bottom > 13)
 		bottom = 13;
 	
-	sprintf (num, "%i", top);
+	snprintf (num, sizeof(num), "%i", top);
 	Cvar_Set ("topcolor", num);
-	sprintf (num, "%i", bottom);
+	snprintf (num, sizeof(num), "%i", bottom);
 	Cvar_Set ("bottomcolor", num);
 }
 
@@ -555,7 +547,7 @@ void CL_FullServerinfo_f (void)
 		return;
 	}
 
-	strcpy (cl.serverinfo, Cmd_Argv(1));
+	Q_strncpyz (cl.serverinfo, Cmd_Argv(1), sizeof(cl.serverinfo));
 
 	if ((p = Info_ValueForKey(cl.serverinfo, "*vesion")) && *p) {
 		v = Q_atof(p);
@@ -613,10 +605,10 @@ void CL_FullInfo_f (void)
 		if (*s)
 			s++;
 
-		if (!stricmp(key, pmodel_name) || !stricmp(key, emodel_name))
+		if (!Q_strcasecmp (key, pmodel_name) || !Q_strcasecmp (key, emodel_name))
 			continue;
 
-		Info_SetValueForKey (cls.userinfo, key, value, MAX_INFO_STRING);
+		Info_SetValueForKey (cls.userinfo, key, value, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 	}
 }
 
@@ -639,10 +631,10 @@ void CL_SetInfo_f (void)
 		Con_Printf ("usage: setinfo [ <key> <value> ]\n");
 		return;
 	}
-	if (!stricmp(Cmd_Argv(1), pmodel_name) || !strcmp(Cmd_Argv(1), emodel_name))
+	if (!Q_strcasecmp (Cmd_Argv(1), pmodel_name) || !strcmp(Cmd_Argv(1), emodel_name))
 		return;
 
-	Info_SetValueForKey (cls.userinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_INFO_STRING);
+	Info_SetValueForKey (cls.userinfo, Cmd_Argv(1), Cmd_Argv(2), MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 	if (cls.state >= ca_connected)
 		Cmd_ForwardToServer ();
 }
@@ -679,7 +671,7 @@ void CL_Packet_f (void)
 	out = send+4;
 	send[0] = send[1] = send[2] = send[3] = 0xff;
 
-	l = strlen (in);
+	l = (int)strlen (in);
 	for (i=0 ; i<l ; i++)
 	{
 		if (in[i] == '\\' && in[i+1] == 'n')
@@ -692,7 +684,7 @@ void CL_Packet_f (void)
 	}
 	*out = 0;
 
-	NET_SendPacket (out-send, send, adr);
+	NET_SendPacket ((int)(out-send), send, adr);
 }
 
 
@@ -721,7 +713,7 @@ void CL_NextDemo (void)
 		}
 	}
 
-	sprintf (str,"playdemo %s\n", cls.demos[cls.demonum]);
+	snprintf (str, sizeof(str), "playdemo %s\n", cls.demos[cls.demonum]);
 	Cbuf_InsertText (str);
 	cls.demonum++;
 }
@@ -805,7 +797,7 @@ void CL_ConnectionlessPacket (void)
 				Con_Printf ("Dup connect received.  Ignored.\n");
 			return;
 		}
-		Netchan_Setup (&cls.netchan, net_from, cls.qport);
+		Netchan_Setup (&cls.netchan, net_from, cls.qport, NS_CLIENT);
 		MSG_WriteChar (&cls.netchan.message, clc_stringcmd);
 		MSG_WriteString (&cls.netchan.message, "new");	
 		cls.state = ca_connected;
@@ -826,10 +818,8 @@ void CL_ConnectionlessPacket (void)
 			Con_Printf ("Command packet from remote host.  Ignored.\n");
 			return;
 		}
-#ifdef _WIN32
 		ShowWindow (mainwindow, SW_RESTORE);
 		SetForegroundWindow (mainwindow);
-#endif
 		s = MSG_ReadString ();
 
 		strncpy(cmdtext, s, sizeof(cmdtext) - 1);
@@ -902,14 +892,6 @@ void CL_ConnectionlessPacket (void)
 		return;
 	}
 
-#if 0
-	if (c == svc_disconnect) {
-		Con_Printf ("disconnect\n");
-
-		Host_EndGame ("Server disconnected");
-		return;
-	}
-#endif
 
 	Con_Printf ("unknown:  %c\n", c);
 }
@@ -943,8 +925,9 @@ void CL_ReadPackets (void)
 		//
 		// packet from server
 		//
-		if (!cls.demoplayback && 
-			!NET_CompareAdr (net_from, cls.netchan.remote_address))
+		if (cls.demoplayback)
+			net_from = cls.netchan.remote_address;	// demo packets come from the recorded server
+		if (!NET_CompareAdr (net_from, cls.netchan.remote_address))
 		{
 			Con_DPrintf ("%s:sequenced packet without connection\n"
 				,NET_AdrToString(net_from));
@@ -994,7 +977,7 @@ void CL_Download_f (void)
 		return;
 	}
 
-	sprintf (cls.downloadname, "%s/%s", com_gamedir, Cmd_Argv(1));
+	snprintf (cls.downloadname, sizeof(cls.downloadname), "%s/%s", com_gamedir, Cmd_Argv(1));
 
 	p = cls.downloadname;
 	for (;;) {
@@ -1007,7 +990,7 @@ void CL_Download_f (void)
 			break;
 	}
 
-	strcpy(cls.downloadtempname, cls.downloadname);
+	Q_strncpyz(cls.downloadtempname, cls.downloadname, sizeof(cls.downloadtempname));
 	cls.download = fopen (cls.downloadname, "wb");
 	cls.downloadtype = dl_single;
 
@@ -1015,26 +998,82 @@ void CL_Download_f (void)
 	SZ_Print (&cls.netchan.message, va("download %s\n",Cmd_Argv(1)));
 }
 
-#ifdef _WINDOWS
-#include <windows.h>
+
 /*
-=================
-CL_Minimize_f
-=================
+===================
+Cmd_ForwardToServer
+
+adds the current command line as a clc_stringcmd to the client message.
+things like godmode, noclip, etc, are commands directed to the server,
+so when they are typed in at the console, they will need to be forwarded.
+===================
 */
-void CL_Windows_f (void) {
-//	if (modestate == MS_WINDOWED)
-//		ShowWindow(mainwindow, SW_MINIMIZE);
-//	else
-		SendMessage(mainwindow, WM_SYSKEYUP, VK_TAB, 1 | (0x0F << 16) | (1<<29));
+void Cmd_ForwardToServer (void)
+{
+	if (cls.state == ca_disconnected)
+	{
+		Con_Printf ("Can't \"%s\", not connected\n", Cmd_Argv(0));
+		return;
+	}
+	
+	if (cls.demoplayback)
+		return;		// not really connected
+
+	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
+	SZ_Print (&cls.netchan.message, Cmd_Argv(0));
+	if (Cmd_Argc() > 1)
+	{
+		SZ_Print (&cls.netchan.message, " ");
+		SZ_Print (&cls.netchan.message, Cmd_Args());
+	}
 }
-#endif
+
+// don't forward the first argument
+void Cmd_ForwardToServer_f (void)
+{
+	if (cls.state == ca_disconnected)
+	{
+		Con_Printf ("Can't \"%s\", not connected\n", Cmd_Argv(0));
+		return;
+	}
+
+	if (Q_strcasecmp(Cmd_Argv(1), "snap") == 0) {
+		Cbuf_InsertText ("snap\n");
+		return;
+	}
+	
+	if (cls.demoplayback)
+		return;		// not really connected
+
+	if (Cmd_Argc() > 1)
+	{
+		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
+		SZ_Print (&cls.netchan.message, Cmd_Args());
+	}
+}
 
 /*
 =================
 CL_Init
 =================
 */
+/*
+=================
+CL_UserinfoCvarChanged
+
+Cvars flagged as info are mirrored into the userinfo string.
+=================
+*/
+static void CL_UserinfoCvarChanged (char *key, char *value)
+{
+	Info_SetValueForKey (cls.userinfo, key, value, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
+	if (cls.state >= ca_connected)
+	{
+		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
+		SZ_Print (&cls.netchan.message, va("setinfo \"%s\" \"%s\"\n", key, value));
+	}
+}
+
 void CL_Init (void)
 {
 	extern	cvar_t		baseskin;
@@ -1042,14 +1081,15 @@ void CL_Init (void)
 	char st[80];
 
 	cls.state = ca_disconnected;
+	Cvar_SetInfoHook (CL_UserinfoCvarChanged);
 
-	Info_SetValueForKey (cls.userinfo, "name", "unnamed", MAX_INFO_STRING);
-	Info_SetValueForKey (cls.userinfo, "topcolor", "0", MAX_INFO_STRING);
-	Info_SetValueForKey (cls.userinfo, "bottomcolor", "0", MAX_INFO_STRING);
-	Info_SetValueForKey (cls.userinfo, "rate", "2500", MAX_INFO_STRING);
-	Info_SetValueForKey (cls.userinfo, "msg", "1", MAX_INFO_STRING);
-	sprintf (st, "%4.2f-%04d", VERSION, build_number());
-	Info_SetValueForStarKey (cls.userinfo, "*ver", st, MAX_INFO_STRING);
+	Info_SetValueForKey (cls.userinfo, "name", "unnamed", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
+	Info_SetValueForKey (cls.userinfo, "topcolor", "0", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
+	Info_SetValueForKey (cls.userinfo, "bottomcolor", "0", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
+	Info_SetValueForKey (cls.userinfo, "rate", "2500", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
+	Info_SetValueForKey (cls.userinfo, "msg", "1", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
+	snprintf (st, sizeof(st), "%4.2f-%04d", VERSION, build_number());
+	Info_SetValueForStarKey (cls.userinfo, "*ver", st, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 
 	CL_InitInput ();
 	CL_InitTEnts ();
@@ -1090,7 +1130,6 @@ void CL_Init (void)
 	Cvar_RegisterVariable (&rcon_password);
 	Cvar_RegisterVariable (&rcon_address);
 
-	Cvar_RegisterVariable (&entlatency);
 	Cvar_RegisterVariable (&cl_predict_players2);
 	Cvar_RegisterVariable (&cl_predict_players);
 	Cvar_RegisterVariable (&cl_solid_players);
@@ -1116,6 +1155,8 @@ void CL_Init (void)
 
 
 	Cmd_AddCommand ("version", CL_Version_f);
+	Cmd_AddCommand ("cmd", Cmd_ForwardToServer_f);
+	Cmd_SetForwardHandler (Cmd_ForwardToServer);
 
 	Cmd_AddCommand ("changing", CL_Changing_f);
 	Cmd_AddCommand ("disconnect", CL_Disconnect_f);
@@ -1157,12 +1198,6 @@ void CL_Init (void)
 	Cmd_AddCommand ("say_team", NULL);
 	Cmd_AddCommand ("serverinfo", NULL);
 
-//
-//  Windows commands
-//
-#ifdef _WINDOWS
-	Cmd_AddCommand ("windows", CL_Windows_f);
-#endif
 }
 
 
@@ -1179,7 +1214,7 @@ void Host_EndGame (char *message, ...)
 	char		string[1024];
 	
 	va_start (argptr,message);
-	vsprintf (string,message,argptr);
+	vsnprintf (string,sizeof(string),message,argptr);
 	va_end (argptr);
 	Con_Printf ("\n===========================\n");
 	Con_Printf ("Host_EndGame: %s\n",string);
@@ -1201,14 +1236,14 @@ void Host_Error (char *error, ...)
 {
 	va_list		argptr;
 	char		string[1024];
-	static	qboolean inerror = false;
+	static	bool inerror = false;
 	
 	if (inerror)
 		Sys_Error ("Host_Error: recursively entered");
 	inerror = true;
 	
 	va_start (argptr,error);
-	vsprintf (string,error,argptr);
+	vsnprintf (string,sizeof(string),error,argptr);
 	va_end (argptr);
 	Con_Printf ("Host_Error: %s\n",string);
 	
@@ -1252,31 +1287,6 @@ void Host_WriteConfiguration (void)
 
 //============================================================================
 
-#if 0
-/*
-==================
-Host_SimulationTime
-
-This determines if enough time has passed to run a simulation frame
-==================
-*/
-qboolean Host_SimulationTime(float time)
-{
-	float fps;
-
-	if (oldrealtime > realtime)
-		oldrealtime = 0;
-
-	if (cl_maxfps.value)
-		fps = max(30.0, min(cl_maxfps.value, 72.0));
-	else
-		fps = max(30.0, min(rate.value/80.0, 72.0));
-
-	if (!cls.timedemo && (realtime + time) - oldrealtime < 1.0/fps)
-		return false;			// framerate is too high
-	return true;
-}
-#endif
 
 
 /*
@@ -1303,9 +1313,9 @@ void Host_Frame (float time)
 		oldrealtime = 0;
 
 	if (cl_maxfps.value)
-		fps = max(30.0, min(cl_maxfps.value, 72.0));
+		fps = fmaxf(30.0f, fminf(cl_maxfps.value, 72.0f));
 	else
-		fps = max(30.0, min(rate.value/80.0, 72.0));
+		fps = fmaxf(30.0f, fminf(rate.value/80.0f, 72.0f));
 
 	if (!cls.timedemo && realtime - oldrealtime < 1.0/fps)
 		return;			// framerate is too high
@@ -1367,10 +1377,10 @@ void Host_Frame (float time)
 
 	if (host_speeds.value)
 	{
-		pass1 = (time1 - time3)*1000;
+		pass1 = (int)((time1 - time3)*1000);
 		time3 = Sys_DoubleTime ();
-		pass2 = (time2 - time1)*1000;
-		pass3 = (time3 - time2)*1000;
+		pass2 = (int)((time2 - time1)*1000);
+		pass3 = (int)((time3 - time2)*1000);
 		Con_Printf ("%3i tot %3i server %3i gfx %3i snd\n",
 					pass1+pass2+pass3, pass1, pass2, pass3);
 	}
@@ -1482,7 +1492,7 @@ to run quit through here before the final handoff to the sys code.
 */
 void Host_Shutdown(void)
 {
-	static qboolean isdown = false;
+	static bool isdown = false;
 	
 	if (isdown)
 	{

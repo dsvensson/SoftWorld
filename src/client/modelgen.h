@@ -17,6 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
+
+#pragma once
 //
 // modelgen.h: header file for model generation program
 //
@@ -27,30 +29,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // * pass data from one to the other via model files.      *
 // *********************************************************
 
-#ifdef INCLUDELIBS
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <math.h>
-#include <string.h>
-
-#include "cmdlib.h"
-#include "scriplib.h"
-#include "trilib.h"
-#include "lbmlib.h"
-#include "mathlib.h"
-
-#endif
 
 #define ALIAS_VERSION	6
 
 #define ALIAS_ONSEAM				0x0020
 
 // must match definition in spritegn.h
-#ifndef SYNCTYPE_T
-#define SYNCTYPE_T
 typedef enum {ST_SYNC=0, ST_RAND } synctype_t;
-#endif
 
 typedef enum { ALIAS_SINGLE=0, ALIAS_GROUP } aliasframetype_t;
 
@@ -131,4 +116,3 @@ typedef struct {
 
 #define IDPOLYHEADER	(('O'<<24)+('P'<<16)+('D'<<8)+'I')
 														// little-endian "IDPO"
-

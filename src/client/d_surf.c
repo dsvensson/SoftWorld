@@ -24,7 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 
 float           surfscale;
-qboolean        r_cache_thrash;         // set if surface cache is thrashing
+bool        r_cache_thrash;         // set if surface cache is thrashing
 
 int                                     sc_size;
 surfcache_t                     *sc_rover, *sc_base;
@@ -82,7 +82,6 @@ D_InitCaches
 */
 void D_InitCaches (void *buffer, int size)
 {
-//	if (!msg_suppress_1)
 //		Con_Printf ("%ik surface cache\n", size/1024);
 
 	sc_size = size - GUARDSIZE;
@@ -129,7 +128,7 @@ D_SCAlloc
 surfcache_t     *D_SCAlloc (int width, int size)
 {
 	surfcache_t             *new;
-	qboolean                wrapped_this_time;
+	bool                wrapped_this_time;
 
 	if ((width < 0) || (width > 256))
 		Sys_Error ("D_SCAlloc: bad cache width %d\n", width);
@@ -207,51 +206,9 @@ D_CheckCacheGuard ();   // DEBUG
 	return new;
 }
 
-
-/*
-=================
-D_SCDump
-=================
-*/
-void D_SCDump (void)
-{
-	surfcache_t             *test;
-
-	for (test = sc_base ; test ; test = test->next)
-	{
-		if (test == sc_rover)
-			Sys_Printf ("ROVER:\n");
-		printf ("%p : %i bytes     %i width\n",test, test->size, test->width);
-	}
-}
-
 //=============================================================================
 
 // if the num is not a power of 2, assume it will not repeat
-
-int     MaskForNum (int num)
-{
-	if (num==128)
-		return 127;
-	if (num==64)
-		return 63;
-	if (num==32)
-		return 31;
-	if (num==16)
-		return 15;
-	return 255;
-}
-
-int D_log2 (int num)
-{
-	int     c;
-	
-	c = 0;
-	
-	while (num>>=1)
-		c++;
-	return c;
-}
 
 //=============================================================================
 
@@ -289,7 +246,7 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 //
 // determine shape of surface
 //
-	surfscale = 1.0 / (1<<miplevel);
+	surfscale = 1.0f / (1<<miplevel);
 	r_drawsurf.surfmip = miplevel;
 	r_drawsurf.surfwidth = surface->extents[0] >> miplevel;
 	r_drawsurf.rowbytes = r_drawsurf.surfwidth;

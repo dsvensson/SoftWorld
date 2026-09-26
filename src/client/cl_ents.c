@@ -27,7 +27,7 @@ extern	cvar_t	cl_solid_players;
 
 static struct predicted_player {
 	int flags;
-	qboolean active;
+	bool active;
 	vec3_t origin;	// predicted origin
 } predicted_players[MAX_CLIENTS];
 
@@ -92,27 +92,27 @@ void CL_NewDlight (int key, float x, float y, float z, float radius, float time,
 	dl->origin[1] = y;
 	dl->origin[2] = z;
 	dl->radius = radius;
-	dl->die = cl.time + time;
+	dl->die = (float)(cl.time + time);
 	if (type == 0) {
-		dl->color[0] = 0.2;
-		dl->color[1] = 0.1;
-		dl->color[2] = 0.05;
-		dl->color[3] = 0.7;
+		dl->color[0] = 0.2f;
+		dl->color[1] = 0.1f;
+		dl->color[2] = 0.05f;
+		dl->color[3] = 0.7f;
 	} else if (type == 1) {
-		dl->color[0] = 0.05;
-		dl->color[1] = 0.05;
-		dl->color[2] = 0.3;
-		dl->color[3] = 0.7;
+		dl->color[0] = 0.05f;
+		dl->color[1] = 0.05f;
+		dl->color[2] = 0.3f;
+		dl->color[3] = 0.7f;
 	} else if (type == 2) {
 		dl->color[0] = 0.5;
-		dl->color[1] = 0.05;
-		dl->color[2] = 0.05;
-		dl->color[3] = 0.7;
+		dl->color[1] = 0.05f;
+		dl->color[2] = 0.05f;
+		dl->color[3] = 0.7f;
 	} else if (type == 3) {
 		dl->color[0]=0.5;
-		dl->color[1] = 0.05;
-		dl->color[2] = 0.4;
-		dl->color[3] = 0.7;
+		dl->color[1] = 0.05f;
+		dl->color[2] = 0.4f;
+		dl->color[3] = 0.7f;
 	}
 }
 
@@ -134,7 +134,7 @@ void CL_DecayLights (void)
 		if (dl->die < cl.time || !dl->radius)
 			continue;
 		
-		dl->radius -= host_frametime*dl->decay;
+		dl->radius = (float)(dl->radius - host_frametime*dl->decay);
 		if (dl->radius < 0)
 			dl->radius = 0;
 	}
@@ -262,13 +262,13 @@ An svc_packetentities has just been parsed, deal with the
 rest of the data stream.
 ==================
 */
-void CL_ParsePacketEntities (qboolean delta)
+void CL_ParsePacketEntities (bool delta)
 {
 	int			oldpacket, newpacket;
 	packet_entities_t	*oldp, *newp, dummy;
 	int			oldindex, newindex;
 	int			word, newnum, oldnum;
-	qboolean	full;
+	bool	full;
 	byte		from;
 
 	newpacket = cls.netchan.incoming_sequence&UPDATE_MASK;
@@ -277,7 +277,7 @@ void CL_ParsePacketEntities (qboolean delta)
 
 	if (delta)
 	{
-		from = MSG_ReadByte ();
+		from = (byte)MSG_ReadByte ();
 
 		oldpacket = cl.frames[newpacket].delta_sequence;
 
@@ -420,7 +420,7 @@ void CL_LinkPacketEntities (void)
 
 	pack = &cl.frames[cls.netchan.incoming_sequence&UPDATE_MASK].packet_entities;
 
-	autorotate = anglemod(100*cl.time);
+	autorotate = anglemod((float)(100*cl.time));
 
 	f = 0;		// FIXME: no interpolation right now
 
@@ -431,15 +431,15 @@ void CL_LinkPacketEntities (void)
 
 		// spawn light flashes, even ones coming from invisible objects
 		if ((s1->effects & (EF_BLUE | EF_RED)) == (EF_BLUE | EF_RED))
-			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], 200 + (rand()&31), 0.1, 3);
+			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], (float)(200 + (rand()&31)), 0.1f, 3);
 		else if (s1->effects & EF_BLUE)
-			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], 200 + (rand()&31), 0.1, 1);
+			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], (float)(200 + (rand()&31)), 0.1f, 1);
 		else if (s1->effects & EF_RED)
-			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], 200 + (rand()&31), 0.1, 2);
+			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], (float)(200 + (rand()&31)), 0.1f, 2);
 		else if (s1->effects & EF_BRIGHTLIGHT)
-			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2] + 16, 400 + (rand()&31), 0.1, 0);
+			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2] + 16, (float)(400 + (rand()&31)), 0.1f, 0);
 		else if (s1->effects & EF_DIMLIGHT)
-			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], 200 + (rand()&31), 0.1, 0);
+			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], (float)(200 + (rand()&31)), 0.1f, 0);
 
 		// if set to invisible, skip
 		if (!s1->modelindex)
@@ -519,7 +519,7 @@ void CL_LinkPacketEntities (void)
 			continue;		// not in last message
 
 		for (i=0 ; i<3 ; i++)
-			if ( abs(old_origin[i] - ent->origin[i]) > 128)
+			if ( abs((int)(old_origin[i] - ent->origin[i])) > 128)
 			{	// no trail if too far
 				VectorCopy (ent->origin, old_origin);
 				break;
@@ -530,7 +530,7 @@ void CL_LinkPacketEntities (void)
 			dl = CL_AllocDlight (s1->number);
 			VectorCopy (ent->origin, dl->origin);
 			dl->radius = 200;
-			dl->die = cl.time + 0.1;
+			dl->die = (float)(cl.time + 0.1f);
 		}
 		else if (model->flags & EF_GRENADE)
 			R_RocketTrail (old_origin, ent->origin, 1);
@@ -591,7 +591,7 @@ void CL_ParseProjectiles (void)
 	for (i=0 ; i<c ; i++)
 	{
 		for (j=0 ; j<6 ; j++)
-			bits[j] = MSG_ReadByte ();
+			bits[j] = (byte)MSG_ReadByte ();
 
 		if (cl_num_projectiles == MAX_PROJECTILES)
 			continue;
@@ -600,11 +600,11 @@ void CL_ParseProjectiles (void)
 		cl_num_projectiles++;
 
 		pr->modelindex = cl_spikeindex;
-		pr->origin[0] = ( ( bits[0] + ((bits[1]&15)<<8) ) <<1) - 4096;
-		pr->origin[1] = ( ( (bits[1]>>4) + (bits[2]<<4) ) <<1) - 4096;
-		pr->origin[2] = ( ( bits[3] + ((bits[4]&15)<<8) ) <<1) - 4096;
-		pr->angles[0] = 360*(bits[4]>>4)/16;
-		pr->angles[1] = 360*bits[5]/256;
+		pr->origin[0] = (vec_t)(( ( bits[0] + ((bits[1]&15)<<8) ) <<1) - 4096);
+		pr->origin[1] = (vec_t)(( ( (bits[1]>>4) + (bits[2]<<4) ) <<1) - 4096);
+		pr->origin[2] = (vec_t)(( ( bits[3] + ((bits[4]&15)<<8) ) <<1) - 4096);
+		pr->angles[0] = (vec_t)(360*(bits[4]>>4)/16);
+		pr->angles[1] = (vec_t)(360*bits[5]/256);
 	}
 }
 
@@ -658,7 +658,6 @@ void CL_ParsePlayerinfo (void)
 {
 	int			msec;
 	int			flags;
-	player_info_t	*info;
 	player_state_t	*state;
 	int			num;
 	int			i;
@@ -666,8 +665,6 @@ void CL_ParsePlayerinfo (void)
 	num = MSG_ReadByte ();
 	if (num > MAX_CLIENTS)
 		Sys_Error ("CL_ParsePlayerinfo: bad num");
-
-	info = &cl.players[num];
 
 	state = &cl.frames[parsecountmod].playerstate[num];
 
@@ -697,7 +694,7 @@ void CL_ParsePlayerinfo (void)
 	for (i=0 ; i<3 ; i++)
 	{
 		if (flags & (PF_VELOCITY1<<i) )
-			state->velocity[i] = MSG_ReadShort();
+			state->velocity[i] = (vec_t)MSG_ReadShort();
 		else
 			state->velocity[i] = 0;
 	}
@@ -813,22 +810,16 @@ void CL_LinkPlayers (void)
 			continue;	// not present this frame
 
 		// spawn light flashes, even ones coming from invisible objects
-#ifdef GLQUAKE
-		if (!gl_flashblend.value || j != cl.playernum) {
-#endif
-			if ((state->effects & (EF_BLUE | EF_RED)) == (EF_BLUE | EF_RED))
-				CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2], 200 + (rand()&31), 0.1, 3);
-			else if (state->effects & EF_BLUE)
-				CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2], 200 + (rand()&31), 0.1, 1);
-			else if (state->effects & EF_RED)
-				CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2], 200 + (rand()&31), 0.1, 2);
-			else if (state->effects & EF_BRIGHTLIGHT)
-				CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2] + 16, 400 + (rand()&31), 0.1, 0);
-			else if (state->effects & EF_DIMLIGHT)
-				CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2], 200 + (rand()&31), 0.1, 0);
-#ifdef GLQUAKE
-		}
-#endif
+		if ((state->effects & (EF_BLUE | EF_RED)) == (EF_BLUE | EF_RED))
+			CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2], (float)(200 + (rand()&31)), 0.1f, 3);
+		else if (state->effects & EF_BLUE)
+			CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2], (float)(200 + (rand()&31)), 0.1f, 1);
+		else if (state->effects & EF_RED)
+			CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2], (float)(200 + (rand()&31)), 0.1f, 2);
+		else if (state->effects & EF_BRIGHTLIGHT)
+			CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2] + 16, (float)(400 + (rand()&31)), 0.1f, 0);
+		else if (state->effects & EF_DIMLIGHT)
+			CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2], (float)(200 + (rand()&31)), 0.1f, 0);
 
 		// the player object never gets added
 		if (j == cl.playernum)
@@ -865,7 +856,7 @@ void CL_LinkPlayers (void)
 		ent->angles[ROLL] = V_CalcRoll (ent->angles, state->velocity)*4;
 
 		// only predict half the move to minimize overruns
-		msec = 500*(playertime - state->state_time);
+		msec = (int)(500*(playertime - state->state_time));
 		if (msec <= 0 || (!cl_predict_players.value && !cl_predict_players2.value))
 		{
 			VectorCopy (state->origin, ent->origin);
@@ -876,7 +867,7 @@ void CL_LinkPlayers (void)
 			// predict players movement
 			if (msec > 255)
 				msec = 255;
-			state->command.msec = msec;
+			state->command.msec = (byte)msec;
 //Con_DPrintf ("predict: %i\n", msec);
 
 			oldphysent = pmove.numphysent;
@@ -947,7 +938,7 @@ then with clipping against them.
 This sets up the first phase.
 ===
 */
-void CL_SetUpPlayerPrediction(qboolean dopred)
+void CL_SetUpPlayerPrediction(bool dopred)
 {
 	int				j;
 	player_state_t	*state;
@@ -985,7 +976,7 @@ void CL_SetUpPlayerPrediction(qboolean dopred)
 				pplayer->origin);
 		} else {
 			// only predict half the move to minimize overruns
-			msec = 500*(playertime - state->state_time);
+			msec = (int)(500*(playertime - state->state_time));
 			if (msec <= 0 ||
 				(!cl_predict_players.value && !cl_predict_players2.value) ||
 				!dopred)
@@ -998,7 +989,7 @@ void CL_SetUpPlayerPrediction(qboolean dopred)
 				// predict players movement
 				if (msec > 255)
 					msec = 255;
-				state->command.msec = msec;
+				state->command.msec = (byte)msec;
 	//Con_DPrintf ("predict: %i\n", msec);
 
 				CL_PredictUsercmd (state, &exact, &state->command, false);
