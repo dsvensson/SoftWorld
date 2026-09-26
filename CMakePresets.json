@@ -49,5 +49,9 @@
 		{ "name": "msvc-asan", "configurePreset": "msvc-asan", "configuration": "Debug" },
 		{ "name": "clangcl-v4", "configurePreset": "clangcl-v4", "configuration": "Release" },
 		{ "name": "clangcl-v4-debug", "configurePreset": "clangcl-v4", "configuration": "Debug" }
+	],
+	"testPresets": [
+		{ "name": "msvc-v4", "configurePreset": "msvc-v4", "configuration": "Release", "output": { "outputOnFailure": true } },
+		{ "name": "clangcl-v4", "configurePreset": "clangcl-v4", "configuration": "Release", "output": { "outputOnFailure": true } }
 	]
 }

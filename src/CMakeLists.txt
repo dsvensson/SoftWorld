@@ -4,6 +4,7 @@
 add_subdirectory(common)
 add_subdirectory(net)
 add_subdirectory(game)
+add_subdirectory(simd)
 add_subdirectory(server)
 add_subdirectory(renderer)
 add_subdirectory(sound)

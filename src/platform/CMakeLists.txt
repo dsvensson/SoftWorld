@@ -25,7 +25,7 @@ sw_add_module(sw_platform_gui
 	win/sys_win_gui.c win/vid_d3d11.c win/in_rawinput.c win/in_xinput.c win/snd_wasapi.c
 	"${SW_SHADER_DIR}/present_vs.h" "${SW_SHADER_DIR}/present_ps.h")
 target_include_directories(sw_platform_gui PRIVATE "${SW_SHADER_DIR}" win)
-target_link_libraries(sw_platform_gui PUBLIC sw_client sw_platform_win d3d11 dxgi dxguid ole32 avrt xinput)
+target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_win d3d11 dxgi dxguid ole32 avrt xinput)
 
 # the console of the dedicated server
 sw_add_module(sw_platform_con

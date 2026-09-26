@@ -17,6 +17,7 @@
 #include "client.h"
 #include "keys.h"
 #include "render.h"
+#include "simd.h"
 #include "sound.h"
 #include "vid.h"
 #include "win_local.h"
@@ -769,7 +770,6 @@ void VID_Update (void)
 {
 	D3D11_MAPPED_SUBRESOURCE	mapped;
 	present_constants_t			constants;
-	unsigned					y;
 	float						scale, sx, sy, stretch;
 	UINT						flags = 0, interval;
 	int							i;
@@ -786,9 +786,8 @@ void VID_Update (void)
 	if (FAILED (ID3D11DeviceContext_Map (d3d_context, (ID3D11Resource *)d3d_frame, 0, D3D11_MAP_WRITE_DISCARD, 0,
 			&mapped)))
 		return;
-	for (y = 0 ; y < vid.height ; y++)
-		memcpy ((byte *)mapped.pData + y * mapped.RowPitch, vid.buffer + y * vid.rowpixels,
-			vid.width * sizeof(pixel_t));
+	simd_copy_stream (mapped.pData, mapped.RowPitch, vid.buffer, vid.rowpixels * sizeof(pixel_t),
+		vid.width * sizeof(pixel_t), (int)vid.height);
 	ID3D11DeviceContext_Unmap (d3d_context, (ID3D11Resource *)d3d_frame, 0);
 
 	// aspect-preserving fit; whole multiples of the render size unless filling the window

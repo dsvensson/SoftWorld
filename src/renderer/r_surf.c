@@ -394,7 +394,7 @@ the light at the block corners
 */
 static void R_DrawSurfaceBlock (void)
 {
-	int				v, i, b, lightstep, lighttemp, light;
+	int				v, i, lightstep, lighttemp;
 	int				shift = blockdivshift;
 	byte			*psource;
 	pixel_t			*prowdest;
@@ -415,13 +415,8 @@ static void R_DrawSurfaceBlock (void)
 			lighttemp = lightleft - lightright;
 			lightstep = lighttemp >> shift;
 
-			light = lightright;
-
-			for (b=blocksize-1; b>=0; b--)
-			{
-				prowdest[b] = d_cm30[(light & 0xFF00) + psource[b]];
-				light += lightstep;
-			}
+			// the right texel gets lightright, each one left of it lightstep more
+			simd_litrow_colormap (prowdest, psource, d_cm30, lightright, lightstep, blocksize);
 
 			psource += sourcetstep;
 			lightright += lightrightstep;
@@ -444,9 +439,9 @@ between the block corners multiplies the texel's color
 */
 static void R_DrawSurfaceBlockRGB (void)
 {
-	int				v, i, b, c;
+	int				v, i, c;
 	int				shift = blockdivshift;
-	int				left[3], right[3], leftstep[3], rightstep[3], light[3], step[3];
+	int				left[3], right[3], leftstep[3], rightstep[3], step[3];
 	const unsigned	*lp = r_lightptr_rgb;
 	byte			*psource;
 	pixel_t			*prowdest;
@@ -471,18 +466,9 @@ static void R_DrawSurfaceBlockRGB (void)
 		for (i=0 ; i<blocksize ; i++)
 		{
 			for (c=0 ; c<3 ; c++)
-			{
 				step[c] = (left[c] - right[c]) >> shift;
-				light[c] = right[c];
-			}
 
-			for (b=blocksize-1; b>=0; b--)
-			{
-				prowdest[b] = R_LitPixel (psource[b], light[0] > 0 ? (unsigned)light[0] : 0,
-					light[1] > 0 ? (unsigned)light[1] : 0, light[2] > 0 ? (unsigned)light[2] : 0);
-				for (c=0 ; c<3 ; c++)
-					light[c] += step[c];
-			}
+			simd_litrow_rgb (prowdest, psource, d_pal30, d_pal30_floor, right, step, blocksize);
 
 			psource += sourcetstep;
 			for (c=0 ; c<3 ; c++)

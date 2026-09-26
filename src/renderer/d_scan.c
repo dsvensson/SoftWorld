@@ -384,12 +384,8 @@ void D_DrawSpans (espan_t *pspan)
 				}
 			}
 
-			do
-			{
-				*pdest++ = *(pbase + (s >> 16) + (t >> 16) * cachewidth);
-				s += sstep;
-				t += tstep;
-			} while (--spancount > 0);
+			simd_texspan (pdest, pbase, cachewidth, s, t, sstep, tstep, spancount);
+			pdest += spancount;
 
 			s = snext;
 			t = tnext;
@@ -409,29 +405,16 @@ D_DrawZSpans
 */
 void D_DrawZSpans (espan_t *pspan)
 {
-	int				count;
-	float			*pdest;
-	double			zi;
-	float			du, dv;
+	float	zi, du, dv;
 
 	do
 	{
-		pdest = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
-
-		count = pspan->count;
-
 	// calculate the initial 1/z
 		du = (float)pspan->u;
 		dv = (float)pspan->v;
-
 		zi = d_ziorigin + dv*d_zistepv + du*d_zistepu;
 
-		while (count-- > 0)
-		{
-			*pdest++ = (float)zi;
-			zi += d_zistepu;
-		}
-
+		simd_zspan (d_pzbuffer + (d_zwidth * pspan->v) + pspan->u, pspan->count, zi, d_zistepu);
 	} while ((pspan = pspan->pnext) != NULL);
 }
 

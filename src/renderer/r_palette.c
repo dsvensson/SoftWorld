@@ -25,8 +25,9 @@ pixel_t	d_pal30[256];
 pixel_t	d_cm30[VID_GRADES * 256];
 byte	r_identityremap[256];
 byte	d_palrgb[256][3];		// the palette, for lighting by multiplication
-bool	d_fullbright[256];		// colors light doesn't change
-pixel_t	d_pal30_fb[256];		// fullbright colors, brightened by r_fullbright_scale
+static bool	d_fullbright[256];	// colors light doesn't change
+pixel_t	d_pal30_floor[256];		// the least a lit color can be: fullbrights brightened
+								// by r_fullbright_scale, 0 for the others
 
 /*
 ===============
@@ -77,6 +78,6 @@ void R_SetFullbrightScale (float scale)
 			if (v[c] > 1023)
 				v[c] = 1023;
 		}
-		d_pal30_fb[i] = RGB30 (v[0], v[1], v[2]);
+		d_pal30_floor[i] = d_fullbright[i] ? RGB30 (v[0], v[1], v[2]) : 0;
 	}
 }

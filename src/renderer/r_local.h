@@ -54,6 +54,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "model.h"
 #include "r_shared.h"
 #include "render.h"
+#include "simd.h"
 #include "vid.h"
 #include "wad.h"
 
@@ -99,8 +100,7 @@ extern pixel_t	d_pal30[256];				// the palette
 extern pixel_t	d_cm30[VID_GRADES * 256];	// the palette through each colormap row
 extern byte		r_identityremap[256];		// no player colors
 extern byte		d_palrgb[256][3];
-extern bool		d_fullbright[256];
-extern pixel_t	d_pal30_fb[256];
+extern pixel_t	d_pal30_floor[256];
 
 void R_SetFullbrightScale (float scale);
 
@@ -113,23 +113,20 @@ void R_DlightColor (const dlight_t *dl, float color[3]);
 
 // lit texel color: palette color times light, with 15 fraction bits. A
 // fullbright color is never darker than itself, but brighter light still
-// brightens it.
+// brightens it. The same as simd_litrow_rgb.
 static inline pixel_t R_LitPixel (int index, unsigned r, unsigned g, unsigned b)
 {
+	pixel_t	floor = d_pal30_floor[index];
+
 	r = (d_palrgb[index][0] * r) >> 15;
 	g = (d_palrgb[index][1] * g) >> 15;
 	b = (d_palrgb[index][2] * b) >> 15;
-	if (d_fullbright[index])
-	{
-		pixel_t	fb = d_pal30_fb[index];
-
-		if (r < RGB30_R (fb))
-			r = RGB30_R (fb);
-		if (g < RGB30_G (fb))
-			g = RGB30_G (fb);
-		if (b < RGB30_B (fb))
-			b = RGB30_B (fb);
-	}
+	if (r < RGB30_R (floor))
+		r = RGB30_R (floor);
+	if (g < RGB30_G (floor))
+		g = RGB30_G (floor);
+	if (b < RGB30_B (floor))
+		b = RGB30_B (floor);
 	return RGB30 (r > 1023 ? 1023 : r, g > 1023 ? 1023 : g, b > 1023 ? 1023 : b);
 }
 extern cvar_t	r_drawflat;

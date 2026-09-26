@@ -151,22 +151,20 @@ skipped
 static void Draw_Image (int x, int y, const byte *src, int srcrow, int w, int h, int transparent)
 {
 	int		k = (int)vid.scale;
-	int		u, v, i, j;
-	pixel_t	*dest, p;
+	int		v, j;
+	pixel_t	*dest;
 
 	for (v=0 ; v<h ; v++, src += srcrow)
 	{
-		for (j=0 ; j<k ; j++)
+		dest = vid.buffer + (y+v)*k*vid.rowpixels + x*k;
+		simd_expand8 (dest, src, d_pal30, w, k, transparent);
+		// the other rows of the block: copies, or drawn again around transparent texels
+		for (j=1 ; j<k ; j++)
 		{
-			dest = vid.buffer + ((y+v)*k + j)*vid.rowpixels + x*k;
-			for (u=0 ; u<w ; u++, dest += k)
-			{
-				if (src[u] == transparent)
-					continue;
-				p = d_pal30[src[u]];
-				for (i=0 ; i<k ; i++)
-					dest[i] = p;
-			}
+			if (transparent < 0)
+				memcpy (dest + j*vid.rowpixels, dest, (size_t)w * k * sizeof(pixel_t));
+			else
+				simd_expand8 (dest + j*vid.rowpixels, src, d_pal30, w, k, transparent);
 		}
 	}
 }
