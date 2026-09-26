@@ -122,6 +122,22 @@ void D_FlushCaches (void)
 
 /*
 =================
+D_SurfaceMipLevel
+
+A mip level at least miplevel whose block takes at most a quarter of the
+cache, for surfaces of the largest faces
+=================
+*/
+int D_SurfaceMipLevel (msurface_t *surface, int miplevel)
+{
+	while (miplevel < MIPLEVELS - 1
+		&& (int64_t)(surface->extents[0] >> miplevel) * (surface->extents[1] >> miplevel) * (int64_t)sizeof(pixel_t) > sc_size / 4)
+		miplevel++;
+	return miplevel;
+}
+
+/*
+=================
 D_SCAlloc
 =================
 */
@@ -130,10 +146,10 @@ surfcache_t     *D_SCAlloc (int width, int size)
 	surfcache_t             *new;
 	bool                wrapped_this_time;
 
-	if ((width < 0) || (width > 256))
+	if ((width < 0) || (width > 4096))
 		Sys_Error ("D_SCAlloc: bad cache width %d\n", width);
 
-	if ((size <= 0) || (size > 256 * 256 * (int)sizeof(pixel_t)))
+	if (size <= 0)
 		Sys_Error ("D_SCAlloc: bad cache size %d\n", size);
 	
 	size = (int)offsetof (surfcache_t, data) + size;

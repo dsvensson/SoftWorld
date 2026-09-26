@@ -214,7 +214,7 @@ typedef struct
 
 extern client_static_t	cls;
 
-#define	MAX_STATIC_ENTITIES	128			// torches, etc
+#define	STATIC_BLOCK	64				// static entities (torches, etc) come in blocks that never move
 #define	MAX_VISEDICTS		256
 #define NET_TIMINGS			256
 #define NET_TIMINGSMASK		255
@@ -300,7 +300,8 @@ typedef struct
 // refresh related state
 	struct model_s	*worldmodel;	// cl_entitites[0].model
 	int			num_entities;	// stored bottom up in cl_entities array
-	int			num_statics;	// stored top down in cl_entitiers
+	int			num_statics;
+	entity_t	**static_blocks;	// STATIC_BLOCK entities each, heap; efrags point into them
 
 	int			cdtrack;		// cd audio
 
@@ -314,7 +315,6 @@ typedef struct
 	playermove_t	pmove;		// the prediction's player movement; physents are set up by cl_ents.c
 
 	entity_state_t	baselines[MAX_EDICTS];
-	entity_t	static_entities[MAX_STATIC_ENTITIES];
 	lightstyle_t	lightstyles[MAX_LIGHTSTYLES];
 	dlight_t	dlights[MAX_DLIGHTS];
 
@@ -370,6 +370,12 @@ extern	cvar_t	name;
 
 
 extern	client_state_t	cl;
+
+// the static entity i (0 .. cl.num_statics-1)
+static inline entity_t *CL_StaticEntity (int i)
+{
+	return &cl.static_blocks[i / STATIC_BLOCK][i % STATIC_BLOCK];
+}
 
 void Cmd_ForwardToServer (void);
 

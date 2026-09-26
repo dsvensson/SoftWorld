@@ -92,7 +92,7 @@ void R_MarkLights (dlight_t *light, int bit, mnode_t *node)
 		
 // mark the polygons
 	surf = r_scene.worldmodel->surfaces + node->firstsurface;
-	for (i=0 ; i<node->numsurfaces ; i++, surf++)
+	for (i=0 ; i<(int)node->numsurfaces ; i++, surf++)
 	{
 		if (surf->dlightframe != r_dlightframecount)
 		{
@@ -183,7 +183,7 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 // check for impact on this node
 
 	surf = r_scene.worldmodel->surfaces + node->firstsurface;
-	for (i=0 ; i<node->numsurfaces ; i++, surf++)
+	for (i=0 ; i<(int)node->numsurfaces ; i++, surf++)
 	{
 		if (surf->flags & SURF_DRAWTILED)
 			continue;	// no lightmaps

@@ -757,9 +757,12 @@ void CL_ParseStatic (void)
 	CL_ParseBaseline (&es);
 		
 	i = cl.num_statics;
-	if (i >= MAX_STATIC_ENTITIES)
-		Host_EndGame ("Too many static entities");
-	ent = &cl.static_entities[i];
+	if (!(i % STATIC_BLOCK))
+	{
+		cl.static_blocks = Mem_Realloc (cl.static_blocks, (size_t)(i / STATIC_BLOCK + 1) * sizeof(*cl.static_blocks));
+		cl.static_blocks[i / STATIC_BLOCK] = Mem_Calloc (STATIC_BLOCK, sizeof(entity_t));
+	}
+	ent = CL_StaticEntity (i);
 	cl.num_statics++;
 
 // copy it to the current state

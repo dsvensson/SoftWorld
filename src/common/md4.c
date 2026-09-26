@@ -51,7 +51,7 @@ typedef struct {
 } MD4_CTX;
 
 void MD4Init (MD4_CTX *);
-void MD4Update (MD4_CTX *, unsigned char *, unsigned int);
+void MD4Update (MD4_CTX *, const unsigned char *, unsigned int);
 void MD4Final (unsigned char [16], MD4_CTX *);
   
 
@@ -84,9 +84,9 @@ These notices must be retained in any copies of any part of this documentation a
 #define S33 11
 #define S34 15
 
-static void MD4Transform (UINT4 [4], unsigned char [64]);
+static void MD4Transform (UINT4 [4], const unsigned char [64]);
 static void Encode (unsigned char *, UINT4 *, unsigned int);
-static void Decode (UINT4 *, unsigned char *, unsigned int);
+static void Decode (UINT4 *, const unsigned char *, unsigned int);
 
 static unsigned char PADDING[64] = {
 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -122,7 +122,7 @@ context->state[3] = 0x10325476;
 }
 
 /* MD4 block update operation. Continues an MD4 message-digest operation, processing another message block, and updating the context. */
-void MD4Update (MD4_CTX *context, unsigned char *input, unsigned int inputLen)
+void MD4Update (MD4_CTX *context, const unsigned char *input, unsigned int inputLen)
 {
 	unsigned int i, index, partLen;
 
@@ -140,7 +140,7 @@ void MD4Update (MD4_CTX *context, unsigned char *input, unsigned int inputLen)
 	/* Transform as many times as possible.*/
 	if (inputLen >= partLen)
 	{
- 		memcpy((POINTER)&context->buffer[index], (POINTER)input, partLen);
+ 		memcpy((POINTER)&context->buffer[index], input, partLen);
  		MD4Transform (context->state, context->buffer);
 
  		for (i = partLen; i + 63 < inputLen; i += 64)
@@ -152,7 +152,7 @@ void MD4Update (MD4_CTX *context, unsigned char *input, unsigned int inputLen)
  		i = 0;
 
 	/* Buffer remaining input */
-	memcpy ((POINTER)&context->buffer[index], (POINTER)&input[i], inputLen-i);
+	memcpy ((POINTER)&context->buffer[index], &input[i], inputLen-i);
 }
 
 
@@ -182,7 +182,7 @@ void MD4Final (unsigned char digest[16], MD4_CTX *context)
 
 
 /* MD4 basic transformation. Transforms state based on block. */
-static void MD4Transform (UINT4 state[4], unsigned char block[64])
+static void MD4Transform (UINT4 state[4], const unsigned char block[64])
 {
 	UINT4 a = state[0], b = state[1], c = state[2], d = state[3], x[16];
 
@@ -267,7 +267,7 @@ static void Encode (unsigned char *output, UINT4 *input, unsigned int len)
 
 
 /* Decodes input (unsigned char) into output (UINT4). Assumes len is a multiple of 4. */
-static void Decode (UINT4 *output, unsigned char *input, unsigned int len)
+static void Decode (UINT4 *output, const unsigned char *input, unsigned int len)
 {
 unsigned int i, j;
 
@@ -277,14 +277,14 @@ for (i = 0, j = 0; j < len; i++, j += 4)
 
 //===================================================================
 
-unsigned Com_BlockChecksum (void *buffer, int length)
+unsigned Com_BlockChecksum (const void *buffer, int length)
 {
 	int			digest[4];
 	unsigned	val;
 	MD4_CTX		ctx;
 
 	MD4Init (&ctx);
-	MD4Update (&ctx, (unsigned char *)buffer, length);
+	MD4Update (&ctx, buffer, (unsigned)length);
 	MD4Final ( (unsigned char *)digest, &ctx);
 	
 	val = digest[0] ^ digest[1] ^ digest[2] ^ digest[3];

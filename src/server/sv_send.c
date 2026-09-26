@@ -248,19 +248,19 @@ void SV_Multicast (vec3_t origin, int to)
 	case MULTICAST_ALL_R:
 		reliable = true;	// intentional fallthrough
 	case MULTICAST_ALL:
-		mask = sv.pvs;		// leaf 0 is everything;
+		mask = SV_LeafPVS (0);		// leaf 0 is everything;
 		break;
 
 	case MULTICAST_PHS_R:
 		reliable = true;	// intentional fallthrough
 	case MULTICAST_PHS:
-		mask = sv.phs + leafnum * sv.vis_rowbytes;
+		mask = SV_LeafPHS (leafnum);
 		break;
 
 	case MULTICAST_PVS_R:
 		reliable = true;	// intentional fallthrough
 	case MULTICAST_PVS:
-		mask = sv.pvs + leafnum * sv.vis_rowbytes;
+		mask = SV_LeafPVS (leafnum);
 		break;
 
 	default:
@@ -283,7 +283,7 @@ void SV_Multicast (vec3_t origin, int to)
 
 		// -1 is because pvs rows are 1 based, not 0 based like leafs
 		leafnum = CM_Leafnum (sv.map, CM_PointInLeaf (sv.map, client->edict->v.origin)) - 1;
-		if (leafnum >= 0 && !(mask[leafnum>>3] & (1<<(leafnum&7))))
+		if (leafnum >= 0 && leafnum < sv.vis_rowbytes * 8 && !(mask[leafnum>>3] & (1<<(leafnum&7))))
 			continue;
 
 inrange:

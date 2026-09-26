@@ -49,6 +49,39 @@ int SV_ModelIndex (char *name)
 
 /*
 ================
+SV_NewSignonBuffer
+
+Starts another signon buffer, from the level's memory
+================
+*/
+static void SV_NewSignonBuffer (void)
+{
+	int		max, *sizes;
+	byte	**buffers;
+
+	if (sv.num_signon_buffers == sv.max_signon_buffers)
+	{
+		max = sv.max_signon_buffers ? sv.max_signon_buffers * 2 : 8;
+		sizes = Arena_Alloc (&sv_level_arena, (size_t)max * sizeof(*sizes));
+		buffers = Arena_Alloc (&sv_level_arena, (size_t)max * sizeof(*buffers));
+		if (sv.num_signon_buffers)
+		{
+			memcpy (sizes, sv.signon_buffer_size, (size_t)sv.num_signon_buffers * sizeof(*sizes));
+			memcpy (buffers, sv.signon_buffers, (size_t)sv.num_signon_buffers * sizeof(*buffers));
+		}
+		sv.signon_buffer_size = sizes;
+		sv.signon_buffers = buffers;
+		sv.max_signon_buffers = max;
+	}
+	sv.signon_buffers[sv.num_signon_buffers] = Arena_Alloc (&sv_level_arena, MAX_DATAGRAM);
+	sv.signon.data = sv.signon_buffers[sv.num_signon_buffers];
+	sv.signon.maxsize = MAX_DATAGRAM;
+	sv.signon.cursize = 0;
+	sv.num_signon_buffers++;
+}
+
+/*
+================
 SV_FlushSignon
 
 Moves to the next signon buffer if needed
@@ -59,13 +92,8 @@ void SV_FlushSignon (void)
 	if (sv.signon.cursize < sv.signon.maxsize - 512)
 		return;
 
-	if (sv.num_signon_buffers == MAX_SIGNON_BUFFERS-1)
-		SV_Error ("sv.num_signon_buffers == MAX_SIGNON_BUFFERS-1");
-
 	sv.signon_buffer_size[sv.num_signon_buffers-1] = sv.signon.cursize;
-	sv.signon.data = sv.signon_buffers[sv.num_signon_buffers];
-	sv.num_signon_buffers++;
-	sv.signon.cursize = 0;
+	SV_NewSignonBuffer ();
 }
 
 /*
@@ -174,84 +202,81 @@ void SV_SaveSpawnparms (void)
 
 /*
 ================
-SV_CalcPHS
+SV_InitVis
 
-Expands the PVS and calculates the PHS
-(Potentially Hearable Set)
+Room for the visibility rows of the level. A PHS (potentially hearable set)
+row is the PVS rows of every leaf a leaf sees; for a big map building them
+all takes minutes, so each is built when a multicast first needs it.
 ================
 */
-void SV_CalcPHS (void)
+static void SV_InitVis (void)
 {
-	int		rowbytes, rowwords;
-	int		i, j, k, l, index, num;
-	int		bitbyte;
-	unsigned	*dest, *src;
-	byte	*scan;
-	int		count, vcount;
-
-	Con_Printf ("Building PHS...\n");
+	int		num;
 
 	// a row for every leaf with visibility, and one for leaf 0 outside the map
 	num = CM_NumVisLeafs (sv.map) + 1;
-	rowwords = (num+31)>>5;
-	rowbytes = rowwords*4;
-	sv.vis_rowbytes = rowbytes;
-	sv.checkpvs = Arena_Alloc (&sv_level_arena, (size_t)rowbytes);
+	sv.vis_rows = num;
+	sv.vis_rowbytes = ((num + 31) >> 5) * 4;
+	sv.checkpvs = Arena_Alloc (&sv_level_arena, (size_t)sv.vis_rowbytes);
+	sv.pvs_rows = Arena_Alloc (&sv_level_arena, (size_t)num * sizeof(*sv.pvs_rows));
+	sv.phs_rows = Arena_Alloc (&sv_level_arena, (size_t)num * sizeof(*sv.phs_rows));
+}
 
-	sv.pvs = Arena_Alloc (&sv_level_arena, (size_t)rowbytes*num);
-	scan = sv.pvs;
-	vcount = 0;
-	for (i=0 ; i<num ; i++, scan+=rowbytes)
+/*
+================
+SV_LeafPVS
+
+The leafs leafnum sees, bit n for leaf n+1; leaf 0 (outside the map) sees
+everything
+================
+*/
+byte *SV_LeafPVS (int leafnum)
+{
+	byte	*row;
+
+	if (leafnum < 0 || leafnum >= sv.vis_rows)
+		leafnum = 0;
+	if (!sv.pvs_rows[leafnum])
 	{
-		memcpy (scan, CM_LeafPVS (sv.map, i), (size_t)rowbytes);
-		if (i == 0)
-			continue;
-		for (j=0 ; j<num ; j++)
-		{
-			if ( scan[j>>3] & (1<<(j&7)) )
-			{
-				vcount++;
-			}
-		}
+		row = Arena_Alloc (&sv_level_arena, (size_t)sv.vis_rowbytes);
+		memcpy (row, CM_LeafPVS (sv.map, leafnum), (size_t)sv.vis_rowbytes);
+		sv.pvs_rows[leafnum] = row;
 	}
+	return sv.pvs_rows[leafnum];
+}
 
+/*
+================
+SV_LeafPHS
 
-	sv.phs = Arena_Alloc (&sv_level_arena, (size_t)rowbytes*num);
-	count = 0;
-	scan = sv.pvs;
-	dest = (unsigned *)sv.phs;
-	for (i=0 ; i<num ; i++, dest += rowwords, scan += rowbytes)
+The leafs leafnum can hear: the PVS of every leaf it sees
+================
+*/
+byte *SV_LeafPHS (int leafnum)
+{
+	unsigned	*row, *src;
+	byte		*pvs;
+	int			j, l, rowwords = sv.vis_rowbytes / 4;
+
+	if (leafnum < 0 || leafnum >= sv.vis_rows)
+		leafnum = 0;
+	if (!sv.phs_rows[leafnum])
 	{
-		memcpy (dest, scan, rowbytes);
-		for (j=0 ; j<rowbytes ; j++)
+		pvs = SV_LeafPVS (leafnum);
+		row = Arena_Alloc (&sv_level_arena, (size_t)sv.vis_rowbytes);
+		memcpy (row, pvs, (size_t)sv.vis_rowbytes);
+		// bit j is leaf j+1
+		for (j = 0 ; j < sv.vis_rows - 1 ; j++)
 		{
-			bitbyte = scan[j];
-			if (!bitbyte)
+			if (!(pvs[j>>3] & (1<<(j&7))))
 				continue;
-			for (k=0 ; k<8 ; k++)
-			{
-				if (! (bitbyte & (1<<k)) )
-					continue;
-				// or this pvs row into the phs
-				// +1 because pvs is 1 based
-				index = ((j<<3)+k+1);
-				if (index >= num)
-					continue;
-				src = (unsigned *)sv.pvs + index*rowwords;
-				for (l=0 ; l<rowwords ; l++)
-					dest[l] |= src[l];
-			}
+			src = (unsigned *)SV_LeafPVS (j + 1);
+			for (l = 0 ; l < rowwords ; l++)
+				row[l] |= src[l];
 		}
-
-		if (i == 0)
-			continue;
-		for (j=0 ; j<num ; j++)
-			if ( ((byte *)dest)[j>>3] & (1<<(j&7)) )
-				count++;
+		sv.phs_rows[leafnum] = (byte *)row;
 	}
-
-	Con_Printf ("Average leafs visible / hearable / total: %i / %i / %i\n"
-		, vcount/num, count/num, num);
+	return sv.phs_rows[leafnum];
 }
 
 unsigned SV_CheckModel(char *mdl)
@@ -324,9 +349,7 @@ void SV_SpawnServer (char *server)
 	sv.master.maxsize = sizeof(sv.master_buf);
 	sv.master.data = sv.master_buf;
 	
-	sv.signon.maxsize = sizeof(sv.signon_buffers[0]);
-	sv.signon.data = sv.signon_buffers[0];
-	sv.num_signon_buffers = 1;
+	SV_NewSignonBuffer ();
 
 	Q_strncpyz (sv.name, server, sizeof(sv.name));
 
@@ -357,7 +380,12 @@ void SV_SpawnServer (char *server)
 	if (!sv.map)
 		SV_Error ("Couldn't load %s", sv.modelname);
 	sv.worldmodel = CM_WorldModel (sv.map);
-	SV_CalcPHS ();
+	// model numbers go out as bytes: the world and its inline models must
+	// leave room in the precache list
+	if (CM_NumInlineModels (sv.map) + 1 >= MAX_MODELS)
+		SV_Error ("%s has %i brush models, more than the protocol's %i", sv.modelname,
+			CM_NumInlineModels (sv.map), MAX_MODELS - 2);
+	SV_InitVis ();
 
 	//
 	// clear physics interaction links

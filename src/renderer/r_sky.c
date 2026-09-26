@@ -57,9 +57,20 @@ A sky texture is 256*128, with the right side being a masked overlay
 void R_InitSky (texture_t *mt)
 {
 	int			i, j;
-	byte		*src;
+	byte		*src, *in;
 
-	src = (byte *)mt + mt->offsets[0];
+	// the sky is two 128x128 halves side by side; other sizes are resampled
+	in = (byte *)mt + mt->offsets[0];
+	src = in;
+	if (mt->width != 256 || mt->height != 128)
+	{
+		static byte	resampled[256*128];
+
+		for (i=0 ; i<128 ; i++)
+			for (j=0 ; j<256 ; j++)
+				resampled[i*256 + j] = in[(i * mt->height / 128) * mt->width + j * mt->width / 256];
+		src = resampled;
+	}
 
 	for (i=0 ; i<128 ; i++)
 	{

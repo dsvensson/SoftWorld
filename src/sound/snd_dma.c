@@ -156,6 +156,8 @@ void S_Init (void)
 
 
 	snd.initialized = true;
+	snd.max_channels = 128;
+	snd.channels = Mem_Calloc ((size_t)snd.max_channels, sizeof(channel_t));
 
 	S_Startup ();
 
@@ -481,11 +483,11 @@ void S_StopAllSounds(bool clear)
 
 	snd.total_channels = MAX_DYNAMIC_CHANNELS + NUM_AMBIENTS;	// no statics
 
-	for (i=0 ; i<MAX_CHANNELS ; i++)
+	for (i=0 ; i<snd.max_channels ; i++)
 		if (snd.channels[i].sfx)
 			snd.channels[i].sfx = NULL;
 
-	Q_memset(snd.channels, 0, MAX_CHANNELS * sizeof(channel_t));
+	Q_memset(snd.channels, 0, (size_t)snd.max_channels * sizeof(channel_t));
 
 	if (clear)
 		S_ClearBuffer ();
@@ -531,10 +533,11 @@ void S_StaticSound (sfx_t *sfx, vec3_t origin, float vol, float attenuation)
 	if (!sfx)
 		return;
 
-	if (snd.total_channels == MAX_CHANNELS)
-	{
-		Con_Printf ("total_channels == MAX_CHANNELS\n");
-		return;
+	if (snd.total_channels == snd.max_channels)
+	{	// no channel pointer is kept between frames, so the array may move
+		snd.channels = Mem_Realloc (snd.channels, (size_t)snd.max_channels * 2 * sizeof(channel_t));
+		memset (snd.channels + snd.max_channels, 0, (size_t)snd.max_channels * sizeof(channel_t));
+		snd.max_channels *= 2;
 	}
 
 	ss = &snd.channels[snd.total_channels];

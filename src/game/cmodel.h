@@ -79,9 +79,11 @@ typedef struct cmap_s cmap_t;
 //
 
 // loads a map, or takes another reference to it when it is loaded already;
-// NULL if the file can't be found. Everything the CM_ functions return for a
-// map stays valid until its last reference is freed.
+// NULL if the file can't be found or isn't a usable map (the reason is
+// printed). Everything the CM_ functions return for a map stays valid until
+// its last reference is freed. CM_LoadMapBuffer reads the file's contents.
 cmap_t		*CM_LoadMap (const char *name, unsigned *checksum, unsigned *checksum2);
+cmap_t		*CM_LoadMapBuffer (const char *name, const byte *buf, int size, unsigned *checksum, unsigned *checksum2);
 void		CM_FreeMap (cmap_t *map);
 
 cmodel_t	*CM_WorldModel (cmap_t *map);

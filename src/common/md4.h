@@ -21,4 +21,4 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma once
 // md4.h -- MD4 block checksums (map and model checksums)
 
-unsigned	Com_BlockChecksum (void *buffer, int length);
+unsigned	Com_BlockChecksum (const void *buffer, int length);

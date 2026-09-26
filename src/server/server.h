@@ -39,7 +39,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 typedef enum {RD_NONE, RD_CLIENT, RD_PACKET} redirect_t;
 
-#define	MAX_SIGNON_BUFFERS	8
 
 typedef enum {
 	ss_dead,			// no map loaded
@@ -83,8 +82,9 @@ typedef struct
 									// edict_t is variable sized, but can
 									// be used to reference the world ent
 
-	byte		*pvs, *phs;			// fully expanded and decompressed, a row for each leaf
+	int			vis_rows;			// leafs with visibility, and leaf 0 outside the map
 	int			vis_rowbytes;
+	byte		**pvs_rows, **phs_rows;	// decompressed when first needed, NULL until then
 	byte		*checkpvs;			// what the PF_checkclient target sees
 
 	// added to every client's unreliable buffer each frame, then cleared
@@ -108,9 +108,10 @@ typedef struct
 	// large levels will have >MAX_DATAGRAM sized signons, so 
 	// multiple signon messages are kept
 	sizebuf_t	signon;
-	int			num_signon_buffers;
-	int			signon_buffer_size[MAX_SIGNON_BUFFERS];
-	byte		signon_buffers[MAX_SIGNON_BUFFERS][MAX_DATAGRAM];
+	int			num_signon_buffers;		// as many as the level's baselines and statics need
+	int			max_signon_buffers;
+	int			*signon_buffer_size;
+	byte		**signon_buffers;		// MAX_DATAGRAM bytes each
 
 	areanode_t	areanodes[AREA_NODES];	// entities sorted by position
 	int			numareanodes;
@@ -419,6 +420,8 @@ void Master_Heartbeat (void);
 //
 void SV_SpawnServer (char *server);
 void SV_FlushSignon (void);
+byte *SV_LeafPVS (int leafnum);
+byte *SV_LeafPHS (int leafnum);
 
 
 //

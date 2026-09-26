@@ -51,7 +51,11 @@
 		{ "name": "clangcl-v4-debug", "configurePreset": "clangcl-v4", "configuration": "Debug" }
 	],
 	"testPresets": [
-		{ "name": "msvc-v4", "configurePreset": "msvc-v4", "configuration": "Release", "output": { "outputOnFailure": true } },
-		{ "name": "clangcl-v4", "configurePreset": "clangcl-v4", "configuration": "Release", "output": { "outputOnFailure": true } }
+		{ "name": "msvc-v4", "configurePreset": "msvc-v4", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "exclude": { "label": "maps" } } },
+		{ "name": "clangcl-v4", "configurePreset": "clangcl-v4", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "exclude": { "label": "maps" } } },
+		{ "name": "msvc-v4-maps", "configurePreset": "msvc-v4", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "include": { "label": "maps" } } }
 	]
 }

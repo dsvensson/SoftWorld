@@ -60,7 +60,8 @@ typedef struct
 	int			blocked;		// > 0 while the window is inactive
 	dma_t		dma;			// the output ring
 
-	channel_t	channels[MAX_CHANNELS];
+	channel_t	*channels;			// heap, grows with the static sounds of a level
+	int			max_channels;
 	int			total_channels;
 	int			paintedtime;	// sample pairs mixed
 	int			soundtime;		// sample pairs the device has taken

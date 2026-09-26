@@ -5,3 +5,10 @@ if(SW_ARCH STREQUAL "x86-64-v4")
 	target_link_libraries(test_simd PRIVATE sw_simd)
 	add_test(NAME simd COMMAND test_simd)
 endif()
+
+# test_bspload loads every map under C:\quakedev as a collision map and as a
+# render model. It needs the maps, so only the msvc-v4-maps test preset runs it.
+sw_add_program(test_bspload test_bspload.c)
+target_link_libraries(test_bspload PRIVATE sw_game sw_render sw_common)
+add_test(NAME bspload COMMAND test_bspload)
+set_tests_properties(bspload PROPERTIES LABELS maps)

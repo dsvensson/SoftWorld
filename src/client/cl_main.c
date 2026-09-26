@@ -309,6 +309,9 @@ CL_ClearState
 */
 void CL_ClearState (void)
 {
+	entity_t	**static_blocks = cl.static_blocks;
+	int			i, num_static_blocks = (cl.num_statics + STATIC_BLOCK - 1) / STATIC_BLOCK;
+
 	S_StopAllSounds (true);
 
 	Con_DPrintf ("Clearing memory\n");
@@ -325,6 +328,9 @@ void CL_ClearState (void)
 	SZ_Clear (&cls.netchan.message);
 
 	R_ClearEfrags ();
+	for (i = 0 ; i < num_static_blocks ; i++)
+		Mem_Free (static_blocks[i]);
+	Mem_Free (static_blocks);
 	CL_DisableLerpMove ();
 	r_scene.time = 0;
 	r_scene.worldmodel = NULL;

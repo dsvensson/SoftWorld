@@ -23,17 +23,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // on the same machine.
 
 #include "r_local.h"
-#include "r_local.h"
 
 static model_t	*loadmodel;
 
 void Mod_LoadSpriteModel (model_t *mod, void *buffer);
-static int		mod_filelen;		// of the map file being loaded
-void Mod_LoadBrushModel (model_t *mod, void *buffer);
+static bool Mod_LoadBrushModel (model_t *mod, byte *buffer, int size);
 void Mod_LoadAliasModel (model_t *mod, void *buffer);
 model_t *Mod_LoadModel (model_t *mod, bool crash);
-
-static byte	mod_novis[MAX_MAP_LEAFS/8];
 
 static model_t	**mod_known;		// every model ever named; entries never move
 static int		mod_numknown, mod_maxknown;
@@ -113,7 +109,6 @@ Mod_Init
 */
 void Mod_Init (void)
 {
-	memset (mod_novis, 0xff, sizeof(mod_novis));
 	VMArray_Init (&mod_scratch, "model scratch", 1, 256 * 1024 * 1024);
 	FS_AddGamedirCallback (Mod_FlushAll);
 }
@@ -169,52 +164,45 @@ mleaf_t *Mod_PointInLeaf (vec3_t p, model_t *model)
 /*
 ===================
 Mod_DecompressVis
+
+Runs of zero bytes are a zero and a count; a row that runs off the end of the
+lump ends there
 ===================
 */
-byte *Mod_DecompressVis (byte *in, model_t *model)
+static byte *Mod_DecompressVis (byte *in, model_t *model)
 {
-	static byte	decompressed[MAX_MAP_LEAFS/8];
-	int		c;
-	byte	*out;
-	int		row;
+	byte	*out = model->pvs, *end = model->pvs + model->visbytes;
+	byte	*inend = model->visdata + model->vissize;
+	int		row, c;
 
-	row = (model->numleafs+7)>>3;	
-	out = decompressed;
-
+	row = (model->numleafs + 7) >> 3;
+	memset (out, 0, (size_t)model->visbytes);
 	if (!in)
 	{	// no vis info, so make all visible
-		while (row)
-		{
-			*out++ = 0xff;
-			row--;
-		}
-		return decompressed;		
+		memset (out, 0xff, (size_t)row);
+		return model->pvs;
 	}
 
-	do
+	while (out < model->pvs + row && in < inend)
 	{
 		if (*in)
 		{
 			*out++ = *in++;
 			continue;
 		}
-	
+		if (in + 1 >= inend)
+			break;
 		c = in[1];
 		in += 2;
-		while (c)
-		{
-			*out++ = 0;
-			c--;
-		}
-	} while (out - decompressed < row);
-	
-	return decompressed;
+		out += c < end - out ? c : end - out;
+	}
+	return model->pvs;
 }
 
 byte *Mod_LeafPVS (mleaf_t *leaf, model_t *model)
 {
 	if (leaf == model->leafs)
-		return mod_novis;
+		return model->novis;
 	return Mod_DecompressVis (leaf->compressed_vis, model);
 }
 
@@ -282,64 +270,78 @@ Loads a model into the cache
 */
 model_t *Mod_LoadModel (model_t *mod, bool crash)
 {
-	unsigned *buf;
+	byte	*buf;
+	int		size;
+	bool	ok;
 
 	if (!mod->needload)
 		return mod;
 
-//
-// because the world is so huge, load it one piece at a time
-//
-	if (!crash)
-	{
-	
-	}
-	
-//
-// load the file
-//
-	buf = (unsigned *)FS_LoadFile (mod->name, &mod_filelen);
+	buf = FS_LoadFile (mod->name, &size);
 	if (!buf)
 	{
 		if (crash)
 			Sys_Error ("Mod_NumForName: %s not found", mod->name);
 		return NULL;
 	}
-	
-//
-// allocate a new model
-//
+	ok = Mod_LoadFromBuffer (mod, buf, size);
+	Mem_Free (buf);
+	if (!ok)
+	{
+		if (crash)
+			Sys_Error ("Mod_NumForName: %s can't be loaded", mod->name);
+		return NULL;
+	}
+	return mod;
+}
+
+/*
+==================
+Mod_LoadFromBuffer
+==================
+*/
+bool Mod_LoadFromBuffer (model_t *mod, byte *buffer, int size)
+{
+	unsigned	ident = 0;
+
 	Mod_FreeData (mod);
 	mod->arena = Mem_Alloc (sizeof(arena_t));
 	Arena_Init (mod->arena, mod->name);
-
 	loadmodel = mod;
-
-//
-// fill it in
-//
-
-// call the apropriate loader
 	mod->needload = false;
-	
-	switch (LittleLong(*(unsigned *)buf))
+
+	if (size >= 4)
+		memcpy (&ident, buffer, 4);
+	switch (LittleLong ((int)ident))
 	{
 	case IDPOLYHEADER:
-		Mod_LoadAliasModel (mod, buf);
+		Mod_LoadAliasModel (mod, buffer);
 		break;
-		
+
 	case IDSPRITEHEADER:
-		Mod_LoadSpriteModel (mod, buf);
+		Mod_LoadSpriteModel (mod, buffer);
 		break;
-	
+
 	default:
-		Mod_LoadBrushModel (mod, buf);
+		if (!Mod_LoadBrushModel (mod, buffer, size))
+		{
+			Mod_Unload (mod);
+			return false;
+		}
 		break;
 	}
+	return true;
+}
 
-	Mem_Free (buf);
-
-	return mod;
+/*
+==================
+Mod_Unload
+==================
+*/
+void Mod_Unload (model_t *mod)
+{
+	Mod_FreeData (mod);
+	mod->needload = true;
 }
 
 /*
@@ -367,68 +369,103 @@ model_t *Mod_ForName (char *modname, bool crash)
 ===============================================================================
 */
 
-static byte	*mod_base;
+static bspfile_t	*mod_bsp;		// the map being loaded
 
+// the reason loading failed; returns false
+static bool Mod_Fail (const char *fmt, ...)
+{
+	va_list	args;
+
+	va_start (args, fmt);
+	vsnprintf (mod_bsp->error, sizeof(mod_bsp->error), fmt, args);
+	va_end (args);
+	return false;
+}
 
 /*
 =================
 Mod_LoadTextures
+
+Textures without data in the map, or with data that doesn't fit, become the
+checkerboard. The mip levels are copied to follow each other.
 =================
 */
-void Mod_LoadTextures (lump_t *l)
+static bool Mod_LoadTextures (void)
 {
-	int		i, j, pixels, num, max, altmax;
-	miptex_t	*mt;
+	const byte	*lump;
+	int			lumplen, i, j, count, ofs, w, h, pos, num, max, altmax;
+	size_t		pixels;
+	miptex_t	mt;
 	texture_t	*tx, *tx2;
 	texture_t	*anims[10];
 	texture_t	*altanims[10];
-	dmiptexlump_t *m;
+	bool		ok;
 
-	if (!l->filelen)
-	{
-		loadmodel->textures = NULL;
-		return;
-	}
-	m = (dmiptexlump_t *)(mod_base + l->fileofs);
-	
-	m->nummiptex = LittleLong (m->nummiptex);
-	
-	loadmodel->numtextures = m->nummiptex;
-	loadmodel->textures = Mod_Alloc (m->nummiptex * sizeof(*loadmodel->textures) );
+	loadmodel->textures = NULL;
+	loadmodel->numtextures = 0;
+	if (!BSP_Lump (mod_bsp, LUMP_TEXTURES, 1, &lump, &lumplen))
+		return false;
+	if (lumplen < 4)
+		return true;
+	memcpy (&count, lump, 4);
+	count = LittleLong (count);
+	if (count < 0 || count > (lumplen - 4) / 4)
+		return Mod_Fail ("bad texture directory");
 
-	for (i=0 ; i<m->nummiptex ; i++)
+	loadmodel->numtextures = count;
+	loadmodel->textures = Mod_Alloc ((size_t)count * sizeof(*loadmodel->textures) + 1);
+
+	for (i=0 ; i<count ; i++)
 	{
-		m->dataofs[i] = LittleLong(m->dataofs[i]);
-		if (m->dataofs[i] == -1)
+		memcpy (&ofs, lump + 4 + i * 4, 4);
+		ofs = LittleLong (ofs);
+		if (ofs < 0 || ofs > lumplen - (int)sizeof(mt))
+			continue;		// not in the map
+		memcpy (&mt, lump + ofs, sizeof(mt));
+		mt.name[sizeof(mt.name) - 1] = 0;
+		mt.width = (unsigned)LittleLong ((int)mt.width);
+		mt.height = (unsigned)LittleLong ((int)mt.height);
+		if (!mt.width || !mt.height || (mt.width & 15) || (mt.height & 15) || mt.width > 4096 || mt.height > 4096)
+		{
+			Con_DPrintf ("%s: texture %s is %ux%u, not multiples of 16\n", loadmodel->name, mt.name, mt.width, mt.height);
 			continue;
-		mt = (miptex_t *)((byte *)m + m->dataofs[i]);
-		mt->width = LittleLong (mt->width);
-		mt->height = LittleLong (mt->height);
+		}
+		ok = true;
 		for (j=0 ; j<MIPLEVELS ; j++)
-			mt->offsets[j] = LittleLong (mt->offsets[j]);
-		
-		if ( (mt->width & 15) || (mt->height & 15) )
-			Sys_Error ("Texture %s is not 16 aligned", mt->name);
-		pixels = mt->width*mt->height/64*85;
-		tx = Mod_Alloc (sizeof(texture_t) +pixels);
-		loadmodel->textures[i] = tx;
+		{
+			mt.offsets[j] = (unsigned)LittleLong ((int)mt.offsets[j]);
+			w = (int)(mt.width >> j);
+			h = (int)(mt.height >> j);
+			if (!mt.offsets[j] || mt.offsets[j] > (unsigned)(lumplen - ofs) || (size_t)w * h > (size_t)(lumplen - ofs) - mt.offsets[j])
+				ok = false;	// kept outside the map, in a wad
+		}
+		if (!ok)
+			continue;
 
-		memcpy (tx->name, mt->name, sizeof(tx->name));
-		tx->width = mt->width;
-		tx->height = mt->height;
+		pixels = (size_t)mt.width * mt.height / 64 * 85;
+		tx = Mod_Alloc (sizeof(texture_t) + pixels);
+		loadmodel->textures[i] = tx;
+		memcpy (tx->name, mt.name, sizeof(tx->name));
+		tx->width = mt.width;
+		tx->height = mt.height;
+		pos = (int)sizeof(texture_t);
 		for (j=0 ; j<MIPLEVELS ; j++)
-			tx->offsets[j] = mt->offsets[j] + sizeof(texture_t) - sizeof(miptex_t);
-		// the pixels immediately follow the structures
-		memcpy ( tx+1, mt+1, pixels);
-		
-		if (!Q_strncmp(mt->name,"sky",3))	
+		{
+			w = (int)(mt.width >> j);
+			h = (int)(mt.height >> j);
+			tx->offsets[j] = (unsigned)pos;
+			memcpy ((byte *)tx + pos, lump + ofs + mt.offsets[j], (size_t)w * h);
+			pos += w * h;
+		}
+
+		if (!Q_strncmp (tx->name, "sky", 3))
 			R_InitSky (tx);
 	}
 
 //
-// sequence the animations
+// sequence the animations; a broken sequence stays still
 //
-	for (i=0 ; i<m->nummiptex ; i++)
+	for (i=0 ; i<count ; i++)
 	{
 		tx = loadmodel->textures[i];
 		if (!tx || tx->name[0] != '+')
@@ -459,9 +496,13 @@ void Mod_LoadTextures (lump_t *l)
 			altmax++;
 		}
 		else
-			Sys_Error ("Bad animating texture %s", tx->name);
+		{
+			Con_DPrintf ("%s: bad animating texture %s\n", loadmodel->name, tx->name);
+			continue;
+		}
 
-		for (j=i+1 ; j<m->nummiptex ; j++)
+		ok = true;
+		for (j=i+1 ; j<count ; j++)
 		{
 			tx2 = loadmodel->textures[j];
 			if (!tx2 || tx2->name[0] != '+')
@@ -487,16 +528,25 @@ void Mod_LoadTextures (lump_t *l)
 					altmax = num+1;
 			}
 			else
-				Sys_Error ("Bad animating texture %s", tx->name);
+				ok = false;
 		}
-		
+		for (j=0 ; j<max ; j++)
+			if (!anims[j])
+				ok = false;
+		for (j=0 ; j<altmax ; j++)
+			if (!altanims[j])
+				ok = false;
+		if (!ok)
+		{
+			Con_DPrintf ("%s: broken texture animation %s\n", loadmodel->name, tx->name);
+			continue;
+		}
+
 #define	ANIM_CYCLE	2
 	// link them all together
 		for (j=0 ; j<max ; j++)
 		{
 			tx2 = anims[j];
-			if (!tx2)
-				Sys_Error ("Missing frame %i of %s",j, tx->name);
 			tx2->anim_total = max * ANIM_CYCLE;
 			tx2->anim_min = j * ANIM_CYCLE;
 			tx2->anim_max = (j+1) * ANIM_CYCLE;
@@ -507,8 +557,6 @@ void Mod_LoadTextures (lump_t *l)
 		for (j=0 ; j<altmax ; j++)
 		{
 			tx2 = altanims[j];
-			if (!tx2)
-				Sys_Error ("Missing frame %i of %s",j, tx->name);
 			tx2->anim_total = altmax * ANIM_CYCLE;
 			tx2->anim_min = j * ANIM_CYCLE;
 			tx2->anim_max = (j+1) * ANIM_CYCLE;
@@ -517,6 +565,7 @@ void Mod_LoadTextures (lump_t *l)
 				tx2->alternate_anims = anims[0];
 		}
 	}
+	return true;
 }
 
 /*
@@ -524,57 +573,21 @@ void Mod_LoadTextures (lump_t *l)
 Mod_LoadLighting
 =================
 */
-void Mod_LoadLighting (lump_t *l)
+static bool Mod_LoadLighting (void)
 {
-	if (!l->filelen)
-	{
-		loadmodel->lightdata = NULL;
-		return;
-	}
-	loadmodel->lightdata = Mod_Alloc ( l->filelen);	
-	memcpy (loadmodel->lightdata, mod_base + l->fileofs, l->filelen);
-}
+	const byte	*in;
+	int			count;
 
-
-/*
-=================
-Mod_FindBSPXLump
-
-The BSPX directory follows the last lump, 4 byte aligned: "BSPX", a
-count, then 24 byte names with offsets and lengths
-=================
-*/
-static byte *Mod_FindBSPXLump (dheader_t *header, const char *name, int *length)
-{
-	int		i, end, count;
-	byte	*bspx;
-
-	end = 0;
-	for (i=0 ; i<HEADER_LUMPS ; i++)
-		if (header->lumps[i].fileofs + header->lumps[i].filelen > end)
-			end = header->lumps[i].fileofs + header->lumps[i].filelen;
-	end = (end + 3) & ~3;
-	if (end + 8 > mod_filelen || memcmp (mod_base + end, "BSPX", 4))
-		return NULL;
-
-	bspx = mod_base + end;
-	count = LittleLong (*(int *)(bspx + 4));
-	if (count < 0 || end + 8 + count * 32 > mod_filelen)
-		return NULL;
-	for (i=0 ; i<count ; i++)
-	{
-		byte	*entry = bspx + 8 + i * 32;
-		int		ofs = LittleLong (*(int *)(entry + 24));
-		int		len = LittleLong (*(int *)(entry + 28));
-
-		if (strncmp ((char *)entry, name, 24))
-			continue;
-		if (ofs < 0 || len < 0 || ofs > mod_filelen - len)
-			return NULL;
-		*length = len;
-		return mod_base + ofs;
-	}
-	return NULL;
+	loadmodel->lightdata = NULL;
+	loadmodel->lightdatasize = 0;
+	if (!BSP_Lump (mod_bsp, LUMP_LIGHTING, 1, &in, &count))
+		return false;
+	if (!count)
+		return true;
+	loadmodel->lightdata = Mod_Alloc ((size_t)count);
+	loadmodel->lightdatasize = count;
+	memcpy (loadmodel->lightdata, in, (size_t)count);
+	return true;
 }
 
 /*
@@ -586,16 +599,16 @@ blue mantissas with a shared 5 bit exponent biased by 15, linear light
 where 1.0 is the mono 128. Stored as 16 bits per channel, 2048 is 1.0.
 =================
 */
-static void Mod_LoadHDRLighting (dheader_t *header)
+static void Mod_LoadHDRLighting (void)
 {
-	byte	*in;
-	int		i, c, length, mono;
+	const byte	*in;
+	int			i, c, length, mono;
 	unsigned	e5bgr9;
-	float	scale, v;
+	float		scale, v;
 
 	loadmodel->lightrgb = NULL;
-	mono = header->lumps[LUMP_LIGHTING].filelen;
-	in = Mod_FindBSPXLump (header, "LIGHTING_E5BGR9", &length);
+	mono = loadmodel->lightdatasize;
+	in = BSP_FindBSPXLump (mod_bsp, "LIGHTING_E5BGR9", &length);
 	if (!in || !mono || length != mono * 4)
 		return;
 
@@ -617,61 +630,66 @@ static void Mod_LoadHDRLighting (dheader_t *header)
 Mod_LoadVisibility
 =================
 */
-void Mod_LoadVisibility (lump_t *l)
+static bool Mod_LoadVisibility (void)
 {
-	if (!l->filelen)
-	{
-		loadmodel->visdata = NULL;
-		return;
-	}
-	loadmodel->visdata = Mod_Alloc ( l->filelen);	
-	memcpy (loadmodel->visdata, mod_base + l->fileofs, l->filelen);
-}
+	const byte	*in;
+	int			count;
 
+	loadmodel->visdata = NULL;
+	loadmodel->vissize = 0;
+	if (!BSP_Lump (mod_bsp, LUMP_VISIBILITY, 1, &in, &count))
+		return false;
+	if (!count)
+		return true;
+	loadmodel->visdata = Mod_Alloc ((size_t)count);
+	loadmodel->vissize = count;
+	memcpy (loadmodel->visdata, in, (size_t)count);
+	return true;
+}
 
 /*
 =================
 Mod_LoadEntities
 =================
 */
-void Mod_LoadEntities (lump_t *l)
+static bool Mod_LoadEntities (void)
 {
-	if (!l->filelen)
-	{
-		loadmodel->entities = NULL;
-		return;
-	}
-	loadmodel->entities = Mod_Alloc ( l->filelen);	
-	memcpy (loadmodel->entities, mod_base + l->fileofs, l->filelen);
-}
+	const byte	*in;
+	int			count;
 
+	if (!BSP_Lump (mod_bsp, LUMP_ENTITIES, 1, &in, &count))
+		return false;
+	loadmodel->entities = Mod_Alloc ((size_t)count + 1);
+	memcpy (loadmodel->entities, in, (size_t)count);
+	return true;
+}
 
 /*
 =================
 Mod_LoadVertexes
 =================
 */
-void Mod_LoadVertexes (lump_t *l)
+static bool Mod_LoadVertexes (void)
 {
-	dvertex_t	*in;
+	const byte	*in;
+	dvertex_t	d;
 	mvertex_t	*out;
 	int			i, count;
 
-	in = (void *)(mod_base + l->fileofs);
-	if (l->filelen % sizeof(*in))
-		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
-	count = l->filelen / sizeof(*in);
-	out = Mod_Alloc ( count*sizeof(*out));	
-
+	if (!BSP_Lump (mod_bsp, LUMP_VERTEXES, sizeof(d), &in, &count))
+		return false;
+	out = Mod_Alloc ((size_t)count * sizeof(*out) + 1);
 	loadmodel->vertexes = out;
 	loadmodel->numvertexes = count;
 
-	for ( i=0 ; i<count ; i++, in++, out++)
+	for (i=0 ; i<count ; i++, out++)
 	{
-		out->position[0] = LittleFloat (in->point[0]);
-		out->position[1] = LittleFloat (in->point[1]);
-		out->position[2] = LittleFloat (in->point[2]);
+		memcpy (&d, in + i * sizeof(d), sizeof(d));
+		out->position[0] = LittleFloat (d.point[0]);
+		out->position[1] = LittleFloat (d.point[1]);
+		out->position[2] = LittleFloat (d.point[2]);
 	}
+	return true;
 }
 
 /*
@@ -679,35 +697,43 @@ void Mod_LoadVertexes (lump_t *l)
 Mod_LoadSubmodels
 =================
 */
-void Mod_LoadSubmodels (lump_t *l)
+static bool Mod_LoadSubmodels (void)
 {
-	dmodel_t	*in;
+	const byte	*in;
 	dmodel_t	*out;
 	int			i, j, count;
 
-	in = (void *)(mod_base + l->fileofs);
-	if (l->filelen % sizeof(*in))
-		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
-	count = l->filelen / sizeof(*in);
-	out = Mod_Alloc ( count*sizeof(*out));	
-
+	if (!BSP_Lump (mod_bsp, LUMP_MODELS, sizeof(*out), &in, &count))
+		return false;
+	if (count < 1)
+		return Mod_Fail ("no models");
+	out = Mod_Alloc ((size_t)count * sizeof(*out));
 	loadmodel->submodels = out;
 	loadmodel->numsubmodels = count;
 
-	for ( i=0 ; i<count ; i++, in++, out++)
+	for (i=0 ; i<count ; i++, out++)
 	{
+		memcpy (out, in + i * sizeof(*out), sizeof(*out));
 		for (j=0 ; j<3 ; j++)
 		{	// spread the mins / maxs by a pixel
-			out->mins[j] = LittleFloat (in->mins[j]) - 1;
-			out->maxs[j] = LittleFloat (in->maxs[j]) + 1;
-			out->origin[j] = LittleFloat (in->origin[j]);
+			out->mins[j] = LittleFloat (out->mins[j]) - 1;
+			out->maxs[j] = LittleFloat (out->maxs[j]) + 1;
+			out->origin[j] = LittleFloat (out->origin[j]);
 		}
 		for (j=0 ; j<MAX_MAP_HULLS ; j++)
-			out->headnode[j] = LittleLong (in->headnode[j]);
-		out->visleafs = LittleLong (in->visleafs);
-		out->firstface = LittleLong (in->firstface);
-		out->numfaces = LittleLong (in->numfaces);
+			out->headnode[j] = LittleLong (out->headnode[j]);
+		out->visleafs = LittleLong (out->visleafs);
+		out->firstface = LittleLong (out->firstface);
+		out->numfaces = LittleLong (out->numfaces);
+
+		if (out->headnode[0] < 0 || out->headnode[0] >= loadmodel->numnodes)
+			return Mod_Fail ("model %i has a bad head node", i);
+		if (out->firstface < 0 || out->numfaces < 0 || out->numfaces > loadmodel->numsurfaces - out->firstface)
+			return Mod_Fail ("model %i has bad faces", i);
+		if (out->visleafs < 0 || out->visleafs >= loadmodel->numleafs)
+			return Mod_Fail ("model %i has bad visleafs", i);
 	}
+	return true;
 }
 
 /*
@@ -715,26 +741,37 @@ void Mod_LoadSubmodels (lump_t *l)
 Mod_LoadEdges
 =================
 */
-void Mod_LoadEdges (lump_t *l)
+static bool Mod_LoadEdges (void)
 {
-	dedge_t *in;
-	medge_t *out;
-	int 	i, count;
+	bspedge_t	*in;
+	medge_t		*out;
+	int			i, count;
 
-	in = (void *)(mod_base + l->fileofs);
-	if (l->filelen % sizeof(*in))
-		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
-	count = l->filelen / sizeof(*in);
-	out = Mod_Alloc ( (count + 1) * sizeof(*out));	
-
+	in = BSP_Edges (mod_bsp, &count);
+	if (!in)
+		return false;
+	out = Mod_Alloc ((size_t)(count + 1) * sizeof(*out));
 	loadmodel->edges = out;
 	loadmodel->numedges = count;
 
-	for ( i=0 ; i<count ; i++, in++, out++)
+	for (i=0 ; i<count ; i++, out++)
 	{
-		out->v[0] = (unsigned short)LittleShort(in->v[0]);
-		out->v[1] = (unsigned short)LittleShort(in->v[1]);
+		if (in[i].v[0] >= (unsigned)loadmodel->numvertexes || in[i].v[1] >= (unsigned)loadmodel->numvertexes)
+		{
+			// edge 0 is never used (surfedges -0 and 0 would be the same),
+			// and some compilers leave garbage in it
+			if (i)
+			{
+				Mem_Free (in);
+				return Mod_Fail ("edge %i has a bad vertex", i);
+			}
+			in[i].v[0] = in[i].v[1] = 0;
+		}
+		out->v[0] = in[i].v[0];
+		out->v[1] = in[i].v[1];
 	}
+	Mem_Free (in);
+	return true;
 }
 
 /*
@@ -742,27 +779,28 @@ void Mod_LoadEdges (lump_t *l)
 Mod_LoadTexinfo
 =================
 */
-void Mod_LoadTexinfo (lump_t *l)
+static bool Mod_LoadTexinfo (void)
 {
-	texinfo_t *in;
-	mtexinfo_t *out;
-	int 	i, j, count;
-	int		miptex;
-	float	len1, len2;
+	const byte	*in;
+	texinfo_t	d;
+	mtexinfo_t	*out;
+	int			i, j, count, miptex;
+	float		len1, len2;
 
-	in = (void *)(mod_base + l->fileofs);
-	if (l->filelen % sizeof(*in))
-		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
-	count = l->filelen / sizeof(*in);
-	out = Mod_Alloc ( count*sizeof(*out));	
-
+	if (!BSP_Lump (mod_bsp, LUMP_TEXINFO, sizeof(d), &in, &count))
+		return false;
+	out = Mod_Alloc ((size_t)count * sizeof(*out) + 1);
 	loadmodel->texinfo = out;
 	loadmodel->numtexinfo = count;
 
-	for ( i=0 ; i<count ; i++, in++, out++)
+	for (i=0 ; i<count ; i++, out++)
 	{
-		for (j=0 ; j<8 ; j++)
-			out->vecs[0][j] = LittleFloat (in->vecs[0][j]);
+		memcpy (&d, in + i * sizeof(d), sizeof(d));
+		for (j=0 ; j<4 ; j++)
+		{
+			out->vecs[0][j] = LittleFloat (d.vecs[0][j]);
+			out->vecs[1][j] = LittleFloat (d.vecs[1][j]);
+		}
 		len1 = Length (out->vecs[0]);
 		len2 = Length (out->vecs[1]);
 		len1 = (len1 + len2)/2;
@@ -775,48 +813,38 @@ void Mod_LoadTexinfo (lump_t *l)
 		else
 			out->mipadjust = 1;
 
-		miptex = LittleLong (in->miptex);
-		out->flags = LittleLong (in->flags);
-	
-		if (!loadmodel->textures)
+		miptex = LittleLong (d.miptex);
+		out->flags = LittleLong (d.flags);
+		if (miptex >= 0 && miptex < loadmodel->numtextures && loadmodel->textures[miptex])
+			out->texture = loadmodel->textures[miptex];
+		else
 		{
 			out->texture = r_notexture_mip;	// checkerboard texture
 			out->flags = 0;
 		}
-		else
-		{
-			if (miptex >= loadmodel->numtextures)
-				Sys_Error ("miptex >= loadmodel->numtextures");
-			out->texture = loadmodel->textures[miptex];
-			if (!out->texture)
-			{
-				out->texture = r_notexture_mip; // texture not found
-				out->flags = 0;
-			}
-		}
 	}
+	return true;
 }
 
 /*
 ================
 CalcSurfaceExtents
 
-Fills in s->texturemins[] and s->extents[]
+Fills in s->texturemins[] and s->extents[], in double as the light tools do
 ================
 */
-void CalcSurfaceExtents (msurface_t *s)
+static bool CalcSurfaceExtents (msurface_t *s)
 {
-	float	mins[2], maxs[2], val;
-	int		i,j, e;
+	double		mins[2], maxs[2], val;
+	int			i, j, e, bmins[2], bmaxs[2];
 	mvertex_t	*v;
 	mtexinfo_t	*tex;
-	int		bmins[2], bmaxs[2];
 
-	mins[0] = mins[1] = 999999;
-	maxs[0] = maxs[1] = -99999;
+	mins[0] = mins[1] = 1e30;
+	maxs[0] = maxs[1] = -1e30;
 
 	tex = s->texinfo;
-	
+
 	for (i=0 ; i<s->numedges ; i++)
 	{
 		e = loadmodel->surfedges[s->firstedge+i];
@@ -824,12 +852,12 @@ void CalcSurfaceExtents (msurface_t *s)
 			v = &loadmodel->vertexes[loadmodel->edges[e].v[0]];
 		else
 			v = &loadmodel->vertexes[loadmodel->edges[-e].v[1]];
-		
+
 		for (j=0 ; j<2 ; j++)
 		{
-			val = v->position[0] * tex->vecs[j][0] + 
-				v->position[1] * tex->vecs[j][1] +
-				v->position[2] * tex->vecs[j][2] +
+			val = (double)v->position[0] * tex->vecs[j][0] +
+				(double)v->position[1] * tex->vecs[j][1] +
+				(double)v->position[2] * tex->vecs[j][2] +
 				tex->vecs[j][3];
 			if (val < mins[j])
 				mins[j] = val;
@@ -839,81 +867,94 @@ void CalcSurfaceExtents (msurface_t *s)
 	}
 
 	for (i=0 ; i<2 ; i++)
-	{	
-		bmins[i] = (int)floor(mins[i]/16);
-		bmaxs[i] = (int)ceil(maxs[i]/16);
+	{
+		if (!s->numedges || mins[i] < -1e9 || maxs[i] > 1e9)
+			return Mod_Fail ("face %i has bad texture coordinates", (int)(s - loadmodel->surfaces));
+		bmins[i] = (int)floor (mins[i] / 16);
+		bmaxs[i] = (int)ceil (maxs[i] / 16);
 
-		s->texturemins[i] = (short)(bmins[i] * 16);
-		s->extents[i] = (short)((bmaxs[i] - bmins[i]) * 16);
-		if ( !(tex->flags & TEX_SPECIAL) && s->extents[i] > 256)
-			Sys_Error ("Bad surface extents");
+		s->texturemins[i] = bmins[i] * 16;
+		s->extents[i] = (bmaxs[i] - bmins[i]) * 16;
+		// up to 256 lightmap samples a side
+		if (!(tex->flags & TEX_SPECIAL) && s->extents[i] > 255 * 16)
+			return Mod_Fail ("face %i is too large", (int)(s - loadmodel->surfaces));
 	}
+	return true;
 }
-
 
 /*
 =================
 Mod_LoadFaces
 =================
 */
-void Mod_LoadFaces (lump_t *l)
+static bool Mod_LoadFaces (void)
 {
-	dface_t		*in;
-	msurface_t 	*out;
-	int			i, count, surfnum;
-	int			planenum, side;
+	bspface_t	*in;
+	msurface_t	*out;
+	int			i, count, surfnum, numstyles, lightofs;
+	size_t		samples;
 
-	in = (void *)(mod_base + l->fileofs);
-	if (l->filelen % sizeof(*in))
-		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
-	count = l->filelen / sizeof(*in);
-	out = Mod_Alloc ( count*sizeof(*out));	
-
+	in = BSP_Faces (mod_bsp, &count);
+	if (!in)
+		return false;
+	out = Mod_Alloc ((size_t)count * sizeof(*out) + 1);
 	loadmodel->surfaces = out;
 	loadmodel->numsurfaces = count;
 
-	for ( surfnum=0 ; surfnum<count ; surfnum++, in++, out++)
+	for (surfnum=0 ; surfnum<count ; surfnum++, out++)
 	{
-		out->firstedge = LittleLong(in->firstedge);
-		out->numedges = LittleShort(in->numedges);		
-		out->flags = 0;
+		bspface_t	*f = &in[surfnum];
 
-		planenum = LittleShort(in->planenum);
-		side = LittleShort(in->side);
-		if (side)
-			out->flags |= SURF_PLANEBACK;			
+		if (f->planenum < 0 || f->planenum >= loadmodel->numplanes
+			|| f->texinfo < 0 || f->texinfo >= loadmodel->numtexinfo
+			|| f->firstedge < 0 || f->numedges < 0 || f->numedges > loadmodel->numsurfedges - f->firstedge)
+		{
+			Mem_Free (in);
+			return Mod_Fail ("face %i is bad", surfnum);
+		}
+		out->firstedge = f->firstedge;
+		out->numedges = f->numedges;
+		out->flags = f->side ? SURF_PLANEBACK : 0;
+		out->plane = loadmodel->planes + f->planenum;
+		out->texinfo = loadmodel->texinfo + f->texinfo;
 
-		out->plane = loadmodel->planes + planenum;
+		if (!CalcSurfaceExtents (out))
+		{
+			Mem_Free (in);
+			return false;
+		}
 
-		out->texinfo = loadmodel->texinfo + LittleShort (in->texinfo);
-
-		CalcSurfaceExtents (out);
-				
-	// lighting info
-
+	// lighting info: the samples of every style must be in the lump
+		numstyles = 0;
 		for (i=0 ; i<MAXLIGHTMAPS ; i++)
-			out->styles[i] = in->styles[i];
-		i = LittleLong(in->lightofs);
-		if (i == -1)
+		{
+			out->styles[i] = f->styles[i];
+			if (f->styles[i] != 255 && numstyles == i)
+				numstyles++;
+		}
+		lightofs = f->lightofs;
+		samples = (size_t)((out->extents[0] >> 4) + 1) * ((out->extents[1] >> 4) + 1) * (size_t)numstyles;
+		if (lightofs < 0 || !loadmodel->lightdata || lightofs >= loadmodel->lightdatasize
+			|| samples > (size_t)(loadmodel->lightdatasize - lightofs))
 		{
 			out->samples = NULL;
 			out->samples_rgb = NULL;
 		}
 		else
 		{
-			out->samples = loadmodel->lightdata + i;
-			out->samples_rgb = loadmodel->lightrgb ? loadmodel->lightrgb + (size_t)i * 3 : NULL;
+			out->samples = loadmodel->lightdata + lightofs;
+			out->samples_rgb = loadmodel->lightrgb ? loadmodel->lightrgb + (size_t)lightofs * 3 : NULL;
 		}
-		
+
 	// set the drawing flags flag
-		
-		if (!Q_strncmp(out->texinfo->texture->name,"sky",3))	// sky
+
+		if (!Q_strncmp (out->texinfo->texture->name, "sky", 3))	// sky
 		{
 			out->flags |= (SURF_DRAWSKY | SURF_DRAWTILED);
 			continue;
 		}
-		
-		if (!Q_strncmp(out->texinfo->texture->name,"*",1))		// turbulent
+
+		if (!Q_strncmp (out->texinfo->texture->name, "*", 1))		// turbulent
 		{
 			out->flags |= (SURF_DRAWTURB | SURF_DRAWTILED);
 			for (i=0 ; i<2 ; i++)
@@ -924,68 +965,67 @@ void Mod_LoadFaces (lump_t *l)
 			continue;
 		}
 	}
-}
-
-
-/*
-=================
-Mod_SetParent
-=================
-*/
-void Mod_SetParent (mnode_t *node, mnode_t *parent)
-{
-	node->parent = parent;
-	if (node->contents < 0)
-		return;
-	Mod_SetParent (node->children[0], node);
-	Mod_SetParent (node->children[1], node);
+	Mem_Free (in);
+	return true;
 }
 
 /*
 =================
 Mod_LoadNodes
+
+A node's children come after it, so one pass links every node and leaf to
+its parent
 =================
 */
-void Mod_LoadNodes (lump_t *l)
+static bool Mod_LoadNodes (void)
 {
+	bspnode_t	*in;
+	mnode_t		*out;
 	int			i, j, count, p;
-	dnode_t		*in;
-	mnode_t 	*out;
 
-	in = (void *)(mod_base + l->fileofs);
-	if (l->filelen % sizeof(*in))
-		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
-	count = l->filelen / sizeof(*in);
-	out = Mod_Alloc ( count*sizeof(*out));	
-
+	in = BSP_Nodes (mod_bsp, loadmodel->numleafs, &count);
+	if (!in)
+		return false;
+	if (count < 1)
+	{
+		Mem_Free (in);
+		return Mod_Fail ("no nodes");
+	}
+	out = Mod_Alloc ((size_t)count * sizeof(*out));
 	loadmodel->nodes = out;
 	loadmodel->numnodes = count;
 
-	for ( i=0 ; i<count ; i++, in++, out++)
+	for (i=0 ; i<count ; i++, out++)
 	{
+		bspnode_t	*n = &in[i];
+
+		if (n->planenum < 0 || n->planenum >= loadmodel->numplanes
+			|| n->numfaces > (unsigned)loadmodel->numsurfaces || n->firstface > (unsigned)loadmodel->numsurfaces - n->numfaces)
+		{
+			Mem_Free (in);
+			return Mod_Fail ("node %i is bad", i);
+		}
 		for (j=0 ; j<3 ; j++)
 		{
-			out->minmaxs[j] = LittleShort (in->mins[j]);
-			out->minmaxs[3+j] = LittleShort (in->maxs[j]);
+			out->minmaxs[j] = n->mins[j];
+			out->minmaxs[3+j] = n->maxs[j];
 		}
-	
-		p = LittleLong(in->planenum);
-		out->plane = loadmodel->planes + p;
+		out->plane = loadmodel->planes + n->planenum;
+		out->firstsurface = n->firstface;
+		out->numsurfaces = n->numfaces;
 
-		out->firstsurface = LittleShort (in->firstface);
-		out->numsurfaces = LittleShort (in->numfaces);
-		
 		for (j=0 ; j<2 ; j++)
 		{
-			p = LittleShort (in->children[j]);
+			p = n->children[j];
 			if (p >= 0)
 				out->children[j] = loadmodel->nodes + p;
 			else
 				out->children[j] = (mnode_t *)(loadmodel->leafs + (-1 - p));
+			out->children[j]->parent = out;
 		}
 	}
-	
-	Mod_SetParent (loadmodel->nodes, NULL);	// sets nodes and leafs
+	Mem_Free (in);
+	return true;
 }
 
 /*
@@ -993,46 +1033,52 @@ void Mod_LoadNodes (lump_t *l)
 Mod_LoadLeafs
 =================
 */
-void Mod_LoadLeafs (lump_t *l)
+static bool Mod_LoadLeafs (void)
 {
-	dleaf_t 	*in;
-	mleaf_t 	*out;
-	int			i, j, count, p;
+	bspleaf_t	*in;
+	mleaf_t		*out;
+	int			i, j, count;
 
-	in = (void *)(mod_base + l->fileofs);
-	if (l->filelen % sizeof(*in))
-		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
-	count = l->filelen / sizeof(*in);
-	out = Mod_Alloc ( count*sizeof(*out));	
-
+	in = BSP_Leafs (mod_bsp, &count);
+	if (!in)
+		return false;
+	if (count < 1)
+	{
+		Mem_Free (in);
+		return Mod_Fail ("no leafs");
+	}
+	out = Mod_Alloc ((size_t)count * sizeof(*out));
 	loadmodel->leafs = out;
 	loadmodel->numleafs = count;
 
-	for ( i=0 ; i<count ; i++, in++, out++)
+	for (i=0 ; i<count ; i++, out++)
 	{
+		bspleaf_t	*l = &in[i];
+
+		if (l->nummarksurfaces > (unsigned)loadmodel->nummarksurfaces
+			|| l->firstmarksurface > (unsigned)loadmodel->nummarksurfaces - l->nummarksurfaces)
+		{
+			Mem_Free (in);
+			return Mod_Fail ("leaf %i has bad surfaces", i);
+		}
 		for (j=0 ; j<3 ; j++)
 		{
-			out->minmaxs[j] = LittleShort (in->mins[j]);
-			out->minmaxs[3+j] = LittleShort (in->maxs[j]);
+			out->minmaxs[j] = l->mins[j];
+			out->minmaxs[3+j] = l->maxs[j];
 		}
-
-		p = LittleLong(in->contents);
-		out->contents = p;
-
-		out->firstmarksurface = loadmodel->marksurfaces +
-			LittleShort(in->firstmarksurface);
-		out->nummarksurfaces = LittleShort(in->nummarksurfaces);
-		
-		p = LittleLong(in->visofs);
-		if (p == -1)
+		out->contents = l->contents;
+		out->firstmarksurface = loadmodel->marksurfaces + l->firstmarksurface;
+		out->nummarksurfaces = (int)l->nummarksurfaces;
+		if (l->visofs < 0 || l->visofs >= loadmodel->vissize)
 			out->compressed_vis = NULL;
 		else
-			out->compressed_vis = loadmodel->visdata + p;
+			out->compressed_vis = loadmodel->visdata + l->visofs;
 		out->efrags = NULL;
-		
-		for (j=0 ; j<4 ; j++)
-			out->ambient_sound_level[j] = in->ambient_level[j];
-	}	
+		for (j=0 ; j<NUM_AMBIENTS ; j++)
+			out->ambient_sound_level[j] = l->ambient_level[j];
+	}
+	Mem_Free (in);
+	return true;
 }
 
 /*
@@ -1040,28 +1086,30 @@ void Mod_LoadLeafs (lump_t *l)
 Mod_LoadMarksurfaces
 =================
 */
-void Mod_LoadMarksurfaces (lump_t *l)
-{	
-	int		i, j, count;
-	short		*in;
-	msurface_t **out;
-	
-	in = (void *)(mod_base + l->fileofs);
-	if (l->filelen % sizeof(*in))
-		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
-	count = l->filelen / sizeof(*in);
-	out = Mod_Alloc ( count*sizeof(*out));	
+static bool Mod_LoadMarksurfaces (void)
+{
+	unsigned	*in;
+	msurface_t	**out;
+	int			i, count;
 
+	in = BSP_Marksurfaces (mod_bsp, &count);
+	if (!in)
+		return false;
+	out = Mod_Alloc ((size_t)count * sizeof(*out) + 1);
 	loadmodel->marksurfaces = out;
 	loadmodel->nummarksurfaces = count;
 
-	for ( i=0 ; i<count ; i++)
+	for (i=0 ; i<count ; i++)
 	{
-		j = LittleShort(in[i]);
-		if (j >= loadmodel->numsurfaces)
-			Sys_Error ("Mod_ParseMarksurfaces: bad surface number");
-		out[i] = loadmodel->surfaces + j;
+		if (in[i] >= (unsigned)loadmodel->numsurfaces)
+		{
+			Mem_Free (in);
+			return Mod_Fail ("marksurface %i is bad", i);
+		}
+		out[i] = loadmodel->surfaces + in[i];
 	}
+	Mem_Free (in);
+	return true;
 }
 
 /*
@@ -1069,22 +1117,25 @@ void Mod_LoadMarksurfaces (lump_t *l)
 Mod_LoadSurfedges
 =================
 */
-void Mod_LoadSurfedges (lump_t *l)
-{	
-	int		i, count;
-	int		*in, *out;
-	
-	in = (void *)(mod_base + l->fileofs);
-	if (l->filelen % sizeof(*in))
-		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
-	count = l->filelen / sizeof(*in);
-	out = Mod_Alloc ( count*sizeof(*out));	
+static bool Mod_LoadSurfedges (void)
+{
+	const byte	*in;
+	int			i, count, *out;
 
+	if (!BSP_Lump (mod_bsp, LUMP_SURFEDGES, 4, &in, &count))
+		return false;
+	out = Mod_Alloc ((size_t)count * sizeof(*out) + 1);
 	loadmodel->surfedges = out;
 	loadmodel->numsurfedges = count;
 
-	for ( i=0 ; i<count ; i++)
-		out[i] = LittleLong (in[i]);
+	for (i=0 ; i<count ; i++)
+	{
+		memcpy (&out[i], in + i * 4, 4);
+		out[i] = LittleLong (out[i]);
+		if (out[i] == INT_MIN || abs (out[i]) >= loadmodel->numedges)
+			return Mod_Fail ("surfedge %i is bad", i);
+	}
+	return true;
 }
 
 /*
@@ -1092,37 +1143,34 @@ void Mod_LoadSurfedges (lump_t *l)
 Mod_LoadPlanes
 =================
 */
-void Mod_LoadPlanes (lump_t *l)
+static bool Mod_LoadPlanes (void)
 {
-	int			i, j;
+	const byte	*in;
+	dplane_t	d;
 	mplane_t	*out;
-	dplane_t 	*in;
-	int			count;
-	int			bits;
-	
-	in = (void *)(mod_base + l->fileofs);
-	if (l->filelen % sizeof(*in))
-		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
-	count = l->filelen / sizeof(*in);
-	out = Mod_Alloc ( count*2*sizeof(*out));	
-	
+	int			i, j, count, bits;
+
+	if (!BSP_Lump (mod_bsp, LUMP_PLANES, sizeof(d), &in, &count))
+		return false;
+	out = Mod_Alloc ((size_t)count * 2 * sizeof(*out) + 1);
 	loadmodel->planes = out;
 	loadmodel->numplanes = count;
 
-	for ( i=0 ; i<count ; i++, in++, out++)
+	for (i=0 ; i<count ; i++, out++)
 	{
+		memcpy (&d, in + i * sizeof(d), sizeof(d));
 		bits = 0;
 		for (j=0 ; j<3 ; j++)
 		{
-			out->normal[j] = LittleFloat (in->normal[j]);
+			out->normal[j] = LittleFloat (d.normal[j]);
 			if (out->normal[j] < 0)
 				bits |= 1<<j;
 		}
-
-		out->dist = LittleFloat (in->dist);
-		out->type = (byte)LittleLong (in->type);
+		out->dist = LittleFloat (d.dist);
+		out->type = (byte)LittleLong (d.type);
 		out->signbits = (byte)bits;
 	}
+	return true;
 }
 
 /*
@@ -1148,48 +1196,48 @@ float RadiusFromBounds (vec3_t mins, vec3_t maxs)
 Mod_LoadBrushModel
 =================
 */
-void Mod_LoadBrushModel (model_t *mod, void *buffer)
+static bool Mod_LoadBrushModel (model_t *mod, byte *buffer, int size)
 {
+	bspfile_t	bsp;
+	dmodel_t	*bm;
 	int			i;
-	dheader_t	*header;
-	dmodel_t 	*bm;
-	
+	bool		ok;
+
 	loadmodel->type = mod_brush;
-	
-	header = (dheader_t *)buffer;
+	mod_bsp = &bsp;
+	ok = BSP_Open (&bsp, mod->name, buffer, size)
+		&& Mod_LoadVertexes ()
+		&& Mod_LoadEdges ()
+		&& Mod_LoadSurfedges ()
+		&& Mod_LoadTextures ()
+		&& Mod_LoadLighting ();
+	if (ok)
+		Mod_LoadHDRLighting ();
+	ok = ok
+		&& Mod_LoadPlanes ()
+		&& Mod_LoadTexinfo ()
+		&& Mod_LoadFaces ()
+		&& Mod_LoadMarksurfaces ()
+		&& Mod_LoadVisibility ()
+		&& Mod_LoadLeafs ()
+		&& Mod_LoadNodes ()
+		&& Mod_LoadEntities ()
+		&& Mod_LoadSubmodels ();
+	mod_bsp = NULL;
+	if (!ok)
+	{
+		Con_Printf ("Couldn't load %s: %s\n", mod->name, bsp.error);
+		return false;
+	}
 
-	i = LittleLong (header->version);
-	if (i != BSPVERSION)
-		Sys_Error ("Mod_LoadBrushModel: %s has wrong version number (%i should be %i)", mod->name, i, BSPVERSION);
+	// a row of visibility bits for every leaf, in whole 32 bit words
+	mod->visbytes = (((mod->numleafs + 31) >> 3) + 3) & ~3;
+	mod->novis = Mod_Alloc ((size_t)mod->visbytes);
+	memset (mod->novis, 0xff, (size_t)mod->visbytes);
+	mod->pvs = Mod_Alloc ((size_t)mod->visbytes);
 
-// swap all the lumps
-	mod_base = (byte *)header;
-
-	for (i=0 ; i<(int)(sizeof(dheader_t)/4) ; i++)
-		((int *)header)[i] = LittleLong ( ((int *)header)[i]);
-
-	
-// load into heap
-
-	Mod_LoadVertexes (&header->lumps[LUMP_VERTEXES]);
-	Mod_LoadEdges (&header->lumps[LUMP_EDGES]);
-	Mod_LoadSurfedges (&header->lumps[LUMP_SURFEDGES]);
-	Mod_LoadTextures (&header->lumps[LUMP_TEXTURES]);
-	Mod_LoadLighting (&header->lumps[LUMP_LIGHTING]);
-	Mod_LoadHDRLighting (header);
-	Mod_LoadPlanes (&header->lumps[LUMP_PLANES]);
-	Mod_LoadTexinfo (&header->lumps[LUMP_TEXINFO]);
-	Mod_LoadFaces (&header->lumps[LUMP_FACES]);
-	Mod_LoadMarksurfaces (&header->lumps[LUMP_MARKSURFACES]);
-	Mod_LoadVisibility (&header->lumps[LUMP_VISIBILITY]);
-	Mod_LoadLeafs (&header->lumps[LUMP_LEAFS]);
-	Mod_LoadNodes (&header->lumps[LUMP_NODES]);
-	Mod_LoadEntities (&header->lumps[LUMP_ENTITIES]);
-	Mod_LoadSubmodels (&header->lumps[LUMP_MODELS]);
-
-	
 	mod->numframes = 2;		// regular and alternate animation
-	
+
 //
 // set up the submodels (FIXME: this is confusing)
 //
@@ -1198,19 +1246,19 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 		bm = &mod->submodels[i];
 
 		mod->firstnode = bm->headnode[0];
-		
+
 		mod->firstmodelsurface = bm->firstface;
 		mod->nummodelsurfaces = bm->numfaces;
-		mod->radius = RadiusFromBounds (mod->mins, mod->maxs);
-		
+
 		VectorCopy (bm->maxs, mod->maxs);
 		VectorCopy (bm->mins, mod->mins);
-	
+		mod->radius = RadiusFromBounds (mod->mins, mod->maxs);
+
 		mod->numleafs = bm->visleafs;
 
 		if (i < mod->numsubmodels-1)
 		{	// duplicate the basic information
-			char	subname[10];
+			char	subname[16];
 
 			snprintf (subname, sizeof(subname), "*%i", i+1);
 			loadmodel = Mod_FindName (subname);
@@ -1220,6 +1268,7 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 			mod = loadmodel;
 		}
 	}
+	return true;
 }
 
 /*

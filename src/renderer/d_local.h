@@ -74,6 +74,7 @@ extern fixed16_t	bbextents, bbextentt;
 void D_DrawSpans (espan_t *pspans);
 void D_DrawZSpans (espan_t *pspans);
 void Turbulent8 (espan_t *pspan);
+int D_SurfaceMipLevel (msurface_t *surface, int miplevel);
 void D_SpriteDrawSpans (sspan_t *pspan);
 
 void D_DrawSkyScans (espan_t *pspan);

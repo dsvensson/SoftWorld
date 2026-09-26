@@ -42,8 +42,25 @@ static void R_DrawSurfaceBlockRGB (void);
 
 
 
-static unsigned		blocklights[18*18];
-static unsigned		blocklights_rgb[18*18*3];	// r_lightmode 1: LIGHT_ONE is 1.0
+static unsigned		*blocklights;			// r_lightmode 0: 8.8
+static unsigned		*blocklights_rgb;		// r_lightmode 1: LIGHT_ONE is 1.0
+static int			blocklights_size;		// samples they hold
+
+/*
+===============
+R_BlocklightsForSize
+
+Room for the light samples of a surface; they grow to the largest surface drawn
+===============
+*/
+static void R_BlocklightsForSize (int size)
+{
+	if (size <= blocklights_size)
+		return;
+	blocklights_size = size;
+	blocklights = Mem_Realloc (blocklights, (size_t)size * sizeof(*blocklights));
+	blocklights_rgb = Mem_Realloc (blocklights_rgb, (size_t)size * 3 * sizeof(*blocklights_rgb));
+}
 
 /*
 ===============
@@ -145,6 +162,7 @@ void R_BuildLightMap (void)
 	tmax = (surf->extents[1]>>4)+1;
 	size = smax*tmax;
 	lightmap = surf->samples;
+	R_BlocklightsForSize (size);
 
 	if (/* r_fullbright.value || */ !r_scene.worldmodel->lightdata)
 	{
@@ -202,7 +220,7 @@ static void R_BuildLightMapRGB (void)
 	byte			*lightmap;
 	unsigned short	*rgb;
 	msurface_t		*surf;
-	unsigned		*bl = blocklights_rgb;
+	unsigned		*bl;
 
 	surf = r_drawsurf.surf;
 	smax = (surf->extents[0]>>4)+1;
@@ -210,6 +228,8 @@ static void R_BuildLightMapRGB (void)
 	size = smax*tmax;
 	lightmap = surf->samples;
 	rgb = surf->samples_rgb;
+	R_BlocklightsForSize (size);
+	bl = blocklights_rgb;
 
 	if (!r_scene.worldmodel->lightdata)
 	{

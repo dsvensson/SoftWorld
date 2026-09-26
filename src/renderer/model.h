@@ -89,8 +89,8 @@ typedef struct texture_s
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 typedef struct
 {
-	unsigned short	v[2];
-	unsigned int	cachededgeoffset;
+	unsigned	v[2];
+	unsigned	cachededgeoffset;
 } medge_t;
 
 typedef struct
@@ -117,8 +117,8 @@ typedef struct msurface_s
 // surface generation data
 	struct surfcache_s	*cachespots[MIPLEVELS];
 
-	short		texturemins[2];
-	short		extents[2];
+	int			texturemins[2];
+	int			extents[2];
 
 	mtexinfo_t	*texinfo;
 	
@@ -134,7 +134,7 @@ typedef struct mnode_s
 	int			contents;		// 0, to differentiate from leafs
 	int			visframe;		// node needs to be traversed if current
 	
-	short		minmaxs[6];		// for bounding box culling
+	float		minmaxs[6];		// for bounding box culling
 
 	struct mnode_s	*parent;
 
@@ -142,8 +142,8 @@ typedef struct mnode_s
 	mplane_t	*plane;
 	struct mnode_s	*children[2];	
 
-	unsigned short		firstsurface;
-	unsigned short		numsurfaces;
+	unsigned	firstsurface;
+	unsigned	numsurfaces;
 } mnode_t;
 
 
@@ -154,7 +154,7 @@ typedef struct mleaf_s
 	int			contents;		// wil be a negative contents number
 	int			visframe;		// node needs to be traversed if current
 
-	short		minmaxs[6];		// for bounding box culling
+	float		minmaxs[6];		// for bounding box culling
 
 	struct mnode_s	*parent;
 
@@ -351,7 +351,12 @@ typedef struct model_s
 	texture_t	**textures;
 
 	byte		*visdata;
+	int			vissize;
+	int			visbytes;		// a row of visibility bits, for every leaf
+	byte		*novis;			// everything visible
+	byte		*pvs;			// the last decompressed row
 	byte		*lightdata;
+	int			lightdatasize;
 	unsigned short	*lightrgb;	// 3 per lightdata byte, from LIGHTING_E5BGR9
 	char		*entities;
 
@@ -368,6 +373,10 @@ typedef struct model_s
 void	Mod_Init (void);
 void	Mod_ClearAll (void);
 model_t *Mod_ForName (char *name, bool crash);
+// a model from its file's contents, e.g. for tests; false (the reason is
+// printed) if it can't be used. Mod_Unload frees what it loaded.
+bool	Mod_LoadFromBuffer (model_t *mod, byte *buffer, int size);
+void	Mod_Unload (model_t *mod);
 void	*Mod_Extradata (model_t *mod);	// handles caching
 
 mleaf_t *Mod_PointInLeaf (float *p, model_t *model);
