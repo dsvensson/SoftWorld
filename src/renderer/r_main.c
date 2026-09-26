@@ -25,7 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //define	PASSAGES
 
 static vec3_t		viewlightvec;
-static alight_t	r_viewlighting = {128, 192, viewlightvec};
+static alight_t	r_viewlighting = {.ambientlight = 128, .shadelight = 192, .plightvec = viewlightvec, .color = {1, 1, 1}};
 float		r_time1;
 int			r_numallocatededges;
 bool	r_drawpolys;
