@@ -194,6 +194,12 @@ typedef struct
 	int			challenge;
 
 	float		latency;		// rolling average
+
+// independent physics: commands are made and sent at the physics rate,
+// frames are drawn as fast as allowed
+	bool		physframe;		// this frame makes and sends a command
+	double		physframetime;	// seconds the command covers
+	double		physaccum;		// time not yet covered by a command
 } client_static_t;
 
 extern client_static_t	cls;
@@ -287,6 +293,9 @@ typedef struct
 
 // all player information
 	player_info_t	players[MAX_CLIENTS];
+
+	int			cmdtime_msec;	// sum of the msec of every command sent
+	bool		onground;		// predicted
 } client_state_t;
 
 
@@ -458,7 +467,13 @@ void CL_ParsePlayerinfo (void);
 // cl_pred.c
 //
 void CL_InitPrediction (void);
-void CL_PredictMove (void);
+// repredict runs the player move; otherwise only the view is interpolated
+void CL_PredictMove (bool repredict);
+// the next position is a jump (teleport, respawn): don't interpolate to it
+void CL_DisableLerpMove (void);
+// commands at the physics rate, frames at the render rate
+bool CL_IndependentPhysics (void);
+extern cvar_t	cl_physfps;
 void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u, bool spectator);
 
 //

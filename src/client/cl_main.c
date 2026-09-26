@@ -38,6 +38,7 @@ cvar_t	cl_shownet = {.name = "cl_shownet", .string = "0"};	// can be 0, 1, or 2
 
 cvar_t	cl_sbar		= {.name = "cl_sbar", .string = "0", .archive = true};
 cvar_t	cl_hudswap	= {.name = "cl_hudswap", .string = "0", .archive = true};
+// frames per second drawn; with independent physics 0 is no cap (vid_vsync still applies)
 cvar_t	cl_maxfps	= {.name = "cl_maxfps", .string = "0", .archive = true};
 
 cvar_t	lookspring = {.name = "lookspring", .string = "0", .archive = true};
@@ -359,6 +360,7 @@ void CL_ClearState (void)
 	memset (cl_lightstyle, 0, sizeof(cl_lightstyle));
 
 	R_ClearEfrags ();
+	CL_DisableLerpMove ();
 	r_scene.time = 0;
 	r_scene.worldmodel = NULL;
 }
@@ -1308,9 +1310,61 @@ Host_MaxFPS
 */
 static float Host_MaxFPS (void)
 {
+	if (CL_IndependentPhysics ())
+		return cl_maxfps.value > 0 ? fmaxf (cl_maxfps.value, 30.0f) : 0;	// 0: no cap but the display's
 	if (cl_maxfps.value)
 		return fmaxf(30.0f, fminf(cl_maxfps.value, 72.0f));
 	return fmaxf(30.0f, fminf(rate.value/80.0f, 72.0f));
+}
+
+/*
+==================
+CL_PhysFrameTime
+
+Seconds between commands: cl_physfps, at most the server's maxfps
+==================
+*/
+static double CL_PhysFrameTime (void)
+{
+	float	fps, servermax;
+
+	fps = cl_physfps.value > 0 ? cl_physfps.value : 77;
+	servermax = (float)atof (Info_ValueForKey (cl.serverinfo, "maxfps"));
+	if (servermax > 0)
+		fps = fminf (fps, servermax);
+	return 1.0 / fmaxf (fps, 10);
+}
+
+/*
+==================
+CL_DecidePhysFrame
+
+Whether this frame makes and sends a command
+==================
+*/
+static void CL_DecidePhysFrame (void)
+{
+	double	minframetime;
+
+	if (!CL_IndependentPhysics ())
+	{
+		cls.physframe = true;
+		cls.physframetime = host_frametime;
+		cls.physaccum = 0;
+		return;
+	}
+
+	minframetime = CL_PhysFrameTime ();
+	cls.physaccum += host_frametime;
+	if (cls.physaccum < minframetime)
+	{
+		cls.physframe = false;
+		return;
+	}
+	cls.physframe = true;
+	// when frames are slower than commands, one command covers the whole time
+	cls.physframetime = cls.physaccum > minframetime * 2 ? cls.physaccum : minframetime;
+	cls.physaccum -= cls.physframetime;
 }
 
 /*
@@ -1323,10 +1377,12 @@ Seconds until Host_Frame will run the next frame
 double Host_FrameWait (void)
 {
 	double	wait;
+	float	fps;
 
-	if (cls.timedemo)
+	fps = Host_MaxFPS ();
+	if (cls.timedemo || !fps)
 		return 0;
-	wait = oldrealtime + 1.0 / Host_MaxFPS () - realtime;
+	wait = oldrealtime + 1.0 / fps - realtime;
 	return wait > 0 ? wait : 0;
 }
 
@@ -1345,6 +1401,9 @@ void Host_Frame (float time)
 	static double		time3 = 0;
 	int			pass1, pass2, pass3;
 	float fps;
+	int			oldincoming;
+	bool		repredict;
+
 	if (setjmp (host_abort) )
 		return;			// something bad happened, or the server disconnected
 
@@ -1355,14 +1414,15 @@ void Host_Frame (float time)
 
 	fps = Host_MaxFPS ();
 
-	if (!cls.timedemo && realtime - oldrealtime < 1.0/fps)
+	if (!cls.timedemo && fps && realtime - oldrealtime < 1.0/fps)
 		return;			// framerate is too high
 
 	host_frametime = realtime - oldrealtime;
 	oldrealtime = realtime;
 	if (host_frametime > 0.2)
 		host_frametime = 0.2;
-		
+	CL_DecidePhysFrame ();
+
 	// get new key events
 	Sys_SendKeyEvents ();
 
@@ -1373,23 +1433,29 @@ void Host_Frame (float time)
 	Cbuf_Execute ();
 
 	// fetch results from server
+	oldincoming = cls.netchan.incoming_sequence;
 	CL_ReadPackets ();
 
 	// send intentions now
 	// resend a connection request if necessary
-	if (cls.state == ca_disconnected) {
+	if (cls.state == ca_disconnected)
 		CL_CheckForResend ();
-	} else
+	else if (cls.physframe)
 		CL_SendCmd ();
+	else
+	{	// the mouse turns the view between commands too
+		usercmd_t	dummy = {0};
 
-	// Set up prediction for other players
-	CL_SetUpPlayerPrediction(false);
+		IN_Move (&dummy);
+	}
 
-	// do client side motion prediction
-	CL_PredictMove ();
-
-	// Set up prediction for other players
-	CL_SetUpPlayerPrediction(true);
+	// predict again when a command was made or the server said something new
+	repredict = cls.physframe || cls.netchan.incoming_sequence != oldincoming;
+	if (repredict)
+		CL_SetUpPlayerPrediction(false);	// other players, without prediction
+	CL_PredictMove (repredict);
+	if (repredict)
+		CL_SetUpPlayerPrediction(true);		// other players, predicted
 
 	// build a refresh entity list
 	CL_EmitEntities ();

@@ -250,9 +250,9 @@ void CL_AdjustAngles (void)
 	float	up, down;
 	
 	if (in_speed.state & 1)
-		speed = (float)(host_frametime * cl_anglespeedkey.value);
+		speed = (float)(cls.physframetime * cl_anglespeedkey.value);
 	else
-		speed = (float)host_frametime;
+		speed = (float)cls.physframetime;
 
 	if (!(in_strafe.state & 1))
 	{
@@ -348,6 +348,7 @@ CL_FinishMove
 */
 void CL_FinishMove (usercmd_t *cmd)
 {
+	static double	extramsec;
 	int		i;
 	int		ms;
 
@@ -368,11 +369,14 @@ void CL_FinishMove (usercmd_t *cmd)
 		cmd->buttons |= 2;
 	in_jump.state &= ~2;
 
-	// send milliseconds of time to apply the move
-	ms = (int)(host_frametime * 1000);
+	// send milliseconds of time to apply the move, keeping the fractions
+	extramsec += cls.physframetime * 1000;
+	ms = (int)extramsec;
+	extramsec -= ms;
 	if (ms > 250)
 		ms = 100;		// time was unreasonable
 	cmd->msec = (byte)ms;
+	cl.cmdtime_msec += ms;
 
 	VectorCopy (cl.viewangles, cmd->angles);
 

@@ -1200,6 +1200,7 @@ void CL_ParseServerMessage (void)
 		case svc_setangle:
 			for (i=0 ; i<3 ; i++)
 				cl.viewangles[i] = MSG_ReadAngle ();
+			CL_DisableLerpMove ();
 //			cl.viewangles[PITCH] = cl.viewangles[ROLL] = 0;
 			break;
 			

@@ -689,7 +689,6 @@ void V_CalcRefdef (void)
 	int			i;
 	vec3_t		forward, right, up;
 	float		bob;
-	static float oldz = 0;
 
 	V_DriftPitch ();
 
@@ -765,23 +764,9 @@ void V_CalcRefdef (void)
 // set up the refresh position
 	r_refdef.viewangles[PITCH] += cl.punchangle;
 
-// smooth out stair step ups
-	if ( (view_message->onground != -1) && (cl.simorg[2] - oldz > 0) )
-	{
-		float steptime;
-		
-		steptime = (float)host_frametime;
-	
-		oldz += steptime * 80;
-		if (oldz > cl.simorg[2])
-			oldz = cl.simorg[2];
-		if (cl.simorg[2] - oldz > 12)
-			oldz = cl.simorg[2] - 12;
-		r_refdef.vieworg[2] += oldz - cl.simorg[2];
-		view->origin[2] += oldz - cl.simorg[2];
-	}
-	else
-		oldz = cl.simorg[2];
+// smooth out stair step ups (CL_CalcCrouch)
+	r_refdef.vieworg[2] += cl.crouch;
+	view->origin[2] += cl.crouch;
 }
 
 /*
