@@ -17,33 +17,26 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// net_udp_win.c -- UDP networking over Winsock 2
+// net_udp_win.c -- UDP sockets over Winsock 2
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
 #include "args.h"
-#include "cvar.h"
-#include "net.h"
+#include "mem.h"
+#include "net_socket.h"
 #include "print.h"
-#include "q_string.h"
 #include "sys.h"
 #include "win_local.h"
 
-#include <stdlib.h>
 #include <string.h>
 
-netadr_t	net_local_adr;
-
-netadr_t	net_from;
-sizebuf_t	net_message;
-static SOCKET	net_socket = INVALID_SOCKET;
-static HANDLE	net_event;		// auto reset, signaled when packets arrive
-
-#define	MAX_UDP_PACKET	(MAX_MSGLEN*2)	// one more than msg + header
-static byte	net_message_buffer[MAX_UDP_PACKET];
-
-//=============================================================================
+struct udpsocket_s
+{
+	SOCKET	socket;
+	HANDLE	event;		// auto reset, signaled when packets arrive
+	netadr_t	address;
+};
 
 static void NetadrToSockadr (const netadr_t *a, struct sockaddr_in *s)
 {
@@ -55,257 +48,177 @@ static void NetadrToSockadr (const netadr_t *a, struct sockaddr_in *s)
 
 static void SockadrToNetadr (const struct sockaddr_in *s, netadr_t *a)
 {
+	memset (a, 0, sizeof(*a));
+	a->type = NA_IP;
 	memcpy (a->ip, &s->sin_addr, 4);
 	a->port = s->sin_port;
 }
 
-bool	NET_CompareBaseAdr (netadr_t a, netadr_t b)
-{
-	return memcmp (a.ip, b.ip, 4) == 0;
-}
-
-bool	NET_CompareAdr (netadr_t a, netadr_t b)
-{
-	return memcmp (a.ip, b.ip, 4) == 0 && a.port == b.port;
-}
-
-char	*NET_AdrToString (netadr_t a)
-{
-	static	char	s[64];
-
-	snprintf (s, sizeof(s), "%i.%i.%i.%i:%i", a.ip[0], a.ip[1], a.ip[2], a.ip[3], ntohs(a.port));
-
-	return s;
-}
-
-char	*NET_BaseAdrToString (netadr_t a)
-{
-	static	char	s[64];
-
-	snprintf (s, sizeof(s), "%i.%i.%i.%i", a.ip[0], a.ip[1], a.ip[2], a.ip[3]);
-
-	return s;
-}
-
-/*
-=============
-NET_StringToAdr
-
-idnewt
-idnewt:28000
-192.246.40.70
-192.246.40.70:28000
-=============
-*/
-bool	NET_StringToAdr (char *s, netadr_t *a)
-{
-	struct addrinfo	hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
-	struct addrinfo	*result;
-	char			copy[128];
-	char			*colon;
-	unsigned short	port = 0;
-
-	Q_strncpyz (copy, s, sizeof(copy));
-
-	// strip off a trailing :port if present
-	colon = strrchr (copy, ':');
-	if (colon)
-	{
-		*colon = 0;
-		port = htons ((unsigned short)atoi (colon + 1));
-	}
-
-	if (getaddrinfo (copy, NULL, &hints, &result) != 0 || !result)
-		return false;
-
-	SockadrToNetadr ((const struct sockaddr_in *)result->ai_addr, a);
-	a->port = port;
-	freeaddrinfo (result);
-
-	return true;
-}
-
-//=============================================================================
-
-bool NET_GetPacket (void)
-{
-	int 	ret;
-	struct sockaddr_in	from;
-	int		fromlen;
-
-	fromlen = sizeof(from);
-	ret = recvfrom (net_socket, (char *)net_message_buffer, sizeof(net_message_buffer), 0, (struct sockaddr *)&from, &fromlen);
-
-	if (ret == SOCKET_ERROR)
-	{
-		int err = WSAGetLastError ();
-
-		if (err == WSAEWOULDBLOCK || err == WSAECONNRESET)
-			return false;
-		if (err == WSAEMSGSIZE)
-		{
-			SockadrToNetadr (&from, &net_from);
-			Con_Printf ("Warning:  Oversize packet from %s\n", NET_AdrToString (net_from));
-			return false;
-		}
-
-		Sys_Error ("NET_GetPacket: Winsock error %i", err);
-	}
-
-	SockadrToNetadr (&from, &net_from);
-
-	net_message.cursize = ret;
-	if (ret == sizeof(net_message_buffer) )
-	{
-		Con_Printf ("Oversize packet from %s\n", NET_AdrToString (net_from));
-		return false;
-	}
-
-	return ret > 0;
-}
-
-//=============================================================================
-
-void NET_SendPacket (int length, void *data, netadr_t to)
-{
-	int ret;
-	struct sockaddr_in	addr;
-
-	NetadrToSockadr (&to, &addr);
-
-	ret = sendto (net_socket, data, length, 0, (struct sockaddr *)&addr, sizeof(addr) );
-	if (ret == SOCKET_ERROR)
-	{
-		int err = WSAGetLastError();
-
-// wouldblock is silent
-		if (err == WSAEWOULDBLOCK)
-			return;
-
-		if (err == WSAEADDRNOTAVAIL)
-			Con_DPrintf("NET_SendPacket Warning: %i\n", err);
-		else
-			Con_Printf ("NET_SendPacket ERROR: %i\n", err);
-	}
-}
-
 /*
 ====================
-NET_Sleep
-
-Waits for a packet to arrive, at most msec milliseconds.
+UDP_Init / UDP_Shutdown
 ====================
 */
-
-//=============================================================================
-
-static SOCKET UDP_OpenSocket (int port)
-{
-	SOCKET	newsocket;
-	struct sockaddr_in address = {.sin_family = AF_INET};
-	u_long	nonblocking = 1;
-	int		i;
-
-	newsocket = socket (PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (newsocket == INVALID_SOCKET)
-		Sys_Error ("UDP_OpenSocket: socket: Winsock error %i", WSAGetLastError ());
-
-	if (ioctlsocket (newsocket, FIONBIO, &nonblocking) == SOCKET_ERROR)
-		Sys_Error ("UDP_OpenSocket: ioctl FIONBIO: Winsock error %i", WSAGetLastError ());
-
-//ZOID -- check for interface binding option
-	if ((i = COM_CheckParm("-ip")) != 0 && i + 1 < com_argc)
-	{
-		if (inet_pton (AF_INET, com_argv[i+1], &address.sin_addr) != 1)
-			Sys_Error ("UDP_OpenSocket: bad -ip address %s", com_argv[i+1]);
-		Con_Printf("Binding to IP Interface Address of %s\n", com_argv[i+1]);
-	}
-	else
-		address.sin_addr.s_addr = INADDR_ANY;
-
-	if (port == PORT_ANY)
-		address.sin_port = 0;
-	else
-		address.sin_port = htons((unsigned short)port);
-	if (bind (newsocket, (struct sockaddr *)&address, sizeof(address)) == SOCKET_ERROR)
-		Sys_Error ("UDP_OpenSocket: bind: Winsock error %i", WSAGetLastError ());
-
-	return newsocket;
-}
-
-static void NET_GetLocalAddress (void)
-{
-	char	buff[512];
-	struct sockaddr_in	address;
-	int		namelen;
-
-	if (gethostname(buff, sizeof(buff)) != 0)
-		Q_strncpyz (buff, "localhost", sizeof(buff));
-	buff[sizeof(buff)-1] = 0;
-
-	if (!NET_StringToAdr (buff, &net_local_adr))
-		NET_StringToAdr ("127.0.0.1", &net_local_adr);
-
-	namelen = sizeof(address);
-	if (getsockname (net_socket, (struct sockaddr *)&address, &namelen) == SOCKET_ERROR)
-		Sys_Error ("NET_Init: getsockname: Winsock error %i", WSAGetLastError ());
-	net_local_adr.port = address.sin_port;
-
-	Con_Printf("IP address %s\n", NET_AdrToString (net_local_adr) );
-}
-
-/*
-====================
-NET_Init
-====================
-*/
-void NET_Init (int port)
+void UDP_Init (void)
 {
 	WSADATA	winsockdata;
 
 	if (WSAStartup (MAKEWORD(2, 2), &winsockdata))
 		Sys_Error ("Winsock initialization failed.");
+}
 
-	//
-	// open the single socket to be used for all communications
-	//
-	net_socket = UDP_OpenSocket (port);
-
-	// let Sys_WaitUntil wake up when a packet arrives
-	net_event = CreateEventW (NULL, FALSE, FALSE, NULL);
-	if (!net_event || WSAEventSelect (net_socket, net_event, FD_READ) == SOCKET_ERROR)
-		Sys_Error ("NET_Init: couldn't create the socket event");
-	Sys_AddWaitHandle (net_event);
-
-	//
-	// init the message buffer
-	//
-	net_message.maxsize = sizeof(net_message_buffer);
-	net_message.data = net_message_buffer;
-
-	//
-	// determine my name & address
-	//
-	NET_GetLocalAddress ();
-
-	Con_Printf("UDP Initialized\n");
+void UDP_Shutdown (void)
+{
+	WSACleanup ();
 }
 
 /*
 ====================
-NET_Shutdown
+UDP_Resolve
 ====================
 */
-void	NET_Shutdown (void)
+bool UDP_Resolve (const char *host, netadr_t *a)
 {
-	if (net_event)
+	struct addrinfo	hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
+	struct addrinfo	*result;
+
+	if (getaddrinfo (host, NULL, &hints, &result) != 0 || !result)
+		return false;
+
+	SockadrToNetadr ((const struct sockaddr_in *)result->ai_addr, a);
+	freeaddrinfo (result);
+	return true;
+}
+
+/*
+====================
+UDP_Open
+
+Binds to -ip if given, otherwise to every interface
+====================
+*/
+udpsocket_t *UDP_Open (int port)
+{
+	udpsocket_t	*s;
+	struct sockaddr_in	address = {.sin_family = AF_INET};
+	u_long	nonblocking = 1;
+	int		i, namelen;
+	char	hostname[256];
+
+	s = Mem_Calloc (1, sizeof(*s));
+
+	s->socket = socket (PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (s->socket == INVALID_SOCKET)
+		Sys_Error ("UDP_Open: socket: Winsock error %i", WSAGetLastError ());
+
+	if (ioctlsocket (s->socket, FIONBIO, &nonblocking) == SOCKET_ERROR)
+		Sys_Error ("UDP_Open: ioctl FIONBIO: Winsock error %i", WSAGetLastError ());
+
+//ZOID -- check for interface binding option
+	if ((i = COM_CheckParm("-ip")) != 0 && i + 1 < com_argc)
 	{
-		Sys_RemoveWaitHandle (net_event);
-		CloseHandle (net_event);
-		net_event = NULL;
+		if (inet_pton (AF_INET, com_argv[i+1], &address.sin_addr) != 1)
+			Sys_Error ("UDP_Open: bad -ip address %s", com_argv[i+1]);
+		Con_Printf("Binding to IP Interface Address of %s\n", com_argv[i+1]);
 	}
-	if (net_socket != INVALID_SOCKET)
-		closesocket (net_socket);
-	net_socket = INVALID_SOCKET;
-	WSACleanup ();
+	else
+		address.sin_addr.s_addr = INADDR_ANY;
+
+	address.sin_port = port == PORT_ANY ? 0 : htons ((unsigned short)port);
+	if (bind (s->socket, (struct sockaddr *)&address, sizeof(address)) == SOCKET_ERROR)
+	{
+		Con_Printf ("UDP port %i: Winsock error %i\n", port, WSAGetLastError ());
+		closesocket (s->socket);
+		Mem_Free (s);
+		return NULL;
+	}
+
+	// let Sys_WaitUntil wake up when a packet arrives
+	s->event = CreateEventW (NULL, FALSE, FALSE, NULL);
+	if (!s->event || WSAEventSelect (s->socket, s->event, FD_READ) == SOCKET_ERROR)
+		Sys_Error ("UDP_Open: couldn't create the socket event");
+	Sys_AddWaitHandle (s->event);
+
+	// determine my name & address
+	if (gethostname (hostname, sizeof(hostname)) != 0 || !UDP_Resolve (hostname, &s->address))
+		UDP_Resolve ("127.0.0.1", &s->address);
+	namelen = sizeof(address);
+	if (getsockname (s->socket, (struct sockaddr *)&address, &namelen) == SOCKET_ERROR)
+		Sys_Error ("UDP_Open: getsockname: Winsock error %i", WSAGetLastError ());
+	s->address.port = address.sin_port;
+
+	return s;
+}
+
+void UDP_Close (udpsocket_t *s)
+{
+	Sys_RemoveWaitHandle (s->event);
+	CloseHandle (s->event);
+	closesocket (s->socket);
+	Mem_Free (s);
+}
+
+netadr_t UDP_Address (udpsocket_t *s)
+{
+	return s->address;
+}
+
+/*
+====================
+UDP_Recv
+====================
+*/
+int UDP_Recv (udpsocket_t *s, byte *buf, int maxlen, netadr_t *from)
+{
+	struct sockaddr_in	addr;
+	int		ret, addrlen, err;
+
+	while (1)
+	{
+		addrlen = sizeof(addr);
+		ret = recvfrom (s->socket, (char *)buf, maxlen, 0, (struct sockaddr *)&addr, &addrlen);
+		if (ret == SOCKET_ERROR)
+		{
+			err = WSAGetLastError ();
+			if (err == WSAEWOULDBLOCK)
+				return 0;
+			if (err == WSAECONNRESET)
+				continue;		// an earlier send was refused
+			if (err != WSAEMSGSIZE)
+				Sys_Error ("UDP_Recv: Winsock error %i", err);
+			ret = maxlen;
+		}
+
+		SockadrToNetadr (&addr, from);
+		if (ret == maxlen)
+		{
+			Con_Printf ("Oversize packet from %s\n", NET_AdrToString (*from));
+			continue;
+		}
+		if (ret > 0)
+			return ret;
+	}
+}
+
+/*
+====================
+UDP_Send
+====================
+*/
+void UDP_Send (udpsocket_t *s, const void *data, int length, const netadr_t *to)
+{
+	struct sockaddr_in	addr;
+	int		err;
+
+	NetadrToSockadr (to, &addr);
+	if (sendto (s->socket, data, length, 0, (struct sockaddr *)&addr, sizeof(addr)) != SOCKET_ERROR)
+		return;
+
+	err = WSAGetLastError ();
+	if (err == WSAEWOULDBLOCK)
+		return;		// silent
+	if (err == WSAEADDRNOTAVAIL)
+		Con_DPrintf ("UDP_Send: Winsock error %i\n", err);
+	else
+		Con_Printf ("UDP_Send: Winsock error %i\n", err);
 }

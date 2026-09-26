@@ -158,9 +158,12 @@ typedef struct
 {
 // connection information
 	cactive_t	state;
-	
+
 // network stuff
 	netchan_t	netchan;
+	sizebuf_t	net_message;	// the packet being read
+	netadr_t	net_from;		// and who sent it
+	byte		net_message_buf[MAX_UDP_PACKET];
 
 // private userinfo for sending to masterless servers
 	char		userinfo[MAX_INFO_STRING];

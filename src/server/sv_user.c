@@ -547,7 +547,7 @@ void OutofBandPrintf(netadr_t where, char *fmt, ...)
 	vsnprintf (send+5, sizeof(send)-5, fmt, argptr);
 	va_end (argptr);
 
-	NET_SendPacket ((int)strlen(send)+1, send, where);
+	NET_SendPacket (NS_SERVER, (int)strlen(send)+1, send, where);
 }
 
 /*
@@ -589,7 +589,7 @@ void SV_NextUpload (void)
 			OutofBandPrintf(host_client->snap_from, "Server receiving %s from %d...\n", host_client->uploadfn, host_client->userid);
 	}
 
-	fwrite (net_message.data + msg_readcount, 1, size, host_client->upload);
+	fwrite (svs.net_message.data + msg_readcount, 1, size, host_client->upload);
 	msg_readcount += size;
 
 Con_DPrintf ("UPLOAD: %d received\n", size);
@@ -1501,7 +1501,7 @@ void SV_ExecuteClientMessage (client_t *cl)
 
 			// if the checksum fails, ignore the rest of the packet
 			calculatedChecksum = COM_BlockSequenceCRCByte(
-				net_message.data + checksumIndex + 1,
+				svs.net_message.data + checksumIndex + 1,
 				MSG_GetReadCount() - checksumIndex - 1,
 				seq_hash);
 
@@ -1515,16 +1515,18 @@ void SV_ExecuteClientMessage (client_t *cl)
 			if (!sv.paused) {
 				SV_PreRunCmd();
 
-				if (net_drop < 20)
+				int		dropped = cl->netchan.dropped;
+
+				if (dropped < 20)
 				{
-					while (net_drop > 2)
+					while (dropped > 2)
 					{
 						SV_RunCmd (&cl->lastcmd);
-						net_drop--;
+						dropped--;
 					}
-					if (net_drop > 1)
+					if (dropped > 1)
 						SV_RunCmd (&oldest);
-					if (net_drop > 0)
+					if (dropped > 0)
 						SV_RunCmd (&oldcmd);
 				}
 				SV_RunCmd (&newcmd);

@@ -279,6 +279,10 @@ typedef struct
 	FILE		*fraglogfile;
 	redirect_t	redirected;					// where console output goes
 
+	sizebuf_t	net_message;				// the packet being read
+	netadr_t	net_from;					// and who sent it
+	byte		net_message_buf[MAX_UDP_PACKET];
+
 	struct
 	{
 		int		messages;		// this many ...

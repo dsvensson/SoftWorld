@@ -82,7 +82,6 @@ to the new value before sending out any replies.
 
 */
 
-int		net_drop;
 static cvar_t	showpackets = {.name = "showpackets", .string = "0"};
 static cvar_t	showdrop = {.name = "showdrop", .string = "0"};
 static cvar_t	qport = {.name = "qport", .string = "0"};
@@ -113,7 +112,7 @@ Netchan_OutOfBand
 Sends an out-of-band datagram
 ================
 */
-void Netchan_OutOfBand (netadr_t adr, int length, byte *data)
+void Netchan_OutOfBand (netsrc_t sock, netadr_t adr, int length, byte *data)
 {
 	sizebuf_t	send;
 	byte		send_buf[MAX_MSGLEN + PACKET_HEADER];
@@ -127,7 +126,7 @@ void Netchan_OutOfBand (netadr_t adr, int length, byte *data)
 	SZ_Write (&send, data, length);
 
 // send the datagram
-	NET_SendPacket (send.cursize, send.data, adr);
+	NET_SendPacket (sock, send.cursize, send.data, adr);
 }
 
 /*
@@ -137,7 +136,7 @@ Netchan_OutOfBandPrint
 Sends a text message in an out-of-band datagram
 ================
 */
-void Netchan_OutOfBandPrint (netadr_t adr, char *format, ...)
+void Netchan_OutOfBandPrint (netsrc_t sock, netadr_t adr, char *format, ...)
 {
 	va_list		argptr;
 	static char		string[8192];		// ??? why static?
@@ -147,7 +146,7 @@ void Netchan_OutOfBandPrint (netadr_t adr, char *format, ...)
 	va_end (argptr);
 
 
-	Netchan_OutOfBand (adr, (int)strlen(string), (byte *)string);
+	Netchan_OutOfBand (sock, adr, (int)strlen(string), (byte *)string);
 }
 
 
@@ -186,6 +185,8 @@ Returns true if the bandwidth choke isn't active
 #define	MAX_BACKUP	200
 bool Netchan_CanPacket (netchan_t *chan)
 {
+	if (chan->remote_address.type == NA_LOOPBACK)
+		return true;			// no bandwidth to share
 	if (chan->cleartime < host.realtime + MAX_BACKUP*chan->rate)
 		return true;
 	return false;
@@ -283,7 +284,7 @@ void Netchan_Transmit (netchan_t *chan, int length, byte *data)
 	chan->outgoing_size[i] = send.cursize;
 	chan->outgoing_time[i] = host.realtime;
 
-	NET_SendPacket (send.cursize, send.data, chan->remote_address);
+	NET_SendPacket (chan->sock, send.cursize, send.data, chan->remote_address);
 
 	if (chan->cleartime < host.realtime)
 		chan->cleartime = host.realtime + send.cursize*chan->rate;
@@ -304,20 +305,20 @@ void Netchan_Transmit (netchan_t *chan, int length, byte *data)
 =================
 Netchan_Process
 
-called when the current net_message is from remote_address
-modifies net_message so that it points to the packet payload
+called for each packet from remote_address; reading continues after
+the header
 =================
 */
-bool Netchan_Process (netchan_t *chan)
+bool Netchan_Process (netchan_t *chan, netadr_t from, sizebuf_t *msg)
 {
 	unsigned		sequence, sequence_ack;
 	unsigned		reliable_ack, reliable_message;
 
-	if (!NET_CompareAdr (net_from, chan->remote_address))
+	if (!NET_CompareAdr (from, chan->remote_address))
 		return false;
 	
 // get sequence numbers		
-	MSG_BeginReading (&net_message);
+	MSG_BeginReading (msg);
 	sequence = MSG_ReadLong ();
 	sequence_ack = MSG_ReadLong ();
 
@@ -337,7 +338,7 @@ bool Netchan_Process (netchan_t *chan)
 			, reliable_message
 			, sequence_ack
 			, reliable_ack
-			, net_message.cursize);
+			, msg->cursize);
 
 // get a rate estimation
 
@@ -357,8 +358,8 @@ bool Netchan_Process (netchan_t *chan)
 //
 // dropped packets don't keep the message from being used
 //
-	net_drop = sequence - (chan->incoming_sequence+1);
-	if (net_drop > 0)
+	chan->dropped = sequence - (chan->incoming_sequence+1);
+	if (chan->dropped > 0)
 	{
 		chan->drop_count += 1;
 

@@ -170,7 +170,7 @@ void CL_SendConnectPacket (void)
 //	Con_Printf ("Connecting to %s...\n", cls.servername);
 	snprintf (data, sizeof(data), "%c%c%c%cconnect %i %i %i \"%s\"\n",
 		255, 255, 255, 255,	PROTOCOL_VERSION, cls.qport, cls.challenge, cls.userinfo);
-	NET_SendPacket ((int)strlen(data), data, adr);
+	NET_SendPacket (NS_CLIENT, (int)strlen(data), data, adr);
 }
 
 /*
@@ -210,7 +210,7 @@ void CL_CheckForResend (void)
 
 	Con_Printf ("Connecting to %s...\n", cls.servername);
 	snprintf (data, sizeof(data), "%c%c%c%cgetchallenge\n", 255, 255, 255, 255);
-	NET_SendPacket ((int)strlen(data), data, adr);
+	NET_SendPacket (NS_CLIENT, (int)strlen(data), data, adr);
 }
 
 void CL_BeginServerConnect(void)
@@ -297,7 +297,7 @@ void CL_Rcon_f (void)
 		NET_StringToAdr (rcon_address.string, &to);
 	}
 	
-	NET_SendPacket ((int)strlen(message)+1, message
+	NET_SendPacket (NS_CLIENT, (int)strlen(message)+1, message
 		, to);
 }
 
@@ -636,7 +636,7 @@ void CL_Packet_f (void)
 	}
 	*out = 0;
 
-	NET_SendPacket ((int)(out-send), send, adr);
+	NET_SendPacket (NS_CLIENT, (int)(out-send), send, adr);
 }
 
 
@@ -733,12 +733,12 @@ void CL_ConnectionlessPacket (void)
 	char	*s;
 	int		c;
 
-    MSG_BeginReading (&net_message);
+    MSG_BeginReading (&cls.net_message);
     MSG_ReadLong ();        // skip the -1
 
 	c = MSG_ReadByte ();
 	if (!cls.demoplayback)
-		Con_Printf ("%s: ", NET_AdrToString (net_from));
+		Con_Printf ("%s: ", NET_AdrToString (cls.net_from));
 //	Con_DPrintf ("%s", net_message.data + 5);
 	if (c == S2C_CONNECTION)
 	{
@@ -749,7 +749,7 @@ void CL_ConnectionlessPacket (void)
 				Con_Printf ("Dup connect received.  Ignored.\n");
 			return;
 		}
-		Netchan_Setup (&cls.netchan, net_from, cls.qport, NS_CLIENT);
+		Netchan_Setup (&cls.netchan, cls.net_from, cls.qport, NS_CLIENT);
 		MSG_WriteChar (&cls.netchan.message, clc_stringcmd);
 		MSG_WriteString (&cls.netchan.message, "new");	
 		cls.state = ca_connected;
@@ -764,8 +764,7 @@ void CL_ConnectionlessPacket (void)
 
 		Con_Printf ("client command\n");
 
-		if (memcmp (net_from.ip, net_local_adr.ip, 4)
-			&& memcmp (net_from.ip, (byte[4]){127, 0, 0, 1}, 4))
+		if (!NET_IsLocalAddress (cls.net_from))
 		{
 			Con_Printf ("Command packet from remote host.  Ignored.\n");
 			return;
@@ -830,7 +829,7 @@ void CL_ConnectionlessPacket (void)
 		data[4] = A2A_ACK;
 		data[5] = 0;
 		
-		NET_SendPacket (6, &data, net_from);
+		NET_SendPacket (NS_CLIENT, 6, &data, cls.net_from);
 		return;
 	}
 
@@ -855,21 +854,20 @@ CL_ReadPackets
 */
 void CL_ReadPackets (void)
 {
-//	while (NET_GetPacket ())
 	while (CL_GetMessage())
 	{
 		//
 		// remote command packet
 		//
-		if (*(int *)net_message.data == -1)
+		if (*(int *)cls.net_message.data == -1)
 		{
 			CL_ConnectionlessPacket ();
 			continue;
 		}
 
-		if (net_message.cursize < 8)
+		if (cls.net_message.cursize < 8)
 		{
-			Con_Printf ("%s: Runt packet\n",NET_AdrToString(net_from));
+			Con_Printf ("%s: Runt packet\n",NET_AdrToString(cls.net_from));
 			continue;
 		}
 
@@ -877,25 +875,23 @@ void CL_ReadPackets (void)
 		// packet from server
 		//
 		if (cls.demoplayback)
-			net_from = cls.netchan.remote_address;	// demo packets come from the recorded server
-		if (!NET_CompareAdr (net_from, cls.netchan.remote_address))
+			cls.net_from = cls.netchan.remote_address;	// demo packets come from the recorded server
+		if (!NET_CompareAdr (cls.net_from, cls.netchan.remote_address))
 		{
 			Con_DPrintf ("%s:sequenced packet without connection\n"
-				,NET_AdrToString(net_from));
+				,NET_AdrToString(cls.net_from));
 			continue;
 		}
-		if (!Netchan_Process(&cls.netchan))
+		if (!Netchan_Process (&cls.netchan, cls.net_from, &cls.net_message))
 			continue;		// wasn't accepted for some reason
 		CL_ParseServerMessage ();
-
-//		if (cls.demoplayback && cls.state >= ca_active && !CL_DemoBehind())
-//			return;
 	}
 
 	//
-	// check timeout
+	// check timeout; a server in this process doesn't time out
 	//
 	if (cls.state >= ca_connected
+	 && cls.netchan.remote_address.type != NA_LOOPBACK
 	 && host.realtime - cls.netchan.last_received > cl_timeout.value)
 	{
 		Con_Printf ("\nServer connection timed out.\n");
@@ -1501,8 +1497,11 @@ void Host_Init (quakeparms_t *parms)
 
 	Host_FixupModelNames();
 	
-	NET_Init (PORT_CLIENT);
-	Netchan_Init ();
+	cls.net_message.data = cls.net_message_buf;
+	cls.net_message.maxsize = sizeof(cls.net_message_buf);
+	NET_Init ();
+	if (!NET_OpenSocket (NS_CLIENT, PORT_CLIENT) && !NET_OpenSocket (NS_CLIENT, PORT_ANY))
+		Con_Printf ("No UDP socket, only local games\n");
 
 	W_LoadWadFile ("gfx.wad");
 	Key_Init ();

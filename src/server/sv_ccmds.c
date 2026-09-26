@@ -64,7 +64,7 @@ void SV_SetMaster_f (void)
 
 		data[0] = A2A_PING;
 		data[1] = 0;
-		NET_SendPacket (2, data, svs.master_adr[i-1]);
+		NET_SendPacket (NS_SERVER, 2, data, svs.master_adr[i-1]);
 	}
 
 	svs.last_heartbeat = -99999;
@@ -382,7 +382,7 @@ void SV_Status_f (void)
 	avg = (float)(1000*svs.stats.latched_active / STATFRAMES);
 	pak = (float)svs.stats.latched_packets/ STATFRAMES;
 
-	Con_Printf ("net address      : %s\n",NET_AdrToString (net_local_adr));
+	Con_Printf ("net address      : %s\n",NET_AdrToString (NET_SocketAddress (NS_SERVER)));
 	Con_Printf ("cpu utilization  : %3i%%\n",(int)cpu);
 	Con_Printf ("avg response time: %i ms\n",(int)avg);
 	Con_Printf ("packets/frame    : %5.2f (%d)\n", pak, pr.num_prstr);
@@ -799,7 +799,7 @@ void SV_Snap (int uid)
 	}
 	Q_strncpyz(cl->uploadfn, checkname, sizeof(cl->uploadfn));
 
-	memcpy(&cl->snap_from, &net_from, sizeof(net_from));
+	memcpy(&cl->snap_from, &svs.net_from, sizeof(svs.net_from));
 	if (svs.redirected != RD_NONE)
 		cl->remote_snap = true;
 	else

@@ -412,7 +412,7 @@ void CL_ParseDownload (void)
 		}
 	}
 
-	fwrite (net_message.data + msg_readcount, 1, size, cls.download);
+	fwrite (cls.net_message.data + msg_readcount, 1, size, cls.download);
 	msg_readcount += size;
 
 	if (percent != 100)
@@ -1112,7 +1112,7 @@ void CL_ParseServerMessage (void)
 // if recording demos, copy the message out
 //
 	if (cl_shownet.value == 1)
-		Con_Printf ("%i ",net_message.cursize);
+		Con_Printf ("%i ",cls.net_message.cursize);
 	else if (cl_shownet.value == 2)
 		Con_Printf ("------------------\n");
 

@@ -27,32 +27,40 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // net.h -- quake's interface to the networking layer
 
 #define	PORT_ANY	-1
+#define	MAX_UDP_PACKET	(MAX_MSGLEN*2)	// one more than msg + header
 
-// which end of a connection a socket or channel belongs to
+// which end of a connection a socket or channel belongs to; each end has
+// its own UDP socket, and a loopback to the other end in the same process
 typedef enum { NS_CLIENT, NS_SERVER } netsrc_t;
+
+typedef enum { NA_INVALID, NA_LOOPBACK, NA_IP } netadrtype_t;
 
 typedef struct
 {
+	netadrtype_t	type;
 	byte	ip[4];
-	unsigned short	port;
-	unsigned short	pad;
+	unsigned short	port;		// network byte order
 } netadr_t;
 
-extern	netadr_t	net_local_adr;
-extern	netadr_t	net_from;		// address of who sent the packet
-extern	sizebuf_t	net_message;
+void	NET_Init (void);
+void	NET_Shutdown (void);
 
+// opens the end's UDP socket, false if the port can't be bound; the loopback
+// works without it
+bool	NET_OpenSocket (netsrc_t sock, int port);
+void	NET_CloseSocket (netsrc_t sock);
+netadr_t	NET_SocketAddress (netsrc_t sock);	// type NA_INVALID without a socket
 
-void		NET_Init (int port);
-void		NET_Shutdown (void);
-bool	NET_GetPacket (void);
-void		NET_SendPacket (int length, void *data, netadr_t to);
+// the next packet for this end, from the loopback first, then the socket
+bool	NET_GetPacket (netsrc_t sock, netadr_t *from, sizebuf_t *msg);
+void	NET_SendPacket (netsrc_t sock, int length, const void *data, netadr_t to);
 
 bool	NET_CompareAdr (netadr_t a, netadr_t b);
 bool	NET_CompareBaseAdr (netadr_t a, netadr_t b);
-char		*NET_AdrToString (netadr_t a);
-char		*NET_BaseAdrToString (netadr_t a);
-bool	NET_StringToAdr (char *s, netadr_t *a);
+bool	NET_IsLocalAddress (netadr_t a);	// the loopback or this machine
+char	*NET_AdrToString (netadr_t a);
+char	*NET_BaseAdrToString (netadr_t a);
+bool	NET_StringToAdr (const char *s, netadr_t *a);	// "local" is the loopback
 
 //============================================================================
 
@@ -73,6 +81,7 @@ typedef struct
 
 	int			drop_count;			// dropped packets, cleared each level
 	int			good_count;			// cleared each level
+	int			dropped;			// packets dropped before the last one processed
 
 	netadr_t	remote_address;
 	netsrc_t	sock;			// NS_CLIENT channels send the qport, NS_SERVER read it
@@ -105,13 +114,13 @@ typedef struct
 	double		outgoing_time[MAX_LATENT];
 } netchan_t;
 
-extern	int	net_drop;		// packets dropped before this one
-
 void Netchan_Init (void);
 void Netchan_Transmit (netchan_t *chan, int length, byte *data);
-void Netchan_OutOfBand (netadr_t adr, int length, byte *data);
-void Netchan_OutOfBandPrint (netadr_t adr, char *format, ...);
-bool Netchan_Process (netchan_t *chan);
+void Netchan_OutOfBand (netsrc_t sock, netadr_t adr, int length, byte *data);
+void Netchan_OutOfBandPrint (netsrc_t sock, netadr_t adr, char *format, ...);
+// true if msg, which came from 'from', is the channel's next packet; reading
+// continues after its header
+bool Netchan_Process (netchan_t *chan, netadr_t from, sizebuf_t *msg);
 void Netchan_Setup (netchan_t *chan, netadr_t adr, int qport, netsrc_t sock);
 
 bool Netchan_CanPacket (netchan_t *chan);
