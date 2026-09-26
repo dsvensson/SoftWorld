@@ -198,6 +198,32 @@ static void IN_RawMouse (const RAWMOUSE *mouse)
 
 /*
 ===============
+IN_LegacyButton
+
+A mouse button message while the mouse isn't captured
+===============
+*/
+static void IN_LegacyButton (UINT msg, WPARAM wParam)
+{
+	switch (msg)
+	{
+	case WM_LBUTTONDOWN:	Key_Event (K_MOUSE1, true);		break;
+	case WM_LBUTTONUP:		Key_Event (K_MOUSE1, false);	break;
+	case WM_RBUTTONDOWN:	Key_Event (K_MOUSE2, true);		break;
+	case WM_RBUTTONUP:		Key_Event (K_MOUSE2, false);	break;
+	case WM_MBUTTONDOWN:	Key_Event (K_MOUSE3, true);		break;
+	case WM_MBUTTONUP:		Key_Event (K_MOUSE3, false);	break;
+	case WM_XBUTTONDOWN:
+	case WM_XBUTTONUP:
+		Key_Event (GET_XBUTTON_WPARAM (wParam) == XBUTTON1 ? K_MOUSE4 : K_MOUSE5, msg == WM_XBUTTONDOWN);
+		break;
+	default:
+		break;
+	}
+}
+
+/*
+===============
 IN_HandleMessage
 
 Input messages for the main window. Returns true if the message was consumed;
@@ -242,7 +268,21 @@ bool IN_HandleMessage (UINT msg, WPARAM wParam, LPARAM lParam)
 			IN_RawMouse (&raw.data.mouse);
 		return false;		// DefWindowProc cleans up after WM_INPUT
 
-	case WM_MOUSEWHEEL:		// only arrives while the mouse isn't captured
+	// the rest only arrive while the mouse isn't captured
+	case WM_LBUTTONDOWN:
+	case WM_LBUTTONUP:
+	case WM_RBUTTONDOWN:
+	case WM_RBUTTONUP:
+	case WM_MBUTTONDOWN:
+	case WM_MBUTTONUP:
+	case WM_XBUTTONDOWN:
+	case WM_XBUTTONUP:
+		if (!IN_WantsMouseButtons ())
+			return false;
+		IN_LegacyButton (msg, wParam);
+		return true;
+
+	case WM_MOUSEWHEEL:
 		Key_Event ((short)HIWORD (wParam) > 0 ? K_MWHEELUP : K_MWHEELDOWN, true);
 		Key_Event ((short)HIWORD (wParam) > 0 ? K_MWHEELUP : K_MWHEELDOWN, false);
 		return true;

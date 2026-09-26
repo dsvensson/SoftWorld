@@ -39,8 +39,8 @@ cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true}
 cvar_t	vid_contrast = {.name = "vid_contrast", .string = "1", .archive = true};
 // use HDR output when the display is in HDR mode
 cvar_t	vid_hdr = {.name = "vid_hdr", .string = "1", .archive = true};
-// brightness of SDR white on an HDR display, in nits
-cvar_t	vid_hdr_paperwhite = {.name = "vid_hdr_paperwhite", .string = "200", .archive = true};
+// brightness of SDR white on an HDR display, in nits; 0 uses Windows' SDR content brightness
+cvar_t	vid_hdr_paperwhite = {.name = "vid_hdr_paperwhite", .string = "0", .archive = true};
 
 #define VID_BASE_WIDTH	320
 #define VID_BASE_HEIGHT	200
@@ -88,9 +88,16 @@ static bool		vid_hdroutput;			// the swapchain is scRGB
 static bool		vid_outputknown;		// the output mode has been reported
 static float	vid_hdrwanted = -1;		// vid_hdr when the display was last checked
 static float	vid_peaknits = 1000;	// the display's brightest white
+static float	vid_sdrwhitenits = 200;	// Windows' SDR content brightness on that display
 static vid_present_t	vid_present = {.gamma = 1, .contrast = 1};
 
 static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+
+// SDR white on an HDR display: vid_hdr_paperwhite, or else what Windows uses
+static float VID_PaperWhiteNits (void)
+{
+	return vid_hdr_paperwhite.value > 0 ? vid_hdr_paperwhite.value : vid_sdrwhitenits;
+}
 
 static void VID_CheckHR (HRESULT hr, const char *what)
 {
@@ -186,6 +193,58 @@ static IDXGIOutput6 *VID_WindowOutput (void)
 
 /*
 ================
+VID_SDRWhiteNits
+
+The brightness Windows gives SDR content on the display named device (a GDI
+device name, as in DXGI_OUTPUT_DESC1), or 0 if it isn't known
+================
+*/
+static float VID_SDRWhiteNits (const WCHAR *device)
+{
+	DISPLAYCONFIG_PATH_INFO	*paths;
+	DISPLAYCONFIG_MODE_INFO	*modes;
+	UINT32					numpaths, nummodes, i;
+	float					nits = 0;
+
+	if (GetDisplayConfigBufferSizes (QDC_ONLY_ACTIVE_PATHS, &numpaths, &nummodes) != ERROR_SUCCESS)
+		return 0;
+	paths = Mem_Alloc (numpaths * sizeof(*paths));
+	modes = Mem_Alloc (nummodes * sizeof(*modes));
+	if (QueryDisplayConfig (QDC_ONLY_ACTIVE_PATHS, &numpaths, paths, &nummodes, modes, NULL) == ERROR_SUCCESS)
+	{
+		for (i=0 ; i<numpaths ; i++)
+		{
+			DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {
+				.header = {
+					.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
+					.size = sizeof(source),
+					.adapterId = paths[i].sourceInfo.adapterId,
+					.id = paths[i].sourceInfo.id,
+				},
+			};
+			DISPLAYCONFIG_SDR_WHITE_LEVEL white = {
+				.header = {
+					.type = DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL,
+					.size = sizeof(white),
+					.adapterId = paths[i].targetInfo.adapterId,
+					.id = paths[i].targetInfo.id,
+				},
+			};
+
+			if (DisplayConfigGetDeviceInfo (&source.header) != ERROR_SUCCESS || wcscmp (source.viewGdiDeviceName, device))
+				continue;
+			if (DisplayConfigGetDeviceInfo (&white.header) == ERROR_SUCCESS)
+				nits = white.SDRWhiteLevel / 1000.0f * 80.0f;		// 1000 is 80 nits
+			break;
+		}
+	}
+	Mem_Free (paths);
+	Mem_Free (modes);
+	return nits;
+}
+
+/*
+================
 VID_CheckOutput
 
 Switches between SDR and scRGB output to match the display the window is on
@@ -196,9 +255,9 @@ static void VID_CheckOutput (void)
 	IDXGIOutput6		*output;
 	IDXGISwapChain3		*swapchain3;
 	DXGI_OUTPUT_DESC1	desc;
-	DXGI_COLOR_SPACE_TYPE	space;
-	UINT				support;
-	bool				hdr = false;
+	UINT				support = 0;
+	bool				displayhdr = false, hdr, wasknown;
+	const char			*why = NULL;
 
 	vid_outputdirty = false;
 	vid_hdrwanted = vid_hdr.value;
@@ -215,36 +274,52 @@ static void VID_CheckOutput (void)
 	{
 		if (SUCCEEDED (IDXGIOutput6_GetDesc1 (output, &desc)))
 		{
-			hdr = vid_hdr.value && desc.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
+			displayhdr = desc.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
 			if (desc.MaxLuminance > 0)
 				vid_peaknits = desc.MaxLuminance;
+			vid_sdrwhitenits = VID_SDRWhiteNits (desc.DeviceName);
+			if (vid_sdrwhitenits <= 0)
+				vid_sdrwhitenits = 200;
 		}
 		IDXGIOutput6_Release (output);
 	}
+	else
+		why = "the display wasn't found";
 
-	space = hdr ? DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 : DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+	hdr = displayhdr && vid_hdr.value;
+	if (displayhdr && !vid_hdr.value)
+		why = "vid_hdr is 0";
+
 	if (FAILED (IDXGISwapChain1_QueryInterface (d3d_swapchain, &IID_IDXGISwapChain3, (void **)&swapchain3)))
 		return;
-	if (hdr && (FAILED (IDXGISwapChain3_CheckColorSpaceSupport (swapchain3, space, &support))
-		|| !(support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT)))
+
+	// the color space a swapchain can present depends on its format, so switch that first
+	if (hdr != vid_hdroutput)
+		VID_ResizeSwapchain (client_width, client_height, hdr ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_B8G8R8A8_UNORM);
+	if (hdr && (FAILED (IDXGISwapChain3_CheckColorSpaceSupport (swapchain3, DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709, &support))
+		|| !(support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT)
+		|| FAILED (IDXGISwapChain3_SetColorSpace1 (swapchain3, DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709))))
 	{
 		hdr = false;
-		space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+		why = "scRGB can't be presented";
+		VID_ResizeSwapchain (client_width, client_height, DXGI_FORMAT_B8G8R8A8_UNORM);
 	}
-
-	if (hdr != vid_hdroutput || !vid_outputknown)
-	{
-		if (hdr != vid_hdroutput)
-			VID_ResizeSwapchain (client_width, client_height, hdr ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_B8G8R8A8_UNORM);
-		vid_hdroutput = hdr;
-		vid_outputknown = true;
-		if (hdr)
-			Con_Printf ("HDR output, %.0f nits peak\n", vid_peaknits);
-		else
-			Con_Printf ("SDR output\n");
-	}
-	IDXGISwapChain3_SetColorSpace1 (swapchain3, space);
+	if (!hdr)
+		IDXGISwapChain3_SetColorSpace1 (swapchain3, DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);
 	IDXGISwapChain3_Release (swapchain3);
+
+	wasknown = vid_outputknown;
+	vid_outputknown = true;
+	if (wasknown && hdr == vid_hdroutput)
+		return;
+	vid_hdroutput = hdr;
+	if (hdr)
+		Con_Printf ("HDR output: SDR white at %.0f nits%s, %.0f nits peak\n", VID_PaperWhiteNits (),
+			vid_hdr_paperwhite.value > 0 ? "" : " (Windows setting)", vid_peaknits);
+	else if (why)
+		Con_Printf ("SDR output: %s\n", why);
+	else
+		Con_Printf ("SDR output\n");
 }
 
 /*
@@ -523,8 +598,6 @@ void VID_Init (unsigned char *palette)
 		VID_SetFullscreen (true);
 
 	vid_initialized = true;
-	vid_menudrawfn = NULL;
-	vid_menukeyfn = NULL;
 }
 
 void VID_Shutdown (void)
@@ -654,8 +727,8 @@ void VID_Update ([[maybe_unused]] vrect_t *rects)
 	constants.contrast = vid_present.contrast * vid_contrast.value;
 	constants.sharp = scale == floorf (scale) ? 0.0f : 1.0f;
 	constants.hdr = vid_hdroutput ? 1.0f : 0.0f;
-	constants.paperwhite = vid_hdr_paperwhite.value / 80.0f;		// scRGB 1.0 is 80 nits
-	constants.peak = vid_peaknits / 80.0f;
+	constants.paperwhite = VID_PaperWhiteNits () / 80.0f;		// scRGB 1.0 is 80 nits
+	constants.peak = fmaxf (vid_peaknits, VID_PaperWhiteNits ()) / 80.0f;
 	constants.pad[0] = constants.pad[1] = 0;
 	ID3D11DeviceContext_UpdateSubresource (d3d_context, (ID3D11Resource *)d3d_constants, 0, NULL, &constants, 0, 0);
 

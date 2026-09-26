@@ -57,8 +57,6 @@ typedef struct
 } viddef_t;
 
 extern	viddef_t	vid;				// global video state
-extern void (*vid_menudrawfn)(void);
-extern void (*vid_menukeyfn)(int key);
 
 void	VID_SetPalette (unsigned char *palette);
 // called at startup and after any gamma correction

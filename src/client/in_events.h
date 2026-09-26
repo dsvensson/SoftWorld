@@ -51,6 +51,10 @@ void	IN_GamepadSticks (float lx, float ly, float rx, float ry);
 // true while playing, when the mouse should be captured instead of pointing
 bool	IN_WantsMouse (void);
 
+// true when mouse buttons should be sent even though the mouse isn't captured
+// (menus, where they can be bound)
+bool	IN_WantsMouseButtons (void);
+
 //
 // what the platform provides
 //

@@ -46,6 +46,14 @@ state bit 2 is edge triggered on the down to up transition
 
 
 kbutton_t	in_mlook, in_klook;
+
+// the mouse looks around without holding +mlook
+cvar_t	freelook = {.name = "freelook", .string = "1", .archive = true};
+
+static bool IN_MouseLook (void)
+{
+	return (in_mlook.state & 1) || freelook.value;
+}
 kbutton_t	in_left, in_right, in_forward, in_back;
 kbutton_t	in_lookup, in_lookdown, in_moveleft, in_moveright;
 kbutton_t	in_strafe, in_speed, in_use, in_jump, in_attack;
@@ -118,7 +126,7 @@ void IN_KLookUp (void) {KeyUp(&in_klook);}
 void IN_MLookDown (void) {KeyDown(&in_mlook);}
 void IN_MLookUp (void) {
 KeyUp(&in_mlook);
-if ( !(in_mlook.state&1) &&  lookspring.value)
+if ( !IN_MouseLook () && lookspring.value)
 	V_StartPitchDrift();
 }
 void IN_UpDown(void) {KeyDown(&in_up);}
@@ -525,6 +533,11 @@ bool IN_WantsMouse (void)
 	return key_dest == key_game;
 }
 
+bool IN_WantsMouseButtons (void)
+{
+	return key_dest == key_menu;
+}
+
 void IN_ClearStates (void)
 {
 	in_mouse_dx = in_mouse_dy = 0;
@@ -571,15 +584,15 @@ static void IN_MouseMove (usercmd_t *cmd)
 	mouse_y *= sensitivity.value;
 
 // add mouse X/Y movement to cmd
-	if ( (in_strafe.state & 1) || (lookstrafe.value && (in_mlook.state & 1) ))
+	if ( (in_strafe.state & 1) || (lookstrafe.value && IN_MouseLook ()))
 		cmd->sidemove = (short)(cmd->sidemove + m_side.value * mouse_x);
 	else
 		cl.viewangles[YAW] -= m_yaw.value * mouse_x;
 
-	if (in_mlook.state & 1)
+	if (IN_MouseLook ())
 		V_StopPitchDrift ();
 
-	if ( (in_mlook.state & 1) && !(in_strafe.state & 1))
+	if (IN_MouseLook () && !(in_strafe.state & 1))
 	{
 		cl.viewangles[PITCH] += m_pitch.value * mouse_y;
 		IN_ClampPitch ();
@@ -660,6 +673,7 @@ void CL_InitInput (void)
 
 	Cvar_RegisterVariable (&cl_nodelta);
 	Cvar_RegisterVariable (&m_filter);
+	Cvar_RegisterVariable (&freelook);
 	Cvar_RegisterVariable (&joy_yawspeed);
 	Cvar_RegisterVariable (&joy_pitchspeed);
 	Cvar_RegisterVariable (&joy_invert);
