@@ -21,7 +21,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // texture (used for Alias models)
 
 #include "r_local.h"
-#include "r_local.h"
 #include "d_local.h"
 
 
@@ -604,14 +603,16 @@ D_PolysetDrawSpans8
 */
 void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 {
-	int		lcount;
-	pixel_t	*lpdest;
-	byte	*lptex;
-	const byte	*remap = r_affinetridesc.skinremap;
-	int		lsfrac, ltfrac;
-	int		llight;
-	int		lzi;
-	float	*lpz;
+	int				lcount;
+	simd_aliasmap_t	map = {
+		.zistep = r_zistepx, .lightstep = r_lstepx,
+		.stepwhole = a_ststepxwhole, .sfracstep = a_sstepxfrac, .tfracstep = a_tstepxfrac,
+		.skinwidth = r_affinetridesc.skinwidth,
+		.remap = r_affinetridesc.skinremap,
+		.colormap = r_affinetridesc.rgblight ? NULL : d_cm30,
+		.palette = d_pal30, .floor = d_pal30_floor,
+		.tint = {r_affinetridesc.tint[0], r_affinetridesc.tint[1], r_affinetridesc.tint[2]},
+	};
 
 	do
 	{
@@ -629,38 +630,8 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 		}
 
 		if (lcount)
-		{
-			lpdest = pspanpackage->pdest;
-			lptex = pspanpackage->ptex;
-			lpz = pspanpackage->pz;
-			lsfrac = pspanpackage->sfrac;
-			ltfrac = pspanpackage->tfrac;
-			llight = pspanpackage->light;
-			lzi = pspanpackage->zi;
-
-			do
-			{
-				if (lzi * ALIAS_ZI_TO_FLOAT >= *lpz)
-				{
-					*lpdest = D_AliasPixel (remap[*lptex], llight);
-					*lpz = lzi * ALIAS_ZI_TO_FLOAT;
-				}
-				lpdest++;
-				lzi += r_zistepx;
-				lpz++;
-				llight += r_lstepx;
-				lptex += a_ststepxwhole;
-				lsfrac += a_sstepxfrac;
-				lptex += lsfrac >> 16;
-				lsfrac &= 0xFFFF;
-				ltfrac += a_tstepxfrac;
-				if (ltfrac & 0x10000)
-				{
-					lptex += r_affinetridesc.skinwidth;
-					ltfrac &= 0xFFFF;
-				}
-			} while (--lcount);
-		}
+			simd_aliasspan (pspanpackage->pdest, pspanpackage->pz, pspanpackage->ptex, pspanpackage->sfrac,
+				pspanpackage->tfrac, pspanpackage->light, pspanpackage->zi, lcount, &map);
 
 		pspanpackage++;
 	} while (pspanpackage->count != -999999);

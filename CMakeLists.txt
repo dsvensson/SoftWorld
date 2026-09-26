@@ -30,6 +30,10 @@ else()
 	message(WARNING "Link-time optimization is not available: ${sw_ipo_output}")
 endif()
 
+# Release keeps a program database too, for profilers and crash dumps; the code is the same
+set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo,Release>:ProgramDatabase>")
+add_link_options("$<$<CONFIG:Release>:/DEBUG;/OPT:REF;/OPT:ICF>")
+
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN NOMINMAX)
 add_compile_options(/utf-8 /permissive- /diagnostics:column)
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")

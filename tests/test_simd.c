@@ -203,6 +203,68 @@ static void TestLitRowRGB (void)
 	}
 }
 
+static void TestAliasSpan (void)
+{
+	static byte		skin[320 * 200 + 8], remap[256 + 8];
+	static uint32_t	colormap[64 * 256], palette[256], floor[256];
+	static uint32_t	a[400], b[400];
+	static float	za[400], zb[400], zinit[400];
+	simd_aliasmap_t	map;
+	const byte		*tex;
+	int				r, i, width, height, count, s0, s1, t0, t1, sstep, tstep, light0, light1, zi;
+
+	for (i = 0 ; i < (int)sizeof(skin) ; i++)
+		skin[i] = (byte)Rand ();
+	for (i = 0 ; i < (int)sizeof(remap) ; i++)
+		remap[i] = (byte)Rand ();
+	for (i = 0 ; i < 64 * 256 ; i++)
+		colormap[i] = Rand ();
+	for (i = 0 ; i < 256 ; i++)
+	{
+		palette[i] = Rand () & 0x3FFFFFFF;
+		floor[i] = (Rand () & 3) ? 0 : Rand () & 0x3FFFFFFF;
+	}
+	for (r = 0 ; r < ROUNDS ; r++)
+	{
+		// a span that stays on the skin, as the rasterizer's do
+		width = RandRange (8, 320);
+		height = RandRange (8, 200);
+		count = RandRange (1, 400);
+		s0 = RandRange (0, (width << 16) - 1);
+		s1 = RandRange (0, (width << 16) - 1);
+		t0 = RandRange (0, (height << 16) - 1);
+		t1 = RandRange (0, (height << 16) - 1);
+		sstep = (s1 - s0) / count;
+		tstep = (t1 - t0) / count;
+		map.zistep = RandRange (-100000, 100000);
+		map.stepwhole = (sstep >> 16) + (tstep >> 16) * width;
+		map.sfracstep = sstep & 0xFFFF;
+		map.tfracstep = tstep & 0xFFFF;
+		map.skinwidth = width;
+		map.remap = remap + (r & 7);
+		map.colormap = (r & 1) ? colormap : NULL;
+		map.palette = palette;
+		map.floor = floor;
+		for (i = 0 ; i < 3 ; i++)
+			map.tint[i] = (unsigned)RandRange (0, 256);
+		// classic light must stay on the colormap
+		light0 = RandRange (0, 0x3FFF);
+		light1 = RandRange (0, 0x3FFF);
+		map.lightstep = (light1 - light0) / count;
+		tex = skin + (r & 3) + (s0 >> 16) + (t0 >> 16) * width;
+		for (i = 0 ; i < 400 ; i++)
+			zinit[i] = RandFloat (0, 1);
+		zi = RandRange (0, 0x7FFFFFFF - 400 * 100000);
+		memset (a, 0, sizeof(a));
+		memset (b, 0, sizeof(b));
+		memcpy (za, zinit, sizeof(za));
+		memcpy (zb, zinit, sizeof(zb));
+		Simd_Scalar_AliasSpan (a, za, tex, s0 & 0xFFFF, t0 & 0xFFFF, light0, zi, count, &map);
+		Simd_V4_AliasSpan (b, zb, tex, s0 & 0xFFFF, t0 & 0xFFFF, light0, zi, count, &map);
+		Check ("AliasSpan", r, !memcmp (a, b, sizeof(a)) && !memcmp (za, zb, sizeof(za)));
+	}
+}
+
 static void TestExpand8 (void)
 {
 	uint32_t	palette[256], a[100 * 16], b[100 * 16];
@@ -256,6 +318,7 @@ int main (void)
 	TestTurbSpan ();
 	TestLitRowColormap ();
 	TestLitRowRGB ();
+	TestAliasSpan ();
 	TestExpand8 ();
 	TestCopyStream ();
 

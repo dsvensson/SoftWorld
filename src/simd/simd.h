@@ -66,6 +66,27 @@ void	simd_litrow_colormap (uint32_t *dest, const byte *src, const uint32_t *colo
 void	simd_litrow_rgb (uint32_t *dest, const byte *src, const uint32_t *palette,
 			const uint32_t *floor, const int light[3], const int step[3], int count);
 
+// how the spans of an alias model triangle step: per pixel, 1/z and light by
+// their steps, and the skin by stepwhole texels plus the carries of the 16 bit
+// s and t fractions (a t carry is one skin row)
+typedef struct
+{
+	int				zistep, lightstep;
+	int				stepwhole, sfracstep, tfracstep;	// fractions 0 .. 0xFFFF
+	int				skinwidth;
+	const byte		*remap;			// skin colors to palette indices (256)
+	const uint32_t	*colormap;		// classic lighting: colormap[index + (light & 0xFF00)]
+	const uint32_t	*palette;		// else RGB: the palette and the floor as in
+	const uint32_t	*floor;			// simd_litrow_rgb, the light
+	unsigned		tint[3];		// ((255 << 6) - light) * tint >> 6
+} simd_aliasmap_t;
+
+// count pixels of an alias model span from tex (its s and t fractions sfrac
+// and tfrac, 0 .. 0xFFFF): a pixel whose 1/z, zi * 2^-31, is at least the z
+// buffer's is written, with its 1/z
+void	simd_aliasspan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,
+			int light, int zi, int count, const simd_aliasmap_t *map);
+
 // 8 bit texels through a palette, each written scale times: dest[i*scale + k]
 // = palette[src[i]]; texels equal to transparent (if not -1) are skipped
 void	simd_expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,

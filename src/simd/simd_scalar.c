@@ -190,6 +190,60 @@ void Simd_Scalar_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *pal
 	}
 }
 
+// an alias model pixel lit in RGB: the light's level times the tint, then as
+// simd_litrow_rgb
+static uint32_t Simd_Scalar_AliasLit (const simd_aliasmap_t *map, uint32_t index, int light)
+{
+	unsigned	level = light < (255 << 6) ? (unsigned)((255 << 6) - light) : 0;	// 8192 is 1.0
+	uint32_t	p = map->palette[index], fl = map->floor[index], out = 0;
+	unsigned	l, c, f;
+	int			k;
+
+	for (k = 0 ; k < 3 ; k++)
+	{
+		l = (level * map->tint[k]) >> 6;
+		c = (((p >> (10 * k)) & 1023) * l) >> 15;
+		f = (fl >> (10 * k)) & 1023;
+		if (c < f)
+			c = f;
+		if (c > 1023)
+			c = 1023;
+		out |= c << (10 * k);
+	}
+	return out;
+}
+
+void Simd_Scalar_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,
+	int light, int zi, int count, const simd_aliasmap_t *map)
+{
+	uint32_t	index;
+	float		z;
+	int			i;
+
+	for (i = 0 ; i < count ; i++)
+	{
+		z = (float)zi * (1.0f / 2147483648.0f);
+		if (z >= zbuf[i])
+		{
+			index = map->remap[*tex];
+			dest[i] = map->colormap ? map->colormap[index + (light & 0xFF00)] : Simd_Scalar_AliasLit (map, index, light);
+			zbuf[i] = z;
+		}
+		zi = (int)((unsigned)zi + (unsigned)map->zistep);
+		light += map->lightstep;
+		tex += map->stepwhole;
+		sfrac += map->sfracstep;
+		tex += sfrac >> 16;
+		sfrac &= 0xFFFF;
+		tfrac += map->tfracstep;
+		if (tfrac & 0x10000)
+		{
+			tex += map->skinwidth;
+			tfrac &= 0xFFFF;
+		}
+	}
+}
+
 void Simd_Scalar_Expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
 	int scale, int transparent)
 {

@@ -51,6 +51,12 @@ void simd_litrow_rgb (uint32_t *dest, const byte *src, const uint32_t *palette,
 	Simd_Scalar_LitRowRGB (dest, src, palette, floor, light, step, count);
 }
 
+void simd_aliasspan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,
+	int light, int zi, int count, const simd_aliasmap_t *map)
+{
+	Simd_Scalar_AliasSpan (dest, zbuf, tex, sfrac, tfrac, light, zi, count, map);
+}
+
 void simd_expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
 	int scale, int transparent)
 {

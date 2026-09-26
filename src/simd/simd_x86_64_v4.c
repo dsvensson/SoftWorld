@@ -296,6 +296,87 @@ void Simd_V4_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette
 	_mm512_mask_storeu_epi32 (dest, lanes, out);
 }
 
+// the bytes at base + offset, read as the aligned dwords that hold them, so no
+// read reaches past the dword of a byte that is there
+static inline __m512i Simd_V4_GatherBytes (const byte *base, __m512i offset, __mmask16 lanes)
+{
+	const byte	*aligned = (const byte *)((uintptr_t)base & ~(uintptr_t)3);
+	__m512i		at = _mm512_add_epi32 (offset, _mm512_set1_epi32 ((int)((uintptr_t)base & 3)));
+	__m512i		dw = _mm512_mask_i32gather_epi32 (_mm512_setzero_si512 (), lanes, _mm512_srai_epi32 (at, 2), aligned, 4);
+
+	dw = _mm512_srlv_epi32 (dw, _mm512_slli_epi32 (_mm512_and_si512 (at, _mm512_set1_epi32 (3)), 3));
+	return _mm512_and_si512 (dw, _mm512_set1_epi32 (0xFF));
+}
+
+void Simd_V4_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,
+	int light, int zi, int count, const simd_aliasmap_t *map)
+{
+	const __m512i	lane = Simd_V4_Iota ();
+	const __m512i	channel = _mm512_set1_epi32 (1023), full = _mm512_set1_epi32 (255 << 6);
+	const __m512i	zistep = _mm512_mullo_epi32 (lane, _mm512_set1_epi32 (map->zistep));
+	const __m512i	lightstep = _mm512_mullo_epi32 (lane, _mm512_set1_epi32 (map->lightstep));
+	const __m512i	sstep = _mm512_mullo_epi32 (lane, _mm512_set1_epi32 (map->sfracstep));
+	const __m512i	tstep = _mm512_mullo_epi32 (lane, _mm512_set1_epi32 (map->tfracstep));
+	const __m512i	whole = _mm512_mullo_epi32 (lane, _mm512_set1_epi32 (map->stepwhole));
+	const __m512i	skinwidth = _mm512_set1_epi32 (map->skinwidth);
+	__mmask16		lanes, visible;
+	__m512			z;
+	__m512i			s, t, l, index, color, pal, fl, level, c, f;
+	int				i, k, snext, tnext;
+
+	for (i = 0 ; i < count ; i += 16)
+	{
+		lanes = Simd_V4_Lanes (count - i);
+		z = _mm512_mul_ps (_mm512_cvtepi32_ps (_mm512_add_epi32 (_mm512_set1_epi32 (zi), zistep)),
+			_mm512_set1_ps (1.0f / 2147483648.0f));
+		visible = _mm512_mask_cmp_ps_mask (lanes, z, _mm512_maskz_loadu_ps (lanes, zbuf + i), _CMP_GE_OQ);
+
+		if (visible)
+		{
+			// each pixel's texel: the whole steps and the carries of both fractions
+			s = _mm512_add_epi32 (_mm512_set1_epi32 (sfrac), sstep);
+			t = _mm512_add_epi32 (_mm512_set1_epi32 (tfrac), tstep);
+			index = _mm512_add_epi32 (whole, _mm512_add_epi32 (_mm512_srai_epi32 (s, 16),
+				_mm512_mullo_epi32 (_mm512_srai_epi32 (t, 16), skinwidth)));
+			index = Simd_V4_GatherBytes (map->remap, Simd_V4_GatherBytes (tex, index, visible), visible);
+			l = _mm512_add_epi32 (_mm512_set1_epi32 (light), lightstep);
+
+			if (map->colormap)
+				color = _mm512_mask_i32gather_epi32 (_mm512_setzero_si512 (), visible,
+					_mm512_add_epi32 (index, _mm512_and_si512 (l, _mm512_set1_epi32 (0xFF00))), map->colormap, 4);
+			else
+			{
+				level = _mm512_maskz_sub_epi32 (_mm512_cmplt_epi32_mask (l, full), full, l);
+				pal = _mm512_mask_i32gather_epi32 (_mm512_setzero_si512 (), visible, index, map->palette, 4);
+				fl = _mm512_mask_i32gather_epi32 (_mm512_setzero_si512 (), visible, index, map->floor, 4);
+				color = _mm512_setzero_si512 ();
+				for (k = 0 ; k < 3 ; k++)
+				{
+					__m128i	shift = _mm_cvtsi32_si128 (10 * k);
+
+					l = _mm512_srli_epi32 (_mm512_mullo_epi32 (level, _mm512_set1_epi32 ((int)map->tint[k])), 6);
+					c = _mm512_and_si512 (_mm512_srl_epi32 (pal, shift), channel);
+					c = _mm512_srli_epi32 (_mm512_mullo_epi32 (c, l), 15);
+					f = _mm512_and_si512 (_mm512_srl_epi32 (fl, shift), channel);
+					c = _mm512_min_epu32 (_mm512_max_epu32 (c, f), channel);
+					color = _mm512_or_si512 (color, _mm512_sll_epi32 (c, shift));
+				}
+			}
+			_mm512_mask_storeu_epi32 (dest + i, visible, color);
+			_mm512_mask_storeu_ps (zbuf + i, visible, z);
+		}
+
+		// sixteen pixels on
+		zi = (int)((unsigned)zi + 16u * (unsigned)map->zistep);
+		light = (int)((unsigned)light + 16u * (unsigned)map->lightstep);
+		snext = sfrac + 16 * map->sfracstep;
+		tnext = tfrac + 16 * map->tfracstep;
+		tex += 16 * map->stepwhole + (snext >> 16) + (tnext >> 16) * map->skinwidth;
+		sfrac = snext & 0xFFFF;
+		tfrac = tnext & 0xFFFF;
+	}
+}
+
 // for each scale, the source lane of each output lane: (chunk * 16 + lane) / scale
 static __m512i	expand_index[17][16];
 static bool		expand_ready;
