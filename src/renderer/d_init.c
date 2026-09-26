@@ -117,7 +117,7 @@ void R_SetRenderSize (int width, int height, int scale)
 	cachesize = D_SurfaceCacheForRes (width, height);
 	zbuffersize = width * height * (int)sizeof (*d_pzbuffer);
 	buffers = Mem_AllocAligned ((size_t)zbuffersize + (size_t)cachesize, 64);
-	d_pzbuffer = (short *)buffers;
+	d_pzbuffer = (float *)buffers;
 	D_InitCaches (buffers + zbuffersize, cachesize);
 
 	Mem_Free (d_scantable);

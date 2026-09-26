@@ -24,10 +24,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 int	d_vrectx, d_vrecty, d_vrectright_particle, d_vrectbottom_particle;
 
-int	d_y_aspect_shift, d_pix_min, d_pix_max, d_pix_shift;
+int	d_y_aspect_shift, d_pix_min, d_pix_max;
 
 int		*d_scantable;		// by scan line
-short	**zspantable; 
+float	**zspantable; 
 
 /*
 ================
@@ -44,7 +44,6 @@ void D_ViewChanged (void)
 	if (yscale > xscale)
 		scale_for_mip = yscale;
 
-	d_zrowbytes = vid.width * 2;
 	d_zwidth = vid.width;
 
 	d_pix_min = r_refdef.vrect.width / 320;
@@ -52,7 +51,6 @@ void D_ViewChanged (void)
 		d_pix_min = 1;
 
 	d_pix_max = (int)((float)r_refdef.vrect.width / (320.0 / 4.0) + 0.5);
-	d_pix_shift = 8 - (int)((float)r_refdef.vrect.width / 320.0 + 0.5);
 	if (d_pix_max < 1)
 		d_pix_max = 1;
 

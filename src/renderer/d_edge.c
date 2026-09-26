@@ -199,11 +199,10 @@ void D_DrawSurfaces (void)
 			}
 			else if (s->flags & SURF_DRAWBACKGROUND)
 			{
-			// set up a gradient for the background surface that places it
-			// effectively at infinity distance from the viewpoint
+			// the background is infinitely far: 1/z is 0
 				d_zistepu = 0;
 				d_zistepv = 0;
-				d_ziorigin = -0.9f;
+				d_ziorigin = 0;
 
 				D_DrawSolidSurface (s, (int)r_clearcolor.value & 0xFF);
 				D_DrawZSpans (s->spans);

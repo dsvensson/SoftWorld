@@ -86,19 +86,23 @@ surfcache_t	*D_CacheSurface (msurface_t *surface, int miplevel);
 extern int D_MipLevelForScale (float scale);
 
 
-extern short *d_pzbuffer;
-extern unsigned int d_zrowbytes, d_zwidth;
+// 1/z of the nearest thing drawn at each pixel; 0 is infinitely far
+extern float *d_pzbuffer;
+extern unsigned int d_zwidth;
+
+// alias models step 1/z in 31 bit fixed point
+#define ALIAS_ZI_TO_FLOAT	(1.0f / 2147483648.0f)
 
 extern int	*d_pscantable;
 extern int	*d_scantable;
 
 extern int	d_vrectx, d_vrecty, d_vrectright_particle, d_vrectbottom_particle;
 
-extern int	d_y_aspect_shift, d_pix_min, d_pix_max, d_pix_shift;
+extern int	d_y_aspect_shift, d_pix_min, d_pix_max;
 
 extern pixel_t	*d_viewbuffer;
 
-extern short	**zspantable;
+extern float	**zspantable;
 
 void D_SetWarpSize (int width, int height, int scale);
 void D_SetPolysetSize (int height);

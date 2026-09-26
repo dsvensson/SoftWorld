@@ -28,7 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 typedef struct {
 	pixel_t			*pdest;
-	short			*pz;
+	float			*pz;
 	int				count;
 	byte			*ptex;
 	int				sfrac, tfrac, light, zi;
@@ -81,7 +81,7 @@ static spanpackage_t			*d_pedgespanpackage;
 static int				ystart;
 static pixel_t				*d_pdest;
 static byte					*d_ptex;
-static short					*d_pz;
+static float					*d_pz;
 static int						d_sfrac, d_tfrac, d_light, d_zi;
 static int						d_ptexextrastep, d_sfracextrastep;
 static int						d_tfracextrastep, d_lightextrastep, d_pdestextrastep;
@@ -152,8 +152,8 @@ D_PolysetDrawFinalVerts
 */
 void D_PolysetDrawFinalVerts (finalvert_t *fv, int nverts)
 {
-	int		i, z;
-	short	*zbuf;
+	int		i;
+	float	z, *zbuf;
 
 	for (i=0 ; i<nverts ; i++, fv++)
 	{
@@ -162,13 +162,13 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int nverts)
 		if ((fv->v[0] < r_refdef.vrectright) &&
 			(fv->v[1] < r_refdef.vrectbottom))
 		{
-			z = fv->v[5]>>16;
+			z = fv->v[5] * ALIAS_ZI_TO_FLOAT;
 			zbuf = zspantable[fv->v[1]] + fv->v[0];
 			if (z >= *zbuf)
 			{
 				int		pix;
-				
-				*zbuf = (short)z;
+
+				*zbuf = z;
 				pix = r_affinetridesc.skinremap[skintable[fv->v[3]>>16][fv->v[2]>>16]];
 				d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]] = d_cm30[pix + (fv->v[4] & 0xFF00)];
 			}
@@ -316,8 +316,7 @@ void D_PolysetRecursiveTriangle (int *lp1, int *lp2, int *lp3)
 	int		*temp;
 	int		d;
 	int		new[6];
-	int		z;
-	short	*zbuf;
+	float	zf, *zbuf;
 
 	d = lp2[0] - lp1[0];
 	if (d < -1 || d > 1)
@@ -371,11 +370,11 @@ split:
 		goto nodraw;
 
 
-	z = new[5]>>16;
+	zf = new[5] * ALIAS_ZI_TO_FLOAT;
 	zbuf = zspantable[new[1]] + new[0];
-	if (z >= *zbuf)
+	if (zf >= *zbuf)
 	{
-		*zbuf = (short)z;
+		*zbuf = zf;
 		d_viewbuffer[d_scantable[new[1]] + new[0]] =
 			d_pcolormap[r_affinetridesc.skinremap[skintable[new[3]>>16][new[2]>>16]]];
 	}
@@ -592,7 +591,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 	int		lsfrac, ltfrac;
 	int		llight;
 	int		lzi;
-	short	*lpz;
+	float	*lpz;
 
 	do
 	{
@@ -621,10 +620,10 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 
 			do
 			{
-				if ((lzi >> 16) >= *lpz)
+				if (lzi * ALIAS_ZI_TO_FLOAT >= *lpz)
 				{
 					*lpdest = d_cm30[remap[*lptex] + (llight & 0xFF00)];
-					*lpz = lzi >> 16;
+					*lpz = lzi * ALIAS_ZI_TO_FLOAT;
 				}
 				lpdest++;
 				lzi += r_zistepx;

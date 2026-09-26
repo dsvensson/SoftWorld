@@ -42,8 +42,7 @@ pixel_t			*cacheblock;
 byte			*d_turbsource;
 int				cachewidth;
 pixel_t			*d_viewbuffer;
-short			*d_pzbuffer;
-unsigned int	d_zrowbytes;
+float			*d_pzbuffer;
 unsigned int	d_zwidth;
 
 

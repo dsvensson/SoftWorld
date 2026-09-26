@@ -56,7 +56,7 @@ void D_DrawParticle (particle_t *pparticle)
 	vec3_t	local, transformed;
 	float	zi;
 	pixel_t	*pdest, color;
-	short	*pz;
+	float	*pz;
 	int		i, izi, pix, count, u, v;
 
 // transform point
@@ -87,7 +87,7 @@ void D_DrawParticle (particle_t *pparticle)
 	pdest = d_viewbuffer + d_scantable[v] + u;
 	izi = (int)(zi * 0x8000);
 
-	pix = izi >> d_pix_shift;
+	pix = (izi * (int)vid.scale) >> 7;	// the size in the 320x200 layout, in pixels
 
 	if (pix < d_pix_min)
 		pix = d_pix_min;
@@ -101,9 +101,9 @@ void D_DrawParticle (particle_t *pparticle)
 	{
 		for (i=0 ; i<pix ; i++)
 		{
-			if (pz[i] <= izi)
+			if (pz[i] <= zi)
 			{
-				pz[i] = (short)izi;
+				pz[i] = zi;
 				pdest[i] = color;
 			}
 		}

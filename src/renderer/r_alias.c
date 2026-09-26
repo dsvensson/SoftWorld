@@ -41,6 +41,13 @@ static aliashdr_t			*paliashdr;
 finalvert_t			*pfinalverts;
 auxvert_t			*pauxverts;
 static float		ziscale;
+static float		r_aliaszmul;		// 3 for the view model
+
+// 1/z in 31 bit fixed point; nearer than that stays the nearest
+static int R_AliasFixedZi (float zi)
+{
+	return zi < 2147483520.0f ? (int)zi : 2147483520;
+}
 static model_t		*pmodel;
 
 static vec3_t		alias_forward, alias_right, alias_up;
@@ -470,7 +477,7 @@ void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
 	// x, y, and z are scaled down by 1/2**31 in the transform, so 1/z is
 	// scaled up by 1/2**31, and the scaling cancels out for x and y in the
 	// projection
-		fv->v[5] = (int)zi;
+		fv->v[5] = R_AliasFixedZi (zi * r_aliaszmul);
 
 		fv->v[0] = (int)(((DotProduct(pverts->v, aliastransform[0]) +
 				aliastransform[0][3]) * zi) + aliasxcenter);
@@ -514,7 +521,7 @@ void R_AliasProjectFinalVert (finalvert_t *fv, auxvert_t *av)
 // project points
 	zi = 1.0f / av->fv[2];
 
-	fv->v[5] = (int)(zi * ziscale);
+	fv->v[5] = R_AliasFixedZi (zi * ziscale * r_aliaszmul);
 
 	fv->v[0] = (int)((av->fv[0] * aliasxscale * zi) + aliasxcenter);
 	fv->v[1] = (int)((av->fv[1] * aliasyscale * zi) + aliasycenter);
@@ -738,9 +745,10 @@ void R_AliasDrawModel (alight_t *plighting)
 	r_affinetridesc.skinremap = currententity->translate ? currententity->translate : r_identityremap;
 
 	if (currententity != r_scene.viewent)
-		ziscale = (float)0x8000 * (float)0x10000;
+		r_aliaszmul = 1;
 	else
-		ziscale = (float)0x8000 * (float)0x10000 * 3.0;
+		r_aliaszmul = 3;
+	ziscale = (float)0x8000 * (float)0x10000;
 
 	if (currententity->trivial_accept)
 		R_AliasPrepareUnclippedPoints ();
