@@ -316,6 +316,9 @@ static void SCR_CalcRefdef (void)
 		Cvar_Set ("fov","170");
 
 	r_refdef.fov_x = scr_fov.value;
+	// a wider layout sees more to the sides, the same up and down
+	if (vid.conwidth != 320)
+		r_refdef.fov_x = atanf (tanf (scr_fov.value * (float)Q_PI / 360) * vid.conwidth / 320) * 360 / (float)Q_PI;
 	r_refdef.fov_y = CalcFov (r_refdef.fov_x, (float)r_refdef.vrect.width, (float)r_refdef.vrect.height);
 
 // intermission is always full screen	

@@ -36,6 +36,12 @@ HWND		mainwindow;
 static cvar_t	vid_vsync = {.name = "vid_vsync", .string = "1", .archive = true};
 // render pixels per pixel of the 320x200 layout; 0 is the most the window holds
 static cvar_t	vid_scale = {.name = "vid_scale", .string = "0", .archive = true};
+// pixels 1.2 times as tall as wide, as 320x200 was shown on 4:3 screens
+static cvar_t	vid_crt = {.name = "vid_crt", .string = "0", .archive = true};
+// the layout is as wide as the window instead of 320, and sees more to the sides
+static cvar_t	vid_widescreen = {.name = "vid_widescreen", .string = "0", .archive = true};
+
+#define VID_CRT_STRETCH	1.2f	// 320x200 shown as 320x240
 // 0: whole multiples of the render size, letterboxed; 1: fill the window, sharp bilinear
 static cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true};
 static cvar_t	vid_contrast = {.name = "vid_contrast", .string = "1", .archive = true};
@@ -80,6 +86,8 @@ static bool						d3d_allow_tearing;
 static UINT						d3d_swapflags;
 
 static bool		vid_initialized;
+static bool		vid_crtshown;		// vid_crt when the frame was allocated
+static int		vid_forcedscale;	// -scale, which the configuration can't change
 static bool		vid_fullscreen;
 static WINDOWPLACEMENT	vid_windowed_placement = {.length = sizeof (WINDOWPLACEMENT)};
 static int		client_width, client_height;
@@ -469,7 +477,8 @@ static void VID_AllocBuffers (int width, int height, int scale)
 	vid.height = height;
 	vid.conwidth = width / scale;
 	vid.conheight = height / scale;
-	vid.aspect = ((float)height / (float)width) * (320.0f / 240.0f);
+	// the renderer's pixel aspect: width over height of a pixel as shown
+	vid.aspect = vid_crt.value ? ((float)VID_BASE_HEIGHT / (float)VID_BASE_WIDTH) * (320.0f / 240.0f) : 1.0f;
 	vid.recalc_refdef = 1;
 
 	vid.scale = (unsigned)scale;
@@ -573,6 +582,8 @@ void VID_Init (void)
 
 	Cvar_RegisterVariable (&vid_vsync);
 	Cvar_RegisterVariable (&vid_scale);
+	Cvar_RegisterVariable (&vid_crt);
+	Cvar_RegisterVariable (&vid_widescreen);
 	Cvar_RegisterVariable (&vid_scalemode);
 	Cvar_RegisterVariable (&vid_contrast);
 	Cvar_RegisterVariable (&vid_hdr);
@@ -588,7 +599,7 @@ void VID_Init (void)
 			scale = 1;
 		if (scale > VID_MAX_SCALE)
 			scale = VID_MAX_SCALE;
-		Cvar_SetValue ("vid_scale", (float)scale);
+		vid_forcedscale = scale;
 	}
 
 	VID_CreateWindow (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
@@ -650,20 +661,47 @@ vid_scale, or the largest whole multiple of 320x200 the window holds
 static int VID_WantedScale (void)
 {
 	int		scale;
+	float	stretch = vid_crt.value ? VID_CRT_STRETCH : 1.0f;
 
-	if (vid_scale.value >= 1)
+	if (vid_forcedscale)
+		scale = vid_forcedscale;
+	else if (vid_scale.value >= 1)
 		scale = (int)vid_scale.value;
 	else
 	{
 		scale = client_width / VID_BASE_WIDTH;
-		if (client_height / VID_BASE_HEIGHT < scale)
-			scale = client_height / VID_BASE_HEIGHT;
+		if ((int)(client_height / (VID_BASE_HEIGHT * stretch)) < scale)
+			scale = (int)(client_height / (VID_BASE_HEIGHT * stretch));
 	}
 	if (scale < 1)
 		scale = 1;
 	if (scale > VID_MAX_SCALE)
 		scale = VID_MAX_SCALE;
 	return scale;
+}
+
+/*
+================
+VID_WantedWidth
+
+The width of the layout: 320, or with vid_widescreen what the window holds
+at the scale, in steps of 8
+================
+*/
+static int VID_WantedWidth (int scale)
+{
+	float	stretch = vid_crt.value ? VID_CRT_STRETCH : 1.0f;
+	int		width;
+
+	if (!vid_widescreen.value || client_height <= 0)
+		return VID_BASE_WIDTH;
+	// as wide as the window is at the height the layout is shown at
+	width = (int)(client_width * (VID_BASE_HEIGHT * stretch * scale) / client_height / scale) & ~7;
+	if (width < VID_BASE_WIDTH)
+		width = VID_BASE_WIDTH;
+	if (width > MAX_CONWIDTH)
+		width = MAX_CONWIDTH;
+	return width;
 }
 
 /*
@@ -675,9 +713,12 @@ A new frame size; the next frame is drawn at it
 */
 static void VID_SetScale (int scale)
 {
-	VID_CreateFrameTexture (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
-	VID_AllocBuffers (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale, scale);
-	Con_DPrintf ("Render size %dx%d\n", VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
+	int		base = VID_WantedWidth (scale);
+
+	vid_crtshown = vid_crt.value != 0;
+	VID_CreateFrameTexture (base * scale, VID_BASE_HEIGHT * scale);
+	VID_AllocBuffers (base * scale, VID_BASE_HEIGHT * scale, scale);
+	Con_DPrintf ("Render size %dx%d\n", base * scale, VID_BASE_HEIGHT * scale);
 }
 
 /*
@@ -729,7 +770,7 @@ void VID_Update (void)
 	D3D11_MAPPED_SUBRESOURCE	mapped;
 	present_constants_t			constants;
 	unsigned					y;
-	float						scale, sx, sy;
+	float						scale, sx, sy, stretch;
 	UINT						flags = 0, interval;
 	int							i;
 
@@ -751,15 +792,16 @@ void VID_Update (void)
 	ID3D11DeviceContext_Unmap (d3d_context, (ID3D11Resource *)d3d_frame, 0);
 
 	// aspect-preserving fit; whole multiples of the render size unless filling the window
+	stretch = vid_crt.value ? VID_CRT_STRETCH : 1.0f;
 	sx = (float)client_width / (float)vid.width;
-	sy = (float)client_height / (float)vid.height;
+	sy = (float)client_height / ((float)vid.height * stretch);
 	scale = sx < sy ? sx : sy;
 	if (scale >= 1.0f && !vid_scalemode.value)
 		scale = floorf (scale);
 
 	D3D11_VIEWPORT viewport = {
 		.Width = floorf (vid.width * scale),
-		.Height = floorf (vid.height * scale),
+		.Height = floorf (vid.height * scale * stretch),
 		.MaxDepth = 1.0f,
 	};
 	viewport.TopLeftX = floorf ((client_width - viewport.Width) * 0.5f);
@@ -769,10 +811,11 @@ void VID_Update (void)
 		constants.blend[i] = vid_present.blend[i];
 	constants.texsize[0] = (float)vid.width;
 	constants.texsize[1] = (float)vid.height;
-	constants.scale[0] = constants.scale[1] = scale > 1.0f ? scale : 1.0f;
+	constants.scale[0] = scale > 1.0f ? scale : 1.0f;
+	constants.scale[1] = scale * stretch > 1.0f ? scale * stretch : 1.0f;
 	constants.gamma = vid_present.gamma;
 	constants.contrast = vid_present.contrast * vid_contrast.value;
-	constants.sharp = scale == floorf (scale) ? 0.0f : 1.0f;
+	constants.sharp = scale == floorf (scale) && stretch == 1.0f ? 0.0f : 1.0f;
 	constants.hdr = vid_hdroutput ? 1.0f : 0.0f;
 	constants.paperwhite = VID_PaperWhiteNits () / 80.0f;		// scRGB 1.0 is 80 nits
 	constants.peak = fmaxf (vid_peaknits, VID_PaperWhiteNits ()) / 80.0f;
@@ -797,8 +840,9 @@ void VID_Update (void)
 		flags |= DXGI_PRESENT_ALLOW_TEARING;
 	IDXGISwapChain1_Present (d3d_swapchain, interval, flags);
 
-	// the window was resized, or vid_scale changed
-	if (client_width > 0 && client_height > 0 && VID_WantedScale () != (int)vid.scale)
+	// the window was resized, or the video settings changed
+	if (client_width > 0 && client_height > 0 && (VID_WantedScale () != (int)vid.scale
+		|| VID_WantedWidth (VID_WantedScale ()) != (int)vid.conwidth || (vid_crt.value != 0) != vid_crtshown))
 		VID_SetScale (VID_WantedScale ());
 }
 
