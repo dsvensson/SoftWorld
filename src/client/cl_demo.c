@@ -520,7 +520,7 @@ void CL_Record_f (void)
 // spawnstatic
 
 	for (i = 0; i < cl.num_statics; i++) {
-		ent = cl_static_entities + i;
+		ent = cl.static_entities + i;
 
 		MSG_WriteByte (&buf, svc_spawnstatic);
 
@@ -554,7 +554,7 @@ void CL_Record_f (void)
 
 	memset(&blankes, 0, sizeof(blankes));
 	for (i = 0; i < MAX_EDICTS; i++) {
-		es = cl_baselines + i;
+		es = cl.baselines + i;
 
 		if (memcmp(es, &blankes, sizeof(blankes))) {
 			MSG_WriteByte (&buf,svc_spawnbaseline);		
@@ -622,7 +622,7 @@ void CL_Record_f (void)
 	{
 		MSG_WriteByte (&buf, svc_lightstyle);
 		MSG_WriteByte (&buf, (char)i);
-		MSG_WriteString (&buf, cl_lightstyle[i].map);
+		MSG_WriteString (&buf, cl.lightstyles[i].map);
 	}
 
 	for (i = 0; i < MAX_CL_STATS; i++) {

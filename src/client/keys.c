@@ -25,20 +25,15 @@ key up events are sent even if in console mode
 */
 
 
-#define		MAXCMDLINE	256
-char	key_lines[32][MAXCMDLINE];
-int		key_linepos;
 static int		shift_down=false;
 static int		key_lastpress;
 
-int		edit_line=0;
 static int		history_line=0;
 
-keydest_t	key_dest;
 
 static int		key_count;			// incremented every key event
 
-char	*keybindings[256];
+static char	*keybindings[256];
 static bool	key_char_eaten;		// the next typed character belongs to a binding
 
 static bool	consolekeys[256];	// if true, can't be rebound while in console
@@ -157,7 +152,7 @@ bool CheckForCommand (void)
 	char	*cmd, *s;
 	int		i;
 
-	s = key_lines[edit_line]+1;
+	s = key_input.lines[key_input.edit_line]+1;
 
 	for (i=0 ; i<127 ; i++)
 		if (s[i] <= ' ')
@@ -178,7 +173,7 @@ void CompleteCommand (void)
 {
 	char	*cmd, *s;
 
-	s = key_lines[edit_line]+1;
+	s = key_input.lines[key_input.edit_line]+1;
 	if (*s == '\\' || *s == '/')
 		s++;
 
@@ -187,12 +182,12 @@ void CompleteCommand (void)
 		cmd = Cvar_CompleteVariable (s);
 	if (cmd)
 	{
-		key_lines[edit_line][1] = '/';
-		Q_strcpy (key_lines[edit_line]+2, cmd);
-		key_linepos = Q_strlen(cmd)+2;
-		key_lines[edit_line][key_linepos] = ' ';
-		key_linepos++;
-		key_lines[edit_line][key_linepos] = 0;
+		key_input.lines[key_input.edit_line][1] = '/';
+		Q_strcpy (key_input.lines[key_input.edit_line]+2, cmd);
+		key_input.linepos = Q_strlen(cmd)+2;
+		key_input.lines[key_input.edit_line][key_input.linepos] = ' ';
+		key_input.linepos++;
+		key_input.lines[key_input.edit_line][key_input.linepos] = 0;
 		return;
 	}
 }
@@ -211,23 +206,23 @@ void Key_Console (int key)
 	
 	if (key == K_ENTER)
 	{	// backslash text are commands, else chat
-		if (key_lines[edit_line][1] == '\\' || key_lines[edit_line][1] == '/')
-			Cbuf_AddText (key_lines[edit_line]+2);	// skip the >
+		if (key_input.lines[key_input.edit_line][1] == '\\' || key_input.lines[key_input.edit_line][1] == '/')
+			Cbuf_AddText (key_input.lines[key_input.edit_line]+2);	// skip the >
 		else if (CheckForCommand())
-			Cbuf_AddText (key_lines[edit_line]+1);	// valid command
+			Cbuf_AddText (key_input.lines[key_input.edit_line]+1);	// valid command
 		else
 		{	// convert to a chat message
 			if (cls.state >= ca_connected)
 				Cbuf_AddText ("say ");
-			Cbuf_AddText (key_lines[edit_line]+1);	// skip the >
+			Cbuf_AddText (key_input.lines[key_input.edit_line]+1);	// skip the >
 		}
 
 		Cbuf_AddText ("\n");
-		Con_Printf ("%s\n",key_lines[edit_line]);
-		edit_line = (edit_line + 1) & 31;
-		history_line = edit_line;
-		key_lines[edit_line][0] = ']';
-		key_linepos = 1;
+		Con_Printf ("%s\n",key_input.lines[key_input.edit_line]);
+		key_input.edit_line = (key_input.edit_line + 1) & 31;
+		history_line = key_input.edit_line;
+		key_input.lines[key_input.edit_line][0] = ']';
+		key_input.linepos = 1;
 		if (cls.state == ca_disconnected)
 			SCR_UpdateScreen ();	// force an update, because the command
 									// may take some time
@@ -242,8 +237,8 @@ void Key_Console (int key)
 	
 	if (key == K_BACKSPACE || key == K_LEFTARROW)
 	{
-		if (key_linepos > 1)
-			key_linepos--;
+		if (key_input.linepos > 1)
+			key_input.linepos--;
 		return;
 	}
 
@@ -252,60 +247,60 @@ void Key_Console (int key)
 		do
 		{
 			history_line = (history_line - 1) & 31;
-		} while (history_line != edit_line
-				&& !key_lines[history_line][1]);
-		if (history_line == edit_line)
-			history_line = (edit_line+1)&31;
-		Q_strcpy(key_lines[edit_line], key_lines[history_line]);
-		key_linepos = Q_strlen(key_lines[edit_line]);
+		} while (history_line != key_input.edit_line
+				&& !key_input.lines[history_line][1]);
+		if (history_line == key_input.edit_line)
+			history_line = (key_input.edit_line+1)&31;
+		Q_strcpy(key_input.lines[key_input.edit_line], key_input.lines[history_line]);
+		key_input.linepos = Q_strlen(key_input.lines[key_input.edit_line]);
 		return;
 	}
 
 	if (key == K_DOWNARROW)
 	{
-		if (history_line == edit_line) return;
+		if (history_line == key_input.edit_line) return;
 		do
 		{
 			history_line = (history_line + 1) & 31;
 		}
-		while (history_line != edit_line
-			&& !key_lines[history_line][1]);
-		if (history_line == edit_line)
+		while (history_line != key_input.edit_line
+			&& !key_input.lines[history_line][1]);
+		if (history_line == key_input.edit_line)
 		{
-			key_lines[edit_line][0] = ']';
-			key_linepos = 1;
+			key_input.lines[key_input.edit_line][0] = ']';
+			key_input.linepos = 1;
 		}
 		else
 		{
-			Q_strcpy(key_lines[edit_line], key_lines[history_line]);
-			key_linepos = Q_strlen(key_lines[edit_line]);
+			Q_strcpy(key_input.lines[key_input.edit_line], key_input.lines[history_line]);
+			key_input.linepos = Q_strlen(key_input.lines[key_input.edit_line]);
 		}
 		return;
 	}
 
 	if (key == K_PGUP || key==K_MWHEELUP)
 	{
-		con->display -= 2;
+		con.display -= 2;
 		return;
 	}
 
 	if (key == K_PGDN || key==K_MWHEELDOWN)
 	{
-		con->display += 2;
-		if (con->display > con->current)
-			con->display = con->current;
+		con.display += 2;
+		if (con.display > con.current)
+			con.display = con.current;
 		return;
 	}
 
 	if (key == K_HOME)
 	{
-		con->display = con->current - con_totallines + 10;
+		con.display = con.current - con.totallines + 10;
 		return;
 	}
 
 	if (key == K_END)
 	{
-		con->display = con->current;
+		con.display = con.current;
 		return;
 	}
 	
@@ -316,13 +311,13 @@ void Key_Console (int key)
 		{
 			strtok (clipText, "\n\r\b");	// only the first line
 			i = (int)strlen (clipText);
-			if (i + key_linepos >= MAXCMDLINE)
-				i = MAXCMDLINE - 1 - key_linepos;
+			if (i + key_input.linepos >= MAXCMDLINE)
+				i = MAXCMDLINE - 1 - key_input.linepos;
 			if (i > 0)
 			{
 				clipText[i] = 0;
-				Q_strncatz (key_lines[edit_line], clipText, sizeof(key_lines[edit_line]));
-				key_linepos += i;
+				Q_strncatz (key_input.lines[key_input.edit_line], clipText, sizeof(key_input.lines[key_input.edit_line]));
+				key_input.linepos += i;
 			}
 			free (clipText);
 		}
@@ -332,44 +327,42 @@ void Key_Console (int key)
 	if (key < 32 || key > 127)
 		return;	// non printable
 		
-	if (key_linepos < MAXCMDLINE-1)
+	if (key_input.linepos < MAXCMDLINE-1)
 	{
-		key_lines[edit_line][key_linepos] = (char)key;
-		key_linepos++;
-		key_lines[edit_line][key_linepos] = 0;
+		key_input.lines[key_input.edit_line][key_input.linepos] = (char)key;
+		key_input.linepos++;
+		key_input.lines[key_input.edit_line][key_input.linepos] = 0;
 	}
 
 }
 
 //============================================================================
 
-bool	chat_team;
-char		chat_buffer[MAXCMDLINE];
-int			chat_bufferlen = 0;
+key_input_t	key_input;
 
 void Key_Message (int key)
 {
 
 	if (key == K_ENTER)
 	{
-		if (chat_team)
+		if (key_input.chat_team)
 			Cbuf_AddText ("say_team \"");
 		else
 			Cbuf_AddText ("say \"");
-		Cbuf_AddText(chat_buffer);
+		Cbuf_AddText(key_input.chat_buffer);
 		Cbuf_AddText("\"\n");
 
-		key_dest = key_game;
-		chat_bufferlen = 0;
-		chat_buffer[0] = 0;
+		cls.key_dest = key_game;
+		key_input.chat_bufferlen = 0;
+		key_input.chat_buffer[0] = 0;
 		return;
 	}
 
 	if (key == K_ESCAPE)
 	{
-		key_dest = key_game;
-		chat_bufferlen = 0;
-		chat_buffer[0] = 0;
+		cls.key_dest = key_game;
+		key_input.chat_bufferlen = 0;
+		key_input.chat_buffer[0] = 0;
 		return;
 	}
 
@@ -378,19 +371,19 @@ void Key_Message (int key)
 
 	if (key == K_BACKSPACE)
 	{
-		if (chat_bufferlen)
+		if (key_input.chat_bufferlen)
 		{
-			chat_bufferlen--;
-			chat_buffer[chat_bufferlen] = 0;
+			key_input.chat_bufferlen--;
+			key_input.chat_buffer[key_input.chat_bufferlen] = 0;
 		}
 		return;
 	}
 
-	if (chat_bufferlen == sizeof(chat_buffer)-1)
+	if (key_input.chat_bufferlen == sizeof(key_input.chat_buffer)-1)
 		return; // all full
 
-	chat_buffer[chat_bufferlen++] = (char)key;
-	chat_buffer[chat_bufferlen] = 0;
+	key_input.chat_buffer[key_input.chat_bufferlen++] = (char)key;
+	key_input.chat_buffer[key_input.chat_bufferlen] = 0;
 }
 
 //============================================================================
@@ -452,6 +445,18 @@ char *Key_KeynumToString (int keynum)
 	return "<UNKNOWN KEYNUM>";
 }
 
+
+/*
+===================
+Key_BindingForKey
+===================
+*/
+const char *Key_BindingForKey (int keynum)
+{
+	if (keynum < 0 || keynum > 255)
+		return NULL;
+	return keybindings[keynum];
+}
 
 /*
 ===================
@@ -589,10 +594,10 @@ void Key_Init (void)
 
 	for (i=0 ; i<32 ; i++)
 	{
-		key_lines[i][0] = ']';
-		key_lines[i][1] = 0;
+		key_input.lines[i][0] = ']';
+		key_input.lines[i][1] = 0;
 	}
-	key_linepos = 1;
+	key_input.linepos = 1;
 	
 //
 // init ascii characters in console mode
@@ -710,7 +715,7 @@ void Key_Event (int key, bool down)
 	{
 		if (!down)
 			return;
-		switch (key_dest)
+		switch (cls.key_dest)
 		{
 		case key_message:
 			Key_Message (key);
@@ -758,7 +763,7 @@ void Key_Event (int key, bool down)
 //
 // during demo playback, most keys bring up the main menu
 //
-	if (cls.demoplayback && down && consolekeys[key] && key_dest == key_game)
+	if (cls.demoplayback && down && consolekeys[key] && cls.key_dest == key_game)
 	{
 		M_ToggleMenu_f ();
 		return;
@@ -767,9 +772,9 @@ void Key_Event (int key, bool down)
 //
 // if not a consolekey, send to the interpreter no matter what mode is
 //
-	if ( (key_dest == key_menu && menubound[key])
-	|| (key_dest == key_console && !consolekeys[key])
-	|| (key_dest == key_game && ( cls.state == ca_active || !consolekeys[key] ) ) )
+	if ( (cls.key_dest == key_menu && menubound[key])
+	|| (cls.key_dest == key_console && !consolekeys[key])
+	|| (cls.key_dest == key_game && ( cls.state == ca_active || !consolekeys[key] ) ) )
 	{
 		kb = keybindings[key];
 		if (kb)
@@ -796,10 +801,10 @@ void Key_Event (int key, bool down)
 		key = keyshift[key];
 
 	// text for the console and message line comes from Key_CharEvent
-	if (key_dest != key_menu && key >= 32 && key < 127 && !keydown[K_CTRL])
+	if (cls.key_dest != key_menu && key >= 32 && key < 127 && !keydown[K_CTRL])
 		return;
 
-	switch (key_dest)
+	switch (cls.key_dest)
 	{
 	case key_message:
 		Key_Message (key);
@@ -855,7 +860,7 @@ void Key_CharEvent (int ch)
 	if (ch < 32 || ch >= 127)
 		return;		// control characters are keys, and the font is ASCII
 
-	switch (key_dest)
+	switch (cls.key_dest)
 	{
 	case key_message:
 		Key_Message (ch);

@@ -83,6 +83,9 @@ void	VID_BringToFront (void);
 
 bool	VID_IsFullscreen (void);
 
+bool	VID_IsActive (void);		// the window has the focus
+bool	VID_IsMinimized (void);
+
 // how the presenter turns the frame into screen colors
 typedef struct
 {

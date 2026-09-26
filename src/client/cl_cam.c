@@ -27,6 +27,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "cl_local.h"
 
+#define CAM_NONE	0
+#define CAM_TRACK	1
+
 #define	PM_SPECTATORMAXSPEED	500
 #define	PM_STOPSPEED	100
 #define	PM_MAXSPEED			320
@@ -49,8 +52,14 @@ static cvar_t cl_chasecam = {.name = "cl_chasecam", .string = "0"};
 static bool cam_forceview;
 static double cam_lastviewtime;
 
-int spec_track = 0; // player# of who we are tracking
-int autocam = CAM_NONE;
+static int spec_track = 0; // player# of who we are tracking
+static int autocam = CAM_NONE;
+
+// the player the camera follows, or -1
+int Cam_TrackNum (void)
+{
+	return autocam == CAM_TRACK ? spec_track : -1;
+}
 
 static void vectoangles(vec3_t vec, vec3_t ang)
 {
@@ -134,8 +143,8 @@ void Cam_Lock(int playernum)
 trace_t Cam_DoTrace(vec3_t vec1, vec3_t vec2)
 {
 
-	VectorCopy (vec1, cl_pmove.origin);
-	return PM_PlayerTrace (&cl_pmove, cl_pmove.origin, vec2);
+	VectorCopy (vec1, cl.pmove.origin);
+	return PM_PlayerTrace (&cl.pmove, cl.pmove.origin, vec2);
 }
 	
 // Returns distance or 9999 if invalid for some reason
@@ -147,7 +156,7 @@ static float Cam_TryFlyby(player_state_t *self, player_state_t *player, vec3_t v
 
 	vectoangles(vec, v);
 //	v[0] = -v[0];
-	VectorCopy (v, cl_pmove.angles);
+	VectorCopy (v, cl.pmove.angles);
 	VectorNormalize(vec);
 	VectorMA(player->origin, 800, vec, v);
 	// v is endpos
@@ -381,7 +390,6 @@ void Cam_Track(usercmd_t *cmd)
 		cl.viewangles[0] = -cl.viewangles[0];
 	}
 }
-
 
 
 void Cam_FinishMove(usercmd_t *cmd)

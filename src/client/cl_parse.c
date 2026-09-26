@@ -102,14 +102,10 @@ static char *svc_strings[] =
 };
 
 static int	oldparsecountmod;
-int	parsecountmod;
-double	parsecounttime;
 
-int		cl_spikeindex, cl_playerindex, cl_flagindex;
 
 //=============================================================================
 
-int packet_latency[NET_TIMINGS];
 
 int CL_CalcNet (void)
 {
@@ -123,20 +119,20 @@ int CL_CalcNet (void)
 	{
 		frame = &cl.frames[i&UPDATE_MASK];
 		if (frame->receivedtime == -1)
-			packet_latency[i&NET_TIMINGSMASK] = 9999;	// dropped
+			cl.packet_latency[i&NET_TIMINGSMASK] = 9999;	// dropped
 		else if (frame->receivedtime == -2)
-			packet_latency[i&NET_TIMINGSMASK] = 10000;	// choked
+			cl.packet_latency[i&NET_TIMINGSMASK] = 10000;	// choked
 		else if (frame->invalid)
-			packet_latency[i&NET_TIMINGSMASK] = 9998;	// invalid delta
+			cl.packet_latency[i&NET_TIMINGSMASK] = 9998;	// invalid delta
 		else
-			packet_latency[i&NET_TIMINGSMASK] = (int)((frame->receivedtime - frame->senttime)*20);
+			cl.packet_latency[i&NET_TIMINGSMASK] = (int)((frame->receivedtime - frame->senttime)*20);
 	}
 
 	lost = 0;
 	for (a=0 ; a<NET_TIMINGS ; a++)
 	{
 		i = (cls.netchan.outgoing_sequence-a) & NET_TIMINGSMASK;
-		if (packet_latency[i] == 9999)
+		if (cl.packet_latency[i] == 9999)
 			lost++;
 	}
 	return lost * 100 / NET_TIMINGS;
@@ -324,9 +320,9 @@ void Sound_NextDownload (void)
 
 	// done with sounds, request models now
 	memset (cl.model_precache, 0, sizeof(cl.model_precache));
-	cl_playerindex = -1;
-	cl_spikeindex = -1;
-	cl_flagindex = -1;
+	cl.playerindex = -1;
+	cl.spikeindex = -1;
+	cl.flagindex = -1;
 	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
 //	MSG_WriteString (&cls.netchan.message, va("modellist %i 0", cl.servercount));
 	MSG_WriteString (&cls.netchan.message, va(modellist_name, cl.servercount, 0));
@@ -697,11 +693,11 @@ void CL_ParseModellist (void)
 		Q_strncpyz (cl.model_name[nummodels], str, sizeof(cl.model_name[nummodels]));
 
 		if (!strcmp(cl.model_name[nummodels],"progs/spike.mdl"))
-			cl_spikeindex = nummodels;
+			cl.spikeindex = nummodels;
 		if (!strcmp(cl.model_name[nummodels],"progs/player.mdl"))
-			cl_playerindex = nummodels;
+			cl.playerindex = nummodels;
 		if (!strcmp(cl.model_name[nummodels],"progs/flag.mdl"))
-			cl_flagindex = nummodels;
+			cl.flagindex = nummodels;
 	}
 
 	n = MSG_ReadByte();
@@ -739,7 +735,6 @@ void CL_ParseBaseline (entity_state_t *es)
 }
 
 
-
 /*
 =====================
 CL_ParseStatic
@@ -759,7 +754,7 @@ void CL_ParseStatic (void)
 	i = cl.num_statics;
 	if (i >= MAX_STATIC_ENTITIES)
 		Host_EndGame ("Too many static entities");
-	ent = &cl_static_entities[i];
+	ent = &cl.static_entities[i];
 	cl.num_statics++;
 
 // copy it to the current state
@@ -793,7 +788,6 @@ void CL_ParseStaticSound (void)
 	
 	S_StaticSound (cl.sound_precache[sound_num], org, (float)vol, (float)atten);
 }
-
 
 
 /*
@@ -859,14 +853,14 @@ void CL_ParseClientdata (void)
 	frame_t		*frame;
 
 // calculate simulated time of message
-	oldparsecountmod = parsecountmod;
+	oldparsecountmod = cl.parsecountmod;
 
 	i = cls.netchan.incoming_acknowledged;
 	cl.parsecount = i;
 	i &= UPDATE_MASK;
-	parsecountmod = i;
+	cl.parsecountmod = i;
 	frame = &cl.frames[i];
-	parsecounttime = cl.frames[i].senttime;
+	cl.parsecounttime = cl.frames[i].senttime;
 
 	frame->receivedtime = host.realtime;
 
@@ -1080,7 +1074,7 @@ void CL_MuzzleFlash (void)
 		return;
 
 
-	pl = &cl.frames[parsecountmod].playerstate[i-1];
+	pl = &cl.frames[cl.parsecountmod].playerstate[i-1];
 
 	dl = CL_AllocDlight (i);
 	VectorCopy (pl->origin,  dl->origin);
@@ -1171,10 +1165,10 @@ void CL_ParseServerMessage (void)
 			if (i == PRINT_CHAT)
 			{
 				S_LocalSound ("misc/talk.wav");
-				con_ormask = 128;
+				con.ormask = 128;
 			}
 			Con_Printf ("%s", MSG_ReadString ());
-			con_ormask = 0;
+			con.ormask = 0;
 			break;
 			
 		case svc_centerprint:
@@ -1208,8 +1202,8 @@ void CL_ParseServerMessage (void)
 			i = MSG_ReadByte ();
 			if (i >= MAX_LIGHTSTYLES)
 				Sys_Error ("svc_lightstyle > MAX_LIGHTSTYLES");
-			Q_strcpy (cl_lightstyle[i].map,  MSG_ReadString());
-			cl_lightstyle[i].length = Q_strlen(cl_lightstyle[i].map);
+			Q_strcpy (cl.lightstyles[i].map,  MSG_ReadString());
+			cl.lightstyles[i].length = Q_strlen(cl.lightstyles[i].map);
 			break;
 			
 		case svc_sound:
@@ -1253,7 +1247,7 @@ void CL_ParseServerMessage (void)
 			
 		case svc_spawnbaseline:
 			i = MSG_ReadShort ();
-			CL_ParseBaseline (&cl_baselines[i]);
+			CL_ParseBaseline (&cl.baselines[i]);
 			break;
 		case svc_spawnstatic:
 			CL_ParseStatic ();

@@ -129,9 +129,6 @@ typedef struct
 //
 
 
-
-
-
 #define	MAX_DEMOS		8
 #define	MAX_DEMONAME	16
 
@@ -142,6 +139,8 @@ ca_connected,		// netchan_t established, waiting for svc_serverdata
 ca_onserver,		// processing data lists, donwloading, etc
 ca_active			// everything is in, so frames can be rendered
 } cactive_t;
+
+typedef enum {key_game, key_console, key_message, key_menu} keydest_t;
 
 typedef enum {
 	dl_none,
@@ -203,11 +202,19 @@ typedef struct
 
 	double		frametime;		// seconds since the last drawn frame, at most 0.2
 	int			framecount;		// frames drawn, never reset
+	int			fps_count;		// frames drawn, for show_fps
+
+	keydest_t	key_dest;		// where key events go
 	byte		*basepal;		// gfx/palette.lmp
 	byte		*colormap;		// gfx/colormap.lmp
 } client_static_t;
 
 extern client_static_t	cls;
+
+#define	MAX_STATIC_ENTITIES	128			// torches, etc
+#define	MAX_VISEDICTS		256
+#define NET_TIMINGS			256
+#define NET_TIMINGSMASK		255
 
 //
 // the client_state_t structure is wiped completely at every
@@ -301,6 +308,25 @@ typedef struct
 
 	int			cmdtime_msec;	// sum of the msec of every command sent
 	bool		onground;		// predicted
+	playermove_t	pmove;		// the prediction's player movement; physents are set up by cl_ents.c
+
+	entity_state_t	baselines[MAX_EDICTS];
+	entity_t	static_entities[MAX_STATIC_ENTITIES];
+	lightstyle_t	lightstyles[MAX_LIGHTSTYLES];
+	dlight_t	dlights[MAX_DLIGHTS];
+
+// refresh list
+// this is double buffered so the last frame
+// can be scanned for oldorigins of trailing objects
+	entity_t	visedicts_list[2][MAX_VISEDICTS];
+	entity_t	*visedicts, *oldvisedicts;
+	int			numvisedicts, oldnumvisedicts;
+
+	int			spikeindex, playerindex, flagindex;	// model indices, for effects
+
+	int			parsecountmod;		// frame the last packet filled
+	double		parsecounttime;		// realtime the packet's command was sent
+	int			packet_latency[NET_TIMINGS];	// for the net graph
 } client_state_t;
 
 
@@ -340,16 +366,7 @@ extern cvar_t		_windowed_mouse;
 extern	cvar_t	name;
 
 
-#define	MAX_STATIC_ENTITIES	128			// torches, etc
-
 extern	client_state_t	cl;
-
-// FIXME, allocate dynamically
-extern	entity_state_t	cl_baselines[MAX_EDICTS];
-extern	entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
-extern	lightstyle_t	cl_lightstyle[MAX_LIGHTSTYLES];
-extern	dlight_t		cl_dlights[MAX_DLIGHTS];
-
 
 void Cmd_ForwardToServer (void);
 
@@ -372,10 +389,6 @@ void CL_NextDemo (void);
 
 void CL_BeginServerConnect(void);
 
-#define			MAX_VISEDICTS	256
-extern	int				cl_numvisedicts, cl_oldnumvisedicts;
-extern	entity_t		*cl_visedicts, *cl_oldvisedicts;
-extern	entity_t		cl_visedicts_list[2][MAX_VISEDICTS];
 
 extern char emodel_name[], pmodel_name[], prespawn_name[], modellist_name[], soundlist_name[];
 
@@ -421,9 +434,6 @@ void CL_TimeDemo_f (void);
 //
 // cl_parse.c
 //
-#define NET_TIMINGS 256
-#define NET_TIMINGSMASK 255
-extern int	packet_latency[NET_TIMINGS];
 int CL_CalcNet (void);
 void CL_ParseServerMessage (void);
 void CL_NewTranslation (int slot);
@@ -479,12 +489,7 @@ void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u, 
 //
 // cl_cam.c
 //
-#define CAM_NONE	0
-#define CAM_TRACK	1
-
-extern	int		autocam;
-extern int spec_track; // player# of who we are tracking
-
+int Cam_TrackNum (void);		// the player the camera follows, or -1
 bool Cam_DrawViewModel(void);
 bool Cam_DrawPlayer(int playernum);
 void Cam_Track(usercmd_t *cmd);
@@ -523,8 +528,3 @@ void	Skin_NextDownload (void);
 
 #define RSSHOT_WIDTH 320
 #define RSSHOT_HEIGHT 200
-
-// the prediction's player movement; physents are set up by cl_ents.c
-extern	playermove_t	cl_pmove;
-
-extern	bool	noclip_anglehack;

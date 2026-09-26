@@ -28,8 +28,6 @@ cvar_t	cl_physfps = {.name = "cl_physfps", .string = "0", .archive = true};
 // don't interpolate the view between commands
 static cvar_t	cl_nolerp = {.name = "cl_nolerp", .string = "0", .archive = true};
 
-playermove_t	cl_pmove;
-
 
 /*
 ==============
@@ -52,31 +50,30 @@ void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u, 
 		return;
 	}
 
-	VectorCopy (from->origin, cl_pmove.origin);
+	VectorCopy (from->origin, cl.pmove.origin);
 //	VectorCopy (from->viewangles, pmove.angles);
-	VectorCopy (u->angles, cl_pmove.angles);
-	VectorCopy (from->velocity, cl_pmove.velocity);
+	VectorCopy (u->angles, cl.pmove.angles);
+	VectorCopy (from->velocity, cl.pmove.velocity);
 
-	cl_pmove.oldbuttons = from->oldbuttons;
-	cl_pmove.waterjumptime = from->waterjumptime;
-	cl_pmove.dead = cl.stats[STAT_HEALTH] <= 0;
-	cl_pmove.spectator = spectator;
+	cl.pmove.oldbuttons = from->oldbuttons;
+	cl.pmove.waterjumptime = from->waterjumptime;
+	cl.pmove.dead = cl.stats[STAT_HEALTH] <= 0;
+	cl.pmove.spectator = spectator;
 
-	cl_pmove.cmd = *u;
+	cl.pmove.cmd = *u;
 
-	PM_PlayerMove (&cl_pmove, &cl.movevars);
+	PM_PlayerMove (&cl.pmove, &cl.movevars);
 //for (i=0 ; i<3 ; i++)
 //pmove.origin[i] = ((int)(pmove.origin[i]*8))*0.125;
-	to->waterjumptime = cl_pmove.waterjumptime;
-	to->oldbuttons = cl_pmove.cmd.buttons;
-	VectorCopy (cl_pmove.origin, to->origin);
-	VectorCopy (cl_pmove.angles, to->viewangles);
-	VectorCopy (cl_pmove.velocity, to->velocity);
-	to->onground = cl_pmove.onground;
+	to->waterjumptime = cl.pmove.waterjumptime;
+	to->oldbuttons = cl.pmove.cmd.buttons;
+	VectorCopy (cl.pmove.origin, to->origin);
+	VectorCopy (cl.pmove.angles, to->viewangles);
+	VectorCopy (cl.pmove.velocity, to->velocity);
+	to->onground = cl.pmove.onground;
 
 	to->weaponframe = from->weaponframe;
 }
-
 
 
 bool CL_IndependentPhysics (void)
@@ -110,7 +107,7 @@ static void CL_PredictOrigin (void)
 	}
 
 	// predict forward until cl.time <= to->senttime
-	oldphysent = cl_pmove.numphysent;
+	oldphysent = cl.pmove.numphysent;
 	CL_SetSolidPlayers (cl.playernum);
 
 //	to = &cl.frames[cls.netchan.incoming_sequence & UPDATE_MASK];
@@ -127,7 +124,7 @@ static void CL_PredictOrigin (void)
 		from = to;
 	}
 
-	cl_pmove.numphysent = oldphysent;
+	cl.pmove.numphysent = oldphysent;
 
 	if (i == UPDATE_BACKUP-1 || !to)
 		return;		// net hasn't deliver packets in a long time...

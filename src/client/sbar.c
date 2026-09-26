@@ -47,7 +47,6 @@ static qpic_t	*sb_face_invis_invuln;
 static bool	sb_showscores;
 static bool	sb_showteamscores;
 
-int			sb_lines;			// scan lines to draw
 
 void Sbar_DeathmatchOverlay (int start);
 void Sbar_TeamOverlay (void);
@@ -774,28 +773,28 @@ void Sbar_Draw (void)
 	if ((sb_updates >= vid.numpages) && !headsup)
 		return;
 
-	if (scr_con_current == vid.height)
+	if (scr.con_current == vid.height)
 		return;		// console is full screen
 
-	scr_copyeverything = 1;
+	scr.copyeverything = 1;
 //	scr_fullupdate = 0;
 
 	sb_updates++;
 		
 // top line
-	if (sb_lines > 24)
+	if (scr.sb_lines > 24)
 	{
-		if (!cl.spectator || autocam == CAM_TRACK)
+		if (!cl.spectator || Cam_TrackNum () >= 0)
 			Sbar_DrawInventory ();
 		if (!headsup || vid.width<512)
 			Sbar_DrawFrags ();
 	}	
 
 // main area
-	if (sb_lines > 0)
+	if (scr.sb_lines > 0)
 	{
 		if (cl.spectator) {
-			if (autocam != CAM_TRACK) {
+			if (Cam_TrackNum () < 0) {
 				Sbar_DrawPic (0, 0, sb_scorebar);
 				Sbar_DrawString (160-7*8,4, "SPECTATOR MODE");
 				Sbar_DrawString(160-14*8+4, 12, "Press [ATTACK] for AutoCamera");
@@ -807,7 +806,7 @@ void Sbar_Draw (void)
 
 //					Sbar_DrawString (160-14*8+4,4, "SPECTATOR MODE - TRACK CAMERA");
 				snprintf(st, sizeof(st), "Tracking %-.13s, [JUMP] for next",
-						cl.players[spec_track].name);
+						cl.players[Cam_TrackNum ()].name);
 				Sbar_DrawString(0, -8, st);
 			}
 		} else if (sb_showscores || cl.stats[STAT_HEALTH] <= 0)
@@ -830,7 +829,7 @@ void Sbar_Draw (void)
 		Sbar_TeamOverlay();
 
 
-	if (sb_lines > 0)
+	if (scr.sb_lines > 0)
 		Sbar_MiniDeathmatchOverlay ();
 }
 
@@ -863,8 +862,8 @@ void Sbar_TeamOverlay (void)
 		return;
 	}
 
-	scr_copyeverything = 1;
-	scr_fullupdate = 0;
+	scr.copyeverything = 1;
+	scr.fullupdate = 0;
 
 	pic = Draw_CachePic ("gfx/ranking.lmp");
 	Draw_Pic (160-pic->width/2, 0, pic);
@@ -963,8 +962,8 @@ void Sbar_DeathmatchOverlay (int start)
 
 	teamplay = atoi(Info_ValueForKey(cl.serverinfo, "teamplay"));
 
-	scr_copyeverything = 1;
-	scr_fullupdate = 0;
+	scr.copyeverything = 1;
+	scr.fullupdate = 0;
 
 	if (!start) {
 		pic = Draw_CachePic ("gfx/ranking.lmp");
@@ -1115,13 +1114,13 @@ void Sbar_MiniDeathmatchOverlay (void)
 	char			shortname[16+1];
 	team_t			*tm;
 
-	if (vid.width < 512 || !sb_lines)
+	if (vid.width < 512 || !scr.sb_lines)
 		return; // not enuff room
 
 	teamplay = atoi(Info_ValueForKey(cl.serverinfo, "teamplay"));
 
-	scr_copyeverything = 1;
-	scr_fullupdate = 0;
+	scr.copyeverything = 1;
+	scr.fullupdate = 0;
 
 // scores	
 	Sbar_SortFrags (false);
@@ -1132,8 +1131,8 @@ void Sbar_MiniDeathmatchOverlay (void)
 		return; // no one there?
 
 // draw the text
-	y = vid.height - sb_lines - 1;
-	numlines = sb_lines/8;
+	y = vid.height - scr.sb_lines - 1;
+	numlines = scr.sb_lines/8;
 	if (numlines < 3)
 		return; // not enough room
 
@@ -1208,12 +1207,12 @@ void Sbar_MiniDeathmatchOverlay (void)
 
 	// draw seperator
 	x += 208;
-	for (y = vid.height - sb_lines; (unsigned)y < vid.height - 6; y += 2)
+	for (y = vid.height - scr.sb_lines; (unsigned)y < vid.height - 6; y += 2)
 		Draw_Character(x, y, 14);
 
 	x += 16;
 
-	y = vid.height - sb_lines;
+	y = vid.height - scr.sb_lines;
 	for (i=0 ; i < scoreboardteams && (unsigned)y <= vid.height; i++)
 	{
 		k = teamsort[i];
@@ -1248,8 +1247,8 @@ Sbar_IntermissionOverlay
 */
 void Sbar_IntermissionOverlay (void)
 {
-	scr_copyeverything = 1;
-	scr_fullupdate = 0;
+	scr.copyeverything = 1;
+	scr.fullupdate = 0;
 
 	if (atoi(Info_ValueForKey(cl.serverinfo, "teamplay")) > 0 && !sb_showscores)
 		Sbar_TeamOverlay ();
@@ -1268,7 +1267,7 @@ void Sbar_FinaleOverlay (void)
 {
 	qpic_t	*pic;
 
-	scr_copyeverything = 1;
+	scr.copyeverything = 1;
 
 	pic = Draw_CachePic ("gfx/finale.lmp");
 	Draw_TransPic ( (vid.width-pic->width)/2, 16, pic);

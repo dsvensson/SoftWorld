@@ -37,8 +37,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdlib.h>
 
 
-#define PAUSE_SLEEP		0.05			// seconds between frames when paused or minimized
-#define NOT_FOCUS_SLEEP	0.02			// ... and when not the focus
 
 bool	ActiveApp, Minimized;
 HINSTANCE	global_hInstance;
@@ -131,9 +129,6 @@ void Sys_SendKeyEvents (void)
 
 	while (PeekMessage (&msg, NULL, 0, 0, PM_NOREMOVE))
 	{
-	// we always update if there are any event, even if we're paused
-		scr_skipupdate = 0;
-
 		if (!GetMessage (&msg, NULL, 0, 0))
 			Sys_Quit ();
 		TranslateMessage (&msg);
@@ -212,17 +207,6 @@ int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, [[maybe_unused]] int nCmd
 	/* main window message loop */
 	while (1)
 	{
-	// yield the CPU for a little while when paused, minimized, or not the focus
-		if ((cl.paused && !ActiveApp) || Minimized || block_drawing)
-		{
-			Sys_WaitUntil (Sys_DoubleTime () + PAUSE_SLEEP);
-			scr_skipupdate = 1;		// no point in bothering to draw
-		}
-		else if (!ActiveApp)
-		{
-			Sys_WaitUntil (Sys_DoubleTime () + NOT_FOCUS_SLEEP);
-		}
-
 		newtime = Sys_DoubleTime ();
 		time = newtime - oldtime;
 		Host_Frame ((float)time);

@@ -879,6 +879,21 @@ void VID_BringToFront (void)
 	SetForegroundWindow (mainwindow);
 }
 
+/*
+================
+VID_IsActive / VID_IsMinimized
+================
+*/
+bool VID_IsActive (void)
+{
+	return ActiveApp;
+}
+
+bool VID_IsMinimized (void)
+{
+	return Minimized;
+}
+
 bool VID_IsFullscreen (void)
 {
 	return vid_fullscreen;

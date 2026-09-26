@@ -122,16 +122,22 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	K_MOUSE4		241
 #define	K_MOUSE5		242
 
+#define	MAXCMDLINE	256
 
+// the console input line with its history, and the message being typed
+typedef struct
+{
+	char	lines[32][MAXCMDLINE];	// lines[edit_line] is being edited, from index 1
+	int		edit_line;
+	int		linepos;				// cursor in lines[edit_line]
+	char	chat_buffer[MAXCMDLINE];
+	int		chat_bufferlen;
+	bool	chat_team;				// say_team instead of say
+} key_input_t;
 
-typedef enum {key_game, key_console, key_message, key_menu} keydest_t;
+extern	key_input_t	key_input;
 
-extern keydest_t	key_dest;
-extern char *keybindings[256];
-
-extern char chat_buffer[];
-extern	int chat_bufferlen;
-extern	bool	chat_team;
+const char *Key_BindingForKey (int keynum);	// NULL when unbound
 
 void Key_Event (int key, bool down);
 void Key_Init (void);

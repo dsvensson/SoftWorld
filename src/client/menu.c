@@ -173,18 +173,18 @@ void M_ToggleMenu_f (void)
 {
 	m_entersound = true;
 
-	if (key_dest == key_menu)
+	if (cls.key_dest == key_menu)
 	{
 		if (m_state != m_main)
 		{
 			M_Menu_Main_f ();
 			return;
 		}
-		key_dest = key_game;
+		cls.key_dest = key_game;
 		m_state = m_none;
 		return;
 	}
-	if (key_dest == key_console)
+	if (cls.key_dest == key_console)
 	{
 		Con_ToggleConsole_f ();
 	}
@@ -204,12 +204,12 @@ static int	m_main_cursor;
 
 void M_Menu_Main_f (void)
 {
-	if (key_dest != key_menu)
+	if (cls.key_dest != key_menu)
 	{
 		m_save_demonum = cls.demonum;
 		cls.demonum = -1;
 	}
-	key_dest = key_menu;
+	cls.key_dest = key_menu;
 	m_state = m_main;
 	m_entersound = true;
 }
@@ -236,7 +236,7 @@ void M_Main_Key (int key)
 	switch (key)
 	{
 	case K_ESCAPE:
-		key_dest = key_game;
+		cls.key_dest = key_game;
 		m_state = m_none;
 		cls.demonum = m_save_demonum;
 		if (cls.demonum != -1 && !cls.demoplayback && cls.state == ca_disconnected)
@@ -295,7 +295,7 @@ static int		options_cursor;
 
 void M_Menu_Options_f (void)
 {
-	key_dest = key_menu;
+	cls.key_dest = key_menu;
 	m_state = m_options;
 	m_entersound = true;
 }
@@ -575,7 +575,7 @@ static int		bind_grab;
 
 void M_Menu_Keys_f (void)
 {
-	key_dest = key_menu;
+	cls.key_dest = key_menu;
 	m_state = m_keys;
 	m_entersound = true;
 }
@@ -586,7 +586,7 @@ void M_FindKeysForCommand (char *command, int *twokeys)
 	int		count;
 	int		j;
 	int		l;
-	char	*b;
+	const char	*b;
 
 	twokeys[0] = twokeys[1] = -1;
 	l = (int)strlen(command);
@@ -594,7 +594,7 @@ void M_FindKeysForCommand (char *command, int *twokeys)
 
 	for (j=0 ; j<256 ; j++)
 	{
-		b = keybindings[j];
+		b = Key_BindingForKey (j);
 		if (!b)
 			continue;
 		if (!strncmp (b, command, l) )
@@ -611,13 +611,13 @@ void M_UnbindCommand (char *command)
 {
 	int		j;
 	int		l;
-	char	*b;
+	const char	*b;
 
 	l = (int)strlen(command);
 
 	for (j=0 ; j<256 ; j++)
 	{
-		b = keybindings[j];
+		b = Key_BindingForKey (j);
 		if (!b)
 			continue;
 		if (!strncmp (b, command, l) )
@@ -744,7 +744,7 @@ static int		help_page;
 
 void M_Menu_Help_f (void)
 {
-	key_dest = key_menu;
+	cls.key_dest = key_menu;
 	m_state = m_help;
 	m_entersound = true;
 	help_page = 0;
@@ -794,8 +794,8 @@ void M_Menu_Quit_f (void)
 {
 	if (m_state == m_quit)
 		return;
-	wasInMenus = (key_dest == key_menu);
-	key_dest = key_menu;
+	wasInMenus = (cls.key_dest == key_menu);
+	cls.key_dest = key_menu;
 	m_quit_prevstate = m_state;
 	m_state = m_quit;
 	m_entersound = true;
@@ -817,14 +817,14 @@ void M_Quit_Key (int key)
 		}
 		else
 		{
-			key_dest = key_game;
+			cls.key_dest = key_game;
 			m_state = m_none;
 		}
 		break;
 
 	case 'Y':
 	case 'y':
-		key_dest = key_console;
+		cls.key_dest = key_console;
 		CL_Disconnect ();
 		Sys_Quit ();
 		break;
@@ -956,14 +956,14 @@ void M_Init (void)
 
 void M_Draw (void)
 {
-	if (m_state == m_none || key_dest != key_menu)
+	if (m_state == m_none || cls.key_dest != key_menu)
 		return;
 
 	if (!m_recursiveDraw)
 	{
-		scr_copyeverything = 1;
+		scr.copyeverything = 1;
 
-		if (scr_con_current)
+		if (scr.con_current)
 		{
 			Draw_ConsoleBackground (vid.height, cls.download != NULL);
 			S_ExtraUpdate ();
@@ -971,7 +971,7 @@ void M_Draw (void)
 		else
 			Draw_FadeScreen ();
 
-		scr_fullupdate = 0;
+		scr.fullupdate = 0;
 	}
 	else
 	{

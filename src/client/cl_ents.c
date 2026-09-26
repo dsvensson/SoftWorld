@@ -47,7 +47,7 @@ dlight_t *CL_AllocDlight (int key)
 // first look for an exact key match
 	if (key)
 	{
-		dl = cl_dlights;
+		dl = cl.dlights;
 		for (i=0 ; i<MAX_DLIGHTS ; i++, dl++)
 		{
 			if (dl->key == key)
@@ -60,7 +60,7 @@ dlight_t *CL_AllocDlight (int key)
 	}
 
 // then look for anything else
-	dl = cl_dlights;
+	dl = cl.dlights;
 	for (i=0 ; i<MAX_DLIGHTS ; i++, dl++)
 	{
 		if (dl->die < cl.time)
@@ -71,7 +71,7 @@ dlight_t *CL_AllocDlight (int key)
 		}
 	}
 
-	dl = &cl_dlights[0];
+	dl = &cl.dlights[0];
 	memset (dl, 0, sizeof(*dl));
 	dl->key = key;
 	return dl;
@@ -128,7 +128,7 @@ void CL_DecayLights (void)
 	int			i;
 	dlight_t	*dl;
 
-	dl = cl_dlights;
+	dl = cl.dlights;
 	for (i=0 ; i<MAX_DLIGHTS ; i++, dl++)
 	{
 		if (dl->die < cl.time || !dl->radius)
@@ -370,7 +370,7 @@ void CL_ParsePacketEntities (bool delta)
 			}
 			if (newindex >= MAX_PACKET_ENTITIES)
 				Host_EndGame ("CL_ParsePacketEntities: newindex == MAX_PACKET_ENTITIES");
-			CL_ParseDelta (&cl_baselines[newnum], &newp->entities[newindex], word);
+			CL_ParseDelta (&cl.baselines[newnum], &newp->entities[newindex], word);
 			newindex++;
 			continue;
 		}
@@ -446,11 +446,11 @@ void CL_LinkPacketEntities (void)
 			continue;
 
 		// create a new entity
-		if (cl_numvisedicts == MAX_VISEDICTS)
+		if (cl.numvisedicts == MAX_VISEDICTS)
 			break;		// object list is full
 
-		ent = &cl_visedicts[cl_numvisedicts];
-		cl_numvisedicts++;
+		ent = &cl.visedicts[cl.numvisedicts];
+		cl.numvisedicts++;
 
 		ent->keynum = s1->number;
 		ent->model = model = cl.model_precache[s1->modelindex];
@@ -507,15 +507,15 @@ void CL_LinkPacketEntities (void)
 			continue;
 
 		// scan the old entity display list for a matching
-		for (i=0 ; i<cl_oldnumvisedicts ; i++)
+		for (i=0 ; i<cl.oldnumvisedicts ; i++)
 		{
-			if (cl_oldvisedicts[i].keynum == ent->keynum)
+			if (cl.oldvisedicts[i].keynum == ent->keynum)
 			{
-				VectorCopy (cl_oldvisedicts[i].origin, old_origin);
+				VectorCopy (cl.oldvisedicts[i].origin, old_origin);
 				break;
 			}
 		}
-		if (i == cl_oldnumvisedicts)
+		if (i == cl.oldnumvisedicts)
 			continue;		// not in last message
 
 		for (i=0 ; i<3 ; i++)
@@ -567,7 +567,6 @@ typedef struct
 static projectile_t	cl_projectiles[MAX_PROJECTILES];
 static int				cl_num_projectiles;
 
-extern int cl_spikeindex;
 
 void CL_ClearProjectiles (void)
 {
@@ -599,7 +598,7 @@ void CL_ParseProjectiles (void)
 		pr = &cl_projectiles[cl_num_projectiles];
 		cl_num_projectiles++;
 
-		pr->modelindex = cl_spikeindex;
+		pr->modelindex = cl.spikeindex;
 		pr->origin[0] = (vec_t)(( ( bits[0] + ((bits[1]&15)<<8) ) <<1) - 4096);
 		pr->origin[1] = (vec_t)(( ( (bits[1]>>4) + (bits[2]<<4) ) <<1) - 4096);
 		pr->origin[2] = (vec_t)(( ( bits[3] + ((bits[4]&15)<<8) ) <<1) - 4096);
@@ -623,10 +622,10 @@ void CL_LinkProjectiles (void)
 	for (i=0, pr=cl_projectiles ; i<cl_num_projectiles ; i++, pr++)
 	{
 		// grab an entity to fill in
-		if (cl_numvisedicts == MAX_VISEDICTS)
+		if (cl.numvisedicts == MAX_VISEDICTS)
 			break;		// object list is full
-		ent = &cl_visedicts[cl_numvisedicts];
-		cl_numvisedicts++;
+		ent = &cl.visedicts[cl.numvisedicts];
+		cl.numvisedicts++;
 		ent->keynum = 0;
 
 		if (pr->modelindex < 1)
@@ -643,7 +642,6 @@ void CL_LinkProjectiles (void)
 
 //========================================
 
-extern	int		cl_spikeindex, cl_playerindex, cl_flagindex;
 
 entity_t *CL_NewTempEntity (void);
 
@@ -652,8 +650,6 @@ entity_t *CL_NewTempEntity (void);
 CL_ParsePlayerinfo
 ===================
 */
-extern int parsecountmod;
-extern double parsecounttime;
 void CL_ParsePlayerinfo (void)
 {
 	int			msec;
@@ -666,7 +662,7 @@ void CL_ParsePlayerinfo (void)
 	if (num > MAX_CLIENTS)
 		Sys_Error ("CL_ParsePlayerinfo: bad num");
 
-	state = &cl.frames[parsecountmod].playerstate[num];
+	state = &cl.frames[cl.parsecountmod].playerstate[num];
 
 	flags = state->flags = MSG_ReadShort ();
 
@@ -683,10 +679,10 @@ void CL_ParsePlayerinfo (void)
 	if (flags & PF_MSEC)
 	{
 		msec = MSG_ReadByte ();
-		state->state_time = parsecounttime - msec*0.001;
+		state->state_time = cl.parsecounttime - msec*0.001;
 	}
 	else
-		state->state_time = parsecounttime;
+		state->state_time = cl.parsecounttime;
 
 	if (flags & PF_COMMAND)
 		MSG_ReadDeltaUsercmd (&nullcmd, &state->command);
@@ -701,7 +697,7 @@ void CL_ParsePlayerinfo (void)
 	if (flags & PF_MODEL)
 		state->modelindex = MSG_ReadByte ();
 	else
-		state->modelindex = cl_playerindex;
+		state->modelindex = cl.playerindex;
 
 	if (flags & PF_SKINNUM)
 		state->skinnum = MSG_ReadByte ();
@@ -736,7 +732,7 @@ void CL_AddFlagModels (entity_t *ent, int team)
 	vec3_t	v_forward, v_right, v_up;
 	entity_t	*newent;
 
-	if (cl_flagindex == -1)
+	if (cl.flagindex == -1)
 		return;
 
 	f = 14;
@@ -764,7 +760,7 @@ void CL_AddFlagModels (entity_t *ent, int team)
 	}
 
 	newent = CL_NewTempEntity ();
-	newent->model = cl.model_precache[cl_flagindex];
+	newent->model = cl.model_precache[cl.flagindex];
 	newent->skinnum = team;
 
 	AngleVectors (ent->angles, v_forward, v_right, v_up);
@@ -832,17 +828,17 @@ void CL_LinkPlayers (void)
 			continue;
 
 		// grab an entity to fill in
-		if (cl_numvisedicts == MAX_VISEDICTS)
+		if (cl.numvisedicts == MAX_VISEDICTS)
 			break;		// object list is full
-		ent = &cl_visedicts[cl_numvisedicts];
-		cl_numvisedicts++;
+		ent = &cl.visedicts[cl.numvisedicts];
+		cl.numvisedicts++;
 		ent->keynum = 0;
 
 		ent->model = cl.model_precache[state->modelindex];
 		ent->skinnum = state->skinnum;
 		ent->frame = state->frame;
 		ent->colormap = info->translations;
-		if (state->modelindex == cl_playerindex)
+		if (state->modelindex == cl.playerindex)
 			ent->skin = Skin_ForPlayer (info);		// use custom skin
 		else
 			ent->skin = NULL;
@@ -870,10 +866,10 @@ void CL_LinkPlayers (void)
 			state->command.msec = (byte)msec;
 //Con_DPrintf ("predict: %i\n", msec);
 
-			oldphysent = cl_pmove.numphysent;
+			oldphysent = cl.pmove.numphysent;
 			CL_SetSolidPlayers (j);
 			CL_PredictUsercmd (state, &exact, &state->command, false);
-			cl_pmove.numphysent = oldphysent;
+			cl.pmove.numphysent = oldphysent;
 			VectorCopy (exact.origin, ent->origin);
 		}
 
@@ -901,12 +897,12 @@ void CL_SetSolidEntities (void)
 	packet_entities_t	*pak;
 	entity_state_t		*state;
 
-	cl_pmove.physents[0].model = cl.clipmodels[1];
-	VectorCopy (vec3_origin, cl_pmove.physents[0].origin);
-	cl_pmove.physents[0].info = 0;
-	cl_pmove.numphysent = 1;
+	cl.pmove.physents[0].model = cl.clipmodels[1];
+	VectorCopy (vec3_origin, cl.pmove.physents[0].origin);
+	cl.pmove.physents[0].info = 0;
+	cl.pmove.numphysent = 1;
 
-	frame = &cl.frames[parsecountmod];
+	frame = &cl.frames[cl.parsecountmod];
 	pak = &frame->packet_entities;
 
 	for (i=0 ; i<pak->num_entities ; i++)
@@ -919,9 +915,9 @@ void CL_SetSolidEntities (void)
 			continue;
 		if (cl.clipmodels[state->modelindex]->hulls[1].firstclipnode)
 		{
-			cl_pmove.physents[cl_pmove.numphysent].model = cl.clipmodels[state->modelindex];
-			VectorCopy (state->origin, cl_pmove.physents[cl_pmove.numphysent].origin);
-			cl_pmove.numphysent++;
+			cl.pmove.physents[cl.pmove.numphysent].model = cl.clipmodels[state->modelindex];
+			VectorCopy (state->origin, cl.pmove.physents[cl.pmove.numphysent].origin);
+			cl.pmove.numphysent++;
 		}
 	}
 
@@ -1017,7 +1013,7 @@ void CL_SetSolidPlayers (int playernum)
 	if (!cl_solid_players.value)
 		return;
 
-	pent = cl_pmove.physents + cl_pmove.numphysent;
+	pent = cl.pmove.physents + cl.pmove.numphysent;
 
 	for (j=0, pplayer = predicted_players; j < MAX_CLIENTS;	j++, pplayer++) {
 
@@ -1035,7 +1031,7 @@ void CL_SetSolidPlayers (int playernum)
 		VectorCopy(pplayer->origin, pent->origin);
 		VectorCopy(player_mins, pent->mins);
 		VectorCopy(player_maxs, pent->maxs);
-		cl_pmove.numphysent++;
+		cl.pmove.numphysent++;
 		pent++;
 	}
 }
@@ -1057,11 +1053,11 @@ void CL_EmitEntities (void)
 	if (!cl.validsequence)
 		return;
 
-	cl_oldnumvisedicts = cl_numvisedicts;
-	cl_oldvisedicts = cl_visedicts_list[(cls.netchan.incoming_sequence-1)&1];
-	cl_visedicts = cl_visedicts_list[cls.netchan.incoming_sequence&1];
+	cl.oldnumvisedicts = cl.numvisedicts;
+	cl.oldvisedicts = cl.visedicts_list[(cls.netchan.incoming_sequence-1)&1];
+	cl.visedicts = cl.visedicts_list[cls.netchan.incoming_sequence&1];
 
-	cl_numvisedicts = 0;
+	cl.numvisedicts = 0;
 
 	CL_LinkPlayers ();
 	CL_LinkPacketEntities ();

@@ -22,12 +22,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cl_local.h"
 
 
-// we need to declare some mouse variables here, because the menu system
-// references them even when on a unix system.
-
-bool	noclip_anglehack;		// remnant from old quake
-
-
 static cvar_t	rcon_password = {.name = "rcon_password", .string = ""};
 
 static cvar_t	rcon_address = {.name = "rcon_address", .string = ""};
@@ -73,35 +67,19 @@ static cvar_t	noaim = {.name = "noaim", .string = "0", .archive = true, .info = 
 static cvar_t	msg = {.name = "msg", .string = "1", .archive = true, .info = true};
 
 
-
 client_static_t	cls;
 client_state_t	cl;
 
-entity_state_t	cl_baselines[MAX_EDICTS];
-entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
-lightstyle_t	cl_lightstyle[MAX_LIGHTSTYLES];
-dlight_t		cl_dlights[MAX_DLIGHTS];
-
-// refresh list
-// this is double buffered so the last frame
-// can be scanned for oldorigins of trailing objects
-int				cl_numvisedicts, cl_oldnumvisedicts;
-entity_t		*cl_visedicts, *cl_oldvisedicts;
-entity_t		cl_visedicts_list[2][MAX_VISEDICTS];
 
 static double			connect_time = -1;		// for connection retransmits
-
 
 
 static double		oldrealtime;			// last frame run
 
 
-
-
 static cvar_t	host_speeds = {.name = "host_speeds", .string = "0"};			// set for running times
 cvar_t	show_fps = {.name = "show_fps", .string = "0"};			// set for running times
 
-int			fps_count;
 
 static jmp_buf 	host_abort;
 
@@ -344,10 +322,6 @@ void CL_ClearState (void)
 	memset (&cl, 0, sizeof(cl));
 
 	SZ_Clear (&cls.netchan.message);
-
-// clear other arrays	
-	memset (cl_dlights, 0, sizeof(cl_dlights));
-	memset (cl_lightstyle, 0, sizeof(cl_lightstyle));
 
 	R_ClearEfrags ();
 	CL_DisableLerpMove ();
@@ -1060,10 +1034,10 @@ void CL_Init (void)
 	cls.state = ca_disconnected;
 	Cvar_SetInfoHook (CL_UserinfoCvarChanged);
 
-	r_scene.numvisedicts = &cl_numvisedicts;
+	r_scene.numvisedicts = &cl.numvisedicts;
 	r_scene.maxvisedicts = MAX_VISEDICTS;
-	r_scene.dlights = cl_dlights;
-	r_scene.lightstyles = cl_lightstyle;
+	r_scene.dlights = cl.dlights;
+	r_scene.lightstyles = cl.lightstyles;
 	r_scene.viewent = &cl.viewent;
 
 	Info_SetValueForKey (cls.userinfo, "name", "unnamed", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
@@ -1269,7 +1243,6 @@ void Host_WriteConfiguration (void)
 //============================================================================
 
 
-
 /*
 ==================
 CL_UpdateSound
@@ -1370,8 +1343,18 @@ double Host_FrameWait (void)
 	float	fps;
 
 	fps = Host_MaxFPS ();
-	if (cls.timedemo || !fps)
+	if (cls.timedemo)
 		return 0;
+
+// yield the CPU when nobody watches: a little while not the focus,
+// more when minimized or paused
+	if ((VID_IsMinimized () || (cl.paused && !VID_IsActive ())) && (!fps || fps > 20))
+		fps = 20;
+	else if (!VID_IsActive () && (!fps || fps > 50))
+		fps = 50;
+	if (!fps)
+		return 0;
+
 	wait = oldrealtime + 1.0 / fps - host.realtime;
 	return wait > 0 ? wait : 0;
 }
@@ -1475,7 +1458,7 @@ void Host_Frame (float time)
 	}
 
 	cls.framecount++;
-	fps_count++;
+	cls.fps_count++;
 }
 
 static void simple_crypt(char *buf, int len)

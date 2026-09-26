@@ -94,7 +94,7 @@ float V_CalcBob (void)
 	if (cl.spectator)
 		return 0;
 
-	if (cl_pmove.onground == -1)
+	if (cl.pmove.onground == -1)
 		return bob;		// just use old value
 
 	bobtime += cls.frametime;
@@ -220,9 +220,6 @@ void V_DriftPitch (void)
 }
 
 
-
-
-
 /*
 ============================================================================== 
  
@@ -230,8 +227,8 @@ void V_DriftPitch (void)
  
 ============================================================================== 
 */ 
- 
- 
+
+
 static cshift_t	cshift_empty = { {130,80,50}, 0 };
 static cshift_t	cshift_water = { {130,80,50}, 128 };
 static cshift_t	cshift_slime = { {0,25,5}, 150 };
@@ -240,7 +237,6 @@ static cshift_t	cshift_lava = { {255,80,0}, 150 };
 cvar_t		v_gamma = {.name = "gamma", .string = "1", .archive = true};
 
 static byte		gammatable[256];	// palette is sent through this
-
 
 
 void BuildGammaTable (float g)
@@ -283,7 +279,6 @@ bool V_CheckGamma (void)
 	
 	return true;
 }
-
 
 
 /*
@@ -784,12 +779,11 @@ void DropPunchAngle (void)
 static void V_DrawCrosshair (void)
 {
 	int x, y;
-	extern vrect_t		scr_vrect;
 	byte c = (byte)crosshaircolor.value;
 
 	if (crosshair.value == 2) {
-		x = (int)(scr_vrect.x + scr_vrect.width/2 + cl_crossx.value); 
-		y = (int)(scr_vrect.y + scr_vrect.height/2 + cl_crossy.value);
+		x = (int)(scr.vrect.x + scr.vrect.width/2 + cl_crossx.value); 
+		y = (int)(scr.vrect.y + scr.vrect.height/2 + cl_crossy.value);
 		Draw_Pixel(x - 1, y, c);
 		Draw_Pixel(x - 3, y, c);
 		Draw_Pixel(x + 1, y, c);
@@ -800,8 +794,8 @@ static void V_DrawCrosshair (void)
 		Draw_Pixel(x, y + 3, c);
 	} else if (crosshair.value)
 		Draw_Character (
-			(int)(scr_vrect.x + scr_vrect.width/2-4 + cl_crossx.value),
-			(int)(scr_vrect.y + scr_vrect.height/2-4 + cl_crossy.value),
+			(int)(scr.vrect.x + scr.vrect.width/2-4 + cl_crossx.value),
+			(int)(scr.vrect.y + scr.vrect.height/2-4 + cl_crossy.value),
 			'+');
 }
 
@@ -813,7 +807,6 @@ The player's clipping box goes from (-16 -16 -24) to (16 16 32) from
 the entity origin, so any view position inside that will be valid
 ==================
 */
-extern vrect_t scr_vrect;
 
 void V_RenderView (void)
 {
@@ -837,7 +830,7 @@ cl.simangles[ROLL] = 0;	// FIXME @@@
 		V_CalcRefdef ();
 	}
 
-	r_scene.visedicts = cl_visedicts;
+	r_scene.visedicts = cl.visedicts;
 	r_scene.frametime = (float)cls.frametime;
 	r_scene.drawviewmodel = Cam_DrawViewModel ()
 		&& !(cl.stats[STAT_ITEMS] & IT_INVISIBILITY) && cl.stats[STAT_HEALTH] > 0;

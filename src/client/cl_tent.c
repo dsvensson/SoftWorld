@@ -329,10 +329,10 @@ entity_t *CL_NewTempEntity (void)
 {
 	entity_t	*ent;
 
-	if (cl_numvisedicts == MAX_VISEDICTS)
+	if (cl.numvisedicts == MAX_VISEDICTS)
 		return NULL;
-	ent = &cl_visedicts[cl_numvisedicts];
-	cl_numvisedicts++;
+	ent = &cl.visedicts[cl.numvisedicts];
+	cl.numvisedicts++;
 	ent->keynum = 0;
 	
 	memset (ent, 0, sizeof(*ent));

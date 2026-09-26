@@ -23,31 +23,28 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "cvar.h"
 #include "q_types.h"
+#include "vid.h"
 
 void SCR_Init (void);
 
 void SCR_UpdateScreen (void);
 
-
 void SCR_CenterPrint (char *str);
 
+// what the screen shows and which parts of it must be redrawn
+typedef struct
+{
+	float	con_current;		// scan lines of console currently drawn
+	int		sb_lines;			// scan lines of status bar
+	vrect_t	vrect;				// the 3D view
+	bool	disabled_for_loading;
 
-extern	float		scr_con_current;
+	int		fullupdate;			// set to 0 to force full redraw
+	int		copytop;			// only the refresh window will be updated
+	int		copyeverything;		// unless these are flagged
+	int		clearnotify;		// set to 0 whenever notify text is drawn
+} scr_state_t;
 
-extern	int			scr_fullupdate;	// set to 0 to force full redraw
-extern	int			sb_lines;
-
-extern	int			clearnotify;	// set to 0 whenever notify text is drawn
-extern	bool	scr_disabled_for_loading;
+extern	scr_state_t	scr;
 
 extern	cvar_t		scr_viewsize;
-
-extern cvar_t scr_viewsize;
-
-// only the refresh window will be updated unless these variables are flagged 
-extern	int			scr_copytop;
-extern	int			scr_copyeverything;
-
-extern bool	scr_skipupdate;
-
-extern bool	block_drawing;

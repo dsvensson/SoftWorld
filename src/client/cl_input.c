@@ -534,12 +534,12 @@ void IN_GamepadSticks (float lx, float ly, float rx, float ry)
 
 bool IN_WantsMouse (void)
 {
-	return key_dest == key_game;
+	return cls.key_dest == key_game;
 }
 
 bool IN_WantsMouseButtons (void)
 {
-	return key_dest == key_menu;
+	return cls.key_dest == key_menu;
 }
 
 void IN_ClearStates (void)
@@ -602,12 +602,7 @@ static void IN_MouseMove (usercmd_t *cmd)
 		IN_ClampPitch ();
 	}
 	else
-	{
-		if ((in_strafe.state & 1) && noclip_anglehack)
-			cmd->upmove = (short)(cmd->upmove - m_forward.value * mouse_y);
-		else
-			cmd->forwardmove = (short)(cmd->forwardmove - m_forward.value * mouse_y);
-	}
+		cmd->forwardmove = (short)(cmd->forwardmove - m_forward.value * mouse_y);
 }
 
 static void IN_GamepadMove (usercmd_t *cmd)
