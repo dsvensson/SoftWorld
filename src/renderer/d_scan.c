@@ -25,7 +25,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 #include "d_local.h"
 
-static unsigned char	*r_turb_pbase, *r_turb_pdest;
+static byte		*r_turb_pbase;
+static pixel_t	*r_turb_pdest;
 static fixed16_t		r_turb_s, r_turb_t, r_turb_sstep, r_turb_tstep;
 static int				*r_turb_turb;
 static int				r_turb_spancount;
@@ -45,11 +46,11 @@ void D_WarpScreen (void)
 {
 	int		w, h;
 	int		u,v;
-	byte	*dest;
+	pixel_t	*dest;
 	int		*turb;
 	int		*col;
-	byte	**row;
-	byte	*rowptr[MAXHEIGHT+(AMP2*2)];
+	pixel_t	**row;
+	pixel_t	*rowptr[MAXHEIGHT+(AMP2*2)];
 	int		column[MAXWIDTH+(AMP2*2)];
 	float	wratio, hratio;
 
@@ -72,9 +73,9 @@ void D_WarpScreen (void)
 	}
 
 	turb = intsintable + ((int)(r_scene.time*SPEED)&(CYCLE-1));
-	dest = vid.buffer + r_viewrect.y * vid.rowbytes + r_viewrect.x;
+	dest = vid.buffer + r_viewrect.y * vid.rowpixels + r_viewrect.x;
 
-	for (v=0 ; v<r_viewrect.height ; v++, dest += vid.rowbytes)
+	for (v=0 ; v<r_viewrect.height ; v++, dest += vid.rowpixels)
 	{
 		col = &column[turb[v]];
 		row = &rowptr[v];
@@ -103,7 +104,7 @@ void D_DrawTurbulent8Span (void)
 	{
 		sturb = ((r_turb_s + r_turb_turb[(r_turb_t>>16)&(CYCLE-1)])>>16)&63;
 		tturb = ((r_turb_t + r_turb_turb[(r_turb_s>>16)&(CYCLE-1)])>>16)&63;
-		*r_turb_pdest++ = *(r_turb_pbase + (tturb<<6) + sturb);
+		*r_turb_pdest++ = d_pal30[*(r_turb_pbase + (tturb<<6) + sturb)];
 		r_turb_s += r_turb_sstep;
 		r_turb_t += r_turb_tstep;
 	} while (--r_turb_spancount > 0);
@@ -127,7 +128,7 @@ void Turbulent8 (espan_t *pspan)
 	r_turb_sstep = 0;	// keep compiler happy
 	r_turb_tstep = 0;	// ditto
 
-	r_turb_pbase = (unsigned char *)cacheblock;
+	r_turb_pbase = d_turbsource;
 
 	sdivz16stepu = d_sdivzstepu * 16;
 	tdivz16stepu = d_tdivzstepu * 16;
@@ -135,8 +136,7 @@ void Turbulent8 (espan_t *pspan)
 
 	do
 	{
-		r_turb_pdest = (unsigned char *)((byte *)d_viewbuffer +
-				(screenwidth * pspan->v) + pspan->u);
+		r_turb_pdest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
 
 		count = pspan->count;
 
@@ -246,13 +246,13 @@ void Turbulent8 (espan_t *pspan)
 
 /*
 =============
-D_DrawSpans8
+D_DrawSpans
 =============
 */
-void D_DrawSpans8 (espan_t *pspan)
+void D_DrawSpans (espan_t *pspan)
 {
 	int				count, spancount;
-	unsigned char	*pbase, *pdest;
+	pixel_t			*pbase, *pdest;
 	fixed16_t		s, t, snext, tnext, sstep, tstep;
 	float			sdivz, tdivz, zi, z, du, dv, spancountminus1;
 	float			sdivz8stepu, tdivz8stepu, zi8stepu;
@@ -260,7 +260,7 @@ void D_DrawSpans8 (espan_t *pspan)
 	sstep = 0;	// keep compiler happy
 	tstep = 0;	// ditto
 
-	pbase = (unsigned char *)cacheblock;
+	pbase = cacheblock;
 
 	sdivz8stepu = d_sdivzstepu * 8;
 	tdivz8stepu = d_tdivzstepu * 8;
@@ -268,8 +268,7 @@ void D_DrawSpans8 (espan_t *pspan)
 
 	do
 	{
-		pdest = (unsigned char *)((byte *)d_viewbuffer +
-				(screenwidth * pspan->v) + pspan->u);
+		pdest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
 
 		count = pspan->count;
 

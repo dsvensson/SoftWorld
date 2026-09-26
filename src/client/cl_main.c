@@ -1437,7 +1437,8 @@ void CL_Init (void)
 	cls.colormap = FS_LoadFile ("gfx/colormap.lmp", NULL);
 	if (!cls.colormap)
 		Sys_Error ("Couldn't load gfx/colormap.lmp");
-	VID_Init (cls.basepal, cls.colormap);
+	R_InitPalette (cls.basepal, cls.colormap);
+	VID_Init ();
 	Draw_Init ();
 	SCR_Init ();
 	R_Init ();

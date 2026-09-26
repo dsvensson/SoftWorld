@@ -93,6 +93,10 @@ extern cvar_t	r_graphheight;
 extern cvar_t	r_clearcolor;
 extern cvar_t	r_waterwarp;
 extern cvar_t	r_fullbright;
+
+extern pixel_t	d_pal30[256];				// the palette
+extern pixel_t	d_cm30[VID_GRADES * 256];	// the palette through each colormap row
+extern byte		r_identityremap[256];		// no player colors
 extern cvar_t	r_drawflat;
 extern cvar_t	r_ambient;
 extern cvar_t	r_numsurfs;

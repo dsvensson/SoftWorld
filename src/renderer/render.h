@@ -67,7 +67,7 @@ typedef struct entity_s
 	vec3_t					angles;	
 	struct model_s			*model;			// NULL = no model
 	int						frame;
-	byte					*colormap;
+	const byte				*translate;		// player colors: a palette index remap, NULL for none
 	int						skinnum;		// for Alias models
 
 	byte					*skin;			// player skin (320x200), NULL for the model's own
@@ -134,6 +134,8 @@ extern	struct texture_s	*r_notexture_mip;
 extern	entity_t	r_worldentity;
 
 void R_Init (void);
+// palette.lmp and colormap.lmp, before any drawing
+void R_InitPalette (const byte *palette, const byte *colormap);
 void R_InitTextures (void);
 void R_RenderView (void);		// must set r_refdef first
 void R_ViewChanged (vrect_t *vrect, float aspect);

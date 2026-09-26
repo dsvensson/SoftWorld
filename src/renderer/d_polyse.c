@@ -31,7 +31,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 typedef struct {
-	void			*pdest;
+	pixel_t			*pdest;
 	short			*pz;
 	int				count;
 	byte			*ptex;
@@ -52,7 +52,7 @@ typedef struct {
 
 static int	r_p0[6], r_p1[6], r_p2[6];
 
-static byte		*d_pcolormap;
+static const pixel_t	*d_pcolormap;	// the colormap row of the triangle's light
 
 int			d_aflatcolor;
 static int			d_xdenom;
@@ -83,7 +83,8 @@ static int				d_aspancount, d_countextrastep;
 static spanpackage_t			*a_spans;
 static spanpackage_t			*d_pedgespanpackage;
 static int				ystart;
-static byte					*d_pdest, *d_ptex;
+static pixel_t				*d_pdest;
+static byte					*d_ptex;
 static short					*d_pz;
 static int						d_sfrac, d_tfrac, d_light, d_zi;
 static int						d_ptexextrastep, d_sfracextrastep;
@@ -165,9 +166,8 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int nverts)
 				int		pix;
 				
 				*zbuf = (short)z;
-				pix = skintable[fv->v[3]>>16][fv->v[2]>>16];
-				pix = ((byte *)acolormap)[pix + (fv->v[4] & 0xFF00) ];
-				d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]] = (pixel_t)pix;
+				pix = r_affinetridesc.skinremap[skintable[fv->v[3]>>16][fv->v[2]>>16]];
+				d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]] = d_cm30[pix + (fv->v[4] & 0xFF00)];
 			}
 		}
 	}
@@ -204,7 +204,7 @@ void D_DrawSubdiv (void)
 			continue;
 		}
 
-		d_pcolormap = &((byte *)acolormap)[index0->v[4] & 0xFF00];
+		d_pcolormap = &d_cm30[index0->v[4] & 0xFF00];
 
 		if (ptri[i].facesfront)
 		{
@@ -372,11 +372,9 @@ split:
 	zbuf = zspantable[new[1]] + new[0];
 	if (z >= *zbuf)
 	{
-		int		pix;
-		
 		*zbuf = (short)z;
-		pix = d_pcolormap[skintable[new[3]>>16][new[2]>>16]];
-		d_viewbuffer[d_scantable[new[1]] + new[0]] = (pixel_t)pix;
+		d_viewbuffer[d_scantable[new[1]] + new[0]] =
+			d_pcolormap[r_affinetridesc.skinremap[skintable[new[3]>>16][new[2]>>16]]];
 	}
 
 nodraw:
@@ -585,8 +583,9 @@ D_PolysetDrawSpans8
 void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 {
 	int		lcount;
-	byte	*lpdest;
+	pixel_t	*lpdest;
 	byte	*lptex;
+	const byte	*remap = r_affinetridesc.skinremap;
 	int		lsfrac, ltfrac;
 	int		llight;
 	int		lzi;
@@ -621,8 +620,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 			{
 				if ((lzi >> 16) >= *lpz)
 				{
-					*lpdest = ((byte *)acolormap)[*lptex + (llight & 0xFF00)];
-// gel mapping					*lpdest = gelmap[*lpdest];
+					*lpdest = d_cm30[remap[*lptex] + (llight & 0xFF00)];
 					*lpz = lzi >> 16;
 				}
 				lpdest++;
@@ -698,8 +696,7 @@ void D_RasterizeAliasPolySmooth (void)
 
 	d_pdestbasestep = screenwidth + ubasestep;
 	d_pdestextrastep = d_pdestbasestep + 1;
-	d_pdest = (byte *)d_viewbuffer +
-			ystart * screenwidth + plefttop[0];
+	d_pdest = d_viewbuffer + ystart * screenwidth + plefttop[0];
 	d_pz = d_pzbuffer + ystart * d_zwidth + plefttop[0];
 
 // TODO: can reuse partial expressions here
@@ -759,7 +756,7 @@ void D_RasterizeAliasPolySmooth (void)
 
 		d_pdestbasestep = screenwidth + ubasestep;
 		d_pdestextrastep = d_pdestbasestep + 1;
-		d_pdest = (byte *)d_viewbuffer + ystart * screenwidth + plefttop[0];
+		d_pdest = d_viewbuffer + ystart * screenwidth + plefttop[0];
 		d_pzbasestep = d_zwidth + ubasestep;
 		d_pzextrastep = d_pzbasestep + 1;
 		d_pz = d_pzbuffer + ystart * d_zwidth + plefttop[0];

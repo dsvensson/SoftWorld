@@ -26,8 +26,20 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define VID_CBITS	6
 #define VID_GRADES	(1 << VID_CBITS)
 
-// a pixel can be one, two, or four bytes
-typedef byte pixel_t;
+// A pixel is RGB30: 10 bits per channel, red lowest. SDR white is 255, which
+// leaves headroom for light brighter than white.
+typedef uint32_t pixel_t;
+
+#define RGB30_WHITE		255
+
+static inline pixel_t RGB30 (unsigned r, unsigned g, unsigned b)
+{
+	return r | (g << 10) | (b << 20);
+}
+
+static inline unsigned RGB30_R (pixel_t p) { return p & 1023; }
+static inline unsigned RGB30_G (pixel_t p) { return (p >> 10) & 1023; }
+static inline unsigned RGB30_B (pixel_t p) { return (p >> 20) & 1023; }
 
 typedef struct vrect_s
 {
@@ -37,43 +49,28 @@ typedef struct vrect_s
 
 typedef struct
 {
-	pixel_t			*buffer;		// invisible buffer
-	pixel_t			*colormap;		// 256 * VID_GRADES size
-	int				fullbright;		// index of first fullbright color
-	unsigned		rowbytes;	// may be > width if displayed in a window
-	unsigned		width;		
+	pixel_t			*buffer;		// the frame being drawn
+	unsigned		rowpixels;		// pixels from one row to the next
+	unsigned		width;
 	unsigned		height;
-	float			aspect;		// width / height -- < 0 is taller than wide
-	int				numpages;
+	float			aspect;			// width / height -- < 0 is taller than wide
 	int				recalc_refdef;	// if true, recalc vid-based stuff
-	pixel_t			*conbuffer;
-	int				conrowbytes;
 	unsigned		conwidth;
 	unsigned		conheight;
 	int				maxwarpwidth;
 	int				maxwarpheight;
-	pixel_t			*direct;		// direct drawing to framebuffer, if not
-									//  NULL
 } viddef_t;
 
 extern	viddef_t	vid;				// global video state
 
-void	VID_SetPalette (unsigned char *palette);
-// called at startup and after any gamma correction
-
-void	VID_ShiftPalette (unsigned char *palette);
-// called for bonus and pain flashes, and for underwater color changes
-
-void	VID_Init (unsigned char *palette, unsigned char *colormap);
-// Called at startup to set up translation tables, takes 256 8 bit RGB values
-// the palette data will go away after the call, so it must be copied off if
-// the video driver will need it again
+void	VID_Init (void);
+// opens the window and allocates the frame
 
 void	VID_Shutdown (void);
 // Called at shutdown
 
-void	VID_Update (vrect_t *rects);
-// flushes the given rectangles from the view buffer to the screen
+void	VID_Update (void);
+// shows the frame
 
 void	VID_SetCaption (const char *text);
 // sets the window title
@@ -95,3 +92,6 @@ typedef struct
 } vid_present_t;
 
 void	VID_SetPresent (const vid_present_t *present);
+
+// the frame as the screen shows it in SDR, 8 bit RGB rows vid.width wide
+void	VID_FrameToRGB (byte *rgb);

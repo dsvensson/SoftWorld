@@ -77,39 +77,18 @@ D_DrawSolidSurface
 ==============
 */
 
-// FIXME: clean this up
-
 void D_DrawSolidSurface (surf_t *surf, int color)
 {
 	espan_t	*span;
-	byte	*pdest;
-	int		u, u2, pix;
-	
-	pix = (color<<24) | (color<<16) | (color<<8) | color;
+	pixel_t	*pdest, pix;
+	int		u;
+
+	pix = d_pal30[color & 255];
 	for (span=surf->spans ; span ; span=span->pnext)
 	{
-		pdest = (byte *)d_viewbuffer + screenwidth*span->v;
-		u = span->u;
-		u2 = span->u + span->count - 1;
-		((byte *)pdest)[u] = (byte)pix;
-
-		if (u2 - u < 8)
-		{
-			for (u++ ; u <= u2 ; u++)
-				((byte *)pdest)[u] = (byte)pix;
-		}
-		else
-		{
-			for (u++ ; u & 3 ; u++)
-				((byte *)pdest)[u] = (byte)pix;
-
-			u2 -= 4;
-			for ( ; u <= u2 ; u+=4)
-				*(int *)((byte *)pdest + u) = pix;
-			u2 += 4;
-			for ( ; u <= u2 ; u++)
-				((byte *)pdest)[u] = (byte)pix;
-		}
+		pdest = d_viewbuffer + screenwidth*span->v + span->u;
+		for (u = 0 ; u < span->count ; u++)
+			pdest[u] = pix;
 	}
 }
 
@@ -215,7 +194,7 @@ void D_DrawSurfaces (void)
 					R_MakeSky ();
 				}
 
-				D_DrawSkyScans8 (s->spans);
+				D_DrawSkyScans (s->spans);
 				D_DrawZSpans (s->spans);
 			}
 			else if (s->flags & SURF_DRAWBACKGROUND)
@@ -233,10 +212,8 @@ void D_DrawSurfaces (void)
 			{
 				pface = s->data;
 				miplevel = 0;
-				cacheblock = (pixel_t *)
-						((byte *)pface->texinfo->texture +
-						pface->texinfo->texture->offsets[0]);
-				cachewidth = 64;
+				d_turbsource = (byte *)pface->texinfo->texture +
+						pface->texinfo->texture->offsets[0];
 
 				if (s->insubmodel)
 				{
@@ -296,7 +273,7 @@ void D_DrawSurfaces (void)
 			// FIXME: make this passed in to D_CacheSurface
 				pcurrentcache = D_CacheSurface (pface, miplevel);
 
-				cacheblock = (pixel_t *)pcurrentcache->data;
+				cacheblock = pcurrentcache->data;
 				cachewidth = pcurrentcache->width;
 
 				D_CalcGradients (pface);

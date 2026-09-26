@@ -81,7 +81,6 @@ static bool		vid_initialized;
 static bool		vid_fullscreen;
 static WINDOWPLACEMENT	vid_windowed_placement = {.length = sizeof (WINDOWPLACEMENT)};
 static int		client_width, client_height;
-static uint32_t	vid_palette30[256];		// R10G10B10A2 for each palette index
 
 static bool		vid_outputdirty = true;	// recheck the display: moved, or settings changed
 static bool		vid_hdroutput;			// the swapchain is scRGB
@@ -458,12 +457,11 @@ The framebuffer, z-buffer and surface cache for the current render size.
 */
 static void VID_AllocBuffers (int width, int height)
 {
-	vid.buffer = vid.conbuffer = vid.direct = Mem_Alloc ((size_t)width * height);
+	vid.buffer = Mem_Alloc ((size_t)width * height * sizeof(pixel_t));
 
-	vid.rowbytes = vid.conrowbytes = width;
+	vid.rowpixels = width;
 	vid.width = vid.conwidth = width;
 	vid.height = vid.conheight = height;
-	vid.numpages = 1;
 	vid.aspect = ((float)height / (float)width) * (320.0f / 240.0f);
 	vid.recalc_refdef = 1;
 
@@ -560,7 +558,7 @@ VIDEO CONTRACT
 ===============================================================================
 */
 
-void VID_Init (unsigned char *palette, unsigned char *colormap)
+void VID_Init (void)
 {
 	int		scale = 2;
 	int		i;
@@ -580,14 +578,10 @@ void VID_Init (unsigned char *palette, unsigned char *colormap)
 	if (scale > VID_MAX_SCALE)
 		scale = VID_MAX_SCALE;
 
-	vid.colormap = colormap;
-	vid.fullbright = 256 - LittleLong (*((int *)vid.colormap + 2048));
-
 	VID_CreateWindow (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
 	VID_CreateDevice ();
 	VID_CreateFrameTexture (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
 	VID_AllocBuffers (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
-	VID_SetPalette (palette);
 
 	ShowWindow (mainwindow, SW_SHOWDEFAULT);
 	UpdateWindow (mainwindow);
@@ -629,36 +623,6 @@ void VID_Shutdown (void)
 	mainwindow = NULL;
 }
 
-/*
-================
-VID_SetPalette
-
-The frame texture holds SDR white at 255 in each 10 bit channel.
-================
-*/
-void VID_SetPalette (unsigned char *palette)
-{
-	int		i;
-
-	for (i = 0 ; i < 256 ; i++)
-	{
-		vid_palette30[i] = (3u << 30) | ((uint32_t)palette[i * 3 + 2] << 20) |
-			((uint32_t)palette[i * 3 + 1] << 10) | (uint32_t)palette[i * 3];
-	}
-}
-
-/*
-================
-VID_ShiftPalette
-
-Called for bonus and pain flashes, and for underwater color changes.
-================
-*/
-void VID_ShiftPalette (unsigned char *palette)
-{
-	VID_SetPalette (palette);
-}
-
 void VID_SetPresent (const vid_present_t *present)
 {
 	vid_present = *present;
@@ -666,17 +630,53 @@ void VID_SetPresent (const vid_present_t *present)
 
 /*
 ================
-VID_Update
+VID_FrameToRGB
 
-Uploads the whole framebuffer, expanded through the palette, and presents it
-letterboxed into the window.
+What present.hlsl does for SDR (blend, gamma, contrast, clip), through a
+table per channel
 ================
 */
-void VID_Update ([[maybe_unused]] vrect_t *rects)
+void VID_FrameToRGB (byte *rgb)
+{
+	static byte	lut[3][1024];
+	float		c, contrast;
+	unsigned	x, y;
+	int			ch, v;
+
+	contrast = fmaxf (vid_present.contrast * vid_contrast.value, 0);
+	for (ch = 0 ; ch < 3 ; ch++)
+		for (v = 0 ; v < 1024 ; v++)
+		{
+			c = v / 255.0f;
+			c += (vid_present.blend[ch] - c) * vid_present.blend[3];
+			c = powf (fmaxf (c, 0), vid_present.gamma) * contrast;
+			lut[ch][v] = (byte)(fminf (c, 1) * 255 + 0.5f);
+		}
+
+	for (y = 0 ; y < vid.height ; y++)
+		for (x = 0 ; x < vid.width ; x++, rgb += 3)
+		{
+			pixel_t	p = vid.buffer[y * vid.rowpixels + x];
+
+			rgb[0] = lut[0][RGB30_R (p)];
+			rgb[1] = lut[1][RGB30_G (p)];
+			rgb[2] = lut[2][RGB30_B (p)];
+		}
+}
+
+/*
+================
+VID_Update
+
+Uploads the whole frame, whose RGB30 pixels are the texture's format, and
+presents it letterboxed into the window.
+================
+*/
+void VID_Update (void)
 {
 	D3D11_MAPPED_SUBRESOURCE	mapped;
 	present_constants_t			constants;
-	unsigned					x, y;
+	unsigned					y;
 	float						scale, sx, sy;
 	UINT						flags = 0, interval;
 	int							i;
@@ -694,13 +694,8 @@ void VID_Update ([[maybe_unused]] vrect_t *rects)
 			&mapped)))
 		return;
 	for (y = 0 ; y < vid.height ; y++)
-	{
-		const byte	*src = vid.buffer + y * vid.rowbytes;
-		uint32_t	*dst = (uint32_t *)((byte *)mapped.pData + y * mapped.RowPitch);
-
-		for (x = 0 ; x < vid.width ; x++)
-			dst[x] = vid_palette30[src[x]];
-	}
+		memcpy ((byte *)mapped.pData + y * mapped.RowPitch, vid.buffer + y * vid.rowpixels,
+			vid.width * sizeof(pixel_t));
 	ID3D11DeviceContext_Unmap (d3d_context, (ID3D11Resource *)d3d_frame, 0);
 
 	// aspect-preserving fit; whole multiples of the render size unless filling the window

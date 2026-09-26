@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // screen.c -- master for refresh, status bar, console, chat, notify, etc
 
 #include "cl_local.h"
+#include "png.h"
 
 #include <time.h>
 
@@ -148,7 +149,7 @@ void SCR_EraseCenterString (void)
 {
 	int		y;
 
-	if (scr_erase_center++ > vid.numpages)
+	if (scr_erase_center++ > 1)
 	{
 		scr_erase_lines = 0;
 		return;
@@ -582,13 +583,13 @@ void SCR_SetUpToDrawConsole (void)
 			scr.con_current = scr_conlines;
 	}
 
-	if (clearconsole++ < vid.numpages)
+	if (clearconsole++ < 1)
 	{
 		scr.copytop = 1;
 		Draw_TileClear (0,(int)scr.con_current,vid.width, vid.height - (int)scr.con_current);
 		Sbar_Changed ();
 	}
-	else if (scr.clearnotify++ < vid.numpages)
+	else if (scr.clearnotify++ < 1)
 	{
 		scr.copytop = 1;
 		Draw_TileClear (0,0,vid.width, con.notifylines);
@@ -702,41 +703,40 @@ void WritePCXfile (char *filename, byte *data, int width, int height,
 SCR_ScreenShot_f
 ================== 
 */  
-void SCR_ScreenShot_f (void) 
-{ 
-	int     i; 
-	char		pcxname[80]; 
-	char		checkname[MAX_OSPATH];
+void SCR_ScreenShot_f (void)
+{
+	int		i;
+	char	filename[80];
+	char	path[MAX_OSPATH];
+	byte	*rgb;
 
-// 
-// find a file name to save it to 
-// 
-	Q_strncpyz(pcxname, "quake00.pcx", sizeof(pcxname));
-
+//
+// find a file name to save it to
+//
 	for (i=0 ; i<=99 ; i++)
 	{
-		pcxname[5] = (char)(i/10 + '0');
-		pcxname[6] = (char)(i%10 + '0');
-		snprintf (checkname, sizeof(checkname), "%s/%s", com_gamedir, pcxname);
-		if (Sys_FileTime(checkname) == -1)
+		snprintf (filename, sizeof(filename), "quake%02d.png", i);
+		snprintf (path, sizeof(path), "%s/%s", com_gamedir, filename);
+		if (Sys_FileTime (path) == -1)
 			break;	// file doesn't exist
-	} 
-	if (i==100) 
+	}
+	if (i==100)
 	{
-		Con_Printf ("SCR_ScreenShot_f: Couldn't create a PCX"); 
+		Con_Printf ("SCR_ScreenShot_f: Couldn't create a PNG\n");
 		return;
 	}
- 
-// 
-// save the pcx file 
-// 
 
-	WritePCXfile (pcxname, vid.buffer, vid.width, vid.height, vid.rowbytes,
-				  cls.basepal, false);
-
-
-	Con_Printf ("Wrote %s\n", pcxname);
-} 
+//
+// save what the screen shows
+//
+	rgb = Mem_Alloc ((size_t)vid.width * vid.height * 3);
+	VID_FrameToRGB (rgb);
+	if (PNG_WriteRGB (path, (int)vid.width, (int)vid.height, rgb, (int)vid.width * 3))
+		Con_Printf ("Wrote %s\n", filename);
+	else
+		Con_Printf ("Couldn't write %s\n", filename);
+	Mem_Free (rgb);
+}
 
 /*
 Find closest color in the palette for named color
@@ -823,8 +823,9 @@ SCR_RSShot_f
 void SCR_RSShot_f (void) 
 { 
 	int     x, y;
-	unsigned char		*src, *dest;
-	char		pcxname[80]; 
+	pixel_t		*src;
+	unsigned char		*dest;
+	char		pcxname[80] = "snap.pcx";
 	unsigned char		*newbuf;
 	int w, h;
 	int dx, dy, dex, dey, nx;
@@ -877,11 +878,11 @@ void SCR_RSShot_f (void)
 
 			count = 0;
 			for (/* */; dy < dey; dy++) {
-				src = vid.buffer + (vid.rowbytes * dy) + dx;
+				src = vid.buffer + (vid.rowpixels * dy) + dx;
 				for (nx = dx; nx < dex; nx++) {
-					r += cls.basepal[*src * 3];
-					g += cls.basepal[*src * 3+1];
-					b += cls.basepal[*src * 3+2];
+					r += RGB30_R (*src) > 255 ? 255 : RGB30_R (*src);
+					g += RGB30_G (*src) > 255 ? 255 : RGB30_G (*src);
+					b += RGB30_B (*src) > 255 ? 255 : RGB30_B (*src);
 					src++;
 					count++;
 				}
@@ -1003,7 +1004,6 @@ needs almost the entire 256k of stack space!
 void SCR_UpdateScreen (void)
 {
 	static float	oldscr_viewsize;
-	vrect_t		vrect;
 
 	if (scr.disabled_for_loading || VID_IsMinimized ())
 		return;
@@ -1051,7 +1051,7 @@ void SCR_UpdateScreen (void)
 // do 3D refresh drawing, and then update the screen
 //
 
-	if (scr.fullupdate++ < vid.numpages)
+	if (scr.fullupdate++ < 1)
 	{	// clear the entire screen
 		scr.copyeverything = 1;
 		Draw_TileClear (0,0,vid.width,vid.height);
@@ -1100,39 +1100,6 @@ void SCR_UpdateScreen (void)
 	}
 
 
-	V_UpdatePalette ();
-
-//
-// update one of three areas
-//
-	if (scr.copyeverything)
-	{
-		vrect.x = 0;
-		vrect.y = 0;
-		vrect.width = vid.width;
-		vrect.height = vid.height;
-		vrect.pnext = 0;
-	
-		VID_Update (&vrect);
-	}
-	else if (scr.copytop)
-	{
-		vrect.x = 0;
-		vrect.y = 0;
-		vrect.width = vid.width;
-		vrect.height = vid.height - scr.sb_lines;
-		vrect.pnext = 0;
-	
-		VID_Update (&vrect);
-	}	
-	else
-	{
-		vrect.x = scr.vrect.x;
-		vrect.y = scr.vrect.y;
-		vrect.width = scr.vrect.width;
-		vrect.height = scr.vrect.height;
-		vrect.pnext = 0;
-	
-		VID_Update (&vrect);
-	}	
+	V_UpdateBlend ();
+	VID_Update ();
 }

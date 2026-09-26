@@ -68,14 +68,15 @@ void D_SetupFrame (void)
 	int		i;
 
 	if (r_dowarp)
+	{
 		d_viewbuffer = r_warpbuffer;
-	else
-		d_viewbuffer = (void *)(byte *)vid.buffer;
-
-	if (r_dowarp)
 		screenwidth = WARP_WIDTH;
+	}
 	else
-		screenwidth = vid.rowbytes;
+	{
+		d_viewbuffer = vid.buffer;
+		screenwidth = vid.rowpixels;
+	}
 
 	d_roverwrapped = false;
 	d_initial_rover = sc_rover;
@@ -89,7 +90,7 @@ void D_SetupFrame (void)
 	for (i=0 ; i<(NUM_MIPS-1) ; i++)
 		d_scalemip[i] = basemip[i] * d_mipscale.value;
 
-	d_drawspans = D_DrawSpans8;
+	d_drawspans = D_DrawSpans;
 
 	d_aflatcolor = 0;
 }

@@ -34,7 +34,6 @@ void R_TimeRefresh_f (void)
 	int			i;
 	float		start, stop, time;
 	int			startangle;
-	vrect_t		vr;
 
 	startangle = (int)r_refdef.viewangles[1];
 	
@@ -45,12 +44,7 @@ void R_TimeRefresh_f (void)
 
 		R_RenderView ();
 
-		vr.x = r_refdef.vrect.x;
-		vr.y = r_refdef.vrect.y;
-		vr.width = r_refdef.vrect.width;
-		vr.height = r_refdef.vrect.height;
-		vr.pnext = NULL;
-		VID_Update (&vr);
+		VID_Update ();
 	}
 	stop = (float)Sys_DoubleTime ();
 	time = stop-start;
@@ -69,7 +63,7 @@ Only called by R_DisplayTime
 void R_LineGraph (int x, int y, int h)
 {
 	int		i;
-	byte	*dest;
+	pixel_t	*dest;
 	int		s;
 	int		color;
 
@@ -78,7 +72,7 @@ void R_LineGraph (int x, int y, int h)
 //	x += r_refdef.vrect.x;
 //	y += r_refdef.vrect.y;
 	
-	dest = vid.buffer + vid.rowbytes*y + x;
+	dest = vid.buffer + vid.rowpixels*y + x;
 	
 	s = (int)r_graphheight.value;
 
@@ -94,11 +88,8 @@ void R_LineGraph (int x, int y, int h)
 	if (h>s)
 		h = s;
 	
-	for (i=0 ; i<h ; i++, dest -= vid.rowbytes*2)
-	{
-		dest[0] = (byte)color;
-//		*(dest-vid.rowbytes) = 0x30;
-	}
+	for (i=0 ; i<h ; i++, dest -= vid.rowpixels*2)
+		dest[0] = d_pal30[color];
 }
 
 /*

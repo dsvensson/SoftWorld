@@ -234,49 +234,6 @@ static cshift_t	cshift_lava = { {255,80,0}, 150 };
 
 cvar_t		v_gamma = {.name = "gamma", .string = "1", .archive = true};
 
-static byte		gammatable[256];	// palette is sent through this
-
-
-void BuildGammaTable (float g)
-{
-	int		i, inf;
-	
-	if (g == 1.0)
-	{
-		for (i=0 ; i<256 ; i++)
-			gammatable[i] = (byte)i;
-		return;
-	}
-	
-	for (i=0 ; i<256 ; i++)
-	{
-		inf = (int)(255 * pow ( (i+0.5)/255.5 , g ) + 0.5);
-		if (inf < 0)
-			inf = 0;
-		if (inf > 255)
-			inf = 255;
-		gammatable[i] = (byte)inf;
-	}
-}
-
-/*
-=================
-V_CheckGamma
-=================
-*/
-bool V_CheckGamma (void)
-{
-	static float oldgammavalue;
-	
-	if (v_gamma.value == oldgammavalue)
-		return false;
-	oldgammavalue = v_gamma.value;
-	
-	BuildGammaTable (v_gamma.value);
-	vid.recalc_refdef = 1;				// force a surface cache flush
-	
-	return true;
-}
 
 
 /*
@@ -455,42 +412,20 @@ V_CalcBlend
 
 /*
 =============
-V_UpdatePalette
+V_UpdateBlend
+
+The color shifts and gamma go to the presenter, which applies them to the
+whole frame
 =============
 */
-/*
-=============
-V_UpdatePalette
-=============
-*/
-void V_UpdatePalette (void)
+void V_UpdateBlend (void)
 {
-	int		i, j;
-	bool	new;
-	byte	*basepal, *newpal;
-	byte	pal[768];
-	int		r,g,b;
-	bool force;
+	vid_present_t	present = {.contrast = 1};
+	float			p, keep, rgb[3] = {0, 0, 0};
+	int				i, j;
 
 	V_CalcPowerupCshift ();
-	
-	new = false;
-	
-	for (i=0 ; i<NUM_CSHIFTS ; i++)
-	{
-		if (cl.cshifts[i].percent != cl.prev_cshifts[i].percent)
-		{
-			new = true;
-			cl.prev_cshifts[i].percent = cl.cshifts[i].percent;
-		}
-		for (j=0 ; j<3 ; j++)
-			if (cl.cshifts[i].destcolor[j] != cl.prev_cshifts[i].destcolor[j])
-			{
-				new = true;
-				cl.prev_cshifts[i].destcolor[j] = cl.cshifts[i].destcolor[j];
-			}
-	}
-	
+
 // drop the damage value
 	cl.cshifts[CSHIFT_DAMAGE].percent = (int)(cl.cshifts[CSHIFT_DAMAGE].percent - cls.frametime*150);
 	if (cl.cshifts[CSHIFT_DAMAGE].percent <= 0)
@@ -501,34 +436,22 @@ void V_UpdatePalette (void)
 	if (cl.cshifts[CSHIFT_BONUS].percent <= 0)
 		cl.cshifts[CSHIFT_BONUS].percent = 0;
 
-	force = V_CheckGamma ();
-	if (!new && !force)
-		return;
-			
-	basepal = cls.basepal;
-	newpal = pal;
-	
-	for (i=0 ; i<256 ; i++)
+// the shifts apply one after another, each moving the color percent/256 of
+// the way to its own; together they are one move of the color toward rgb/(1-keep)
+	keep = 1;
+	for (i=0 ; i<NUM_CSHIFTS ; i++)
 	{
-		r = basepal[0];
-		g = basepal[1];
-		b = basepal[2];
-		basepal += 3;
-	
-		for (j=0 ; j<NUM_CSHIFTS ; j++)	
-		{
-			r += (cl.cshifts[j].percent*(cl.cshifts[j].destcolor[0]-r))>>8;
-			g += (cl.cshifts[j].percent*(cl.cshifts[j].destcolor[1]-g))>>8;
-			b += (cl.cshifts[j].percent*(cl.cshifts[j].destcolor[2]-b))>>8;
-		}
-		
-		newpal[0] = gammatable[r];
-		newpal[1] = gammatable[g];
-		newpal[2] = gammatable[b];
-		newpal += 3;
+		p = fminf (fmaxf (cl.cshifts[i].percent / 256.0f, 0), 1);
+		for (j=0 ; j<3 ; j++)
+			rgb[j] = rgb[j] * (1 - p) + cl.cshifts[i].destcolor[j] / 255.0f * p;
+		keep *= 1 - p;
 	}
+	present.blend[3] = 1 - keep;
+	for (j=0 ; j<3 ; j++)
+		present.blend[j] = present.blend[3] > 0 ? rgb[j] / present.blend[3] : 0;
 
-	VID_ShiftPalette (pal);	
+	present.gamma = v_gamma.value > 0 ? v_gamma.value : 1;
+	VID_SetPresent (&present);
 }
 
 
@@ -752,7 +675,7 @@ void V_CalcRefdef (void)
  	else
 		view->model = cl.model_precache[cl.stats[STAT_WEAPON]];
 	view->frame = view_message->weaponframe;
-	view->colormap = vid.colormap;
+	view->translate = NULL;
 
 // set up the refresh position
 	r_refdef.viewangles[PITCH] += cl.punchangle;
@@ -882,7 +805,6 @@ void V_Init (void)
 	Cvar_RegisterVariable (&v_kickroll);
 	Cvar_RegisterVariable (&v_kickpitch);	
 
-	BuildGammaTable (1.0);	// no gamma yet
 	Cvar_RegisterVariable (&v_gamma);
 }
 

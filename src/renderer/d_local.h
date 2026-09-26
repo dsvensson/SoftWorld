@@ -47,7 +47,7 @@ typedef struct surfcache_s
 	unsigned			height;		// DEBUG only needed for debug
 	float				mipscale;
 	struct texture_s	*texture;	// checked for animating textures
-	byte				data[4];	// width*height elements
+	pixel_t				data[1];	// width*height elements
 } surfcache_t;
 
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
@@ -71,12 +71,14 @@ extern fixed16_t	sadjust, tadjust;
 extern fixed16_t	bbextents, bbextentt;
 
 
-void D_DrawSpans8 (espan_t *pspans);
+void D_DrawSpans (espan_t *pspans);
 void D_DrawZSpans (espan_t *pspans);
 void Turbulent8 (espan_t *pspan);
 void D_SpriteDrawSpans (sspan_t *pspan);
 
-void D_DrawSkyScans8 (espan_t *pspan);
+void D_DrawSkyScans (espan_t *pspan);
+
+extern byte		*d_turbsource;	// the 64x64 texture of a turbulent surface
 
 extern void (*prealspandrawer)(void);
 surfcache_t	*D_CacheSurface (msurface_t *surface, int miplevel);

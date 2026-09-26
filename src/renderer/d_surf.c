@@ -48,9 +48,8 @@ int     D_SurfaceCacheForRes (int width, int height)
 	pix = width*height;
 	if (pix > 64000)
 		size += (pix-64000)*3;
-		
 
-	return size;
+	return size * (int)sizeof(pixel_t);
 }
 
 void D_CheckCacheGuard (void)
@@ -134,7 +133,7 @@ surfcache_t     *D_SCAlloc (int width, int size)
 	if ((width < 0) || (width > 256))
 		Sys_Error ("D_SCAlloc: bad cache width %d\n", width);
 
-	if ((size <= 0) || (size > 0x10000))
+	if ((size <= 0) || (size > 256 * 256 * (int)sizeof(pixel_t)))
 		Sys_Error ("D_SCAlloc: bad cache size %d\n", size);
 	
 	size = (int)offsetof (surfcache_t, data) + size;
@@ -250,7 +249,7 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 	surfscale = 1.0f / (1<<miplevel);
 	r_drawsurf.surfmip = miplevel;
 	r_drawsurf.surfwidth = surface->extents[0] >> miplevel;
-	r_drawsurf.rowbytes = r_drawsurf.surfwidth;
+	r_drawsurf.rowpixels = r_drawsurf.surfwidth;
 	r_drawsurf.surfheight = surface->extents[1] >> miplevel;
 	
 //
@@ -259,7 +258,7 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 	if (!cache)     // if a texture just animated, don't reallocate it
 	{
 		cache = D_SCAlloc (r_drawsurf.surfwidth,
-						   r_drawsurf.surfwidth * r_drawsurf.surfheight);
+						   r_drawsurf.surfwidth * r_drawsurf.surfheight * (int)sizeof(pixel_t));
 		surface->cachespots[miplevel] = cache;
 		cache->owner = &surface->cachespots[miplevel];
 		cache->mipscale = surfscale;
@@ -270,7 +269,7 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 	else
 		cache->dlight = 0;
 
-	r_drawsurf.surfdat = (pixel_t *)cache->data;
+	r_drawsurf.surfdat = cache->data;
 	
 	cache->texture = r_drawsurf.texture;
 	cache->lightadj[0] = r_drawsurf.lightadj[0];

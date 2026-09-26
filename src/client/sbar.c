@@ -770,7 +770,7 @@ void Sbar_Draw (void)
 	char st[512];
 
 	headsup = !(cl_sbar.value || scr_viewsize.value<100);
-	if ((sb_updates >= vid.numpages) && !headsup)
+	if ((sb_updates >= 1) && !headsup)
 		return;
 
 	if (scr.con_current == vid.height)

@@ -51,7 +51,7 @@ static surf_t	*r_surfaces_mem;	// heap block behind surfaces (which points one e
 static bool	r_surfsonstack;
 int			r_clipflags;
 
-byte		*r_warpbuffer;
+pixel_t		*r_warpbuffer;
 
 static byte		*r_stack_start;
 
@@ -877,7 +877,7 @@ r_refdef must be set before the first call
 */
 void R_RenderView_ (void)
 {
-	byte	warpbuffer[WARP_WIDTH * WARP_HEIGHT];
+	static pixel_t	warpbuffer[WARP_WIDTH * WARP_HEIGHT];
 
 	r_warpbuffer = warpbuffer;
 
@@ -966,9 +966,6 @@ void R_RenderView (void)
 
 	if ( (uintptr_t)(&dummy) & 3 )
 		Sys_Error ("Stack is missaligned");
-
-	if ( (uintptr_t)(&r_warpbuffer) & 3 )
-		Sys_Error ("Globals are missaligned");
 
 	R_RenderView_ ();
 }

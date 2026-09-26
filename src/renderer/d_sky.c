@@ -59,13 +59,13 @@ void D_Sky_uv_To_st (int u, int v, fixed16_t *s, fixed16_t *t)
 
 /*
 =================
-D_DrawSkyScans8
+D_DrawSkyScans
 =================
 */
-void D_DrawSkyScans8 (espan_t *pspan)
+void D_DrawSkyScans (espan_t *pspan)
 {
 	int				count, spancount, u, v;
-	unsigned char	*pdest;
+	pixel_t			*pdest;
 	fixed16_t		s, t, snext, tnext, sstep, tstep;
 	int				spancountminus1;
 
@@ -76,8 +76,7 @@ void D_DrawSkyScans8 (espan_t *pspan)
 
 	do
 	{
-		pdest = (unsigned char *)((byte *)d_viewbuffer +
-				(screenwidth * pspan->v) + pspan->u);
+		pdest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
 
 		count = pspan->count;
 
@@ -124,8 +123,8 @@ void D_DrawSkyScans8 (espan_t *pspan)
 
 			do
 			{
-				*pdest++ = r_skysource[((t & R_SKY_TMASK) >> 8) +
-						((s & R_SKY_SMASK) >> 16)];
+				*pdest++ = d_pal30[r_skysource[((t & R_SKY_TMASK) >> 8) +
+						((s & R_SKY_SMASK) >> 16)]];
 				s += sstep;
 				t += tstep;
 			} while (--spancount > 0);

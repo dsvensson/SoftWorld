@@ -27,26 +27,16 @@ drawsurf_t	r_drawsurf;
 static int				lightleft, blocksize, sourcetstep;
 static int				lightright, lightleftstep, lightrightstep, blockdivshift;
 static unsigned		blockdivmask;
-static void			*prowdestbase;
+static pixel_t			*prowdestbase;
 static unsigned char	*pbasesource;
-static int				surfrowbytes;	// used by ASM files
+static int				surfrowpixels;
 static unsigned		*r_lightptr;
 static int				r_stepback;
 static int				r_lightwidth;
 static int				r_numhblocks, r_numvblocks;
 static unsigned char	*r_source, *r_sourcemax;
 
-void R_DrawSurfaceBlock8_mip0 (void);
-void R_DrawSurfaceBlock8_mip1 (void);
-void R_DrawSurfaceBlock8_mip2 (void);
-void R_DrawSurfaceBlock8_mip3 (void);
-
-static void	(*surfmiptable[4])(void) = {
-	R_DrawSurfaceBlock8_mip0,
-	R_DrawSurfaceBlock8_mip1,
-	R_DrawSurfaceBlock8_mip2,
-	R_DrawSurfaceBlock8_mip3
-};
+static void R_DrawSurfaceBlock (void);
 
 
 
@@ -234,14 +224,13 @@ void R_DrawSurface (void)
 	int				u;
 	int				soffset, basetoffset, texwidth;
 	int				horzblockstep;
-	unsigned char	*pcolumndest;
-	void			(*pblockdrawer)(void);
+	pixel_t			*pcolumndest;
 	texture_t		*mt;
 
 // calculate the lightings
 	R_BuildLightMap ();
 	
-	surfrowbytes = r_drawsurf.rowbytes;
+	surfrowpixels = r_drawsurf.rowpixels;
 
 	mt = r_drawsurf.texture;
 	
@@ -263,8 +252,6 @@ void R_DrawSurface (void)
 
 //==============================
 
-	pblockdrawer = surfmiptable[r_drawsurf.surfmip];
-// TODO: only needs to be set when there is a display settings change
 	horzblockstep = blocksize;
 
 	smax = mt->width >> r_drawsurf.surfmip;
@@ -293,7 +280,7 @@ void R_DrawSurface (void)
 
 		pbasesource = basetptr + soffset;
 
-		(*pblockdrawer)();
+		R_DrawSurfaceBlock ();
 
 		soffset = soffset + blocksize;
 		if (soffset >= smax)
@@ -309,196 +296,47 @@ void R_DrawSurface (void)
 
 /*
 ================
-R_DrawSurfaceBlock8_mip0
+R_DrawSurfaceBlock
+
+A column of blocks, 16 >> miplevel texels square, lit by interpolating
+the light at the block corners
 ================
 */
-void R_DrawSurfaceBlock8_mip0 (void)
+static void R_DrawSurfaceBlock (void)
 {
 	int				v, i, b, lightstep, lighttemp, light;
-	unsigned char	pix, *psource, *prowdest;
+	int				shift = blockdivshift;
+	byte			*psource;
+	pixel_t			*prowdest;
 
 	psource = pbasesource;
 	prowdest = prowdestbase;
 
 	for (v=0 ; v<r_numvblocks ; v++)
 	{
-	// FIXME: make these locals?
-	// FIXME: use delta rather than both right and left, like ASM?
 		lightleft = r_lightptr[0];
 		lightright = r_lightptr[1];
 		r_lightptr += r_lightwidth;
-		lightleftstep = (r_lightptr[0] - lightleft) >> 4;
-		lightrightstep = (r_lightptr[1] - lightright) >> 4;
+		lightleftstep = (r_lightptr[0] - lightleft) >> shift;
+		lightrightstep = (r_lightptr[1] - lightright) >> shift;
 
-		for (i=0 ; i<16 ; i++)
+		for (i=0 ; i<blocksize ; i++)
 		{
 			lighttemp = lightleft - lightright;
-			lightstep = lighttemp >> 4;
+			lightstep = lighttemp >> shift;
 
 			light = lightright;
 
-			for (b=15; b>=0; b--)
+			for (b=blocksize-1; b>=0; b--)
 			{
-				pix = psource[b];
-				prowdest[b] = ((unsigned char *)vid.colormap)
-						[(light & 0xFF00) + pix];
+				prowdest[b] = d_cm30[(light & 0xFF00) + psource[b]];
 				light += lightstep;
 			}
-	
+
 			psource += sourcetstep;
 			lightright += lightrightstep;
 			lightleft += lightleftstep;
-			prowdest += surfrowbytes;
-		}
-
-		if (psource >= r_sourcemax)
-			psource -= r_stepback;
-	}
-}
-
-
-/*
-================
-R_DrawSurfaceBlock8_mip1
-================
-*/
-void R_DrawSurfaceBlock8_mip1 (void)
-{
-	int				v, i, b, lightstep, lighttemp, light;
-	unsigned char	pix, *psource, *prowdest;
-
-	psource = pbasesource;
-	prowdest = prowdestbase;
-
-	for (v=0 ; v<r_numvblocks ; v++)
-	{
-	// FIXME: make these locals?
-	// FIXME: use delta rather than both right and left, like ASM?
-		lightleft = r_lightptr[0];
-		lightright = r_lightptr[1];
-		r_lightptr += r_lightwidth;
-		lightleftstep = (r_lightptr[0] - lightleft) >> 3;
-		lightrightstep = (r_lightptr[1] - lightright) >> 3;
-
-		for (i=0 ; i<8 ; i++)
-		{
-			lighttemp = lightleft - lightright;
-			lightstep = lighttemp >> 3;
-
-			light = lightright;
-
-			for (b=7; b>=0; b--)
-			{
-				pix = psource[b];
-				prowdest[b] = ((unsigned char *)vid.colormap)
-						[(light & 0xFF00) + pix];
-				light += lightstep;
-			}
-	
-			psource += sourcetstep;
-			lightright += lightrightstep;
-			lightleft += lightleftstep;
-			prowdest += surfrowbytes;
-		}
-
-		if (psource >= r_sourcemax)
-			psource -= r_stepback;
-	}
-}
-
-
-/*
-================
-R_DrawSurfaceBlock8_mip2
-================
-*/
-void R_DrawSurfaceBlock8_mip2 (void)
-{
-	int				v, i, b, lightstep, lighttemp, light;
-	unsigned char	pix, *psource, *prowdest;
-
-	psource = pbasesource;
-	prowdest = prowdestbase;
-
-	for (v=0 ; v<r_numvblocks ; v++)
-	{
-	// FIXME: make these locals?
-	// FIXME: use delta rather than both right and left, like ASM?
-		lightleft = r_lightptr[0];
-		lightright = r_lightptr[1];
-		r_lightptr += r_lightwidth;
-		lightleftstep = (r_lightptr[0] - lightleft) >> 2;
-		lightrightstep = (r_lightptr[1] - lightright) >> 2;
-
-		for (i=0 ; i<4 ; i++)
-		{
-			lighttemp = lightleft - lightright;
-			lightstep = lighttemp >> 2;
-
-			light = lightright;
-
-			for (b=3; b>=0; b--)
-			{
-				pix = psource[b];
-				prowdest[b] = ((unsigned char *)vid.colormap)
-						[(light & 0xFF00) + pix];
-				light += lightstep;
-			}
-	
-			psource += sourcetstep;
-			lightright += lightrightstep;
-			lightleft += lightleftstep;
-			prowdest += surfrowbytes;
-		}
-
-		if (psource >= r_sourcemax)
-			psource -= r_stepback;
-	}
-}
-
-
-/*
-================
-R_DrawSurfaceBlock8_mip3
-================
-*/
-void R_DrawSurfaceBlock8_mip3 (void)
-{
-	int				v, i, b, lightstep, lighttemp, light;
-	unsigned char	pix, *psource, *prowdest;
-
-	psource = pbasesource;
-	prowdest = prowdestbase;
-
-	for (v=0 ; v<r_numvblocks ; v++)
-	{
-	// FIXME: make these locals?
-	// FIXME: use delta rather than both right and left, like ASM?
-		lightleft = r_lightptr[0];
-		lightright = r_lightptr[1];
-		r_lightptr += r_lightwidth;
-		lightleftstep = (r_lightptr[0] - lightleft) >> 1;
-		lightrightstep = (r_lightptr[1] - lightright) >> 1;
-
-		for (i=0 ; i<2 ; i++)
-		{
-			lighttemp = lightleft - lightright;
-			lightstep = lighttemp >> 1;
-
-			light = lightright;
-
-			for (b=1; b>=0; b--)
-			{
-				pix = psource[b];
-				prowdest[b] = ((unsigned char *)vid.colormap)
-						[(light & 0xFF00) + pix];
-				light += lightstep;
-			}
-	
-			psource += sourcetstep;
-			lightright += lightrightstep;
-			lightleft += lightleftstep;
-			prowdest += surfrowbytes;
+			prowdest += surfrowpixels;
 		}
 
 		if (psource >= r_sourcemax)

@@ -55,7 +55,7 @@ void D_DrawParticle (particle_t *pparticle)
 {
 	vec3_t	local, transformed;
 	float	zi;
-	byte	*pdest;
+	pixel_t	*pdest, color;
 	short	*pz;
 	int		i, izi, pix, count, u, v;
 
@@ -94,111 +94,19 @@ void D_DrawParticle (particle_t *pparticle)
 	else if (pix > d_pix_max)
 		pix = d_pix_max;
 
-	switch (pix)
+	color = d_pal30[(byte)pparticle->color];
+	count = pix << d_y_aspect_shift;
+
+	for ( ; count ; count--, pz += d_zwidth, pdest += screenwidth)
 	{
-	case 1:
-		count = 1 << d_y_aspect_shift;
-
-		for ( ; count ; count--, pz += d_zwidth, pdest += screenwidth)
+		for (i=0 ; i<pix ; i++)
 		{
-			if (pz[0] <= izi)
+			if (pz[i] <= izi)
 			{
-				pz[0] = (short)izi;
-				pdest[0] = (byte)pparticle->color;
+				pz[i] = (short)izi;
+				pdest[i] = color;
 			}
 		}
-		break;
-
-	case 2:
-		count = 2 << d_y_aspect_shift;
-
-		for ( ; count ; count--, pz += d_zwidth, pdest += screenwidth)
-		{
-			if (pz[0] <= izi)
-			{
-				pz[0] = (short)izi;
-				pdest[0] = (byte)pparticle->color;
-			}
-
-			if (pz[1] <= izi)
-			{
-				pz[1] = (short)izi;
-				pdest[1] = (byte)pparticle->color;
-			}
-		}
-		break;
-
-	case 3:
-		count = 3 << d_y_aspect_shift;
-
-		for ( ; count ; count--, pz += d_zwidth, pdest += screenwidth)
-		{
-			if (pz[0] <= izi)
-			{
-				pz[0] = (short)izi;
-				pdest[0] = (byte)pparticle->color;
-			}
-
-			if (pz[1] <= izi)
-			{
-				pz[1] = (short)izi;
-				pdest[1] = (byte)pparticle->color;
-			}
-
-			if (pz[2] <= izi)
-			{
-				pz[2] = (short)izi;
-				pdest[2] = (byte)pparticle->color;
-			}
-		}
-		break;
-
-	case 4:
-		count = 4 << d_y_aspect_shift;
-
-		for ( ; count ; count--, pz += d_zwidth, pdest += screenwidth)
-		{
-			if (pz[0] <= izi)
-			{
-				pz[0] = (short)izi;
-				pdest[0] = (byte)pparticle->color;
-			}
-
-			if (pz[1] <= izi)
-			{
-				pz[1] = (short)izi;
-				pdest[1] = (byte)pparticle->color;
-			}
-
-			if (pz[2] <= izi)
-			{
-				pz[2] = (short)izi;
-				pdest[2] = (byte)pparticle->color;
-			}
-
-			if (pz[3] <= izi)
-			{
-				pz[3] = (short)izi;
-				pdest[3] = (byte)pparticle->color;
-			}
-		}
-		break;
-
-	default:
-		count = pix << d_y_aspect_shift;
-
-		for ( ; count ; count--, pz += d_zwidth, pdest += screenwidth)
-		{
-			for (i=0 ; i<pix ; i++)
-			{
-				if (pz[i] <= izi)
-				{
-					pz[i] = (short)izi;
-					pdest[i] = (byte)pparticle->color;
-				}
-			}
-		}
-		break;
 	}
 }
 

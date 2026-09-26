@@ -29,7 +29,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 affinetridesc_t	r_affinetridesc;
 
-void *			acolormap;	// FIXME: should go away
 
 static trivertx_t		*r_apverts;
 
@@ -725,9 +724,6 @@ void R_AliasDrawModel (alight_t *plighting)
 	R_AliasSetupLighting (plighting);
 	R_AliasSetupFrame ();
 
-	if (!currententity->colormap)
-		Sys_Error ("R_AliasDrawModel: !currententity->colormap");
-
 	r_affinetridesc.drawtype = (currententity->trivial_accept == 3) &&
 			r_recursiveaffinetriangles;
 
@@ -739,7 +735,7 @@ void R_AliasDrawModel (alight_t *plighting)
 	{
 	}
 
-	acolormap = currententity->colormap;
+	r_affinetridesc.skinremap = currententity->translate ? currententity->translate : r_identityremap;
 
 	if (currententity != r_scene.viewent)
 		ziscale = (float)0x8000 * (float)0x10000;

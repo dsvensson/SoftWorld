@@ -88,6 +88,7 @@ typedef struct
 	int					numtriangles;
 	int					drawtype;
 	int					seamfixupX16;
+	const byte			*skinremap;		// player colors, or r_identityremap
 } affinetridesc_t;
 
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!
@@ -176,7 +177,6 @@ extern byte				*r_skysource;
 // !!! must be kept the same as in quakeasm.h !!!
 #define TRANSPARENT_COLOR	0xFF
 
-extern void *acolormap;	// FIXME: should go away
 
 //=======================================================================//
 
@@ -185,7 +185,7 @@ extern void *acolormap;	// FIXME: should go away
 typedef struct
 {
 	pixel_t		*surfdat;	// destination for generated surface
-	int			rowbytes;	// destination logical width in bytes
+	int			rowpixels;	// destination row length
 	msurface_t	*surf;		// description for surface to generate
 	fixed8_t	lightadj[MAXLIGHTMAPS];
 							// adjust for lightmap levels for dynamic lighting
@@ -217,4 +217,4 @@ extern float	skytime;
 
 extern int		c_surf;
 
-extern byte		*r_warpbuffer;
+extern pixel_t	*r_warpbuffer;

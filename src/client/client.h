@@ -90,7 +90,7 @@ typedef struct player_info_s
 	int		_bottomcolor;
 
 	int		spectator;
-	byte	translations[VID_GRADES*256];
+	byte	translate[256];		// the palette with the player's colors
 	skin_t	*skin;
 } player_info_t;
 
@@ -251,8 +251,7 @@ typedef struct
 	float		item_gettime[32];	// cl.time of aquiring item, for blinking
 	float		faceanimtime;		// use anim frame if cl.time < this
 
-	cshift_t	cshifts[NUM_CSHIFTS];	// color shifts for damage, powerups
-	cshift_t	prev_cshifts[NUM_CSHIFTS];	// and content types
+	cshift_t	cshifts[NUM_CSHIFTS];	// color shifts for damage, powerups and content types
 
 // the client maintains its own idea of view angles, which are
 // sent to the server each frame.  And only reset at level change
@@ -454,7 +453,7 @@ void V_StartPitchDrift (void);
 void V_StopPitchDrift (void);
 
 void V_RenderView (void);
-void V_UpdatePalette (void);
+void V_UpdateBlend (void);
 void V_ParseDamage (void);
 void V_SetContentsColor (int contents);
 

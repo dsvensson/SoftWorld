@@ -337,7 +337,7 @@ entity_t *CL_NewTempEntity (void)
 	
 	memset (ent, 0, sizeof(*ent));
 
-	ent->colormap = vid.colormap;
+	ent->translate = NULL;
 	return ent;
 }
 

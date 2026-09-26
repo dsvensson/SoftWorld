@@ -36,12 +36,12 @@ D_ViewChanged
 */
 void D_ViewChanged (void)
 {
-	int rowbytes;
+	int rowpixels;
 
 	if (r_dowarp)
-		rowbytes = WARP_WIDTH;
+		rowpixels = WARP_WIDTH;
 	else
-		rowbytes = vid.rowbytes;
+		rowpixels = vid.rowpixels;
 
 	scale_for_mip = xscale;
 	if (yscale > xscale)
@@ -75,7 +75,7 @@ void D_ViewChanged (void)
 
 		for (i=0 ; i<(int)vid.height; i++)
 		{
-			d_scantable[i] = i*rowbytes;
+			d_scantable[i] = i*rowpixels;
 			zspantable[i] = d_pzbuffer + i*d_zwidth;
 		}
 	}
