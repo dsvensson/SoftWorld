@@ -18,10 +18,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
-#include "qwsvdef.h"
+#include "sv_local.h"
 
 server_static_t	svs;				// persistant server info
 server_t		sv;					// local server
+arena_t		sv_level_arena;		// memory that lives as long as the current level
 
 char	localmodels[MAX_MODELS][5];	// inline model names for precache
 
@@ -192,17 +193,19 @@ void SV_CalcPHS (void)
 
 	Con_Printf ("Building PHS...\n");
 
-	num = sv.worldmodel->numleafs;
+	// a row for every leaf with visibility, and one for leaf 0 outside the map
+	num = CM_NumVisLeafs () + 1;
 	rowwords = (num+31)>>5;
 	rowbytes = rowwords*4;
+	sv.vis_rowbytes = rowbytes;
+	sv.checkpvs = Arena_Alloc (&sv_level_arena, (size_t)rowbytes);
 
-	sv.pvs = Hunk_Alloc (rowbytes*num);
+	sv.pvs = Arena_Alloc (&sv_level_arena, (size_t)rowbytes*num);
 	scan = sv.pvs;
 	vcount = 0;
 	for (i=0 ; i<num ; i++, scan+=rowbytes)
 	{
-		memcpy (scan, Mod_LeafPVS(sv.worldmodel->leafs+i, sv.worldmodel),
-			rowbytes);
+		memcpy (scan, CM_LeafPVS (i), (size_t)rowbytes);
 		if (i == 0)
 			continue;
 		for (j=0 ; j<num ; j++)
@@ -215,7 +218,7 @@ void SV_CalcPHS (void)
 	}
 
 
-	sv.phs = Hunk_Alloc (rowbytes*num);
+	sv.phs = Arena_Alloc (&sv_level_arena, (size_t)rowbytes*num);
 	count = 0;
 	scan = sv.pvs;
 	dest = (unsigned *)sv.phs;
@@ -255,15 +258,15 @@ void SV_CalcPHS (void)
 
 unsigned SV_CheckModel(char *mdl)
 {
-	byte	stackbuf[1024];		// avoid dirtying the cache heap
-	byte *buf;
+	byte	*buf;
+	int		len;
 	unsigned short crc;
-//	int len;
 
-	buf = (byte *)COM_LoadStackFile (mdl, stackbuf, sizeof(stackbuf));
-	crc = CRC_Block(buf, com_filesize);
-//	for (len = com_filesize; len; len--, buf++)
-//		CRC_ProcessByte(&crc, *buf);
+	buf = FS_LoadFile (mdl, &len);
+	if (!buf)
+		SV_Error ("SV_CheckModel: couldn't load %s", mdl);
+	crc = CRC_Block(buf, len);
+	Mem_Free (buf);
 
 	return crc;
 }
@@ -292,8 +295,9 @@ void SV_SpawnServer (char *server)
 
 	sv.state = ss_dead;
 
-	Mod_ClearAll ();
-	Hunk_FreeToLowMark (host_hunklevel);
+	if (!sv_level_arena.name)
+		Arena_Init (&sv_level_arena, "server level");
+	Arena_Reset (&sv_level_arena);
 
 	// wipe the entire per-level structure
 	memset (&sv, 0, sizeof(sv));
@@ -322,7 +326,7 @@ void SV_SpawnServer (char *server)
 	PR_LoadProgs ();
 
 	// allocate edicts
-	sv.edicts = Hunk_AllocName (MAX_EDICTS*pr_edict_size, "edicts");
+	sv.edicts = Arena_Alloc (&sv_level_arena, (size_t)MAX_EDICTS*pr_edict_size);
 	
 	// leave slots at start for clients only
 	sv.num_edicts = MAX_CLIENTS+1;
@@ -338,7 +342,9 @@ void SV_SpawnServer (char *server)
 	
 	Q_strncpyz (sv.name, server, sizeof(sv.name));
 	snprintf (sv.modelname, sizeof(sv.modelname), "maps/%s.bsp", server);
-	sv.worldmodel = Mod_ForName (sv.modelname, true);
+	sv.worldmodel = CM_LoadMap (sv.modelname, &sv.map_checksum, &sv.map_checksum2);
+	if (!sv.worldmodel)
+		SV_Error ("Couldn't load %s", sv.modelname);
 	SV_CalcPHS ();
 
 	//
@@ -351,10 +357,10 @@ void SV_SpawnServer (char *server)
 	sv.model_precache[0] = pr_strings;
 	sv.model_precache[1] = sv.modelname;
 	sv.models[1] = sv.worldmodel;
-	for (i=1 ; i<sv.worldmodel->numsubmodels ; i++)
+	for (i=1 ; i<CM_NumInlineModels () ; i++)
 	{
 		sv.model_precache[1+i] = localmodels[i];
-		sv.models[i+1] = Mod_ForName (localmodels[i], false);
+		sv.models[i+1] = CM_InlineModel (localmodels[i]);
 	}
 
 	//check player/eyes models for hacks
@@ -371,7 +377,7 @@ void SV_SpawnServer (char *server)
 
 	ent = EDICT_NUM(0);
 	ent->free = false;
-	ent->v.model = PR_SetString(sv.worldmodel->name);
+	ent->v.model = PR_SetString(sv.modelname);
 	ent->v.modelindex = 1;		// world model
 	ent->v.solid = SOLID_BSP;
 	ent->v.movetype = MOVETYPE_PUSH;
@@ -384,7 +390,7 @@ void SV_SpawnServer (char *server)
 	SV_ProgStartFrame ();
 
 	// load and spawn all other entities
-	ED_LoadFromFile (sv.worldmodel->entities);
+	ED_LoadFromFile (CM_EntityString ());
 
 	// look up some model indexes for specialized message compression
 	SV_FindModelNumbers ();

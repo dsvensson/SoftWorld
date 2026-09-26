@@ -18,7 +18,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
-#include "quakedef.h"
+#include "cl_local.h"
 
 cvar_t		baseskin = {.name = "baseskin", .string = "base"};
 cvar_t		noskins = {.name = "noskins", .string = "0"};
@@ -94,10 +94,10 @@ Returns a pointer to the skin bitmap, or NULL to use the default
 byte	*Skin_Cache (skin_t *skin)
 {
 	char	skinpath[1024];
-	byte	*raw;
+	byte	*file, *raw, *end;
 	byte	*out, *pix;
 	pcx_t	*pcx;
-	int		x, y;
+	int		x, y, len;
 	int		dataByte;
 	int		runLength;
 
@@ -110,21 +110,20 @@ byte	*Skin_Cache (skin_t *skin)
 	if (skin->failedload)
 		return NULL;
 
-	out = Cache_Check (&skin->cache);
-	if (out)
-		return out;
+	if (skin->data)
+		return skin->data;
 
 //
 // load the pic from disk
 //
 	snprintf (skinpath, sizeof(skinpath), "skins/%s.pcx", skin->name);
-	raw = COM_LoadTempFile (skinpath);
-	if (!raw)
+	file = FS_LoadFile (skinpath, &len);
+	if (!file)
 	{
 		Con_Printf ("Couldn't load skin %s\n", skinpath);
 		snprintf (skinpath, sizeof(skinpath), "skins/%s.pcx", baseskin.string);
-		raw = COM_LoadTempFile (skinpath);
-		if (!raw)
+		file = FS_LoadFile (skinpath, &len);
+		if (!file)
 		{
 			skin->failedload = true;
 			return NULL;
@@ -134,80 +133,64 @@ byte	*Skin_Cache (skin_t *skin)
 //
 // parse the PCX file
 //
-	pcx = (pcx_t *)raw;
+	pcx = (pcx_t *)file;
 	raw = &pcx->data;
+	end = file + len;
 
-	if (pcx->manufacturer != 0x0a
+	if (len < (int)sizeof(*pcx)
+		|| pcx->manufacturer != 0x0a
 		|| pcx->version != 5
 		|| pcx->encoding != 1
 		|| pcx->bits_per_pixel != 8
 		|| pcx->xmax >= 320
 		|| pcx->ymax >= 200)
 	{
-		skin->failedload = true;
 		Con_Printf ("Bad skin %s\n", skinpath);
-		return NULL;
+		goto bad;
 	}
-	
-	out = Cache_Alloc (&skin->cache, 320*200, skin->name);
-	if (!out)
-		Sys_Error ("Skin_Cache: couldn't allocate");
 
+	out = Mem_Calloc (1, 320*200);
 	pix = out;
-	memset (out, 0, 320*200);
 
 	for (y=0 ; y<pcx->ymax ; y++, pix += 320)
 	{
 		for (x=0 ; x<=pcx->xmax ; )
 		{
-			if (raw - (byte*)pcx > com_filesize) 
-			{
-				Cache_Free (&skin->cache);
-				skin->failedload = true;
-				Con_Printf ("Skin %s was malformed.  You should delete it.\n", skinpath);
-				return NULL;
-			}
+			if (raw >= end)
+				goto malformed;
 			dataByte = *raw++;
 
 			if((dataByte & 0xC0) == 0xC0)
 			{
 				runLength = dataByte & 0x3F;
-				if (raw - (byte*)pcx > com_filesize) 
-				{
-					Cache_Free (&skin->cache);
-					skin->failedload = true;
-					Con_Printf ("Skin %s was malformed.  You should delete it.\n", skinpath);
-					return NULL;
-				}
+				if (raw >= end)
+					goto malformed;
 				dataByte = *raw++;
 			}
 			else
 				runLength = 1;
 
 			// skin sanity check
-			if (runLength + x > pcx->xmax + 2) {
-				Cache_Free (&skin->cache);
-				skin->failedload = true;
-				Con_Printf ("Skin %s was malformed.  You should delete it.\n", skinpath);
-				return NULL;
-			}
+			if (runLength + x > pcx->xmax + 2)
+				goto malformed;
 			while(runLength-- > 0)
 				pix[x++] = (byte)dataByte;
 		}
 
 	}
 
-	if ( raw - (byte *)pcx > com_filesize)
-	{
-		Cache_Free (&skin->cache);
-		skin->failedload = true;
-		Con_Printf ("Skin %s was malformed.  You should delete it.\n", skinpath);
-		return NULL;
-	}
-
+	Mem_Free (file);
+	skin->data = out;
 	skin->failedload = false;
-
 	return out;
+
+malformed:
+	Mem_Free (out);
+	Con_Printf ("Skin %s was malformed.  You should delete it.\n", skinpath);
+bad:
+	Mem_Free (file);
+	skin->failedload = true;
+	return NULL;
 }
 
 
@@ -255,7 +238,6 @@ void Skin_NextDownload (void)
 		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
 		MSG_WriteString (&cls.netchan.message,
 			va("begin %i", cl.servercount));
-		Cache_Report ();		// print remaining memory
 	}
 }
 
@@ -273,8 +255,8 @@ void	Skin_Skins_f (void)
 
 	for (i=0 ; i<numskins ; i++)
 	{
-		if (skins[i].cache.data)
-			Cache_Free (&skins[i].cache);
+		Mem_Free (skins[i].data);
+		skins[i].data = NULL;
 	}
 	numskins = 0;
 
@@ -295,4 +277,18 @@ void	Skin_AllSkins_f (void)
 {
 	Q_strncpyz (allskins, Cmd_Argv(1), sizeof(allskins));
 	Skin_Skins_f ();
+}
+
+/*
+==========
+Skin_ForPlayer
+
+The player's skin pixels for drawing, loading them when needed
+==========
+*/
+byte *Skin_ForPlayer (player_info_t *info)
+{
+	if (!info->skin)
+		Skin_Find (info);
+	return Skin_Cache (info->skin);
 }

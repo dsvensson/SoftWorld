@@ -19,7 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // console.c
 
-#include "quakedef.h"
+#include "cl_local.h"
 
 int			con_ormask;
 console_t	con_main;
@@ -225,9 +225,12 @@ void Con_CheckResize (void)
 Con_Init
 ================
 */
+static void Con_PrintSink (const char *msg);
+
 void Con_Init (void)
 {
 	con_debuglog = COM_CheckParm("-condebug");
+	Con_AddPrintSink (Con_PrintSink);
 
 	con = &con_main;
 	con_linewidth = -1;
@@ -350,18 +353,9 @@ Handles cursor positioning, line wrapping, etc
 */
 #define	MAXPRINTMSG	4096
 // FIXME: make a buffer size safe vsprintf?
-void Con_Printf (char *fmt, ...)
+static void Con_PrintSink (const char *msg)
 {
-	va_list		argptr;
-	char		msg[MAXPRINTMSG];
 	static bool	inupdate;
-	
-	va_start (argptr,fmt);
-	vsnprintf (msg,sizeof(msg),fmt,argptr);
-	va_end (argptr);
-
-// also echo to debugging console
-	Sys_Printf ("%s", msg);	// also echo to debugging console
 
 // log all messages to file
 	if (con_debuglog)
@@ -371,7 +365,7 @@ void Con_Printf (char *fmt, ...)
 		return;
 		
 // write it to the scrollable buffer
-	Con_Print (msg);
+	Con_Print ((char *)msg);
 	
 // update the screen immediately if the console is displayed
 	if (cls.state != ca_active)
@@ -385,28 +379,6 @@ void Con_Printf (char *fmt, ...)
 			inupdate = false;
 		}
 	}
-}
-
-/*
-================
-Con_DPrintf
-
-A Con_Printf that only shows up if the "developer" cvar is set
-================
-*/
-void Con_DPrintf (char *fmt, ...)
-{
-	va_list		argptr;
-	char		msg[MAXPRINTMSG];
-		
-	if (!developer.value)
-		return;			// don't confuse non-developers with techie stuff...
-
-	va_start (argptr,fmt);
-	vsnprintf (msg,sizeof(msg),fmt,argptr);
-	va_end (argptr);
-
-	Con_Printf ("%s", msg);
 }
 
 /*
@@ -546,7 +518,7 @@ void Con_DrawConsole (int lines)
 		return;
 
 // draw the background
-	Draw_ConsoleBackground (lines);
+	Draw_ConsoleBackground (lines, cls.download != NULL);
 
 // draw the text
 	con_vislines = lines;

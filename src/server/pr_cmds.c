@@ -18,7 +18,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
-#include "qwsvdef.h"
+#include "sv_local.h"
 
 #define	RETURN_EDICT(e) (((int *)pr_globals)[OFS_RETURN] = EDICT_TO_PROG(e))
 #define	RETURN_STRING(s) (((int *)pr_globals)[OFS_RETURN] = PR_SetString(s))
@@ -165,7 +165,7 @@ void PF_setmodel (void)
 	edict_t	*e;
 	char	*m, **check;
 	int		i;
-	model_t	*mod;
+	cmodel_t	*mod;
 
 	e = G_EDICT(OFS_PARM0);
 	m = G_STRING(OFS_PARM1);
@@ -184,7 +184,9 @@ void PF_setmodel (void)
 // if it is an inline model, get the size information for it
 	if (m[0] == '*')
 	{
-		mod = Mod_ForName (m, true);
+		mod = CM_InlineModel (m);
+		if (!mod)
+			PR_RunError ("no inline model %s\n", m);
 		VectorCopy (mod->mins, e->v.mins);
 		VectorCopy (mod->maxs, e->v.maxs);
 		VectorSubtract (mod->maxs, mod->mins, e->v.size);
@@ -544,14 +546,10 @@ void PF_traceline (void)
 
 //============================================================================
 
-byte	checkpvs[MAX_MAP_LEAFS/8];
-
 int PF_newcheckclient (int check)
 {
 	int		i;
-	byte	*pvs;
 	edict_t	*ent;
-	mleaf_t	*leaf;
 	vec3_t	org;
 
 // cycle to the next one
@@ -589,9 +587,7 @@ int PF_newcheckclient (int check)
 
 // get the PVS for the entity
 	VectorAdd (ent->v.origin, ent->v.view_ofs, org);
-	leaf = Mod_PointInLeaf (org, sv.worldmodel);
-	pvs = Mod_LeafPVS (leaf, sv.worldmodel);
-	memcpy (checkpvs, pvs, (sv.worldmodel->numleafs+7)>>3 );
+	memcpy (sv.checkpvs, CM_LeafPVS (CM_Leafnum (CM_PointInLeaf (org))), (size_t)sv.vis_rowbytes);
 
 	return i;
 }
@@ -616,7 +612,6 @@ int c_invis, c_notvis;
 void PF_checkclient (void)
 {
 	edict_t	*ent, *self;
-	mleaf_t	*leaf;
 	int		l;
 	vec3_t	view;
 	
@@ -638,9 +633,8 @@ void PF_checkclient (void)
 // if current entity can't possibly see the check entity, return 0
 	self = PROG_TO_EDICT(pr_global_struct->self);
 	VectorAdd (self->v.origin, self->v.view_ofs, view);
-	leaf = Mod_PointInLeaf (view, sv.worldmodel);
-	l = (int)((leaf - sv.worldmodel->leafs) - 1);
-	if ( (l<0) || !(checkpvs[l>>3] & (1<<(l&7)) ) )
+	l = CM_Leafnum (CM_PointInLeaf (view)) - 1;
+	if ( (l<0) || !(sv.checkpvs[l>>3] & (1<<(l&7)) ) )
 	{
 c_notvis++;
 		RETURN_EDICT(sv.edicts);
@@ -1308,10 +1302,7 @@ sizebuf_t *WriteDest (void)
 
 	default:
 		PR_RunError ("WriteDest: bad destination");
-		break;
 	}
-	
-	return NULL;
 }
 
 static client_t *Write_GetClient(void)

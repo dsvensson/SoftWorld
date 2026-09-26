@@ -25,8 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  * Player moves as a spectator, but the camera tracks and enemy player
  */
 
-#include "quakedef.h"
-#include "winquake.h"
+#include "cl_local.h"
 
 #define	PM_SPECTATORMAXSPEED	500
 #define	PM_STOPSPEED	100
@@ -133,23 +132,23 @@ void Cam_Lock(int playernum)
 	Sbar_Changed();
 }
 
-pmtrace_t Cam_DoTrace(vec3_t vec1, vec3_t vec2)
+trace_t Cam_DoTrace(vec3_t vec1, vec3_t vec2)
 {
 
-	VectorCopy (vec1, pmove.origin);
-	return PM_PlayerMove(pmove.origin, vec2);
+	VectorCopy (vec1, cl_pmove.origin);
+	return PM_PlayerTrace (&cl_pmove, cl_pmove.origin, vec2);
 }
 	
 // Returns distance or 9999 if invalid for some reason
 static float Cam_TryFlyby(player_state_t *self, player_state_t *player, vec3_t vec, bool checkvis)
 {
 	vec3_t v;
-	pmtrace_t trace;
+	trace_t trace;
 	float len;
 
 	vectoangles(vec, v);
 //	v[0] = -v[0];
-	VectorCopy (v, pmove.angles);
+	VectorCopy (v, cl_pmove.angles);
 	VectorNormalize(vec);
 	VectorMA(player->origin, 800, vec, v);
 	// v is endpos
@@ -176,7 +175,7 @@ static float Cam_TryFlyby(player_state_t *self, player_state_t *player, vec3_t v
 // Is player visible?
 static bool Cam_IsVisible(player_state_t *player, vec3_t vec)
 {
-	pmtrace_t trace;
+	trace_t trace;
 	vec3_t v;
 	float d;
 

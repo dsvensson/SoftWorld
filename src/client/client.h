@@ -19,6 +19,17 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #pragma once
+
+#include "pmove.h"
+#include "cvar.h"
+#include "info.h"
+#include "mathlib.h"
+#include "msg.h"
+#include "net.h"
+#include "protocol.h"
+#include "q_types.h"
+#include "render.h"
+#include "vid.h"
 // client.h
 
 
@@ -26,7 +37,7 @@ typedef struct
 {
 	char		name[16];
 	bool	failedload;		// the name isn't a valid skin
-	cache_user_t	cache;
+	byte		*data;			// 320*200 pixels once loaded
 } skin_t;
 
 // player_state_t is the information needed by a player entity
@@ -57,6 +68,7 @@ typedef struct
 } player_state_t;
 
 
+#define	MAX_SCOREBOARD		16		// max numbers of players
 #define	MAX_SCOREBOARDNAME	16
 typedef struct player_info_s
 {
@@ -115,27 +127,10 @@ typedef struct
 //
 // client_state_t should hold all pieces of the client state
 //
-#define	MAX_DLIGHTS		32
-typedef struct
-{
-	int		key;				// so entities can reuse same entry
-	vec3_t	origin;
-	float	radius;
-	float	die;				// stop lighting after this time
-	float	decay;				// drop this each second
-	float	minlight;			// don't add when contributing less
-	float   color[4];
-} dlight_t;
-
-typedef struct
-{
-	int		length;
-	char	map[MAX_STYLESTRING];
-} lightstyle_t;
 
 
 
-#define	MAX_EFRAGS		512
+
 
 #define	MAX_DEMOS		8
 #define	MAX_DEMONAME	16
@@ -273,6 +268,9 @@ typedef struct
 	char		sound_name[MAX_SOUNDS][MAX_QPATH];
 
 	struct model_s		*model_precache[MAX_MODELS];
+	struct cmodel_s	*clipmodels[MAX_MODELS];	// the world and its inline models, for prediction
+	unsigned	map_checksum2;		// the server checks it on prespawn
+	movevars_t	movevars;			// from the server, for prediction
 	struct sfx_s		*sound_precache[MAX_SOUNDS];
 
 	char		levelname[40];	// for display on solo scoreboard
@@ -280,7 +278,6 @@ typedef struct
 
 // refresh related state
 	struct model_s	*worldmodel;	// cl_entitites[0].model
-	struct efrag_s	*free_efrags;
 	int			num_entities;	// stored bottom up in cl_entities array
 	int			num_statics;	// stored top down in cl_entitiers
 
@@ -334,7 +331,6 @@ extern	client_state_t	cl;
 
 // FIXME, allocate dynamically
 extern	entity_state_t	cl_baselines[MAX_EDICTS];
-extern	efrag_t			cl_efrags[MAX_EFRAGS];
 extern	entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
 extern	lightstyle_t	cl_lightstyle[MAX_LIGHTSTYLES];
 extern	dlight_t		cl_dlights[MAX_DLIGHTS];
@@ -504,9 +500,19 @@ typedef struct
 
 void	Skin_Find (player_info_t *sc);
 byte	*Skin_Cache (skin_t *skin);
+byte	*Skin_ForPlayer (player_info_t *info);	// NULL if the skin can't be loaded
 void	Skin_Skins_f (void);
 void	Skin_AllSkins_f (void);
 void	Skin_NextDownload (void);
 
 #define RSSHOT_WIDTH 320
 #define RSSHOT_HEIGHT 200
+
+// the prediction's player movement; physents are set up by cl_ents.c
+extern	playermove_t	cl_pmove;
+
+extern	bool	noclip_anglehack;
+extern	cvar_t	password;
+extern	byte	*host_basepal;
+extern	byte	*host_colormap;
+extern	int		host_framecount;	// incremented every frame, never reset

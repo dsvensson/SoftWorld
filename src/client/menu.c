@@ -17,8 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-#include "quakedef.h"
-#include "winquake.h"
+#include "cl_local.h"
 
 void (*vid_menudrawfn)(void);
 void (*vid_menukeyfn)(int key);
@@ -476,7 +475,7 @@ void M_Options_Draw (void)
 	if (vid_menudrawfn)
 		M_Print (16, 144, "         Video Options");
 
-	if (modestate == MS_WINDOWED)
+	if (!VID_IsFullscreen ())
 	{
 		M_Print (16, 152, "             Use Mouse");
 		M_DrawCheckbox (220, 152, (int)_windowed_mouse.value);
@@ -550,7 +549,7 @@ void M_Options_Key (int k)
 	}
 
 	if ((options_cursor == 15) 
-	&& (modestate != MS_WINDOWED)
+	&& VID_IsFullscreen ()
 	)
 	{
 		if (k == K_UPARROW)
@@ -1006,10 +1005,8 @@ void M_Draw (void)
 
 		if (scr_con_current)
 		{
-			Draw_ConsoleBackground (vid.height);
-			VID_UnlockBuffer ();
+			Draw_ConsoleBackground (vid.height, cls.download != NULL);
 			S_ExtraUpdate ();
-			VID_LockBuffer ();
 		}
 		else
 			Draw_FadeScreen ();
@@ -1095,9 +1092,7 @@ void M_Draw (void)
 		m_entersound = false;
 	}
 
-	VID_UnlockBuffer ();
 	S_ExtraUpdate ();
-	VID_LockBuffer ();
 }
 
 

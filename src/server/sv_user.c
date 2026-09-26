@@ -19,19 +19,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // sv_user.c -- server code for moving users
 
-#include "qwsvdef.h"
+#include "sv_local.h"
 
 edict_t	*sv_player;
 
 usercmd_t	cmd;
 
-cvar_t	cl_rollspeed = {.name = "cl_rollspeed", .string = "200"};
-cvar_t	cl_rollangle = {.name = "cl_rollangle", .string = "2.0"};
+cvar_t	sv_rollspeed = {.name = "cl_rollspeed", .string = "200"};
+cvar_t	sv_rollangle = {.name = "cl_rollangle", .string = "2.0"};
 cvar_t	sv_spectalk = {.name = "sv_spectalk", .string = "1"};
 
 cvar_t	sv_mapcheck	= {.name = "sv_mapcheck", .string = "1"};
 
-extern	vec3_t	player_mins;
 
 extern int fp_messages, fp_persecond, fp_secondsdead;
 extern char fp_msg[];
@@ -96,16 +95,16 @@ void SV_New_f (void)
 	MSG_WriteString (&host_client->netchan.message, PR_GetString(sv.edicts->v.message));
 
 	// send the movevars
-	MSG_WriteFloat(&host_client->netchan.message, movevars.gravity);
-	MSG_WriteFloat(&host_client->netchan.message, movevars.stopspeed);
-	MSG_WriteFloat(&host_client->netchan.message, movevars.maxspeed);
-	MSG_WriteFloat(&host_client->netchan.message, movevars.spectatormaxspeed);
-	MSG_WriteFloat(&host_client->netchan.message, movevars.accelerate);
-	MSG_WriteFloat(&host_client->netchan.message, movevars.airaccelerate);
-	MSG_WriteFloat(&host_client->netchan.message, movevars.wateraccelerate);
-	MSG_WriteFloat(&host_client->netchan.message, movevars.friction);
-	MSG_WriteFloat(&host_client->netchan.message, movevars.waterfriction);
-	MSG_WriteFloat(&host_client->netchan.message, movevars.entgravity);
+	MSG_WriteFloat(&host_client->netchan.message, sv.movevars.gravity);
+	MSG_WriteFloat(&host_client->netchan.message, sv.movevars.stopspeed);
+	MSG_WriteFloat(&host_client->netchan.message, sv.movevars.maxspeed);
+	MSG_WriteFloat(&host_client->netchan.message, sv.movevars.spectatormaxspeed);
+	MSG_WriteFloat(&host_client->netchan.message, sv.movevars.accelerate);
+	MSG_WriteFloat(&host_client->netchan.message, sv.movevars.airaccelerate);
+	MSG_WriteFloat(&host_client->netchan.message, sv.movevars.wateraccelerate);
+	MSG_WriteFloat(&host_client->netchan.message, sv.movevars.friction);
+	MSG_WriteFloat(&host_client->netchan.message, sv.movevars.waterfriction);
+	MSG_WriteFloat(&host_client->netchan.message, sv.movevars.entgravity);
 
 	// send music
 	MSG_WriteByte (&host_client->netchan.message, svc_cdtrack);
@@ -249,12 +248,12 @@ void SV_PreSpawn_f (void)
 
 //		Con_DPrintf("Client check = %d\n", check);
 
-		if (sv_mapcheck.value && check != sv.worldmodel->checksum &&
-			check != sv.worldmodel->checksum2) {
+		if (sv_mapcheck.value && check != sv.map_checksum &&
+			check != sv.map_checksum2) {
 			SV_ClientPrintf (host_client, PRINT_HIGH, 
 				"Map model file does not match (%s), %i != %i/%i.\n"
 				"You may need a new version of the map, or the proper install files.\n",
-				sv.modelname, check, sv.worldmodel->checksum, sv.worldmodel->checksum2);
+				sv.modelname, check, sv.map_checksum, sv.map_checksum2);
 			SV_DropClient (host_client); 
 			return;
 		}
@@ -1174,35 +1173,6 @@ USER CMD EXECUTION
 ===========================================================================
 */
 
-/*
-===============
-V_CalcRoll
-
-Used by view and sv_user
-===============
-*/
-float V_CalcRoll (vec3_t angles, vec3_t velocity)
-{
-	vec3_t	forward, right, up;
-	float	sign;
-	float	side;
-	float	value;
-	
-	AngleVectors (angles, forward, right, up);
-	side = DotProduct (velocity, right);
-	sign = (float)(side < 0 ? -1 : 1);
-	side = fabsf(side);
-	
-	value = cl_rollangle.value;
-
-	if (side < cl_rollspeed.value)
-		side = side * value / cl_rollspeed.value;
-	else
-		side = value;
-	
-	return side*sign;
-	
-}
 
 
 
@@ -1210,6 +1180,8 @@ float V_CalcRoll (vec3_t angles, vec3_t velocity)
 //============================================================================
 
 vec3_t	pmove_mins, pmove_maxs;
+
+static playermove_t	sv_pmove;
 
 /*
 ====================
@@ -1248,10 +1220,10 @@ void AddLinksToPmove ( areanode_t *node )
 					break;
 			if (i != 3)
 				continue;
-			if (pmove.numphysent == MAX_PHYSENTS)
+			if (sv_pmove.numphysent == MAX_PHYSENTS)
 				return;
-			pe = &pmove.physents[pmove.numphysent];
-			pmove.numphysent++;
+			pe = &sv_pmove.physents[sv_pmove.numphysent];
+			sv_pmove.numphysent++;
 
 			VectorCopy (check->v.origin, pe->origin);
 			pe->info = NUM_FOR_EDICT(check);
@@ -1296,6 +1268,7 @@ SV_RunCmd
 */
 void SV_RunCmd (usercmd_t *ucmd)
 {
+	movevars_t	movevars;
 	edict_t		*ent;
 	int			i, n;
 	int			oldmsec;
@@ -1333,7 +1306,7 @@ void SV_RunCmd (usercmd_t *ucmd)
 			sv_player->v.angles[YAW] = sv_player->v.v_angle[YAW];
 		}
 		sv_player->v.angles[ROLL] = 
-			V_CalcRoll (sv_player->v.angles, sv_player->v.velocity)*4;
+			PM_CalcRoll (sv_player->v.angles, sv_player->v.velocity, sv_rollangle.value, sv_rollspeed.value)*4;
 	}
 
 	host_frametime = ucmd->msec * 0.001;
@@ -1352,47 +1325,48 @@ void SV_RunCmd (usercmd_t *ucmd)
 	}
 
 	for (i=0 ; i<3 ; i++)
-		pmove.origin[i] = sv_player->v.origin[i] + (sv_player->v.mins[i] - player_mins[i]);
-	VectorCopy (sv_player->v.velocity, pmove.velocity);
-	VectorCopy (sv_player->v.v_angle, pmove.angles);
+		sv_pmove.origin[i] = sv_player->v.origin[i] + (sv_player->v.mins[i] - player_mins[i]);
+	VectorCopy (sv_player->v.velocity, sv_pmove.velocity);
+	VectorCopy (sv_player->v.v_angle, sv_pmove.angles);
 
-	pmove.spectator = host_client->spectator;
-	pmove.waterjumptime = sv_player->v.teleport_time;
-	pmove.numphysent = 1;
-	pmove.physents[0].model = sv.worldmodel;
-	pmove.cmd = *ucmd;
-	pmove.dead = sv_player->v.health <= 0;
-	pmove.oldbuttons = host_client->oldbuttons;
+	sv_pmove.spectator = host_client->spectator;
+	sv_pmove.waterjumptime = sv_player->v.teleport_time;
+	sv_pmove.numphysent = 1;
+	sv_pmove.physents[0].model = sv.worldmodel;
+	sv_pmove.cmd = *ucmd;
+	sv_pmove.dead = sv_player->v.health <= 0;
+	sv_pmove.oldbuttons = host_client->oldbuttons;
 
+	movevars = sv.movevars;
 	movevars.entgravity = host_client->entgravity;
 	movevars.maxspeed = host_client->maxspeed;
 
 	for (i=0 ; i<3 ; i++)
 	{
-		pmove_mins[i] = pmove.origin[i] - 256;
-		pmove_maxs[i] = pmove.origin[i] + 256;
+		pmove_mins[i] = sv_pmove.origin[i] - 256;
+		pmove_maxs[i] = sv_pmove.origin[i] + 256;
 	}
 	AddLinksToPmove ( sv_areanodes );
 
-	PlayerMove ();
+	PM_PlayerMove (&sv_pmove, &movevars);
 
-	host_client->oldbuttons = pmove.oldbuttons;
-	sv_player->v.teleport_time = pmove.waterjumptime;
-	sv_player->v.waterlevel = (float)waterlevel;
-	sv_player->v.watertype = (float)watertype;
-	if (onground != -1)
+	host_client->oldbuttons = sv_pmove.oldbuttons;
+	sv_player->v.teleport_time = sv_pmove.waterjumptime;
+	sv_player->v.waterlevel = (float)sv_pmove.waterlevel;
+	sv_player->v.watertype = (float)sv_pmove.watertype;
+	if (sv_pmove.onground != -1)
 	{
 		sv_player->v.flags = (float)((int)sv_player->v.flags | FL_ONGROUND);
-		sv_player->v.groundentity = EDICT_TO_PROG(EDICT_NUM(pmove.physents[onground].info));
+		sv_player->v.groundentity = EDICT_TO_PROG(EDICT_NUM(sv_pmove.physents[sv_pmove.onground].info));
 	}
 	else
 		sv_player->v.flags = (float)((int)sv_player->v.flags & ~FL_ONGROUND);
 	for (i=0 ; i<3 ; i++)
-		sv_player->v.origin[i] = pmove.origin[i] - (sv_player->v.mins[i] - player_mins[i]);
+		sv_player->v.origin[i] = sv_pmove.origin[i] - (sv_player->v.mins[i] - player_mins[i]);
 
-	VectorCopy (pmove.velocity, sv_player->v.velocity);
+	VectorCopy (sv_pmove.velocity, sv_player->v.velocity);
 
-	VectorCopy (pmove.angles, sv_player->v.v_angle);
+	VectorCopy (sv_pmove.angles, sv_player->v.v_angle);
 
 	if (!host_client->spectator)
 	{
@@ -1400,9 +1374,9 @@ void SV_RunCmd (usercmd_t *ucmd)
 		SV_LinkEdict (sv_player, true);
 
 		// touch other objects
-		for (i=0 ; i<pmove.numtouch ; i++)
+		for (i=0 ; i<sv_pmove.numtouch ; i++)
 		{
-			n = pmove.physents[pmove.touchindex[i]].info;
+			n = sv_pmove.physents[sv_pmove.touchindex[i]].info;
 			ent = EDICT_NUM(n);
 			if (!ent->v.touch || (playertouch[n/8]&(1<<(n%8))))
 				continue;
@@ -1596,8 +1570,8 @@ SV_UserInit
 */
 void SV_UserInit (void)
 {
-	Cvar_RegisterVariable (&cl_rollspeed);
-	Cvar_RegisterVariable (&cl_rollangle);
+	Cvar_RegisterVariable (&sv_rollspeed);
+	Cvar_RegisterVariable (&sv_rollangle);
 	Cvar_RegisterVariable (&sv_spectalk);
 	Cvar_RegisterVariable (&sv_mapcheck);
 }

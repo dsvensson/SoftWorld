@@ -19,9 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // cl_main.c  -- client main loop
 
-#include "quakedef.h"
-#include "winquake.h"
-#include "winsock.h"
+#include "cl_local.h"
 
 
 // we need to declare some mouse variables here, because the menu system
@@ -80,7 +78,6 @@ client_static_t	cls;
 client_state_t	cl;
 
 entity_state_t	cl_baselines[MAX_EDICTS];
-efrag_t			cl_efrags[MAX_EFRAGS];
 entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
 lightstyle_t	cl_lightstyle[MAX_LIGHTSTYLES];
 dlight_t		cl_dlights[MAX_DLIGHTS];
@@ -104,7 +101,6 @@ double		realtime;				// without any filtering or bounding
 double		oldrealtime;			// last frame run
 int			host_framecount;
 
-int			host_hunklevel;
 
 byte		*host_basepal;
 byte		*host_colormap;
@@ -113,7 +109,6 @@ netadr_t	master_adr;				// address of the master server
 
 cvar_t	host_speeds = {.name = "host_speeds", .string = "0"};			// set for running times
 cvar_t	show_fps = {.name = "show_fps", .string = "0"};			// set for running times
-cvar_t	developer = {.name = "developer", .string = "0"};
 
 int			fps_count;
 
@@ -346,15 +341,11 @@ CL_ClearState
 */
 void CL_ClearState (void)
 {
-	int			i;
-
 	S_StopAllSounds (true);
 
 	Con_DPrintf ("Clearing memory\n");
 	D_FlushCaches ();
 	Mod_ClearAll ();
-	if (host_hunklevel)	// FIXME: check this...
-		Hunk_FreeToLowMark (host_hunklevel);
 
 	CL_ClearTEnts ();
 
@@ -364,17 +355,12 @@ void CL_ClearState (void)
 	SZ_Clear (&cls.netchan.message);
 
 // clear other arrays	
-	memset (cl_efrags, 0, sizeof(cl_efrags));
 	memset (cl_dlights, 0, sizeof(cl_dlights));
 	memset (cl_lightstyle, 0, sizeof(cl_lightstyle));
 
-//
-// allocate the efrags and chain together into a free list
-//
-	cl.free_efrags = cl_efrags;
-	for (i=0 ; i<MAX_EFRAGS-1 ; i++)
-		cl.free_efrags[i].entnext = &cl.free_efrags[i+1];
-	cl.free_efrags[i].entnext = NULL;
+	R_ClearEfrags ();
+	r_scene.time = 0;
+	r_scene.worldmodel = NULL;
 }
 
 /*
@@ -391,7 +377,7 @@ void CL_Disconnect (void)
 
 	connect_time = -1;
 
-	SetWindowText (mainwindow, "QuakeWorld: disconnected");
+	VID_SetCaption ("QuakeWorld: disconnected");
 
 // stop sounds (especially looping!)
 	S_StopAllSounds (true);
@@ -781,7 +767,7 @@ void CL_ConnectionlessPacket (void)
 	char	*s;
 	int		c;
 
-    MSG_BeginReading ();
+    MSG_BeginReading (&net_message);
     MSG_ReadLong ();        // skip the -1
 
 	c = MSG_ReadByte ();
@@ -812,14 +798,13 @@ void CL_ConnectionlessPacket (void)
 
 		Con_Printf ("client command\n");
 
-		if ((*(unsigned *)net_from.ip != *(unsigned *)net_local_adr.ip
-			&& *(unsigned *)net_from.ip != htonl(INADDR_LOOPBACK)) )
+		if (memcmp (net_from.ip, net_local_adr.ip, 4)
+			&& memcmp (net_from.ip, (byte[4]){127, 0, 0, 1}, 4))
 		{
 			Con_Printf ("Command packet from remote host.  Ignored.\n");
 			return;
 		}
-		ShowWindow (mainwindow, SW_RESTORE);
-		SetForegroundWindow (mainwindow);
+		VID_BringToFront ();
 		s = MSG_ReadString ();
 
 		strncpy(cmdtext, s, sizeof(cmdtext) - 1);
@@ -1083,6 +1068,12 @@ void CL_Init (void)
 	cls.state = ca_disconnected;
 	Cvar_SetInfoHook (CL_UserinfoCvarChanged);
 
+	r_scene.numvisedicts = &cl_numvisedicts;
+	r_scene.maxvisedicts = MAX_VISEDICTS;
+	r_scene.dlights = cl_dlights;
+	r_scene.lightstyles = cl_lightstyle;
+	r_scene.viewent = &cl.viewent;
+
 	Info_SetValueForKey (cls.userinfo, "name", "unnamed", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 	Info_SetValueForKey (cls.userinfo, "topcolor", "0", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 	Info_SetValueForKey (cls.userinfo, "bottomcolor", "0", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
@@ -1095,14 +1086,12 @@ void CL_Init (void)
 	CL_InitTEnts ();
 	CL_InitPrediction ();
 	CL_InitCam ();
-	Pmove_Init ();
 	
 //
 // register our commands
 //
 	Cvar_RegisterVariable (&show_fps);
 	Cvar_RegisterVariable (&host_speeds);
-	Cvar_RegisterVariable (&developer);
 
 	Cvar_RegisterVariable (&cl_warncmd);
 	Cvar_RegisterVariable (&cl_upspeed);
@@ -1291,6 +1280,29 @@ void Host_WriteConfiguration (void)
 
 /*
 ==================
+CL_UpdateSound
+
+Hands the mixer the view and the ambient sound levels where it is
+==================
+*/
+static void CL_UpdateSound (void)
+{
+	snd_listener_t	listener = {0};
+
+	listener.viewentity = cl.playernum + 1;
+	listener.frametime = (float)host_frametime;
+	if (cls.state == ca_active)
+	{
+		VectorCopy (r_refdef.vieworg, listener.origin);
+		AngleVectors (r_refdef.viewangles, listener.forward, listener.right, listener.up);
+		if (cl.clipmodels[1])
+			listener.ambient_levels = CM_LeafAmbientLevels (CM_PointInLeaf (listener.origin));
+	}
+	S_Update (&listener);
+}
+
+/*
+==================
 Host_Frame
 
 Runs all active servers
@@ -1366,13 +1378,9 @@ void Host_Frame (float time)
 		time2 = Sys_DoubleTime ();
 		
 	// update audio
+	CL_UpdateSound ();
 	if (cls.state == ca_active)
-	{
-		S_Update (r_origin, vpn, vright, vup);
 		CL_DecayLights ();
-	}
-	else
-		S_Update (vec3_origin, vec3_origin, vec3_origin, vec3_origin);
 
 
 	if (host_speeds.value)
@@ -1419,20 +1427,13 @@ void Host_Init (quakeparms_t *parms)
 
 	Sys_mkdir("qw");
 
-	if (COM_CheckParm ("-minmemory"))
-		parms->memsize = MINIMUM_MEMORY;
-
 	host_parms = *parms;
 
-	if (parms->memsize < MINIMUM_MEMORY)
-		Sys_Error ("Only %4.1f megs of memory reported, can't execute game", parms->memsize / (float)0x100000);
-
-	Memory_Init (parms->membase, parms->memsize);
 	Cbuf_Init ();
 	Cmd_Init ();
 	V_Init ();
 
-	COM_Init ();
+	COM_Init (host_parms.basedir);
 
 	Host_FixupModelNames();
 	
@@ -1446,14 +1447,13 @@ void Host_Init (quakeparms_t *parms)
 	Mod_Init ();
 	
 //	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
-	Con_Printf ("%4.1f megs RAM used.\n",parms->memsize/ (1024*1024.0));
 	
 	R_InitTextures ();
  
-	host_basepal = (byte *)COM_LoadHunkFile ("gfx/palette.lmp");
+	host_basepal = FS_LoadFile ("gfx/palette.lmp", NULL);
 	if (!host_basepal)
 		Sys_Error ("Couldn't load gfx/palette.lmp");
-	host_colormap = (byte *)COM_LoadHunkFile ("gfx/colormap.lmp");
+	host_colormap = FS_LoadFile ("gfx/colormap.lmp", NULL);
 	if (!host_colormap)
 		Sys_Error ("Couldn't load gfx/colormap.lmp");
 	VID_Init (host_basepal);
@@ -1471,8 +1471,6 @@ void Host_Init (quakeparms_t *parms)
 	Cbuf_AddText ("echo Type connect <internet address> or use GameSpy to connect to a game.\n");
 	Cbuf_AddText ("cl_warncmd 1\n");
 
-	Hunk_AllocName (0, "-HOST_HUNKLEVEL-");
-	host_hunklevel = Hunk_LowMark ();
 
 	host_initialized = true;
 

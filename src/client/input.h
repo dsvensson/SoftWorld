@@ -21,6 +21,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma once
 // input.h -- external (non-keyboard) input devices
 
+#include "protocol.h"
+
 void IN_Init (void);
 
 void IN_Shutdown (void);

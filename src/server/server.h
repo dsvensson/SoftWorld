@@ -19,6 +19,17 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #pragma once
+
+#include "pmove.h"
+#include "cvar.h"
+#include "info.h"
+#include "msg.h"
+#include "net.h"
+#include "progs.h"
+#include "protocol.h"
+#include "world.h"
+#include "arena.h"
+#include "host.h"
 // server.h
 
 #define	QW_SERVER
@@ -53,18 +64,22 @@ typedef struct
 	
 	char		name[64];			// map name
 	char		modelname[MAX_QPATH];		// maps/<name>.bsp, for model_precache[0]
-	struct model_s 	*worldmodel;
+	cmodel_t	*worldmodel;
+	unsigned	map_checksum, map_checksum2;
+	movevars_t	movevars;			// player movement settings from the sv_ cvars
 	char		*model_precache[MAX_MODELS];	// NULL terminated
 	char		*sound_precache[MAX_SOUNDS];	// NULL terminated
 	char		*lightstyles[MAX_LIGHTSTYLES];
-	struct model_s		*models[MAX_MODELS];
+	cmodel_t	*models[MAX_MODELS];	// the world and its inline models
 
 	int			num_edicts;			// increases towards MAX_EDICTS
 	edict_t		*edicts;			// can NOT be array indexed, because
 									// edict_t is variable sized, but can
 									// be used to reference the world ent
 
-	byte		*pvs, *phs;			// fully expanded and decompressed
+	byte		*pvs, *phs;			// fully expanded and decompressed, a row for each leaf
+	int			vis_rowbytes;
+	byte		*checkpvs;			// what the PF_checkclient target sees
 
 	// added to every client's unreliable buffer each frame, then cleared
 	sizebuf_t	datagram;
@@ -339,7 +354,7 @@ extern	char		localmodels[MAX_MODELS][5];	// inline model names for precache
 
 extern	char		localinfo[MAX_LOCALINFO_STRING+1];
 
-extern	int			host_hunklevel;
+extern	arena_t		sv_level_arena;
 extern	FILE		*sv_logfile;
 extern	FILE		*sv_fraglogfile;
 
@@ -356,6 +371,7 @@ void SV_DropClient (client_t *drop);
 int SV_CalcPing (client_t *cl);
 void SV_FullClientUpdate (client_t *client, sizebuf_t *buf);
 void SV_FullClientUpdateToClient (client_t *client, client_t *cl);
+void SV_LogPrint (const char *msg);
 info_charset_t SV_InfoCharset (void);
 void SV_SendServerInfoChange (char *key, char *value);
 
@@ -454,3 +470,8 @@ void ClientReliableWrite_Long(client_t *cl, int c);
 void ClientReliableWrite_Short(client_t *cl, int c);
 void ClientReliableWrite_String(client_t *cl, char *s);
 void ClientReliableWrite_SZ(client_t *cl, void *data, int len);
+
+extern	cvar_t	sys_nostdout;
+
+[[noreturn]] void SV_Error (char *error, ...);
+void SV_Init (quakeparms_t *parms);

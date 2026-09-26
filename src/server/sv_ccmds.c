@@ -18,7 +18,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
-#include "qwsvdef.h"
+#include "sv_local.h"
 
 bool	sv_allow_cheats;
 
@@ -563,7 +563,7 @@ void SV_Serverinfo_f (void)
 	var = Cvar_FindVar (Cmd_Argv(1));
 	if (var)
 	{
-		Z_Free (var->string);	// free the old value string	
+		Mem_Free (var->string);	// free the old value string
 		var->string = CopyString (Cmd_Argv(2));
 		var->value = Q_atof (var->string);
 	}

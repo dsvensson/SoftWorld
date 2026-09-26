@@ -1,12 +1,25 @@
 // vid_d3d11.c -- Windows video backend: the main window and a DXGI flip-model swapchain
 // that presents the software renderer's framebuffer through Direct3D 11.
 
-#include "quakedef.h"
+#include "args.h"
+#include "cmd.h"
+#include "cvar.h"
+#include "mem.h"
+#include "print.h"
+#include "q_endian.h"
+#include "q_string.h"
+#include "sys.h"
+#include "client.h"
+#include "input.h"
+#include "keys.h"
+#include "render.h"
+#include "sound.h"
+#include "vid.h"
 #include "winquake.h"
-#include "d_local.h"
 
 #define COBJMACROS
 #include <d3d11.h>
+#include <math.h>
 #include <dxgi1_6.h>
 
 #include "present_vs.h"
@@ -44,8 +57,6 @@ static bool		vid_fullscreen;
 static WINDOWPLACEMENT	vid_windowed_placement = {.length = sizeof (WINDOWPLACEMENT)};
 static int		client_width, client_height;
 static uint32_t	vid_palette32[256];		// B8G8R8A8 for each palette index
-static byte		*vid_surfcache;
-static int		vid_surfcachesize;
 
 static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
@@ -251,14 +262,6 @@ The framebuffer, z-buffer and surface cache for the current render size.
 */
 static void VID_AllocBuffers (int width, int height)
 {
-	int		zbuffersize;
-
-	vid_surfcachesize = D_SurfaceCacheForRes (width, height);
-	zbuffersize = width * height * (int)sizeof (*d_pzbuffer);
-
-	d_pzbuffer = Hunk_HighAllocName (zbuffersize + vid_surfcachesize, "video");
-	vid_surfcache = (byte *)d_pzbuffer + zbuffersize;
-
 	vid.buffer = vid.conbuffer = vid.direct = malloc ((size_t)width * height);
 	if (!vid.buffer)
 		Sys_Error ("Not enough memory for the framebuffer");
@@ -267,12 +270,10 @@ static void VID_AllocBuffers (int width, int height)
 	vid.width = vid.conwidth = width;
 	vid.height = vid.conheight = height;
 	vid.numpages = 1;
-	vid.maxwarpwidth = WARP_WIDTH;
-	vid.maxwarpheight = WARP_HEIGHT;
 	vid.aspect = ((float)height / (float)width) * (320.0f / 240.0f);
 	vid.recalc_refdef = 1;
 
-	D_InitCaches (vid_surfcache, vid_surfcachesize);
+	D_SetBufferSize (width, height);
 }
 
 /*
@@ -526,30 +527,6 @@ void VID_Update ([[maybe_unused]] vrect_t *rects)
 	IDXGISwapChain1_Present (d3d_swapchain, interval, flags);
 }
 
-/*
-================
-VID_LockBuffer / VID_UnlockBuffer
-
-The framebuffer is ordinary memory, so there is nothing to lock.
-================
-*/
-void VID_LockBuffer (void)
-{
-}
-
-void VID_UnlockBuffer (void)
-{
-}
-
-int VID_ForceUnlockedAndReturnState (void)
-{
-	return 0;
-}
-
-void VID_ForceLockState ([[maybe_unused]] int lk)
-{
-}
-
 //==========================================================================
 
 static const byte scantokey[128] =
@@ -740,4 +717,20 @@ static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 	}
 
 	return DefWindowProc (hWnd, uMsg, wParam, lParam);
+}
+
+void VID_SetCaption (const char *text)
+{
+	SetWindowTextA (mainwindow, text);
+}
+
+void VID_BringToFront (void)
+{
+	ShowWindow (mainwindow, SW_RESTORE);
+	SetForegroundWindow (mainwindow);
+}
+
+bool VID_IsFullscreen (void)
+{
+	return vid_fullscreen;
 }

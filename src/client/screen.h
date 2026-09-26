@@ -21,6 +21,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma once
 // screen.h
 
+#include "cvar.h"
+#include "q_types.h"
+
 void SCR_Init (void);
 
 void SCR_UpdateScreen (void);

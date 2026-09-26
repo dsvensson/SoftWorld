@@ -19,11 +19,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // sv_edict.c -- entity dictionary
 
-#include "qwsvdef.h"
+#include "sv_local.h"
 
 dprograms_t		*progs;
 dfunction_t		*pr_functions;
 char			*pr_strings;
+
+// pr_strings lives in this pool: the progs string table followed by strings created
+// while the level runs, so every string is a small positive offset from pr_strings
+static vmarray_t	pr_stringpool;
+static size_t		pr_stringpool_used;
 ddef_t			*pr_fielddefs;
 ddef_t			*pr_globaldefs;
 dstatement_t	*pr_statements;
@@ -497,7 +502,8 @@ char *ED_NewString (char *string)
 	int		i,l;
 	
 	l = (int)(strlen(string) + 1);
-	new = Hunk_Alloc (l);
+	new = VMArray_Reserve (&pr_stringpool, pr_stringpool_used, (size_t)l);
+	pr_stringpool_used += (size_t)l;
 	new_p = new;
 
 	for (i=0 ; i< l ; i++)
@@ -774,9 +780,11 @@ void PR_LoadProgs (void)
 	for (i=0 ; i<GEFV_CACHESIZE ; i++)
 		gefvCache[i].field[0] = 0;
 
-	progs = (dprograms_t *)COM_LoadHunkFile ("qwprogs.dat");
+	if (progs)
+		Mem_Free (progs);
+	progs = (dprograms_t *)FS_LoadFile ("qwprogs.dat", NULL);
 	if (!progs)
-		progs = (dprograms_t *)COM_LoadHunkFile ("progs.dat");
+		progs = (dprograms_t *)FS_LoadFile ("progs.dat", NULL);
 	if (!progs)
 		SV_Error ("PR_LoadProgs: couldn't load progs.dat");
 	Con_DPrintf ("Programs occupy %iK.\n", com_filesize/1024);
@@ -795,7 +803,12 @@ void PR_LoadProgs (void)
 		SV_Error ("You must have the progs.dat from QuakeWorld installed");
 
 	pr_functions = (dfunction_t *)((byte *)progs + progs->ofs_functions);
-	pr_strings = (char *)progs + progs->ofs_strings;
+	if (!pr_stringpool.base)
+		VMArray_Init (&pr_stringpool, "QuakeC strings", 1, 256 * 1024 * 1024);
+	pr_stringpool_used = 0;
+	pr_strings = VMArray_Reserve (&pr_stringpool, 0, (size_t)progs->numstrings);
+	memcpy (pr_strings, (byte *)progs + progs->ofs_strings, (size_t)progs->numstrings);
+	pr_stringpool_used = (size_t)progs->numstrings;
 	pr_globaldefs = (ddef_t *)((byte *)progs + progs->ofs_globaldefs);
 	pr_fielddefs = (ddef_t *)((byte *)progs + progs->ofs_fielddefs);
 	pr_statements = (dstatement_t *)((byte *)progs + progs->ofs_statements);

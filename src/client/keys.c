@@ -17,7 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-#include "quakedef.h"
+#include "cl_local.h"
 /*
 
 key up events are sent even if in console mode
@@ -465,13 +465,13 @@ void Key_SetBinding (int keynum, char *binding)
 // free old bindings
 	if (keybindings[keynum])
 	{
-		Z_Free (keybindings[keynum]);
+		Mem_Free (keybindings[keynum]);
 		keybindings[keynum] = NULL;
 	}
 			
 // allocate memory for new binding
 	l = Q_strlen (binding);	
-	new = Z_Malloc (l+1);
+	new = Mem_Alloc ((size_t)l+1);
 	Q_strcpy (new, binding);
 	new[l] = 0;
 	keybindings[keynum] = new;	

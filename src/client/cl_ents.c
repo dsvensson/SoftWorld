@@ -19,7 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // cl_ents.c -- entity parsing and management
 
-#include "quakedef.h"
+#include "cl_local.h"
 
 extern	cvar_t	cl_predict_players;
 extern	cvar_t	cl_predict_players2;
@@ -460,12 +460,12 @@ void CL_LinkPacketEntities (void)
 			&& !strcmp(ent->model->name,"progs/player.mdl") )
 		{
 			ent->colormap = cl.players[s1->colormap-1].translations;
-			ent->scoreboard = &cl.players[s1->colormap-1];
+			ent->skin = Skin_ForPlayer (&cl.players[s1->colormap-1]);
 		}
 		else
 		{
 			ent->colormap = vid.colormap;
-			ent->scoreboard = NULL;
+			ent->skin = NULL;
 		}
 
 		// set skin
@@ -635,7 +635,7 @@ void CL_LinkProjectiles (void)
 		ent->skinnum = 0;
 		ent->frame = 0;
 		ent->colormap = vid.colormap;
-		ent->scoreboard = NULL;
+		ent->skin = NULL;
 		VectorCopy (pr->origin, ent->origin);
 		VectorCopy (pr->angles, ent->angles);
 	}
@@ -843,9 +843,9 @@ void CL_LinkPlayers (void)
 		ent->frame = state->frame;
 		ent->colormap = info->translations;
 		if (state->modelindex == cl_playerindex)
-			ent->scoreboard = info;		// use custom skin
+			ent->skin = Skin_ForPlayer (info);		// use custom skin
 		else
-			ent->scoreboard = NULL;
+			ent->skin = NULL;
 
 		//
 		// angles
@@ -853,7 +853,7 @@ void CL_LinkPlayers (void)
 		ent->angles[PITCH] = -state->viewangles[PITCH]/3;
 		ent->angles[YAW] = state->viewangles[YAW];
 		ent->angles[ROLL] = 0;
-		ent->angles[ROLL] = V_CalcRoll (ent->angles, state->velocity)*4;
+		ent->angles[ROLL] = PM_CalcRoll (ent->angles, state->velocity, cl_rollangle.value, cl_rollspeed.value)*4;
 
 		// only predict half the move to minimize overruns
 		msec = (int)(500*(playertime - state->state_time));
@@ -870,10 +870,10 @@ void CL_LinkPlayers (void)
 			state->command.msec = (byte)msec;
 //Con_DPrintf ("predict: %i\n", msec);
 
-			oldphysent = pmove.numphysent;
+			oldphysent = cl_pmove.numphysent;
 			CL_SetSolidPlayers (j);
 			CL_PredictUsercmd (state, &exact, &state->command, false);
-			pmove.numphysent = oldphysent;
+			cl_pmove.numphysent = oldphysent;
 			VectorCopy (exact.origin, ent->origin);
 		}
 
@@ -901,10 +901,10 @@ void CL_SetSolidEntities (void)
 	packet_entities_t	*pak;
 	entity_state_t		*state;
 
-	pmove.physents[0].model = cl.worldmodel;
-	VectorCopy (vec3_origin, pmove.physents[0].origin);
-	pmove.physents[0].info = 0;
-	pmove.numphysent = 1;
+	cl_pmove.physents[0].model = cl.clipmodels[1];
+	VectorCopy (vec3_origin, cl_pmove.physents[0].origin);
+	cl_pmove.physents[0].info = 0;
+	cl_pmove.numphysent = 1;
 
 	frame = &cl.frames[parsecountmod];
 	pak = &frame->packet_entities;
@@ -915,14 +915,13 @@ void CL_SetSolidEntities (void)
 
 		if (!state->modelindex)
 			continue;
-		if (!cl.model_precache[state->modelindex])
+		if (!cl.clipmodels[state->modelindex])
 			continue;
-		if ( cl.model_precache[state->modelindex]->hulls[1].firstclipnode 
-			|| cl.model_precache[state->modelindex]->clipbox )
+		if (cl.clipmodels[state->modelindex]->hulls[1].firstclipnode)
 		{
-			pmove.physents[pmove.numphysent].model = cl.model_precache[state->modelindex];
-			VectorCopy (state->origin, pmove.physents[pmove.numphysent].origin);
-			pmove.numphysent++;
+			cl_pmove.physents[cl_pmove.numphysent].model = cl.clipmodels[state->modelindex];
+			VectorCopy (state->origin, cl_pmove.physents[cl_pmove.numphysent].origin);
+			cl_pmove.numphysent++;
 		}
 	}
 
@@ -1012,15 +1011,13 @@ pmove must be setup with world and solid entity hulls before calling
 void CL_SetSolidPlayers (int playernum)
 {
 	int		j;
-	extern	vec3_t	player_mins;
-	extern	vec3_t	player_maxs;
 	struct predicted_player *pplayer;
 	physent_t *pent;
 
 	if (!cl_solid_players.value)
 		return;
 
-	pent = pmove.physents + pmove.numphysent;
+	pent = cl_pmove.physents + cl_pmove.numphysent;
 
 	for (j=0, pplayer = predicted_players; j < MAX_CLIENTS;	j++, pplayer++) {
 
@@ -1038,7 +1035,7 @@ void CL_SetSolidPlayers (int playernum)
 		VectorCopy(pplayer->origin, pent->origin);
 		VectorCopy(player_mins, pent->mins);
 		VectorCopy(player_maxs, pent->maxs);
-		pmove.numphysent++;
+		cl_pmove.numphysent++;
 		pent++;
 	}
 }

@@ -19,8 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // screen.c -- master for refresh, status bar, console, chat, notify, etc
 
-#include "quakedef.h"
-#include "r_local.h"
+#include "cl_local.h"
 
 #include <time.h>
 
@@ -90,6 +89,7 @@ cvar_t		scr_showturtle = {.name = "showturtle", .string = "0"};
 cvar_t		scr_showpause = {.name = "showpause", .string = "1"};
 cvar_t		scr_printspeed = {.name = "scr_printspeed", .string = "8"};
 cvar_t		scr_allowsnap = {.name = "scr_allowsnap", .string = "1"};
+cvar_t		r_netgraph = {.name = "r_netgraph", .string = "0"};
 
 bool	scr_initialized;		// ready to draw
 
@@ -264,6 +264,65 @@ float CalcFov (float fov_x, float width, float height)
 }
 
 /*
+===============
+SCR_SetVrect
+===============
+*/
+static void SCR_SetVrect (vrect_t *pvrectin, vrect_t *pvrect, int lineadj)
+{
+	int		h;
+	float	size;
+	bool full = false;
+
+	if (scr_viewsize.value >= 100.0) {
+		size = 100.0;
+		full = true;
+	} else
+		size = scr_viewsize.value;
+
+	if (cl.intermission)
+	{
+		full = true;
+		size = 100.0;
+		lineadj = 0;
+	}
+	size /= 100.0;
+
+	if (!cl_sbar.value && full)
+		h = pvrectin->height;
+	else
+		h = pvrectin->height - lineadj;
+
+//	h = (!cl_sbar.value && size==1.0) ? pvrectin->height : (pvrectin->height - lineadj);
+//	h = pvrectin->height - lineadj;
+	if (full)
+		pvrect->width = pvrectin->width;
+	else
+		pvrect->width = (int)(pvrectin->width * size);
+	if (pvrect->width < 96)
+	{
+		size = 96.0f / pvrectin->width;
+		pvrect->width = 96;	// min for icons
+	}
+	pvrect->width &= ~7;
+	pvrect->height = (int)(pvrectin->height * size);
+	if (cl_sbar.value || !full) {
+		if (pvrect->height > pvrectin->height - lineadj)
+			pvrect->height = pvrectin->height - lineadj;
+	} else
+		if (pvrect->height > pvrectin->height)
+			pvrect->height = pvrectin->height;
+
+	pvrect->height &= ~1;
+
+	pvrect->x = (pvrectin->width - pvrect->width)/2;
+	if (full)
+		pvrect->y = 0;
+	else
+		pvrect->y = (h - pvrect->height)/2;
+}
+
+/*
 =================
 SCR_CalcRefdef
 
@@ -319,7 +378,7 @@ static void SCR_CalcRefdef (void)
 	vrect.width = vid.width;
 	vrect.height = vid.height;
 
-	R_SetVrect (&vrect, &scr_vrect, sb_lines);
+	SCR_SetVrect (&vrect, &scr_vrect, sb_lines);
 
 // guard against going from one mode to another that's less than half the
 // vertical resolution
@@ -327,7 +386,7 @@ static void SCR_CalcRefdef (void)
 		scr_con_current = (float)vid.height;
 
 // notify the refresh of the change
-	R_ViewChanged (&vrect, sb_lines, vid.aspect);
+	R_ViewChanged (&scr_vrect, vid.aspect);
 }
 
 
@@ -378,6 +437,7 @@ void SCR_Init (void)
 	Cvar_RegisterVariable (&scr_centertime);
 	Cvar_RegisterVariable (&scr_printspeed);
 	Cvar_RegisterVariable (&scr_allowsnap);
+	Cvar_RegisterVariable (&r_netgraph);
 
 //
 // register our commands
@@ -594,7 +654,7 @@ void WritePCXfile (char *filename, byte *data, int width, int height,
 	pcx_t	*pcx;
 	byte		*pack;
 	  
-	pcx = Hunk_TempAlloc (width*height*2+1000);
+	pcx = Mem_Alloc ((size_t)width*height*2+1000);
 	if (pcx == NULL)
 	{
 		Con_Printf("SCR_ScreenShot_f: not enough memory\n");
@@ -647,6 +707,8 @@ void WritePCXfile (char *filename, byte *data, int width, int height,
 		CL_StartUpload((void *)pcx, length);
 	else
 		COM_WriteFile (filename, pcx, length);
+
+	Mem_Free (pcx);
 } 
  
 
@@ -684,14 +746,10 @@ void SCR_ScreenShot_f (void)
 // 
 // save the pcx file 
 // 
-	D_EnableBackBufferAccess ();	// enable direct drawing of console to back
-									//  buffer
 
 	WritePCXfile (pcxname, vid.buffer, vid.width, vid.height, vid.rowbytes,
 				  host_basepal, false);
 
-	D_DisableBackBufferAccess ();	// for adapters that can't stay mapped in
-									//  for linear writes all the time
 
 	Con_Printf ("Wrote %s\n", pcxname);
 } 
@@ -811,8 +869,6 @@ void SCR_RSShot_f (void)
 // 
 // save the pcx file 
 // 
-	D_EnableBackBufferAccess ();	// enable direct drawing of console to back
-									//  buffer
 
 	w = (vid.width < RSSHOT_WIDTH) ? vid.width : RSSHOT_WIDTH;
 	h = (vid.height < RSSHOT_HEIGHT) ? vid.height : RSSHOT_HEIGHT;
@@ -870,8 +926,6 @@ void SCR_RSShot_f (void)
 
 	free(newbuf);
 
-	D_DisableBackBufferAccess ();	// for adapters that can't stay mapped in
-									//  for linear writes all the time
 
 //	Con_Printf ("Wrote %s\n", pcxname);
 	Con_Printf ("Sending shot to server...\n");
@@ -916,6 +970,40 @@ void SCR_DrawNotifyString (void)
 }
 
 //=============================================================================
+
+/*
+==============
+SCR_DrawNetGraph
+==============
+*/
+static void SCR_DrawNetGraph (void)
+{
+	int		a, x, y, y2, w, i;
+	int lost;
+	char st[80];
+
+	if (vid.width - 16 <= NET_TIMINGS)
+		w = vid.width - 16;
+	else
+		w = NET_TIMINGS;
+
+	x =	-(int)((vid.width - 320)>>1);
+	y = vid.height - sb_lines - 24 - (int)r_graphheight.value*2 - 2;
+
+	M_DrawTextBox (x, y, (w+7)/8, ((int)r_graphheight.value*2+7)/8 + 1);
+	y2 = y + 8;
+	y = vid.height - sb_lines - 8 - 2;
+
+	x = 8;
+	lost = CL_CalcNet();
+	for (a=NET_TIMINGS-w ; a<w ; a++)
+	{
+		i = (cls.netchan.outgoing_sequence-a) & NET_TIMINGSMASK;
+		R_LineGraph (x+w-1-a, y, packet_latency[i]);
+	}
+	snprintf(st, sizeof(st), "%3i%% packet loss", lost);
+	Draw_String(8, y2, st);
+}
 
 /*
 ==================
@@ -988,7 +1076,6 @@ void SCR_UpdateScreen (void)
 //
 // do 3D refresh drawing, and then update the screen
 //
-	D_EnableBackBufferAccess ();	// of all overlay stuff if drawing directly
 
 	if (scr_fullupdate++ < vid.numpages)
 	{	// clear the entire screen
@@ -1003,14 +1090,11 @@ void SCR_UpdateScreen (void)
 	SCR_SetUpToDrawConsole ();
 	SCR_EraseCenterString ();
 	
-	D_DisableBackBufferAccess ();	// for adapters that can't stay mapped in
-									//  for linear writes all the time
 
-	VID_LockBuffer ();
 	V_RenderView ();
-	VID_UnlockBuffer ();
+	if (r_netgraph.value)
+		SCR_DrawNetGraph ();
 
-	D_EnableBackBufferAccess ();	// of all overlay stuff if drawing directly
 
 	if (scr_drawdialog)
 	{
@@ -1042,12 +1126,6 @@ void SCR_UpdateScreen (void)
 	}
 
 
-	D_DisableBackBufferAccess ();	// for adapters that can't stay mapped in
-									//  for linear writes all the time
-	if (pconupdate)
-	{
-		D_UpdateRects (pconupdate);
-	}
 
 	V_UpdatePalette ();
 
@@ -1085,4 +1163,3 @@ void SCR_UpdateScreen (void)
 		VID_Update (&vrect);
 	}	
 }
-

@@ -18,7 +18,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
-#include "qwsvdef.h"
+#include "sv_local.h"
 
 quakeparms_t host_parms;
 
@@ -27,7 +27,6 @@ bool	host_initialized;		// true if into command execution (compatability)
 double		host_frametime;
 double		realtime;				// without any filtering or bounding
 
-int			host_hunklevel;
 
 netadr_t	master_adr[MAX_MASTERS];	// address of group servers
 
@@ -36,14 +35,13 @@ client_t	*host_client;			// current client
 cvar_t	sv_mintic = {.name = "sv_mintic", .string = "0.03"};	// bound the size of the
 cvar_t	sv_maxtic = {.name = "sv_maxtic", .string = "0.1"};	// physics time tic 
 
-cvar_t	developer = {.name = "developer", .string = "0"};		// show extra messages
 
 cvar_t	timeout = {.name = "timeout", .string = "65"};		// seconds without any message
 cvar_t	zombietime = {.name = "zombietime", .string = "2"};	// seconds to sink messages
 											// after disconnect
 
-cvar_t	rcon_password = {.name = "rcon_password", .string = ""};	// password for remote server commands
-cvar_t	password = {.name = "password", .string = ""};	// password for entering the game
+cvar_t	sv_rcon_password = {.name = "rcon_password", .string = ""};	// password for remote server commands
+cvar_t	sv_password = {.name = "password", .string = ""};	// password for entering the game
 cvar_t	spectator_password = {.name = "spectator_password", .string = ""};	// password for entering as a sepctator
 
 cvar_t	allow_download = {.name = "allow_download", .string = "1"};
@@ -565,9 +563,9 @@ void SVC_DirectConnect (void)
 	else
 	{
 		s = Info_ValueForKey (userinfo, "password");
-		if (password.string[0] && 
-			Q_strcasecmp (password.string, "none") &&
-			strcmp(password.string, s) )
+		if (sv_password.string[0] && 
+			Q_strcasecmp (sv_password.string, "none") &&
+			strcmp(sv_password.string, s) )
 		{
 			Con_Printf ("%s:password failed\n", NET_AdrToString (net_from));
 			Netchan_OutOfBandPrint (net_from, "%c\nserver requires a password\n\n", A2C_PRINT);
@@ -708,10 +706,10 @@ void SVC_DirectConnect (void)
 
 int Rcon_Validate (void)
 {
-	if (!strlen (rcon_password.string))
+	if (!strlen (sv_rcon_password.string))
 		return 0;
 
-	if (strcmp (Cmd_Argv(1), rcon_password.string) )
+	if (strcmp (Cmd_Argv(1), sv_rcon_password.string) )
 		return 0;
 
 	return 1;
@@ -778,7 +776,7 @@ void SV_ConnectionlessPacket (void)
 	char	*s;
 	char	*c;
 
-	MSG_BeginReading ();
+	MSG_BeginReading (&net_message);
 	MSG_ReadLong ();		// skip the -1 marker
 
 	s = MSG_ReadStringLine ();
@@ -1083,7 +1081,7 @@ void SV_ReadPackets (void)
 		
 		// read the qport out of the message so we can fix up
 		// stupid address translating routers
-		MSG_BeginReading ();
+		MSG_BeginReading (&net_message);
 		MSG_ReadLong ();		// sequence number
 		MSG_ReadLong ();		// sequence number
 		qport = MSG_ReadShort () & 0xffff;
@@ -1197,9 +1195,9 @@ void SV_CheckVars (void)
 	static char *pw, *spw;
 	int			v;
 
-	if (password.string == pw && spectator_password.string == spw)
+	if (sv_password.string == pw && spectator_password.string == spw)
 		return;
-	pw = password.string;
+	pw = sv_password.string;
 	spw = spectator_password.string;
 
 	v = 0;
@@ -1319,6 +1317,7 @@ void SV_InitLocal (void)
 	extern	cvar_t	sv_spectatormaxspeed;
 
 	Cvar_SetInfoHook (SV_ServerinfoCvarChanged);
+	Con_AddPrintSink (SV_LogPrint);
 	extern	cvar_t	sv_accelerate;
 	extern	cvar_t	sv_airaccelerate;
 	extern	cvar_t	sv_wateraccelerate;
@@ -1328,8 +1327,8 @@ void SV_InitLocal (void)
 	SV_InitOperatorCommands	();
 	SV_UserInit ();
 	
-	Cvar_RegisterVariable (&rcon_password);
-	Cvar_RegisterVariable (&password);
+	Cvar_RegisterVariable (&sv_rcon_password);
+	Cvar_RegisterVariable (&sv_password);
 	Cvar_RegisterVariable (&spectator_password);
 
 	Cvar_RegisterVariable (&sv_mintic);
@@ -1346,7 +1345,6 @@ void SV_InitLocal (void)
 	Cvar_RegisterVariable (&spawn);
 	Cvar_RegisterVariable (&watervis);
 
-	Cvar_RegisterVariable (&developer);
 
 	Cvar_RegisterVariable (&timeout);
 	Cvar_RegisterVariable (&zombietime);
@@ -1632,38 +1630,26 @@ void SV_Init (quakeparms_t *parms)
 	COM_AddParm ("-game");
 	COM_AddParm ("qw");
 
-	if (COM_CheckParm ("-minmemory"))
-		parms->memsize = MINIMUM_MEMORY;
-
 	host_parms = *parms;
 
-	if (parms->memsize < MINIMUM_MEMORY)
-		SV_Error ("Only %4.1f megs of memory reported, can't execute game", parms->memsize / (float)0x100000);
-
-	Memory_Init (parms->membase, parms->memsize);
 	Cbuf_Init ();
 	Cmd_Init ();	
 
-	COM_Init ();
+	COM_Init (host_parms.basedir);
 	
 	PR_Init ();
-	Mod_Init ();
 
 	SV_InitNet ();
 
 	SV_InitLocal ();
 	Sys_Init ();
-	Pmove_Init ();
 
-	Hunk_AllocName (0, "-HOST_HUNKLEVEL-");
-	host_hunklevel = Hunk_LowMark ();
 
 	Cbuf_InsertText ("exec server.cfg\n");
 
 	host_initialized = true;
 	
 	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
-	Con_Printf ("%4.1f megabyte heap\n",parms->memsize/ (1024*1024.0));	
 
 	Con_Printf ("\nServer Version %4.2f (Build %04d)\n\n", VERSION, build_number());
 

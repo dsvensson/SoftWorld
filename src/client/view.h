@@ -21,9 +21,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma once
 // view.h
 
+#include "cvar.h"
+#include "mathlib.h"
+
 extern	cvar_t		v_gamma;
 
 void V_Init (void);
 void V_RenderView (void);
 float V_CalcRoll (vec3_t angles, vec3_t velocity);
+extern struct cvar_s	cl_rollspeed, cl_rollangle;
 void V_UpdatePalette (void);

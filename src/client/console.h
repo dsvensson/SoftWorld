@@ -20,6 +20,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #pragma once
 
+#include "q_types.h"
+
 //
 // console
 //
@@ -49,8 +51,6 @@ void Con_CheckResize (void);
 void Con_Init (void);
 void Con_DrawConsole (int lines);
 void Con_Print (char *txt);
-void Con_Printf (char *fmt, ...);
-void Con_DPrintf (char *fmt, ...);
 void Con_SafePrintf (char *fmt, ...);
 void Con_Clear_f (void);
 void Con_DrawNotify (void);

@@ -19,8 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // view.c -- player eye positioning
 
-#include "quakedef.h"
-#include "r_local.h"
+#include "cl_local.h"
 
 /*
 
@@ -76,25 +75,7 @@ V_CalcRoll
 */
 float V_CalcRoll (vec3_t angles, vec3_t velocity)
 {
-	vec3_t	forward, right, up;
-	float	sign;
-	float	side;
-	float	value;
-	
-	AngleVectors (angles, forward, right, up);
-	side = DotProduct (velocity, right);
-	sign = (float)(side < 0 ? -1 : 1);
-	side = fabsf(side);
-	
-	value = cl_rollangle.value;
-
-	if (side < cl_rollspeed.value)
-		side = side * value / cl_rollspeed.value;
-	else
-		side = value;
-	
-	return side*sign;
-	
+	return PM_CalcRoll (angles, velocity, cl_rollangle.value, cl_rollspeed.value);
 }
 
 
@@ -113,7 +94,7 @@ float V_CalcBob (void)
 	if (cl.spectator)
 		return 0;
 
-	if (onground == -1)
+	if (cl_pmove.onground == -1)
 		return bob;		// just use old value
 
 	bobtime += host_frametime;
@@ -815,6 +796,31 @@ void DropPunchAngle (void)
 		cl.punchangle = 0;
 }
 
+static void V_DrawCrosshair (void)
+{
+	int x, y;
+	extern cvar_t crosshair, cl_crossx, cl_crossy, crosshaircolor;
+	extern vrect_t		scr_vrect;
+	byte c = (byte)crosshaircolor.value;
+
+	if (crosshair.value == 2) {
+		x = (int)(scr_vrect.x + scr_vrect.width/2 + cl_crossx.value); 
+		y = (int)(scr_vrect.y + scr_vrect.height/2 + cl_crossy.value);
+		Draw_Pixel(x - 1, y, c);
+		Draw_Pixel(x - 3, y, c);
+		Draw_Pixel(x + 1, y, c);
+		Draw_Pixel(x + 3, y, c);
+		Draw_Pixel(x, y - 1, c);
+		Draw_Pixel(x, y - 3, c);
+		Draw_Pixel(x, y + 1, c);
+		Draw_Pixel(x, y + 3, c);
+	} else if (crosshair.value)
+		Draw_Character (
+			(int)(scr_vrect.x + scr_vrect.width/2-4 + cl_crossx.value),
+			(int)(scr_vrect.y + scr_vrect.height/2-4 + cl_crossy.value),
+			'+');
+}
+
 /*
 ==================
 V_RenderView
@@ -847,11 +853,17 @@ cl.simangles[ROLL] = 0;	// FIXME @@@
 		V_CalcRefdef ();
 	}
 
+	r_scene.visedicts = cl_visedicts;
+	r_scene.frametime = (float)host_frametime;
+	r_scene.drawviewmodel = Cam_DrawViewModel ()
+		&& !(cl.stats[STAT_ITEMS] & IT_INVISIBILITY) && cl.stats[STAT_HEALTH] > 0;
+
 	R_PushDlights ();
 	R_RenderView ();
-	
+	V_SetContentsColor (r_scene.viewcontents);
+
 	if (crosshair.value)
-		Draw_Crosshair();
+		V_DrawCrosshair ();
 		
 }
 

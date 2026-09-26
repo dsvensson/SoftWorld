@@ -19,7 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // sv_main.c -- server main program
 
-#include "qwsvdef.h"
+#include "sv_local.h"
 
 #define CHAN_AUTO   0
 #define CHAN_WEAPON 1
@@ -81,14 +81,18 @@ SV_BeginRedirect
   instead of the console
 ==================
 */
+static void SV_RedirectPrint (const char *msg);
+
 void SV_BeginRedirect (redirect_t rd)
 {
 	sv_redirected = rd;
 	outputbuf[0] = 0;
+	Con_SetPrintRedirect (SV_RedirectPrint);
 }
 
 void SV_EndRedirect (void)
 {
+	Con_SetPrintRedirect (NULL);
 	SV_FlushRedirect ();
 	sv_redirected = RD_NONE;
 }
@@ -96,56 +100,32 @@ void SV_EndRedirect (void)
 
 /*
 ================
-Con_Printf
+SV_RedirectPrint
 
-Handles cursor positioning, line wrapping, etc
+Collects console output for the redirect target.
 ================
 */
-#define	MAXPRINTMSG	4096
-// FIXME: make a buffer size safe vsprintf?
-void Con_Printf (char *fmt, ...)
+static void SV_RedirectPrint (const char *msg)
 {
-	va_list		argptr;
-	char		msg[MAXPRINTMSG];
-	
-	va_start (argptr,fmt);
-	vsnprintf (msg,sizeof(msg),fmt,argptr);
-	va_end (argptr);
-
-	// add to redirected message
-	if (sv_redirected)
-	{
-		if (strlen (msg) + strlen(outputbuf) > sizeof(outputbuf) - 1)
-			SV_FlushRedirect ();
-		Q_strncatz (outputbuf, msg, sizeof(outputbuf));
-		return;
-	}
-
-	Sys_Printf ("%s", msg);	// also echo to debugging console
-	if (sv_logfile)
-		fprintf (sv_logfile, "%s", msg);
+	if (strlen (msg) + strlen(outputbuf) > sizeof(outputbuf) - 1)
+		SV_FlushRedirect ();
+	Q_strncatz (outputbuf, msg, sizeof(outputbuf));
 }
 
 /*
 ================
-Con_DPrintf
+SV_LogPrint
 
-A Con_Printf that only shows up if the "developer" cvar is set
+Copies console output to the server log file.
 ================
 */
-void Con_DPrintf (char *fmt, ...)
+void SV_LogPrint (const char *msg)
 {
-	va_list		argptr;
-	char		msg[MAXPRINTMSG];
-
-	if (!developer.value)
-		return;
-
-	va_start (argptr,fmt);
-	vsnprintf (msg,sizeof(msg),fmt,argptr);
-	va_end (argptr);
-
-	Con_Printf ("%s", msg);
+	if (sv_logfile)
+	{
+		fputs (msg, sv_logfile);
+		fflush (sv_logfile);
+	}
 }
 
 /*
@@ -256,16 +236,11 @@ void SV_Multicast (vec3_t origin, int to)
 {
 	client_t	*client;
 	byte		*mask;
-	mleaf_t		*leaf;
 	int			leafnum;
 	int			j;
 	bool	reliable;
 
-	leaf = Mod_PointInLeaf (origin, sv.worldmodel);
-	if (!leaf)
-		leafnum = 0;
-	else
-		leafnum = (int)(leaf - sv.worldmodel->leafs);
+	leafnum = CM_Leafnum (CM_PointInLeaf (origin));
 
 	reliable = false;
 
@@ -280,13 +255,13 @@ void SV_Multicast (vec3_t origin, int to)
 	case MULTICAST_PHS_R:
 		reliable = true;	// intentional fallthrough
 	case MULTICAST_PHS:
-		mask = sv.phs + leafnum * 4*((sv.worldmodel->numleafs+31)>>5);
+		mask = sv.phs + leafnum * sv.vis_rowbytes;
 		break;
 
 	case MULTICAST_PVS_R:
 		reliable = true;	// intentional fallthrough
 	case MULTICAST_PVS:
-		mask = sv.pvs + leafnum * 4*((sv.worldmodel->numleafs+31)>>5);
+		mask = sv.pvs + leafnum * sv.vis_rowbytes;
 		break;
 
 	default:
@@ -307,17 +282,10 @@ void SV_Multicast (vec3_t origin, int to)
 				goto inrange;
 		}
 
-		leaf = Mod_PointInLeaf (client->edict->v.origin, sv.worldmodel);
-		if (leaf)
-		{
-			// -1 is because pvs rows are 1 based, not 0 based like leafs
-			leafnum = (int)(leaf - sv.worldmodel->leafs - 1);
-			if ( !(mask[leafnum>>3] & (1<<(leafnum&7)) ) )
-			{
-//				Con_Printf ("supressed multicast\n");
-				continue;
-			}
-		}
+		// -1 is because pvs rows are 1 based, not 0 based like leafs
+		leafnum = CM_Leafnum (CM_PointInLeaf (client->edict->v.origin)) - 1;
+		if (leafnum >= 0 && !(mask[leafnum>>3] & (1<<(leafnum&7))))
+			continue;
 
 inrange:
 		if (reliable) {

@@ -19,7 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // cl_parse.c  -- parse a message received from the server
 
-#include "quakedef.h"
+#include "cl_local.h"
 
 char *svc_strings[] =
 {
@@ -197,6 +197,34 @@ bool	CL_CheckOrDownloadFile (char *filename)
 
 /*
 =================
+CL_SetModelChecksum
+
+Servers check the player and eye models for cheats through userinfo
+=================
+*/
+static void CL_SetModelChecksum (const char *modelname, const char *key)
+{
+	byte	*data;
+	int		len;
+	char	st[40];
+
+	data = FS_LoadFile (modelname, &len);
+	if (!data)
+		return;
+	snprintf (st, sizeof(st), "%d", (int)CRC_Block (data, len));
+	Mem_Free (data);
+
+	Info_SetValueForKey (cls.userinfo, key, st, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
+
+	if (cls.state >= ca_connected)
+	{
+		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
+		SZ_Print (&cls.netchan.message, va("setinfo %s %s", key, st));
+	}
+}
+
+/*
+=================
 Model_NextDownload
 =================
 */
@@ -230,8 +258,16 @@ void Model_NextDownload (void)
 			break;
 
 		cl.model_precache[i] = Mod_ForName (cl.model_name[i], false);
+		if (i == 1)
+			cl.clipmodels[i] = CM_LoadMap (cl.model_name[i], NULL, &cl.map_checksum2);
+		else if (cl.model_name[i][0] == '*')
+			cl.clipmodels[i] = CM_InlineModel (cl.model_name[i]);
+		if (!strcmp (cl.model_name[i], "progs/player.mdl"))
+			CL_SetModelChecksum (cl.model_name[i], pmodel_name);
+		else if (!strcmp (cl.model_name[i], "progs/eyes.mdl"))
+			CL_SetModelChecksum (cl.model_name[i], emodel_name);
 
-		if (!cl.model_precache[i])
+		if (!cl.model_precache[i] || (i == 1 && !cl.clipmodels[i]))
 		{
 			Con_Printf ("\nThe required model file '%s' could not be found or downloaded.\n\n"
 				, cl.model_name[i]);
@@ -243,14 +279,14 @@ void Model_NextDownload (void)
 	}
 
 	// all done
-	cl.worldmodel = cl.model_precache[1];	
+	cl.worldmodel = cl.model_precache[1];
+	r_scene.worldmodel = cl.worldmodel;
 	R_NewMap ();
-	Hunk_Check ();		// make sure nothing is hurt
 
 	// done with modellist, request first of static signon messages
 	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
 //	MSG_WriteString (&cls.netchan.message, va("prespawn %i 0 %i", cl.servercount, cl.worldmodel->checksum2));
-	MSG_WriteString (&cls.netchan.message, va(prespawn_name, cl.servercount, cl.worldmodel->checksum2));
+	MSG_WriteString (&cls.netchan.message, va(prespawn_name, cl.servercount, cl.map_checksum2));
 }
 
 /*
@@ -571,16 +607,16 @@ void CL_ParseServerData (void)
 	strncpy (cl.levelname, str, sizeof(cl.levelname)-1);
 
 	// get the movevars
-	movevars.gravity			= MSG_ReadFloat();
-	movevars.stopspeed          = MSG_ReadFloat();
-	movevars.maxspeed           = MSG_ReadFloat();
-	movevars.spectatormaxspeed  = MSG_ReadFloat();
-	movevars.accelerate         = MSG_ReadFloat();
-	movevars.airaccelerate      = MSG_ReadFloat();
-	movevars.wateraccelerate    = MSG_ReadFloat();
-	movevars.friction           = MSG_ReadFloat();
-	movevars.waterfriction      = MSG_ReadFloat();
-	movevars.entgravity         = MSG_ReadFloat();
+	cl.movevars.gravity			= MSG_ReadFloat();
+	cl.movevars.stopspeed          = MSG_ReadFloat();
+	cl.movevars.maxspeed           = MSG_ReadFloat();
+	cl.movevars.spectatormaxspeed  = MSG_ReadFloat();
+	cl.movevars.accelerate         = MSG_ReadFloat();
+	cl.movevars.airaccelerate      = MSG_ReadFloat();
+	cl.movevars.wateraccelerate    = MSG_ReadFloat();
+	cl.movevars.friction           = MSG_ReadFloat();
+	cl.movevars.waterfriction      = MSG_ReadFloat();
+	cl.movevars.entgravity         = MSG_ReadFloat();
 
 	// seperate the printfs so the server message can have a color
 	Con_Printf("\n\n\35\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\37\n\n");
@@ -1332,11 +1368,11 @@ void CL_ParseServerMessage (void)
 			break;
 
 		case svc_maxspeed :
-			movevars.maxspeed = MSG_ReadFloat();
+			cl.movevars.maxspeed = MSG_ReadFloat();
 			break;
 
 		case svc_entgravity :
-			movevars.entgravity = MSG_ReadFloat();
+			cl.movevars.entgravity = MSG_ReadFloat();
 			break;
 
 		case svc_setpause:

@@ -19,7 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // sv_phys.c
 
-#include "qwsvdef.h"
+#include "sv_local.h"
 
 /*
 
@@ -350,7 +350,7 @@ SV_AddGravity
 */
 void SV_AddGravity (edict_t *ent, float scale)
 {
-	ent->v.velocity[2] = (float)(ent->v.velocity[2] - scale * movevars.gravity * host_frametime);
+	ent->v.velocity[2] = (float)(ent->v.velocity[2] - scale * sv.movevars.gravity * host_frametime);
 }
 
 /*
@@ -768,7 +768,7 @@ void SV_Physics_Step (edict_t *ent)
 // frefall if not onground
 	if ( ! ((int)ent->v.flags & (FL_ONGROUND | FL_FLY | FL_SWIM) ) )
 	{
-		if (ent->v.velocity[2] < movevars.gravity*-0.1)
+		if (ent->v.velocity[2] < sv.movevars.gravity*-0.1)
 			hitsound = true;
 		else
 			hitsound = false;
@@ -908,14 +908,14 @@ void SV_Physics (void)
 
 void SV_SetMoveVars(void)
 {
-	movevars.gravity			= sv_gravity.value; 
-	movevars.stopspeed		    = sv_stopspeed.value;		 
-	movevars.maxspeed			= sv_maxspeed.value;			 
-	movevars.spectatormaxspeed  = sv_spectatormaxspeed.value; 
-	movevars.accelerate		    = sv_accelerate.value;		 
-	movevars.airaccelerate	    = sv_airaccelerate.value;	 
-	movevars.wateraccelerate	= sv_wateraccelerate.value;	   
-	movevars.friction			= sv_friction.value;			 
-	movevars.waterfriction	    = sv_waterfriction.value;	 
-	movevars.entgravity			= 1.0;
+	sv.movevars.gravity			= sv_gravity.value; 
+	sv.movevars.stopspeed		    = sv_stopspeed.value;		 
+	sv.movevars.maxspeed			= sv_maxspeed.value;			 
+	sv.movevars.spectatormaxspeed  = sv_spectatormaxspeed.value; 
+	sv.movevars.accelerate		    = sv_accelerate.value;		 
+	sv.movevars.airaccelerate	    = sv_airaccelerate.value;	 
+	sv.movevars.wateraccelerate	= sv_wateraccelerate.value;	   
+	sv.movevars.friction			= sv_friction.value;			 
+	sv.movevars.waterfriction	    = sv_waterfriction.value;	 
+	sv.movevars.entgravity			= 1.0;
 }

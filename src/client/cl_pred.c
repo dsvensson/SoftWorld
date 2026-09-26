@@ -17,11 +17,12 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-#include "quakedef.h"
-#include "winquake.h"
+#include "cl_local.h"
 
 cvar_t	cl_nopred = {.name = "cl_nopred", .string = "0"};
 cvar_t	cl_pushlatency = {.name = "pushlatency", .string = "-999"};
+
+playermove_t	cl_pmove;
 
 extern	frame_t		*view_frame;
 
@@ -46,27 +47,27 @@ void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u, 
 		return;
 	}
 
-	VectorCopy (from->origin, pmove.origin);
+	VectorCopy (from->origin, cl_pmove.origin);
 //	VectorCopy (from->viewangles, pmove.angles);
-	VectorCopy (u->angles, pmove.angles);
-	VectorCopy (from->velocity, pmove.velocity);
+	VectorCopy (u->angles, cl_pmove.angles);
+	VectorCopy (from->velocity, cl_pmove.velocity);
 
-	pmove.oldbuttons = from->oldbuttons;
-	pmove.waterjumptime = from->waterjumptime;
-	pmove.dead = cl.stats[STAT_HEALTH] <= 0;
-	pmove.spectator = spectator;
+	cl_pmove.oldbuttons = from->oldbuttons;
+	cl_pmove.waterjumptime = from->waterjumptime;
+	cl_pmove.dead = cl.stats[STAT_HEALTH] <= 0;
+	cl_pmove.spectator = spectator;
 
-	pmove.cmd = *u;
+	cl_pmove.cmd = *u;
 
-	PlayerMove ();
+	PM_PlayerMove (&cl_pmove, &cl.movevars);
 //for (i=0 ; i<3 ; i++)
 //pmove.origin[i] = ((int)(pmove.origin[i]*8))*0.125;
-	to->waterjumptime = pmove.waterjumptime;
-	to->oldbuttons = pmove.cmd.buttons;
-	VectorCopy (pmove.origin, to->origin);
-	VectorCopy (pmove.angles, to->viewangles);
-	VectorCopy (pmove.velocity, to->velocity);
-	to->onground = onground;
+	to->waterjumptime = cl_pmove.waterjumptime;
+	to->oldbuttons = cl_pmove.cmd.buttons;
+	VectorCopy (cl_pmove.origin, to->origin);
+	VectorCopy (cl_pmove.angles, to->viewangles);
+	VectorCopy (cl_pmove.velocity, to->velocity);
+	to->onground = cl_pmove.onground;
 
 	to->weaponframe = from->weaponframe;
 }
@@ -94,6 +95,7 @@ void CL_PredictMove (void)
 	cl.time = realtime - cls.latency - cl_pushlatency.value*0.001;
 	if (cl.time > realtime)
 		cl.time = realtime;
+	r_scene.time = cl.time;
 
 	if (cl.intermission)
 		return;
@@ -116,7 +118,7 @@ void CL_PredictMove (void)
 
 		cls.state = ca_active;
 		snprintf (text, sizeof(text), "QuakeWorld: %s", cls.servername);
-		SetWindowText (mainwindow, text);
+		VID_SetCaption (text);
 	}
 
 	if (cl_nopred.value)
@@ -127,7 +129,7 @@ void CL_PredictMove (void)
 	}
 
 	// predict forward until cl.time <= to->senttime
-	oldphysent = pmove.numphysent;
+	oldphysent = cl_pmove.numphysent;
 	CL_SetSolidPlayers (cl.playernum);
 
 //	to = &cl.frames[cls.netchan.incoming_sequence & UPDATE_MASK];
@@ -143,7 +145,7 @@ void CL_PredictMove (void)
 		from = to;
 	}
 
-	pmove.numphysent = oldphysent;
+	cl_pmove.numphysent = oldphysent;
 
 	if (i == UPDATE_BACKUP-1 || !to)
 		return;		// net hasn't deliver packets in a long time...
