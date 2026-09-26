@@ -75,11 +75,33 @@ static void TestZSpan (void)
 	}
 }
 
+// a texture on a random plane, seen from a span that stays in front of the
+// viewer: 1/z at least 0.002 over u, v below 2048
+static simd_texmap_t RandTexmap (int width, int height)
+{
+	simd_texmap_t	map;
+
+	map.ziorigin = RandFloat (0.01f, 1.0f);
+	map.zistepu = RandFloat (-2e-6f, 2e-6f);
+	map.zistepv = RandFloat (-2e-6f, 2e-6f);
+	map.sdivzorigin = RandFloat (-1.0f, 1.0f) * map.ziorigin;
+	map.sdivzstepu = RandFloat (-1e-4f, 1e-4f);
+	map.sdivzstepv = RandFloat (-1e-4f, 1e-4f);
+	map.tdivzorigin = RandFloat (-1.0f, 1.0f) * map.ziorigin;
+	map.tdivzstepu = RandFloat (-1e-4f, 1e-4f);
+	map.tdivzstepv = RandFloat (-1e-4f, 1e-4f);
+	map.sadjust = RandRange (-(width << 16), width << 16);
+	map.tadjust = RandRange (-(height << 16), height << 16);
+	map.sextent = (width << 16) - 1;
+	map.textent = (height << 16) - 1;
+	return map;
+}
+
 static void TestTexSpan (void)
 {
-	static uint32_t	tex[256 * 256];
-	uint32_t		a[16], b[16];
-	int				r, i, width, height, count, s0, s1, t0, t1;
+	static uint32_t	tex[256 * 256], a[600], b[600];
+	simd_texmap_t	map;
+	int				r, i, width, height, count, u, v;
 
 	for (i = 0 ; i < 256 * 256 ; i++)
 		tex[i] = Rand ();
@@ -87,17 +109,44 @@ static void TestTexSpan (void)
 	{
 		width = RandRange (1, 256);
 		height = RandRange (1, 256);
-		count = RandRange (1, 16);
-		s0 = RandRange (0, (width << 16) - 1);
-		s1 = RandRange (0, (width << 16) - 1);
-		t0 = RandRange (0, (height << 16) - 1);
-		t1 = RandRange (0, (height << 16) - 1);
+		map = RandTexmap (width, height);
+		count = RandRange (1, 600);
+		u = RandRange (0, 2047 - count);
+		v = RandRange (0, 2047);
 		memset (a, 0, sizeof(a));
 		memset (b, 0, sizeof(b));
-		// steps that stay inside the texture, like the span drawers' clamped ones
-		Simd_Scalar_TexSpan (a, tex, width, s0, t0, (s1 - s0) / 16, (t1 - t0) / 16, count);
-		Simd_V4_TexSpan (b, tex, width, s0, t0, (s1 - s0) / 16, (t1 - t0) / 16, count);
+		Simd_Scalar_TexSpan (a, &map, tex, width, u, v, count);
+		Simd_V4_TexSpan (b, &map, tex, width, u, v, count);
 		Check ("TexSpan", r, !memcmp (a, b, sizeof(a)));
+	}
+}
+
+static void TestTurbSpan (void)
+{
+	static byte		tex[64 * 64 + 3];
+	static uint32_t	palette[256], a[600], b[600];
+	static int		turb[256];
+	simd_texmap_t	map;
+	int				r, i, count, u, v;
+
+	for (i = 0 ; i < (int)sizeof(tex) ; i++)
+		tex[i] = (byte)Rand ();
+	for (i = 0 ; i < 256 ; i++)
+	{
+		palette[i] = Rand ();
+		turb[i] = RandRange (0, 16 << 16);
+	}
+	for (r = 0 ; r < ROUNDS ; r++)
+	{
+		map = RandTexmap (RandRange (1, 1024), RandRange (1, 1024));
+		count = RandRange (1, 600);
+		u = RandRange (0, 2047 - count);
+		v = RandRange (0, 2047);
+		memset (a, 0, sizeof(a));
+		memset (b, 0, sizeof(b));
+		Simd_Scalar_TurbSpan (a, &map, tex, palette, turb + (r & 127), u, v, count);
+		Simd_V4_TurbSpan (b, &map, tex, palette, turb + (r & 127), u, v, count);
+		Check ("TurbSpan", r, !memcmp (a, b, sizeof(a)));
 	}
 }
 
@@ -204,6 +253,7 @@ int main (void)
 {
 	TestZSpan ();
 	TestTexSpan ();
+	TestTurbSpan ();
 	TestLitRowColormap ();
 	TestLitRowRGB ();
 	TestExpand8 ();

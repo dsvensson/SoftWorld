@@ -316,7 +316,7 @@ Average microseconds per frame of each stage since the last call
 */
 static void R_Profile_f (void)
 {
-	static const char	*names[PROF_COUNT] = {"edges", "spans", "surfcache", "models", "viewmodel",
+	static const char	*names[PROF_COUNT] = {"edges", "spans", "draw", "surfcache", "models", "viewmodel",
 		"particles", "warp", "2d", "present"};
 	int		i;
 

@@ -32,13 +32,128 @@ void Simd_Scalar_ZSpan (float *dest, int count, float zi, float step)
 		dest[i] = zi + (float)i * step;
 }
 
-void Simd_Scalar_TexSpan (uint32_t *dest, const uint32_t *src, int srcwidth,
-	int s, int t, int sstep, int tstep, int count)
+// the perspective stepping of a span, as the original span drawers do it: s
+// and t exact at the ends of each subdivision of 1 << shift pixels, stepped
+// in between
+typedef struct
 {
-	int		i;
+	const simd_texmap_t	*map;
+	float	sdivz, tdivz, zi;
+	int		s, t;			// where the next subdivision starts
+	int		sstep, tstep;
+	int		count;			// pixels left
+	int		shift;
+} scalar_stepper_t;
 
-	for (i = 0 ; i < count ; i++)
-		dest[i] = src[((s + i * sstep) >> 16) + ((t + i * tstep) >> 16) * srcwidth];
+// hi if above it, else lo if below it
+static int Simd_Scalar_Clamp (int x, int lo, int hi)
+{
+	if (x > hi)
+		return hi;
+	if (x < lo)
+		return lo;
+	return x;
+}
+
+static void Simd_Scalar_SpanStart (scalar_stepper_t *st, const simd_texmap_t *map, int u, int v,
+	int count, int shift)
+{
+	float	du = (float)u, dv = (float)v, z;
+
+	st->map = map;
+	st->count = count;
+	st->shift = shift;
+	st->sstep = 0;
+	st->tstep = 0;
+	st->sdivz = map->sdivzorigin + dv*map->sdivzstepv + du*map->sdivzstepu;
+	st->tdivz = map->tdivzorigin + dv*map->tdivzstepv + du*map->tdivzstepu;
+	st->zi = map->ziorigin + dv*map->zistepv + du*map->zistepu;
+	z = (float)0x10000 / st->zi;	// prescale to 16.16 fixed-point
+	st->s = Simd_Scalar_Clamp ((int)(st->sdivz * z) + map->sadjust, 0, map->sextent);
+	st->t = Simd_Scalar_Clamp ((int)(st->tdivz * z) + map->tadjust, 0, map->textent);
+}
+
+// the next subdivision: its first s and t, with st->sstep and st->tstep for
+// it; returns its pixel count
+static int Simd_Scalar_SpanNext (scalar_stepper_t *st, int *s, int *t)
+{
+	const simd_texmap_t	*map = st->map;
+	int		n = 1 << st->shift, spancount, snext, tnext;
+	float	z, spancountminus1;
+
+	spancount = st->count >= n ? n : st->count;
+	st->count -= spancount;
+	if (st->count)
+	{
+	// s and t at the start of the next subdivision, the steps by shifting.
+	// The least s and t is n, so rounding down negative steps can't run off
+	// the texture.
+		st->sdivz += map->sdivzstepu * (float)n;
+		st->tdivz += map->tdivzstepu * (float)n;
+		st->zi += map->zistepu * (float)n;
+		z = (float)0x10000 / st->zi;
+		snext = Simd_Scalar_Clamp ((int)(st->sdivz * z) + map->sadjust, n, map->sextent);
+		tnext = Simd_Scalar_Clamp ((int)(st->tdivz * z) + map->tadjust, n, map->textent);
+		st->sstep = (snext - st->s) >> st->shift;
+		st->tstep = (tnext - st->t) >> st->shift;
+	}
+	else
+	{
+	// s and t at the span's last pixel, so it can't step off the polygon; the
+	// steps by division, rounding toward the start
+		spancountminus1 = (float)(spancount - 1);
+		st->sdivz += map->sdivzstepu * spancountminus1;
+		st->tdivz += map->tdivzstepu * spancountminus1;
+		st->zi += map->zistepu * spancountminus1;
+		z = (float)0x10000 / st->zi;
+		snext = Simd_Scalar_Clamp ((int)(st->sdivz * z) + map->sadjust, n, map->sextent);
+		tnext = Simd_Scalar_Clamp ((int)(st->tdivz * z) + map->tadjust, n, map->textent);
+		if (spancount > 1)
+		{
+			st->sstep = (snext - st->s) / (spancount - 1);
+			st->tstep = (tnext - st->t) / (spancount - 1);
+		}
+	}
+	*s = st->s;
+	*t = st->t;
+	st->s = snext;
+	st->t = tnext;
+	return spancount;
+}
+
+void Simd_Scalar_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src, int srcwidth,
+	int u, int v, int count)
+{
+	scalar_stepper_t	st;
+	int					n, s, t;
+
+	Simd_Scalar_SpanStart (&st, map, u, v, count, 3);
+	do
+	{
+		for (n = Simd_Scalar_SpanNext (&st, &s, &t) ; n > 0 ; n--, s += st.sstep, t += st.tstep)
+			*dest++ = src[(s >> 16) + (t >> 16) * srcwidth];
+	} while (st.count > 0);
+}
+
+void Simd_Scalar_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
+	const int *turb, int u, int v, int count)
+{
+	scalar_stepper_t	st;
+	int					n, s, t, sturb, tturb;
+
+	Simd_Scalar_SpanStart (&st, map, u, v, count, 4);
+	do
+	{
+		n = Simd_Scalar_SpanNext (&st, &s, &t);
+		s &= (128 << 16) - 1;
+		t &= (128 << 16) - 1;
+		for ( ; n > 0 ; n--, s += st.sstep, t += st.tstep)
+		{
+			sturb = ((s + turb[(t >> 16) & 127]) >> 16) & 63;
+			tturb = ((t + turb[(s >> 16) & 127]) >> 16) & 63;
+			*dest++ = palette[src[(tturb << 6) + sturb]];
+		}
+	} while (st.count > 0);
 }
 
 void Simd_Scalar_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,

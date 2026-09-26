@@ -25,8 +25,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "simd.h"
 
 void	Simd_Scalar_ZSpan (float *dest, int count, float zi, float step);
-void	Simd_Scalar_TexSpan (uint32_t *dest, const uint32_t *src, int srcwidth,
-			int s, int t, int sstep, int tstep, int count);
+void	Simd_Scalar_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src, int srcwidth,
+			int u, int v, int count);
+void	Simd_Scalar_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
+			const int *turb, int u, int v, int count);
 void	Simd_Scalar_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 			int light, int step, int count);
 void	Simd_Scalar_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette,
@@ -37,8 +39,10 @@ void	Simd_Scalar_CopyStream (void *dest, size_t destpitch, const void *src, size
 			size_t rowbytes, int rows);
 
 void	Simd_V4_ZSpan (float *dest, int count, float zi, float step);
-void	Simd_V4_TexSpan (uint32_t *dest, const uint32_t *src, int srcwidth,
-			int s, int t, int sstep, int tstep, int count);
+void	Simd_V4_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src, int srcwidth,
+			int u, int v, int count);
+void	Simd_V4_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
+			const int *turb, int u, int v, int count);
 void	Simd_V4_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 			int light, int step, int count);
 void	Simd_V4_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette,

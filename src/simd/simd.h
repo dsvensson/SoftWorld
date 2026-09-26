@@ -30,10 +30,29 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // 1/z along a span: dest[i] = zi + i * step, in float
 void	simd_zspan (float *dest, int count, float zi, float step);
 
-// a span of a surface cache block: dest[i] = src[((s + i*sstep) >> 16) +
-// ((t + i*tstep) >> 16) * srcwidth], count at most 16
-void	simd_texspan (uint32_t *dest, const uint32_t *src, int srcwidth,
-			int s, int t, int sstep, int tstep, int count);
+// how a surface's texture lies on the screen: s/z, t/z and 1/z at pixel
+// (u, v) are origin + u*stepu + v*stepv; s and t (16.16) are those over 1/z
+// plus the adjust, clamped to 0 .. extent
+typedef struct
+{
+	float	sdivzorigin, sdivzstepu, sdivzstepv;
+	float	tdivzorigin, tdivzstepu, tdivzstepv;
+	float	ziorigin, zistepu, zistepv;
+	int		sadjust, tadjust;
+	int		sextent, textent;
+} simd_texmap_t;
+
+// a span of count pixels from (u, v) of a surface cache block, src with
+// srcwidth pixels per row. s and t are exact every 8 pixels and stepped in
+// between, as the original span drawer does.
+void	simd_texspan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src, int srcwidth,
+			int u, int v, int count);
+
+// a span of a turbulent (water) surface: src is its 64x64 8 bit texture, with
+// 3 bytes readable after it, drawn through palette; turb is the wave, read at
+// 0 .. 254. s and t are exact every 16 pixels.
+void	simd_turbspan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
+			const int *turb, int u, int v, int count);
 
 // a row of a surface lit through a colormap: texel j (0 .. count-1) gets
 // light + (count - 1 - j) * step, and becomes colormap[(light & 0xFF00) + texel]

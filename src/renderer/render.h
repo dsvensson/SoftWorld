@@ -140,6 +140,7 @@ typedef enum
 {
 	PROF_EDGES,			// the world and brush models into edges and surfaces
 	PROF_SPANS,			// surfaces into pixels, surface cache included
+	PROF_DRAW,			// the spans of surfaces drawn, in PROF_SPANS
 	PROF_SURFCACHE,		// lighting surfaces into the surface cache
 	PROF_MODELS,		// alias models and sprites
 	PROF_VIEWMODEL,

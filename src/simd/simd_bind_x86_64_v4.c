@@ -27,10 +27,16 @@ void simd_zspan (float *dest, int count, float zi, float step)
 	Simd_V4_ZSpan (dest, count, zi, step);
 }
 
-void simd_texspan (uint32_t *dest, const uint32_t *src, int srcwidth,
-	int s, int t, int sstep, int tstep, int count)
+void simd_texspan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src, int srcwidth,
+	int u, int v, int count)
 {
-	Simd_V4_TexSpan (dest, src, srcwidth, s, t, sstep, tstep, count);
+	Simd_V4_TexSpan (dest, map, src, srcwidth, u, v, count);
+}
+
+void simd_turbspan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
+	const int *turb, int u, int v, int count)
+{
+	Simd_V4_TurbSpan (dest, map, src, palette, turb, u, v, count);
 }
 
 void simd_litrow_colormap (uint32_t *dest, const byte *src, const uint32_t *colormap,

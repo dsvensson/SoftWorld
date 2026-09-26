@@ -153,6 +153,7 @@ void D_DrawSurfaces (void)
 	surfcache_t		*pcurrentcache;
 	vec3_t			world_transformed_modelorg;
 	vec3_t			local_modelorg;
+	double			prof = R_ProfStart ();
 
 	currententity = &r_worldentity;
 	TransformVector (modelorg, transformed_modelorg);
@@ -300,5 +301,6 @@ void D_DrawSurfaces (void)
 			}
 		}
 	}
+	R_ProfEnd (PROF_DRAW, prof);
 }
 
