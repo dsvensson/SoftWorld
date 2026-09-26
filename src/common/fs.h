@@ -37,6 +37,7 @@ byte	*FS_LoadFile (const char *path, int *length);
 
 // called whenever the game directory changes
 void	FS_AddGamedirCallback (void (*callback)(void));
+void	FS_RemoveGamedirCallback (void (*callback)(void));
 
 void	COM_WriteFile (char *filename, void *data, int len);
 int		COM_FOpenFile (const char *filename, FILE **file);

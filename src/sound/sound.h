@@ -90,7 +90,6 @@ typedef struct
 } wavinfo_t;
 
 void S_Init (void);
-void S_Startup (void);
 void S_Shutdown (void);
 void S_StartSound (int entnum, int entchannel, sfx_t *sfx, vec3_t origin, float fvol,  float attenuation);
 void S_StaticSound (sfx_t *sfx, vec3_t origin, float vol, float attenuation);
@@ -119,13 +118,13 @@ channel_t *SND_PickChannel(int entnum, int entchannel);
 // spatializes a channel
 void SND_Spatialize(channel_t *ch);
 
-// initializes cycling through a DMA buffer and returns information on it
-bool SNDDMA_Init(void);
+// opens the output and describes its ring buffer in dma
+bool SNDDMA_Init (dma_t *dma);
 
 // gets the current DMA position
 int SNDDMA_GetDMAPos(void);
 
-// the whole output ring, shm->samples samples, for writing; NULL if unavailable
+// the whole output ring, dma->samples samples, for writing; NULL if unavailable
 void *SNDDMA_LockBuffer (void);
 void SNDDMA_UnlockBuffer (void *buffer);
 
@@ -133,6 +132,7 @@ void SNDDMA_UnlockBuffer (void *buffer);
 void SNDDMA_Shutdown(void);
 
 // silence while the window is inactive
+void SNDDMA_SetBlocked (bool blocked);
 void S_BlockSound (void);
 void S_UnblockSound (void);
 
@@ -144,23 +144,8 @@ void S_UnblockSound (void);
 #define	MAX_DYNAMIC_CHANNELS	8
 
 
-extern	channel_t   channels[MAX_CHANNELS];
-// 0 to MAX_DYNAMIC_CHANNELS-1	= normal entity sounds
-// MAX_DYNAMIC_CHANNELS to MAX_DYNAMIC_CHANNELS + NUM_AMBIENTS -1 = water, etc
-// MAX_DYNAMIC_CHANNELS + NUM_AMBIENTS to total_channels = static sounds
-
-extern	int			total_channels;
-
-extern int		paintedtime;
-extern volatile dma_t *shm;
-extern volatile dma_t sn;
-
-extern	cvar_t loadas8bit;
 extern	cvar_t bgmvolume;
 extern	cvar_t volume;
-
-
-extern int		snd_blocked;
 
 void S_LocalSound (char *s);
 sfxcache_t *S_LoadSound (sfx_t *s);

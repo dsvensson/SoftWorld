@@ -64,24 +64,23 @@ void S_TransferStereo16 (int endtime)
 	snd_vol = (int)(volume.value*256);
 
 	snd_p = (int *) paintbuffer;
-	lpaintedtime = paintedtime;
+	lpaintedtime = snd.paintedtime;
 
 	pbuf = SNDDMA_LockBuffer ();
 	if (!pbuf)
 	{
-		S_Shutdown ();
-		S_Startup ();
+		S_RestartOutput ();
 		return;
 	}
 
 	while (lpaintedtime < endtime)
 	{
 	// handle recirculating buffer issues
-		lpos = lpaintedtime & ((shm->samples>>1)-1);
+		lpos = lpaintedtime & ((snd.dma.samples>>1)-1);
 
 		snd_out = (short *) pbuf + (lpos<<1);
 
-		snd_linear_count = (shm->samples>>1) - lpos;
+		snd_linear_count = (snd.dma.samples>>1) - lpos;
 		if (lpaintedtime + snd_linear_count > endtime)
 			snd_linear_count = endtime - lpaintedtime;
 
@@ -108,28 +107,27 @@ void S_TransferPaintBuffer(int endtime)
 	int		vol;
 	unsigned	*pbuf;
 
-	if (shm->samplebits == 16 && shm->channels == 2)
+	if (snd.dma.samplebits == 16 && snd.dma.channels == 2)
 	{
 		S_TransferStereo16 (endtime);
 		return;
 	}
 	
 	p = (int *) paintbuffer;
-	count = (endtime - paintedtime) * shm->channels;
-	out_mask = shm->samples - 1; 
-	out_idx = paintedtime * shm->channels & out_mask;
-	step = 3 - shm->channels;
+	count = (endtime - snd.paintedtime) * snd.dma.channels;
+	out_mask = snd.dma.samples - 1; 
+	out_idx = snd.paintedtime * snd.dma.channels & out_mask;
+	step = 3 - snd.dma.channels;
 	vol = (int)(volume.value*256);
 
 	pbuf = SNDDMA_LockBuffer ();
 	if (!pbuf)
 	{
-		S_Shutdown ();
-		S_Startup ();
+		S_RestartOutput ();
 		return;
 	}
 
-	if (shm->samplebits == 16)
+	if (snd.dma.samplebits == 16)
 	{
 		short *out = (short *) pbuf;
 		while (count--)
@@ -144,7 +142,7 @@ void S_TransferPaintBuffer(int endtime)
 			out_idx = (out_idx + 1) & out_mask;
 		}
 	}
-	else if (shm->samplebits == 8)
+	else if (snd.dma.samplebits == 8)
 	{
 		unsigned char *out = (unsigned char *) pbuf;
 		while (count--)
@@ -183,19 +181,19 @@ void S_PaintChannels(int endtime)
 	sfxcache_t	*sc;
 	int		ltime, count;
 
-	while (paintedtime < endtime)
+	while (snd.paintedtime < endtime)
 	{
 	// if paintbuffer is smaller than DMA buffer
 		end = endtime;
-		if (endtime - paintedtime > PAINTBUFFER_SIZE)
-			end = paintedtime + PAINTBUFFER_SIZE;
+		if (endtime - snd.paintedtime > PAINTBUFFER_SIZE)
+			end = snd.paintedtime + PAINTBUFFER_SIZE;
 
 	// clear the paint buffer
-		Q_memset(paintbuffer, 0, (end - paintedtime) * sizeof(portable_samplepair_t));
+		Q_memset(paintbuffer, 0, (end - snd.paintedtime) * sizeof(portable_samplepair_t));
 
 	// paint in the channels.
-		ch = channels;
-		for (i=0; i<total_channels ; i++, ch++)
+		ch = snd.channels;
+		for (i=0; i<snd.total_channels ; i++, ch++)
 		{
 			if (!ch->sfx)
 				continue;
@@ -205,7 +203,7 @@ void S_PaintChannels(int endtime)
 			if (!sc)
 				continue;
 
-			ltime = paintedtime;
+			ltime = snd.paintedtime;
 
 			while (ltime < end)
 			{	// paint up to end
@@ -244,7 +242,7 @@ void S_PaintChannels(int endtime)
 
 	// transfer out according to DMA format
 		S_TransferPaintBuffer(end);
-		paintedtime = end;
+		snd.paintedtime = end;
 	}
 }
 

@@ -56,6 +56,7 @@ static HANDLE			snd_bufferevent;	// auto reset: the device wants samples
 static HANDLE			snd_readyevent;		// manual reset: first open attempt done
 static int				snd_rate;			// the ring's sample rate
 static bool				snd_opened;			// result of the first open
+static volatile LONG	snd_silenced;		// the window is inactive
 
 // owned by the sound thread
 static IMMDeviceEnumerator	*snd_enumerator;
@@ -250,7 +251,7 @@ static HRESULT SND_FillDevice (void)
 		return hr;
 
 	read = snd_readframe;
-	if (snd_blocked > 0)
+	if (snd_silenced)
 		memset (data, 0, (size_t)frames * FRAME_BYTES);
 	else
 	{
@@ -324,7 +325,7 @@ BACKEND CONTRACT
 ===============================================================================
 */
 
-bool SNDDMA_Init (void)
+bool SNDDMA_Init (dma_t *dma)
 {
 	snd_ring = Mem_Calloc (RING_FRAMES, FRAME_BYTES);
 	snd_readframe = 0;
@@ -345,17 +346,15 @@ bool SNDDMA_Init (void)
 		return false;
 	}
 
-	shm = &sn;
-	shm->splitbuffer = false;
-	shm->channels = 2;
-	shm->samplebits = 16;
-	shm->speed = snd_rate;
-	shm->samples = RING_FRAMES * 2;
-	shm->samplepos = 0;
-	shm->submission_chunk = 1;
-	shm->buffer = snd_ring;
-	shm->soundalive = true;
-	shm->gamealive = true;
+	memset (dma, 0, sizeof(*dma));
+	dma->channels = 2;
+	dma->samplebits = 16;
+	dma->speed = snd_rate;
+	dma->samples = RING_FRAMES * 2;
+	dma->submission_chunk = 1;
+	dma->buffer = snd_ring;
+	dma->soundalive = true;
+	dma->gamealive = true;
 
 	Con_Printf ("WASAPI sound: %d Hz\n", snd_rate);
 	return true;
@@ -363,7 +362,7 @@ bool SNDDMA_Init (void)
 
 int SNDDMA_GetDMAPos (void)
 {
-	return (int)(snd_readframe * shm->channels) & (shm->samples - 1);
+	return (int)(snd_readframe * 2) & (RING_FRAMES * 2 - 1);
 }
 
 void *SNDDMA_LockBuffer (void)
@@ -403,19 +402,13 @@ void SNDDMA_Shutdown (void)
 
 /*
 ==================
-S_BlockSound
+SNDDMA_SetBlocked
 
 While blocked (the window is inactive) the device gets silence, and the read
 position keeps moving so the mixer catches up when unblocked.
 ==================
 */
-void S_BlockSound (void)
+void SNDDMA_SetBlocked (bool blocked)
 {
-	snd_blocked++;
-}
-
-void S_UnblockSound (void)
-{
-	if (snd_blocked > 0)
-		snd_blocked--;
+	InterlockedExchange (&snd_silenced, blocked);
 }

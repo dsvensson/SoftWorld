@@ -475,6 +475,20 @@ void FS_AddGamedirCallback (void (*callback)(void))
 	gamedir_callbacks[num_gamedir_callbacks++] = callback;
 }
 
+void FS_RemoveGamedirCallback (void (*callback)(void))
+{
+	int		i;
+
+	for (i=0 ; i<num_gamedir_callbacks ; i++)
+	{
+		if (gamedir_callbacks[i] == callback)
+		{
+			gamedir_callbacks[i] = gamedir_callbacks[--num_gamedir_callbacks];
+			return;
+		}
+	}
+}
+
 /*
 =================
 COM_LoadPackFile

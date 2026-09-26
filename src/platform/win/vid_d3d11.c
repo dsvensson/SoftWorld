@@ -766,7 +766,7 @@ AppActivate
 */
 static void AppActivate (bool active, bool minimize)
 {
-	static bool	sound_active = true;
+	static bool	sound_active;		// sound starts blocked (sys_win_gui.c), until the window is active
 
 	ActiveApp = active;
 	Minimized = minimize;
