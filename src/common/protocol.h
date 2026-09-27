@@ -102,6 +102,38 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define	PROTOCOL_VERSION	28
 
+//
+// protocol extensions, each a family (a magic number) and a mask of bits.
+// The challenge reply lists the server's as (magic, mask) longs after the
+// challenge string; the connect packet the client's, as "0x<magic> 0x<mask>"
+// lines after the userinfo, only those the server listed; svc_serverdata the
+// ones in use this level, as pairs before PROTOCOL_VERSION.
+//
+#define	PROTOCOL_VERSION_FTE	(('F'<<0) + ('T'<<8) + ('E'<<16) + ('X'<<24))
+#define	PROTOCOL_VERSION_FTE2	(('F'<<0) + ('T'<<8) + ('E'<<16) + ('2'<<24))
+#define	PROTOCOL_VERSION_MVD1	(('M'<<0) + ('V'<<8) + ('D'<<16) + ('1'<<24))
+
+#define	FTE_PEXT_TRANS				0x00000008	// entity alpha
+#define	FTE_PEXT_ACCURATETIMINGS	0x00000040
+#define	FTE_PEXT_MODELDBL			0x00001000	// model numbers up to 511 in deltas
+#define	FTE_PEXT_ENTITYDBL			0x00002000	// entity numbers up to 1023
+#define	FTE_PEXT_ENTITYDBL2			0x00004000	// entity numbers up to 2047
+#define	FTE_PEXT_FLOATCOORDS		0x00008000	// coordinates as floats, angles in 16 bits
+#define	FTE_PEXT_COLOURMOD			0x00080000	// entity color multipliers
+#define	FTE_PEXT_SPAWNSTATIC2		0x00400000	// statics and baselines as deltas
+#define	FTE_PEXT_256PACKETENTITIES	0x01000000	// 256 entities in a packet
+#define	FTE_PEXT_CHUNKEDDOWNLOADS	0x20000000	// downloads in numbered chunks
+
+#define	MVD_PEXT1_FLOATCOORDS		0x00000001	// entity and player origins as floats
+#define	MVD_PEXT1_HIGHLAGTELEPORT	0x00000002	// svc_setangle carries a leading byte
+#define	MVD_PEXT1_HIDDEN_MESSAGES	0x00000020	// hidden MVD blocks
+#define	MVD_PEXT1_WEAPON_PREDICTION	0x00000080
+#define	MVD_PEXT1_SIMPLE_PROJECTILE	0x00000100
+
+// the extensions this program speaks, as a client and as a server
+#define	SW_FTE_EXTENSIONS	(FTE_PEXT_FLOATCOORDS)
+#define	SW_MVD1_EXTENSIONS	(MVD_PEXT1_FLOATCOORDS)
+
 #define QW_CHECK_HASH 0x5157
 
 //=========================================

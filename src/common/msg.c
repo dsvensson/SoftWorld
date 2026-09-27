@@ -99,12 +99,18 @@ void MSG_WriteString (sizebuf_t *sb, char *s)
 
 void MSG_WriteCoord (sizebuf_t *sb, float f)
 {
-	MSG_WriteShort (sb, (int)(f*8));
+	if (sb->floatcoords)
+		MSG_WriteFloat (sb, f);
+	else
+		MSG_WriteShort (sb, (int)(f*8));
 }
 
 void MSG_WriteAngle (sizebuf_t *sb, float f)
 {
-	MSG_WriteByte (sb, (int)(f*256/360) & 255);
+	if (sb->floatcoords)
+		MSG_WriteAngle16 (sb, f);
+	else
+		MSG_WriteByte (sb, (int)(f*256/360) & 255);
 }
 
 void MSG_WriteAngle16 (sizebuf_t *sb, float f)
@@ -304,11 +310,15 @@ char *MSG_ReadStringLine (void)
 
 float MSG_ReadCoord (void)
 {
+	if (msg_readbuf->floatcoords)
+		return MSG_ReadFloat ();
 	return MSG_ReadShort() * (1.0f/8);
 }
 
 float MSG_ReadAngle (void)
 {
+	if (msg_readbuf->floatcoords)
+		return MSG_ReadAngle16 ();
 	return (float)(MSG_ReadChar() * (360.0/256));
 }
 

@@ -195,6 +195,11 @@ typedef struct
 
 	int			challenge;
 
+// protocol extensions: from the challenge, those both ends know, asked for
+// in the connect packet; from svc_serverdata, those in use
+	unsigned	fteext;
+	unsigned	mvdext1;
+
 	float		latency;		// rolling average
 
 // independent physics: commands are made and sent at the physics rate,

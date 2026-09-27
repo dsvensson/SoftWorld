@@ -53,12 +53,20 @@ void SV_New_f (void)
 {
 	char		*gamedir;
 	int			playernum;
+	unsigned	fteext;
 
 	if (host_client->state == cs_spawned)
 		return;
 
 	host_client->state = cs_connected;
 	host_client->connection_started = host.realtime;
+
+	if (sv.bigcoords && !(host_client->fteext & FTE_PEXT_FLOATCOORDS))
+	{
+		SV_ClientPrintf (host_client, PRINT_HIGH, "%s", SV_BIGCOORDS_REFUSAL);
+		SV_DropClient (host_client);
+		return;
+	}
 
 	// send the info about the new client to all connected clients
 //	SV_FullClientUpdate (host_client, &sv.reliable_datagram);
@@ -76,9 +84,26 @@ void SV_New_f (void)
 		SZ_Clear(&host_client->netchan.message);
 	}
 
-	// send the serverdata
+	// send the serverdata, with the protocol extensions in use this level;
+	// what follows is in this level's encoding
 	MSG_WriteByte (&host_client->netchan.message, svc_serverdata);
+	fteext = host_client->fteext;
+	if (!sv.bigcoords)
+		fteext &= ~FTE_PEXT_FLOATCOORDS;
+	if (fteext)
+	{
+		MSG_WriteLong (&host_client->netchan.message, PROTOCOL_VERSION_FTE);
+		MSG_WriteLong (&host_client->netchan.message, (int)fteext);
+	}
+	if (host_client->mvdext1)
+	{
+		MSG_WriteLong (&host_client->netchan.message, PROTOCOL_VERSION_MVD1);
+		MSG_WriteLong (&host_client->netchan.message, (int)host_client->mvdext1);
+	}
 	MSG_WriteLong (&host_client->netchan.message, PROTOCOL_VERSION);
+	host_client->netchan.message.floatcoords = sv.bigcoords;
+	SZ_Clear (&host_client->datagram);		// the old level's, in its encoding
+	host_client->datagram.floatcoords = sv.bigcoords;
 	MSG_WriteLong (&host_client->netchan.message, svs.spawncount);
 	MSG_WriteString (&host_client->netchan.message, gamedir);
 

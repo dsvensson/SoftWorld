@@ -68,6 +68,7 @@ typedef struct
 	char		modelname[MAX_QPATH];		// maps/<name>.bsp, for model_precache[0]
 	cmap_t		*map;				// a reference the server holds
 	cmodel_t	*worldmodel;
+	bool		bigcoords;			// coordinates as floats: the map goes past +-4096
 	unsigned	map_checksum, map_checksum2;
 	movevars_t	movevars;			// player movement settings from the sv_ cvars
 	double		frametime;			// seconds the current physics step or move covers
@@ -218,6 +219,10 @@ typedef struct client_s
 	int				chokecount;
 	int				delta_sequence;		// -1 = no compression
 	netchan_t		netchan;
+
+	// protocol extensions both ends know, from the connect packet
+	unsigned		fteext;
+	unsigned		mvdext1;
 } client_t;
 
 // a client can leave the server in one of four ways:
@@ -365,6 +370,11 @@ typedef struct
 //============================================================================
 
 extern	cvar_t	sv_mintic, sv_maxtic;
+extern	cvar_t	sv_bigcoords;
+
+#define	SV_BIGCOORDS_REFUSAL	"This map goes past the standard coordinates of +-4096:\n" \
+	"it needs a client with FTE float coordinates (ezQuake, FTE, SoftWorld).\n"
+
 extern	cvar_t	sv_maxspeed;
 
 

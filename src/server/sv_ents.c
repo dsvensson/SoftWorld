@@ -31,6 +31,8 @@ static int		numnails;
 
 bool SV_AddNailUpdate (edict_t *ent)
 {
+	if (sv.bigcoords)
+		return false;		// the packed nail positions only reach +-4096
 	if (ent->v.modelindex != sv.nailmodel
 		&& ent->v.modelindex != sv.supernailmodel)
 		return false;
@@ -86,7 +88,23 @@ Writes part of a packetentities message.
 Can delta from either a baseline or a previous packet_entity
 ==================
 */
-void SV_WriteDelta (entity_state_t *from, entity_state_t *to, sizebuf_t *msg, bool force)
+/*
+==================
+SV_WriteOrigin
+
+An entity or player origin: a float for clients with MVD_PEXT1_FLOATCOORDS,
+else in the buffer's encoding
+==================
+*/
+static void SV_WriteOrigin (const client_t *client, sizebuf_t *msg, float f)
+{
+	if (client->mvdext1 & MVD_PEXT1_FLOATCOORDS)
+		MSG_WriteFloat (msg, f);
+	else
+		MSG_WriteCoord (msg, f);
+}
+
+void SV_WriteDelta (const client_t *client, entity_state_t *from, entity_state_t *to, sizebuf_t *msg, bool force)
 {
 	int		bits;
 	int		i;
@@ -160,15 +178,15 @@ void SV_WriteDelta (entity_state_t *from, entity_state_t *to, sizebuf_t *msg, bo
 	if (bits & U_EFFECTS)
 		MSG_WriteByte (msg, to->effects);
 	if (bits & U_ORIGIN1)
-		MSG_WriteCoord (msg, to->origin[0]);		
+		SV_WriteOrigin (client, msg, to->origin[0]);
 	if (bits & U_ANGLE1)
 		MSG_WriteAngle(msg, to->angles[0]);
 	if (bits & U_ORIGIN2)
-		MSG_WriteCoord (msg, to->origin[1]);
+		SV_WriteOrigin (client, msg, to->origin[1]);
 	if (bits & U_ANGLE2)
 		MSG_WriteAngle(msg, to->angles[1]);
 	if (bits & U_ORIGIN3)
-		MSG_WriteCoord (msg, to->origin[2]);
+		SV_WriteOrigin (client, msg, to->origin[2]);
 	if (bits & U_ANGLE3)
 		MSG_WriteAngle(msg, to->angles[2]);
 }
@@ -220,7 +238,7 @@ void SV_EmitPacketEntities (client_t *client, packet_entities_t *to, sizebuf_t *
 		if (newnum == oldnum)
 		{	// delta update from old position
 //Con_Printf ("delta %i\n", newnum);
-			SV_WriteDelta (&from->entities[oldindex], &to->entities[newindex], msg, false);
+			SV_WriteDelta (client, &from->entities[oldindex], &to->entities[newindex], msg, false);
 			oldindex++;
 			newindex++;
 			continue;
@@ -230,7 +248,7 @@ void SV_EmitPacketEntities (client_t *client, packet_entities_t *to, sizebuf_t *
 		{	// this is a new entity, send it from the baseline
 			ent = EDICT_NUM(newnum);
 //Con_Printf ("baseline %i\n", newnum);
-			SV_WriteDelta (&ent->baseline, &to->entities[newindex], msg, true);
+			SV_WriteDelta (client, &ent->baseline, &to->entities[newindex], msg, true);
 			newindex++;
 			continue;
 		}
@@ -320,8 +338,8 @@ void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizeb
 		MSG_WriteShort (msg, pflags);
 
 		for (i=0 ; i<3 ; i++)
-			MSG_WriteCoord (msg, ent->v.origin[i]);
-		
+			SV_WriteOrigin (client, msg, ent->v.origin[i]);
+
 		MSG_WriteByte (msg, (int)ent->v.frame);
 
 		if (pflags & PF_MSEC)

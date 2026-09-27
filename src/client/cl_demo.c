@@ -478,9 +478,20 @@ void CL_Record_f (void)
 	memset(&buf, 0, sizeof(buf));
 	buf.data = buf_data;
 	buf.maxsize = sizeof(buf_data);
+	buf.floatcoords = (cls.fteext & FTE_PEXT_FLOATCOORDS) != 0;
 
-// send the serverdata
+// send the serverdata, with the protocol extensions in use
 	MSG_WriteByte (&buf, svc_serverdata);
+	if (cls.fteext)
+	{
+		MSG_WriteLong (&buf, PROTOCOL_VERSION_FTE);
+		MSG_WriteLong (&buf, (int)cls.fteext);
+	}
+	if (cls.mvdext1)
+	{
+		MSG_WriteLong (&buf, PROTOCOL_VERSION_MVD1);
+		MSG_WriteLong (&buf, (int)cls.mvdext1);
+	}
 	MSG_WriteLong (&buf, PROTOCOL_VERSION);
 	MSG_WriteLong (&buf, cl.servercount);
 	MSG_WriteString (&buf, gamedirfile);

@@ -94,6 +94,9 @@ cmodel_t	*CM_InlineModel (cmap_t *map, const char *name);
 // including the world
 int			CM_NumInlineModels (const cmap_t *map);
 
+// how far from the origin the map's geometry reaches, on any axis
+float		CM_Extent (const cmap_t *map);
+
 char		*CM_EntityString (const cmap_t *map);
 
 //

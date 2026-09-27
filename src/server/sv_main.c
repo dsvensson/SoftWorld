@@ -47,6 +47,10 @@ static cvar_t sv_highchars = {.name = "sv_highchars", .string = "1"};
 
 cvar_t sv_phs = {.name = "sv_phs", .string = "1"};
 
+// float coordinates (FTE_PEXT_FLOATCOORDS) for every map, not just those
+// past the standard +-4096; clients without them can't join
+cvar_t sv_bigcoords = {.name = "sv_bigcoords", .string = "0"};
+
 cvar_t pausable	= {.name = "pausable", .string = "1"};
 
 
@@ -500,6 +504,8 @@ void SVC_GetChallenge (void)
 	int		i;
 	int		oldest;
 	int		oldestTime;
+	byte		buf[64];
+	sizebuf_t	msg = {0};
 
 	oldest = 0;
 	oldestTime = 0x7fffffff;
@@ -525,9 +531,16 @@ void SVC_GetChallenge (void)
 		i = oldest;
 	}
 
-	// send it back
-	Netchan_OutOfBandPrint (NS_SERVER, svs.net_from, "%c%i", S2C_CHALLENGE, 
-			svs.challenges[i].challenge);
+	// send it back, with the protocol extensions this server knows
+	msg.data = buf;
+	msg.maxsize = sizeof(buf);
+	MSG_WriteByte (&msg, S2C_CHALLENGE);
+	MSG_WriteString (&msg, va("%i", svs.challenges[i].challenge));
+	MSG_WriteLong (&msg, PROTOCOL_VERSION_FTE);
+	MSG_WriteLong (&msg, SW_FTE_EXTENSIONS);
+	MSG_WriteLong (&msg, PROTOCOL_VERSION_MVD1);
+	MSG_WriteLong (&msg, SW_MVD1_EXTENSIONS);
+	Netchan_OutOfBand (NS_SERVER, svs.net_from, msg.cursize, msg.data);
 }
 
 /*
@@ -553,6 +566,7 @@ void SVC_DirectConnect (void)
 	int			qport;
 	int			version;
 	int			challenge;
+	unsigned	magic, fteext, mvdext1;
 
 	version = atoi(Cmd_Argv(1));
 	if (version != PROTOCOL_VERSION)
@@ -570,6 +584,22 @@ void SVC_DirectConnect (void)
 	strncpy (userinfo, Cmd_Argv(4), sizeof(userinfo)-2);
 	userinfo[sizeof(userinfo) - 2] = 0;
 
+	// the protocol extensions the client asks for, a "0x<magic> 0x<mask>"
+	// line per family after the userinfo; the ones this server knows are kept
+	fteext = mvdext1 = 0;
+	while (!msg_badread)
+	{
+		Cmd_TokenizeString (MSG_ReadStringLine ());
+		magic = (unsigned)strtoul (Cmd_Argv(0), NULL, 0);
+		if (magic == PROTOCOL_VERSION_FTE)
+			fteext = (unsigned)strtoul (Cmd_Argv(1), NULL, 0) & SW_FTE_EXTENSIONS;
+		else if (magic == PROTOCOL_VERSION_MVD1)
+			mvdext1 = (unsigned)strtoul (Cmd_Argv(1), NULL, 0) & SW_MVD1_EXTENSIONS;
+	}
+	msg_badread = false;
+	Con_DPrintf ("%s asks for protocol extensions FTE 0x%x, MVD1 0x%x\n", NET_AdrToString (svs.net_from),
+		fteext, mvdext1);
+
 	// see if the challenge is valid
 	for (i=0 ; i<MAX_CHALLENGES ; i++)
 	{
@@ -584,6 +614,13 @@ void SVC_DirectConnect (void)
 	if (i == MAX_CHALLENGES)
 	{
 		Netchan_OutOfBandPrint (NS_SERVER, svs.net_from, "%c\nNo challenge for address.\n", A2C_PRINT);
+		return;
+	}
+
+	if (sv.bigcoords && !(fteext & FTE_PEXT_FLOATCOORDS))
+	{
+		Con_Printf ("%s: refused, no float coordinates\n", NET_AdrToString (svs.net_from));
+		Netchan_OutOfBandPrint (NS_SERVER, svs.net_from, "%c\n%s", A2C_PRINT, SV_BIGCOORDS_REFUSAL);
 		return;
 	}
 
@@ -625,6 +662,8 @@ void SVC_DirectConnect (void)
 	memset (newcl, 0, sizeof(client_t));
 
 	newcl->userid = userid;
+	newcl->fteext = fteext;
+	newcl->mvdext1 = mvdext1;
 
 	// works properly
 	if (!sv_highchars.value) {
@@ -719,6 +758,7 @@ void SVC_DirectConnect (void)
 	newcl->datagram.allowoverflow = true;
 	newcl->datagram.data = newcl->datagram_buf;
 	newcl->datagram.maxsize = sizeof(newcl->datagram_buf);
+	// the encoding changes with serverdata, see SV_New_f
 
 	// spectator mode can ONLY be set at join time
 	newcl->spectator = spectator;
@@ -1352,6 +1392,7 @@ void SV_InitLocal (void)
 
 	Cvar_RegisterVariable (&sv_mintic);
 	Cvar_RegisterVariable (&sv_maxtic);
+	Cvar_RegisterVariable (&sv_bigcoords);
 
 	Cvar_RegisterVariable (&fraglimit);
 	Cvar_RegisterVariable (&timelimit);

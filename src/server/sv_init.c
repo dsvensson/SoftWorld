@@ -98,6 +98,30 @@ void SV_FlushSignon (void)
 
 /*
 ================
+SV_SetCoordEncoding
+
+Coordinates go out as floats (FTE_PEXT_FLOATCOORDS) when the map's geometry
+goes past +-4096, where the standard 1/8 unit shorts end (walls at 4096 keep
+everything inside them in range), or when sv_bigcoords asks for it.
+Everything the server writes this level, and what it reads, uses it; the
+clients' own buffers switch with serverdata (SV_New_f).
+================
+*/
+static void SV_SetCoordEncoding (void)
+{
+	sv.bigcoords = sv_bigcoords.value != 0 || CM_Extent (sv.map) > 4096;
+	if (sv.bigcoords)
+		Con_Printf ("%s uses float coordinates\n", sv.modelname);
+
+	sv.datagram.floatcoords = sv.bigcoords;
+	sv.reliable_datagram.floatcoords = sv.bigcoords;
+	sv.multicast.floatcoords = sv.bigcoords;
+	sv.signon.floatcoords = sv.bigcoords;
+	svs.net_message.floatcoords = sv.bigcoords;
+}
+
+/*
+================
 SV_CreateBaseline
 
 Entity baselines are used to compress the update messages
@@ -380,6 +404,7 @@ void SV_SpawnServer (char *server)
 	if (!sv.map)
 		SV_Error ("Couldn't load %s", sv.modelname);
 	sv.worldmodel = CM_WorldModel (sv.map);
+	SV_SetCoordEncoding ();
 	// model numbers go out as bytes: the world and its inline models must
 	// leave room in the precache list
 	if (CM_NumInlineModels (sv.map) + 1 >= MAX_MODELS)

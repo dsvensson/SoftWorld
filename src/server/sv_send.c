@@ -540,6 +540,7 @@ bool SV_SendClientDatagram (client_t *client)
 	msg.cursize = 0;
 	msg.allowoverflow = true;
 	msg.overflowed = false;
+	msg.floatcoords = client->datagram.floatcoords;
 
 	// add the client specific data to the datagram
 	SV_WriteClientdataToMessage (client, &msg);
@@ -701,6 +702,7 @@ void SV_SendClientMessages (void)
 				c->num_backbuf--;
 				if (c->num_backbuf) {
 					memset(&c->backbuf, 0, sizeof(c->backbuf));
+					c->backbuf.floatcoords = c->netchan.message.floatcoords;
 					c->backbuf.data = c->backbuf_data[c->num_backbuf - 1];
 					c->backbuf.cursize = c->backbuf_size[c->num_backbuf - 1];
 					c->backbuf.maxsize = sizeof(c->backbuf_data[c->num_backbuf - 1]);

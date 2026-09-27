@@ -555,6 +555,7 @@ void CL_ParseServerData (void)
 	bool	cflag = false;
 	extern	char	gamedirfile[MAX_OSPATH];
 	int protover;
+	unsigned	fteext2;
 	
 	Con_DPrintf ("Serverdata packet received.\n");
 //
@@ -562,9 +563,34 @@ void CL_ParseServerData (void)
 //
 	CL_ClearState ();
 
-// parse protocol version number
+// the protocol extensions in use, (magic, mask) pairs, then the protocol
+// version number
+	cls.fteext = cls.mvdext1 = 0;
+	fteext2 = 0;
+	for (;;)
+	{
+		protover = MSG_ReadLong ();
+		if (protover == PROTOCOL_VERSION_FTE)
+			cls.fteext = (unsigned)MSG_ReadLong ();
+		else if (protover == PROTOCOL_VERSION_FTE2)
+			fteext2 = (unsigned)MSG_ReadLong ();
+		else if (protover == PROTOCOL_VERSION_MVD1)
+			cls.mvdext1 = (unsigned)MSG_ReadLong ();
+		else
+			break;
+	}
+	// a server only uses what the client asked for, but a demo can have been
+	// recorded by a client that knows more
+	if ((cls.fteext & ~SW_FTE_EXTENSIONS) || fteext2 || (cls.mvdext1 & ~SW_MVD1_EXTENSIONS))
+		Host_EndGame ("The server uses protocol extensions this client lacks:\n"
+			"FTE 0x%x, FTE2 0x%x, MVD1 0x%x\n", cls.fteext & ~SW_FTE_EXTENSIONS, fteext2,
+			cls.mvdext1 & ~SW_MVD1_EXTENSIONS);
+	// the rest of this message is already in the new encoding
+	cls.net_message.floatcoords = (cls.fteext & FTE_PEXT_FLOATCOORDS) != 0;
+	cls.netchan.message.floatcoords = cls.net_message.floatcoords;
+	Con_DPrintf ("Protocol extensions: FTE 0x%x, MVD1 0x%x\n", cls.fteext, cls.mvdext1);
+
 // allow 2.2 and 2.29 demos to play
-	protover = MSG_ReadLong ();
 	if (protover != PROTOCOL_VERSION && 
 		!(cls.demoplayback && (protover == 26 || protover == 27 || protover == 28)))
 		Host_EndGame ("Server returned version %i, not %i\nYou probably need to upgrade.\nCheck http://www.quakeworld.net/", protover, PROTOCOL_VERSION);

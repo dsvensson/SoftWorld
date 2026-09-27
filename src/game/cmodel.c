@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "q_string.h"
 #include "sys.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -67,6 +68,7 @@ struct cmap_s
 	char		*entitystring;
 	cmodel_t	*cmodels;			// the world, then the inline models
 	int			numcmodels;
+	float		extent;				// the largest vertex coordinate, either sign
 
 	int			visbytes;			// size of each visibility buffer
 	byte		*novis;				// everything visible
@@ -117,6 +119,29 @@ static void CM_LoadPlanes (void)
 		out->dist = LittleFloat (d.dist);
 		out->type = (byte)LittleLong (d.type);
 		out->signbits = (byte)bits;
+	}
+}
+
+// the stored model bounds can't be trusted for this: some compilers write
+// infinities or the bounds of stray entities
+static void CM_LoadExtent (void)
+{
+	const byte	*in;
+	dvertex_t	d;
+	int			i, j, count;
+	float		v;
+
+	if (!BSP_Lump (cm_bsp, LUMP_VERTEXES, sizeof(d), &in, &count))
+		return;
+	for (i=0 ; i<count ; i++)
+	{
+		memcpy (&d, in + i * sizeof(d), sizeof(d));
+		for (j=0 ; j<3 ; j++)
+		{
+			v = fabsf (LittleFloat (d.point[j]));
+			if (v > lm->extent)
+				lm->extent = v;
+		}
 	}
 }
 
@@ -354,6 +379,7 @@ static bool CM_LoadBrushMap (void)
 	}
 
 	CM_LoadPlanes ();
+	CM_LoadExtent ();
 	CM_LoadVisibility ();
 	if (cm_bsp->error[0] || !CM_LoadLeafs () || !CM_LoadNodes () || !CM_LoadClipnodes ())
 		return false;
@@ -481,6 +507,11 @@ cmodel_t *CM_InlineModel (cmap_t *map, const char *name)
 int CM_NumInlineModels (const cmap_t *map)
 {
 	return map->numcmodels;
+}
+
+float CM_Extent (const cmap_t *map)
+{
+	return map->extent;
 }
 
 char *CM_EntityString (const cmap_t *map)

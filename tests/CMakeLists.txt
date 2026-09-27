@@ -6,6 +6,11 @@ if(SW_ARCH STREQUAL "x86-64-v4")
 	add_test(NAME simd COMMAND test_simd)
 endif()
 
+# test_msg writes and reads coordinates and angles in each encoding.
+sw_add_program(test_msg test_msg.c)
+target_link_libraries(test_msg PRIVATE sw_common)
+add_test(NAME msg COMMAND test_msg)
+
 # test_bspload loads every map under C:\quakedev as a collision map and as a
 # render model. It needs the maps, so only the msvc-v4-maps test preset runs it.
 sw_add_program(test_bspload test_bspload.c)

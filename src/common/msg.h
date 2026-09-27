@@ -27,6 +27,8 @@ typedef struct sizebuf_s
 {
 	bool	allowoverflow;	// if false, do a Sys_Error
 	bool	overflowed;		// set to true if the buffer size failed
+	bool	floatcoords;	// FTE_PEXT_FLOATCOORDS: coordinates as floats, angles
+							// in 16 bits; for reading, of the buffer being read
 	byte	*data;
 	int		maxsize;
 	int		cursize;
@@ -47,6 +49,7 @@ void	MSG_WriteShort (sizebuf_t *sb, int c);
 void	MSG_WriteLong (sizebuf_t *sb, int c);
 void	MSG_WriteFloat (sizebuf_t *sb, float f);
 void	MSG_WriteString (sizebuf_t *sb, char *s);
+// coordinates and angles in the buffer's encoding
 void	MSG_WriteCoord (sizebuf_t *sb, float f);
 void	MSG_WriteAngle (sizebuf_t *sb, float f);
 void	MSG_WriteAngle16 (sizebuf_t *sb, float f);

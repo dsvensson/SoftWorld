@@ -151,6 +151,21 @@ PACKET ENTITY PARSING / LINKING
 
 /*
 ==================
+CL_ReadOrigin
+
+An entity or player origin: a float with MVD_PEXT1_FLOATCOORDS, else in the
+message's encoding
+==================
+*/
+static float CL_ReadOrigin (void)
+{
+	if (cls.mvdext1 & MVD_PEXT1_FLOATCOORDS)
+		return MSG_ReadFloat ();
+	return MSG_ReadCoord ();
+}
+
+/*
+==================
 CL_ParseDelta
 
 Can go from either a baseline or a previous packet_entity
@@ -196,19 +211,19 @@ void CL_ParseDelta (entity_state_t *from, entity_state_t *to, int bits)
 		to->effects = MSG_ReadByte();
 
 	if (bits & U_ORIGIN1)
-		to->origin[0] = MSG_ReadCoord ();
+		to->origin[0] = CL_ReadOrigin ();
 		
 	if (bits & U_ANGLE1)
 		to->angles[0] = MSG_ReadAngle();
 
 	if (bits & U_ORIGIN2)
-		to->origin[1] = MSG_ReadCoord ();
+		to->origin[1] = CL_ReadOrigin ();
 		
 	if (bits & U_ANGLE2)
 		to->angles[1] = MSG_ReadAngle();
 
 	if (bits & U_ORIGIN3)
-		to->origin[2] = MSG_ReadCoord ();
+		to->origin[2] = CL_ReadOrigin ();
 		
 	if (bits & U_ANGLE3)
 		to->angles[2] = MSG_ReadAngle();
@@ -667,9 +682,9 @@ void CL_ParsePlayerinfo (void)
 	flags = state->flags = MSG_ReadShort ();
 
 	state->messagenum = cl.parsecount;
-	state->origin[0] = MSG_ReadCoord ();
-	state->origin[1] = MSG_ReadCoord ();
-	state->origin[2] = MSG_ReadCoord ();
+	state->origin[0] = CL_ReadOrigin ();
+	state->origin[1] = CL_ReadOrigin ();
+	state->origin[2] = CL_ReadOrigin ();
 
 	state->frame = MSG_ReadByte ();
 

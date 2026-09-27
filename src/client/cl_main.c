@@ -167,6 +167,12 @@ void CL_SendConnectPacket (void)
 //	Con_Printf ("Connecting to %s...\n", cls.servername);
 	snprintf (data, sizeof(data), "%c%c%c%cconnect %i %i %i \"%s\"\n",
 		255, 255, 255, 255,	PROTOCOL_VERSION, cls.qport, cls.challenge, cls.userinfo);
+	// the protocol extensions to use, those both ends know; a family with
+	// none is left out
+	if (cls.fteext)
+		Q_strncatz (data, va("0x%x 0x%x\n", PROTOCOL_VERSION_FTE, cls.fteext), sizeof(data));
+	if (cls.mvdext1)
+		Q_strncatz (data, va("0x%x 0x%x\n", PROTOCOL_VERSION_MVD1, cls.mvdext1), sizeof(data));
 	NET_SendPacket (NS_CLIENT, (int)strlen(data), data, adr);
 }
 
@@ -374,6 +380,10 @@ void CL_Disconnect (void)
 		cls.demoplayback = cls.demorecording = cls.timedemo = false;
 	}
 	Cam_Reset();
+
+	// the next server negotiates its own
+	cls.fteext = cls.mvdext1 = 0;
+	cls.net_message.floatcoords = false;
 
 	if (cls.download) {
 		fclose(cls.download);
@@ -739,7 +749,8 @@ Responses to broadcasts, etc
 void CL_ConnectionlessPacket (void)
 {
 	char	*s;
-	int		c;
+	int		c, magic;
+	unsigned	mask;
 
     MSG_BeginReading (&cls.net_message);
     MSG_ReadLong ();        // skip the -1
@@ -846,6 +857,23 @@ void CL_ConnectionlessPacket (void)
 
 		s = MSG_ReadString ();
 		cls.challenge = atoi(s);
+
+		// then the server's protocol extensions, (magic, mask) pairs to the
+		// end; unknown families are skipped
+		cls.fteext = cls.mvdext1 = 0;
+		for (;;)
+		{
+			magic = MSG_ReadLong ();
+			mask = (unsigned)MSG_ReadLong ();
+			if (msg_badread)
+				break;
+			Con_DPrintf ("The server offers protocol extensions 0x%x 0x%x\n", magic, mask);
+			if (magic == PROTOCOL_VERSION_FTE)
+				cls.fteext = mask & SW_FTE_EXTENSIONS;
+			else if (magic == PROTOCOL_VERSION_MVD1)
+				cls.mvdext1 = mask & SW_MVD1_EXTENSIONS;
+		}
+
 		CL_SendConnectPacket ();
 		return;
 	}
@@ -999,6 +1027,15 @@ void Cmd_ForwardToServer_f (void)
 	
 	if (cls.demoplayback)
 		return;		// not really connected
+
+	// FTE and mvdsv servers ask which protocol extensions the client knows
+	if (Cmd_Argc() == 2 && !Q_strcasecmp (Cmd_Argv(1), "pext"))
+	{
+		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
+		SZ_Print (&cls.netchan.message, va("pext 0x%x 0x%x 0x%x 0x%x", PROTOCOL_VERSION_FTE, SW_FTE_EXTENSIONS,
+			PROTOCOL_VERSION_MVD1, SW_MVD1_EXTENSIONS));
+		return;
+	}
 
 	if (Cmd_Argc() > 1)
 	{
