@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // cl_main.c  -- client main loop
 
 #include "cl_local.h"
+static void Cmd_ForwardToServer (void);
 
 
 
@@ -106,7 +107,7 @@ char soundlist_name[] =
 CL_Quit_f
 ==================
 */
-void CL_Quit_f (void)
+static void CL_Quit_f (void)
 {
 	if (1 /* key_dest != key_console */ /* && cls.state != ca_dedicated */)
 	{
@@ -122,7 +123,7 @@ void CL_Quit_f (void)
 CL_Version_f
 ======================
 */
-void CL_Version_f (void)
+static void CL_Version_f (void)
 {
 	Con_Printf ("Version %4.2f\n", VERSION);
 	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
@@ -136,7 +137,7 @@ CL_SendConnectPacket
 called by CL_Connect_f and CL_CheckResend
 ======================
 */
-void CL_SendConnectPacket (void)
+static void CL_SendConnectPacket (void)
 {
 	netadr_t	adr;
 	char	data[2048];
@@ -188,7 +189,7 @@ Resend a connect message if the last one has timed out
 
 =================
 */
-void CL_CheckForResend (void)
+static void CL_CheckForResend (void)
 {
 	netadr_t	adr;
 	char	data[2048];
@@ -232,7 +233,7 @@ CL_Connect_f
 
 ================
 */
-void CL_Connect_f (void)
+static void CL_Connect_f (void)
 {
 	char	*server;
 
@@ -261,7 +262,7 @@ CL_Rcon_f
   an unconnected command.
 =====================
 */
-void CL_Rcon_f (void)
+static void CL_Rcon_f (void)
 {
 	char	message[1024];
 	int		i;
@@ -397,7 +398,7 @@ void CL_Disconnect (void)
 
 }
 
-void CL_Disconnect_f (void)
+static void CL_Disconnect_f (void)
 {
 	CL_Disconnect ();
 	SV_Kill ();
@@ -412,7 +413,7 @@ user <name or userid>
 Dump userdata / masterdata for a user
 ====================
 */
-void CL_User_f (void)
+static void CL_User_f (void)
 {
 	int		uid;
 	int		i;
@@ -446,7 +447,7 @@ CL_Users_f
 Dump userids for all current players
 ====================
 */
-void CL_Users_f (void)
+static void CL_Users_f (void)
 {
 	int		i;
 	int		c;
@@ -466,7 +467,7 @@ void CL_Users_f (void)
 	Con_Printf ("%i total users\n", c);
 }
 
-void CL_Color_f (void)
+static void CL_Color_f (void)
 {
 	// just for quake compatability...
 	int		top, bottom;
@@ -591,7 +592,7 @@ CL_FullServerinfo_f
 Sent by server when serverinfo changes
 ==================
 */
-void CL_FullServerinfo_f (void)
+static void CL_FullServerinfo_f (void)
 {
 	char *p;
 	float v;
@@ -623,7 +624,7 @@ Allow clients to change userinfo
 ==================
 Casey was here :)
 */
-void CL_FullInfo_f (void)
+static void CL_FullInfo_f (void)
 {
 	char	key[512];
 	char	value[512];
@@ -675,7 +676,7 @@ CL_SetInfo_f
 Allow clients to change userinfo
 ==================
 */
-void CL_SetInfo_f (void)
+static void CL_SetInfo_f (void)
 {
 	if (Cmd_Argc() == 1)
 	{
@@ -704,7 +705,7 @@ packet <destination> <contents>
 Contents allows \n escape character
 ====================
 */
-void CL_Packet_f (void)
+static void CL_Packet_f (void)
 {
 	char	send[2048];
 	int		i, l;
@@ -783,7 +784,7 @@ Just sent as a hint to the client that they should
 drop to full console
 =================
 */
-void CL_Changing_f (void)
+static void CL_Changing_f (void)
 {
 	if (cls.download)  // don't change when downloading
 		return;
@@ -802,7 +803,7 @@ CL_Reconnect_f
 The server is changing levels
 =================
 */
-void CL_Reconnect_f (void)
+static void CL_Reconnect_f (void)
 {
 	if (cls.download)  // don't change when downloading
 		return;
@@ -846,7 +847,7 @@ CL_ConnectionlessPacket
 Responses to broadcasts, etc
 =================
 */
-void CL_ConnectionlessPacket (void)
+static void CL_ConnectionlessPacket (void)
 {
 	char	*s;
 	int		c, magic;
@@ -990,7 +991,7 @@ void CL_ConnectionlessPacket (void)
 CL_ReadPackets
 =================
 */
-void CL_ReadPackets (void)
+static void CL_ReadPackets (void)
 {
 	while (CL_GetMessage())
 	{
@@ -1073,7 +1074,7 @@ things like godmode, noclip, etc, are commands directed to the server,
 so when they are typed in at the console, they will need to be forwarded.
 ===================
 */
-void Cmd_ForwardToServer (void)
+static void Cmd_ForwardToServer (void)
 {
 	if (cls.state == ca_disconnected)
 	{
@@ -1094,7 +1095,7 @@ void Cmd_ForwardToServer (void)
 }
 
 // don't forward the first argument
-void Cmd_ForwardToServer_f (void)
+static void Cmd_ForwardToServer_f (void)
 {
 	if (cls.state == ca_disconnected)
 	{

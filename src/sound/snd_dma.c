@@ -22,12 +22,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "snd_local.h"
 
 
-void S_Play(void);
-void S_PlayVol(void);
-void S_SoundList(void);
-void S_Update_ (void);
+static void S_Play(void);
+static void S_PlayVol(void);
+static void S_SoundList(void);
+static void S_Update_ (void);
 void S_StopAllSounds(bool clear);
-void S_StopAllSoundsC(void);
+static void S_StopAllSoundsC(void);
 
 // =======================================================================
 // Internal sound data & structures
@@ -61,7 +61,7 @@ static cvar_t ambient_level = {.name = "ambient_level", .string = "0.3"};
 static cvar_t ambient_fade = {.name = "ambient_fade", .string = "100"};
 static cvar_t snd_noextraupdate = {.name = "snd_noextraupdate", .string = "0"};
 static cvar_t snd_show = {.name = "snd_show", .string = "0"};
-cvar_t _snd_mixahead = {.name = "_snd_mixahead", .string = "0.1", .archive = true};
+static cvar_t _snd_mixahead = {.name = "_snd_mixahead", .string = "0.1", .archive = true};
 
 
 // ====================================================================
@@ -70,7 +70,7 @@ cvar_t _snd_mixahead = {.name = "_snd_mixahead", .string = "0.1", .archive = tru
 
 
 
-void S_SoundInfo_f(void)
+static void S_SoundInfo_f(void)
 {
 	if (!snd.started)
 	{
@@ -247,7 +247,7 @@ S_FindName
 
 ==================
 */
-sfx_t *S_FindName (char *sndname)
+static sfx_t *S_FindName (char *sndname)
 {
 	int		i;
 	sfx_t	*sfx;
@@ -306,7 +306,7 @@ sfx_t *S_PrecacheSound (char *sndname)
 SND_PickChannel
 =================
 */
-channel_t *SND_PickChannel(int entnum, int entchannel)
+static channel_t *SND_PickChannel(int entnum, int entchannel)
 {
     int ch_idx;
     int first_to_die;
@@ -350,7 +350,7 @@ channel_t *SND_PickChannel(int entnum, int entchannel)
 SND_Spatialize
 =================
 */
-void SND_Spatialize(channel_t *ch)
+static void SND_Spatialize(channel_t *ch)
 {
     vec_t dot;
     vec_t dist;
@@ -506,7 +506,7 @@ void S_StopAllSounds(bool clear)
 		S_ClearBuffer ();
 }
 
-void S_StopAllSoundsC (void)
+static void S_StopAllSoundsC (void)
 {
 	S_StopAllSounds (true);
 }
@@ -732,7 +732,7 @@ void S_Update (const snd_listener_t *listener)
 	S_Update_();
 }
 
-void GetSoundtime(void)
+static void GetSoundtime(void)
 {
 	int		samplepos;
 	static	int		buffers;
@@ -770,7 +770,7 @@ void S_ExtraUpdate (void)
 
 
 
-void S_Update_(void)
+static void S_Update_(void)
 {
 	unsigned        endtime;
 	int				samps;
@@ -807,7 +807,7 @@ console functions
 ===============================================================================
 */
 
-void S_Play(void)
+static void S_Play(void)
 {
 	static int hash=345;
 	int 	i;
@@ -830,7 +830,7 @@ void S_Play(void)
 	}
 }
 
-void S_PlayVol(void)
+static void S_PlayVol(void)
 {
 	static int hash=543;
 	int i;
@@ -855,7 +855,7 @@ void S_PlayVol(void)
 	}
 }
 
-void S_SoundList(void)
+static void S_SoundList(void)
 {
 	int		i;
 	sfx_t	*sfx;

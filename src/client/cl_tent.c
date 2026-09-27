@@ -90,7 +90,7 @@ void CL_ClearTEnts (void)
 CL_AllocExplosion
 =================
 */
-explosion_t *CL_AllocExplosion (void)
+static explosion_t *CL_AllocExplosion (void)
 {
 	int		i;
 	float	time;
@@ -117,7 +117,7 @@ explosion_t *CL_AllocExplosion (void)
 CL_ParseBeam
 =================
 */
-void CL_ParseBeam (model_t *m)
+static void CL_ParseBeam (model_t *m)
 {
 	int		ent;
 	vec3_t	start, end;
@@ -442,7 +442,7 @@ static void CL_TrueLightningEnd (const vec3_t start, float f, vec3_t end)
 CL_UpdateBeams
 =================
 */
-void CL_UpdateBeams (void)
+static void CL_UpdateBeams (void)
 {
 	int			i, j;
 	beam_t		*b;
@@ -518,7 +518,7 @@ void CL_UpdateBeams (void)
 CL_UpdateExplosions
 =================
 */
-void CL_UpdateExplosions (void)
+static void CL_UpdateExplosions (void)
 {
 	int			i;
 	int			f;

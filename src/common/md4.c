@@ -50,9 +50,9 @@ typedef struct {
 	unsigned char buffer[64]; 			/* input buffer */
 } MD4_CTX;
 
-void MD4Init (MD4_CTX *);
-void MD4Update (MD4_CTX *, const unsigned char *, unsigned int);
-void MD4Final (unsigned char [16], MD4_CTX *);
+static void MD4Init (MD4_CTX *);
+static void MD4Update (MD4_CTX *, const unsigned char *, unsigned int);
+static void MD4Final (unsigned char [16], MD4_CTX *);
   
 
   
@@ -110,7 +110,7 @@ static unsigned char PADDING[64] = {
 
 
 /* MD4 initialization. Begins an MD4 operation, writing a new context. */
-void MD4Init (MD4_CTX *context)
+static void MD4Init (MD4_CTX *context)
 {
 	context->count[0] = context->count[1] = 0;
 
@@ -122,7 +122,7 @@ context->state[3] = 0x10325476;
 }
 
 /* MD4 block update operation. Continues an MD4 message-digest operation, processing another message block, and updating the context. */
-void MD4Update (MD4_CTX *context, const unsigned char *input, unsigned int inputLen)
+static void MD4Update (MD4_CTX *context, const unsigned char *input, unsigned int inputLen)
 {
 	unsigned int i, index, partLen;
 
@@ -157,7 +157,7 @@ void MD4Update (MD4_CTX *context, const unsigned char *input, unsigned int input
 
 
 /* MD4 finalization. Ends an MD4 message-digest operation, writing the the message digest and zeroizing the context. */
-void MD4Final (unsigned char digest[16], MD4_CTX *context)
+static void MD4Final (unsigned char digest[16], MD4_CTX *context)
 {
 	unsigned char bits[8];
 	unsigned int index, padLen;

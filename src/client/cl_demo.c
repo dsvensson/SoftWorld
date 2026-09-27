@@ -21,7 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cl_local.h"
 #include "png.h"
 
-void CL_FinishTimeDemo (void);
+static void CL_FinishTimeDemo (void);
 
 // every nth timedemo frame is written to <basedir>/frames, for comparing renderers
 static cvar_t	timedemo_dump = {.name = "timedemo_dump", .string = "0"};
@@ -165,7 +165,7 @@ CL_WriteDemoMessage
 Dumps the current net message, prefixed by the length and view angles
 ====================
 */
-void CL_WriteDemoMessage (sizebuf_t *msg)
+static void CL_WriteDemoMessage (sizebuf_t *msg)
 {
 	int		len;
 	float	fl;
@@ -196,7 +196,7 @@ CL_GetDemoMessage
   FIXME...
 ====================
 */
-bool CL_GetDemoMessage (void)
+static bool CL_GetDemoMessage (void)
 {
 	int		r, i, j;
 	float	f;
@@ -363,7 +363,7 @@ CL_WriteDemoMessage
 Dumps the current net message, prefixed by the length and view angles
 ====================
 */
-void CL_WriteRecordDemoMessage (sizebuf_t *msg, int seq)
+static void CL_WriteRecordDemoMessage (sizebuf_t *msg, int seq)
 {
 	int		len;
 	int		i;
@@ -394,7 +394,7 @@ void CL_WriteRecordDemoMessage (sizebuf_t *msg, int seq)
 }
 
 
-void CL_WriteSetDemoMessage (void)
+static void CL_WriteSetDemoMessage (void)
 {
 	int		len;
 	float	fl;
@@ -884,7 +884,7 @@ CL_FinishTimeDemo
 
 ====================
 */
-void CL_FinishTimeDemo (void)
+static void CL_FinishTimeDemo (void)
 {
 	int		frames;
 	float	time;

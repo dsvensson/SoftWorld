@@ -425,7 +425,6 @@ extern	edict_t		*sv_player;
 //
 // sv_main.c
 //
-void SV_FinalMessage (char *message);
 void SV_DropClient (client_t *drop);
 
 int SV_CalcPing (client_t *cl);
@@ -440,20 +439,13 @@ int SV_ModelIndex (char *name);
 bool SV_CheckBottom (edict_t *ent);
 bool SV_movestep (edict_t *ent, vec3_t move, bool relink);
 
-void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg);
-
 void SV_MoveToGoal (void);
 
-void SV_SaveSpawnparms (void);
 
-
-void SV_ExecuteUserCommand (char *s);
 void SV_InitOperatorCommands (void);
 
 void SV_ExtractFromUserinfo (client_t *cl);
 
-
-void Master_Heartbeat (void);
 
 //
 // sv_init.c
@@ -470,12 +462,8 @@ byte *SV_LeafPHS (int leafnum);
 //
 void SV_ProgStartFrame (void);
 void SV_Physics (void);
-void SV_CheckVelocity (edict_t *ent);
-void SV_AddGravity (edict_t *ent, float scale);
 bool SV_RunThink (edict_t *ent);
-void SV_Physics_Toss (edict_t *ent);
 void SV_RunNewmis (void);
-void SV_Impact (edict_t *e1, edict_t *e2);
 void SV_SetMoveVars(void);
 
 //
@@ -507,11 +495,6 @@ void SV_TogglePause (const char *msg);
 //
 void SV_BeginRedirect (redirect_t rd);
 void SV_EndRedirect (void);
-
-//
-// sv_ccmds.c
-//
-void SV_Status_f (void);
 
 //
 // sv_ents.c

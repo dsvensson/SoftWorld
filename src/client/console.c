@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "cl_local.h"
 #include "markup.h"
+static void Con_ClearNotify (void);
 
 console_t	con;
 
@@ -31,7 +32,7 @@ static float		con_cursorspeed = 4;
 static cvar_t		con_notifytime = {.name = "con_notifytime", .string = "3"};		//seconds
 
 
-void Key_ClearTyping (void)
+static void Key_ClearTyping (void)
 {
 	key_input.lines[key_input.edit_line][1] = 0;	// clear any typing
 	key_input.linepos = 1;
@@ -62,7 +63,7 @@ void Con_ToggleConsole_f (void)
 Con_ToggleChat_f
 ================
 */
-void Con_ToggleChat_f (void)
+static void Con_ToggleChat_f (void)
 {
 	Key_ClearTyping ();
 
@@ -82,7 +83,7 @@ void Con_ToggleChat_f (void)
 Con_Clear_f
 ================
 */
-void Con_Clear_f (void)
+static void Con_Clear_f (void)
 {
 	Q_memset (con.text, ' ', CON_TEXTSIZE);
 	memset (con.colors, 0, sizeof(con.colors));
@@ -94,7 +95,7 @@ void Con_Clear_f (void)
 Con_ClearNotify
 ================
 */
-void Con_ClearNotify (void)
+static void Con_ClearNotify (void)
 {
 	int		i;
 	
@@ -108,7 +109,7 @@ void Con_ClearNotify (void)
 Con_MessageMode_f
 ================
 */
-void Con_MessageMode_f (void)
+static void Con_MessageMode_f (void)
 {
 	key_input.chat_team = false;
 	cls.key_dest = key_message;
@@ -119,7 +120,7 @@ void Con_MessageMode_f (void)
 Con_MessageMode2_f
 ================
 */
-void Con_MessageMode2_f (void)
+static void Con_MessageMode2_f (void)
 {
 	key_input.chat_team = true;
 	cls.key_dest = key_message;
@@ -239,7 +240,7 @@ void Con_Init (void)
 Con_Linefeed
 ===============
 */
-void Con_Linefeed (void)
+static void Con_Linefeed (void)
 {
 	con.x = 0;
 	if (con.display == con.current)
@@ -396,7 +397,7 @@ Con_DrawInput
 The input line scrolls horizontally if typing goes beyond the right edge
 ================
 */
-void Con_DrawInput (void)
+static void Con_DrawInput (void)
 {
 	int		i;
 	char	*text;
@@ -599,27 +600,3 @@ void Con_DrawConsole (int lines)
 // draw the input prompt, user text, and cursor if desired
 	Con_DrawInput ();
 }
-
-/*
-==================
-Con_SafePrintf
-
-Okay to call even when the screen can't be updated
-==================
-*/
-void Con_SafePrintf (char *fmt, ...)
-{
-	va_list		argptr;
-	char		msg[1024];
-	int			temp;
-		
-	va_start (argptr,fmt);
-	vsnprintf (msg,sizeof(msg),fmt,argptr);
-	va_end (argptr);
-
-	temp = scr.disabled_for_loading;
-	scr.disabled_for_loading = true;
-	Con_Printf ("%s", msg);
-	scr.disabled_for_loading = temp;
-}
-

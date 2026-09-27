@@ -113,12 +113,6 @@ void S_ExtraUpdate (void);
 sfx_t *S_PrecacheSound (char *sample);
 void S_PaintChannels(int endtime);
 
-// picks a channel based on priorities, empty slots, number of channels
-channel_t *SND_PickChannel(int entnum, int entchannel);
-
-// spatializes a channel
-void SND_Spatialize(channel_t *ch);
-
 // opens the output and describes its ring buffer in dma
 bool SNDDMA_Init (dma_t *dma);
 
@@ -149,8 +143,6 @@ extern	cvar_t volume;
 
 void S_LocalSound (char *s);
 sfxcache_t *S_LoadSound (sfx_t *s);
-
-wavinfo_t GetWavinfo (char *name, byte *wav, int wavlength);
 
 void SND_InitScaletable (void);
 void SNDDMA_Submit(void);

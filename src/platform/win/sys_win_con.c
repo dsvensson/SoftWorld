@@ -191,7 +191,7 @@ Quake calls this so the system can register variables before host_hunklevel
 is marked
 =============
 */
-void Sys_Init (void)
+static void Sys_Init (void)
 {
 	Cvar_RegisterVariable (&sys_nostdout);
 }

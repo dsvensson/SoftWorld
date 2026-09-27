@@ -68,8 +68,6 @@ typedef struct
 
 
 void	W_LoadWadFile (char *filename);
-void	W_CleanupName (char *in, char *out);
-lumpinfo_t	*W_GetLumpinfo (char *name);
 void	*W_GetLumpName (char *name);
 
 void SwapPic (qpic_t *pic);

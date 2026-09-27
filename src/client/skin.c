@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "cl_local.h"
+static byte	*Skin_Cache (skin_t *skin);
 
 cvar_t		baseskin = {.name = "baseskin", .string = "base"};
 cvar_t		noskins = {.name = "noskins", .string = "0"};
@@ -91,7 +92,7 @@ Skin_Cache
 Returns a pointer to the skin bitmap, or NULL to use the default
 ==========
 */
-byte	*Skin_Cache (skin_t *skin)
+static byte	*Skin_Cache (skin_t *skin)
 {
 	char	skinpath[1024];
 	byte	*file, *raw, *end;

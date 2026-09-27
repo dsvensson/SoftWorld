@@ -47,9 +47,9 @@ static bool	sb_showscores;
 static bool	sb_showteamscores;
 
 
-void Sbar_DeathmatchOverlay (int start);
-void Sbar_TeamOverlay (void);
-void Sbar_MiniDeathmatchOverlay (void);
+static void Sbar_DeathmatchOverlay (int start);
+static void Sbar_TeamOverlay (void);
+static void Sbar_MiniDeathmatchOverlay (void);
 
 static bool largegame = false;
 
@@ -60,7 +60,7 @@ Sbar_ShowTeamScores
 Tab key down
 ===============
 */
-void Sbar_ShowTeamScores (void)
+static void Sbar_ShowTeamScores (void)
 {
 	if (sb_showteamscores)
 		return;
@@ -75,7 +75,7 @@ Sbar_DontShowTeamScores
 Tab key up
 ===============
 */
-void Sbar_DontShowTeamScores (void)
+static void Sbar_DontShowTeamScores (void)
 {
 	sb_showteamscores = false;
 }
@@ -87,7 +87,7 @@ Sbar_ShowScores
 Tab key down
 ===============
 */
-void Sbar_ShowScores (void)
+static void Sbar_ShowScores (void)
 {
 	if (sb_showscores)
 		return;
@@ -102,7 +102,7 @@ Sbar_DontShowScores
 Tab key up
 ===============
 */
-void Sbar_DontShowScores (void)
+static void Sbar_DontShowScores (void)
 {
 	sb_showscores = false;
 }
@@ -213,7 +213,7 @@ void Sbar_Init (void)
 Sbar_DrawPic
 =============
 */
-void Sbar_DrawPic (int x, int y, qpic_t *pic)
+static void Sbar_DrawPic (int x, int y, qpic_t *pic)
 {
 	Draw_Pic (x /* + ((vid.conwidth - 320)>>1) */, y + (vid.conheight-SBAR_HEIGHT), pic);
 }
@@ -225,7 +225,7 @@ Sbar_DrawSubPic
 JACK: Draws a portion of the picture in the status bar.
 */
 
-void Sbar_DrawSubPic(int x, int y, qpic_t *pic, int srcx, int srcy, int width, int height) 
+static void Sbar_DrawSubPic(int x, int y, qpic_t *pic, int srcx, int srcy, int width, int height) 
 {
 	Draw_SubPic (x, y+(vid.conheight-SBAR_HEIGHT), pic, srcx, srcy, width, height);
 }
@@ -236,7 +236,7 @@ void Sbar_DrawSubPic(int x, int y, qpic_t *pic, int srcx, int srcy, int width, i
 Sbar_DrawTransPic
 =============
 */
-void Sbar_DrawTransPic (int x, int y, qpic_t *pic)
+static void Sbar_DrawTransPic (int x, int y, qpic_t *pic)
 {
 	Draw_TransPic (x /*+ ((vid.conwidth - 320)>>1) */, y + (vid.conheight-SBAR_HEIGHT), pic);
 }
@@ -248,7 +248,7 @@ Sbar_DrawCharacter
 Draws one solid graphics character
 ================
 */
-void Sbar_DrawCharacter (int x, int y, int num)
+static void Sbar_DrawCharacter (int x, int y, int num)
 {
 	Draw_Character ( x /*+ ((vid.conwidth - 320)>>1) */ + 4, y + vid.conheight-SBAR_HEIGHT, num);
 }
@@ -259,7 +259,7 @@ Sbar_DrawString
 ================
 */
 // in the colors a player's name in it may give
-void Sbar_DrawString (int x, int y, char *str)
+static void Sbar_DrawString (int x, int y, char *str)
 {
 	Draw_MarkupString (x /*+ ((vid.conwidth - 320)>>1) */, y+ vid.conheight-SBAR_HEIGHT, str);
 }
@@ -269,7 +269,7 @@ void Sbar_DrawString (int x, int y, char *str)
 Sbar_itoa
 =============
 */
-int Sbar_itoa (int num, char *buf)
+static int Sbar_itoa (int num, char *buf)
 {
 	char	*str;
 	int		pow10;
@@ -305,7 +305,7 @@ int Sbar_itoa (int num, char *buf)
 Sbar_DrawNum
 =============
 */
-void Sbar_DrawNum (int x, int y, int num, int digits, int color)
+static void Sbar_DrawNum (int x, int y, int num, int digits, int color)
 {
 	char			str[12];
 	char			*ptr;
@@ -352,7 +352,7 @@ static int scoreboardteams;
 Sbar_SortFrags
 ===============
 */
-void Sbar_SortFrags (bool includespec)
+static void Sbar_SortFrags (bool includespec)
 {
 	int		i, j, k;
 		
@@ -380,7 +380,7 @@ void Sbar_SortFrags (bool includespec)
 			}
 }
 
-void Sbar_SortTeams (void)
+static void Sbar_SortTeams (void)
 {
 	int				i, j, k;
 	player_info_t	*s;
@@ -446,7 +446,7 @@ addpinginfo:
 }
 
 // 14 to 16, orange, dark red and black, as players have them now (skin.c)
-int	Sbar_ColorForMap (int m)
+static int	Sbar_ColorForMap (int m)
 {
 	return Skin_ColorIndex (m);
 }
@@ -457,7 +457,7 @@ int	Sbar_ColorForMap (int m)
 Sbar_SoloScoreboard
 ===============
 */
-void Sbar_SoloScoreboard (void)
+static void Sbar_SoloScoreboard (void)
 {
 	char	str[80];
 	int		minutes, seconds, tens, units;
@@ -480,7 +480,7 @@ void Sbar_SoloScoreboard (void)
 Sbar_DrawInventory
 ===============
 */
-void Sbar_DrawInventory (void)
+static void Sbar_DrawInventory (void)
 {	
 	int		i;
 	char	num[6];
@@ -574,7 +574,7 @@ void Sbar_DrawInventory (void)
 Sbar_DrawFrags
 ===============
 */
-void Sbar_DrawFrags (void)
+static void Sbar_DrawFrags (void)
 {	
 	int				i, k, l;
 	int				top, bottom;
@@ -639,7 +639,7 @@ void Sbar_DrawFrags (void)
 Sbar_DrawFace
 ===============
 */
-void Sbar_DrawFace (void)
+static void Sbar_DrawFace (void)
 {
 	int		f, anim;
 
@@ -682,7 +682,7 @@ void Sbar_DrawFace (void)
 Sbar_DrawNormal
 =============
 */
-void Sbar_DrawNormal (void)
+static void Sbar_DrawNormal (void)
 {
 	if (cl_sbar.value || scr_viewsize.value<100)
 	Sbar_DrawPic (0, 0, sb_sbar);
@@ -804,7 +804,7 @@ team frags
 added by Zoid
 ==================
 */
-void Sbar_TeamOverlay (void)
+static void Sbar_TeamOverlay (void)
 {
 	qpic_t			*pic;
 	int				i, k;
@@ -893,7 +893,7 @@ Sbar_DeathmatchOverlay
 ping time frags name
 ==================
 */
-void Sbar_DeathmatchOverlay (int start)
+static void Sbar_DeathmatchOverlay (int start)
 {
 	qpic_t			*pic;
 	int				i, k, l;
@@ -1058,7 +1058,7 @@ frags team name
 displayed to right of status bar if there's room
 ==================
 */
-void Sbar_MiniDeathmatchOverlay (void)
+static void Sbar_MiniDeathmatchOverlay (void)
 {
 	int				i, k;
 	int				top, bottom;

@@ -410,7 +410,7 @@ void Draw_TransPic (int x, int y, qpic_t *pic)
 	Draw_Image (x, y, pic->data, pic->width, pic->width, pic->height, d_pal30, TRANSPARENT_COLOR);
 }
 
-void Draw_CharToConback (int num, byte *dest)
+static void Draw_CharToConback (int num, byte *dest)
 {
 	int		row, col;
 	byte	*source;

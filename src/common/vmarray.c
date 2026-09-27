@@ -17,7 +17,7 @@ void VMArray_Init (vmarray_t *array, const char *name, size_t elemsize, size_t m
 	array->base = Sys_ReserveMemory (elemsize * maxcount);
 }
 
-void VMArray_Resize (vmarray_t *array, size_t count)
+static void VMArray_Resize (vmarray_t *array, size_t count)
 {
 	if (count <= array->count)
 		return;

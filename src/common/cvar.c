@@ -28,7 +28,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "sys.h"
 
 static cvar_t	*cvar_vars;
-static char	*cvar_null_string = "";
 
 /*
 ============
@@ -59,22 +58,6 @@ float	Cvar_VariableValue (char *var_name)
 	if (!var)
 		return 0;
 	return Q_atof (var->string);
-}
-
-
-/*
-============
-Cvar_VariableString
-============
-*/
-char *Cvar_VariableString (char *var_name)
-{
-	cvar_t *var;
-	
-	var = Cvar_FindVar (var_name);
-	if (!var)
-		return cvar_null_string;
-	return var->string;
 }
 
 

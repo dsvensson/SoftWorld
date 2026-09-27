@@ -52,7 +52,7 @@ int     D_SurfaceCacheForRes (int width, int height)
 	return size * (int)sizeof(pixel_t);
 }
 
-void D_CheckCacheGuard (void)
+static void D_CheckCacheGuard (void)
 {
 	byte    *s;
 	int             i;
@@ -63,7 +63,7 @@ void D_CheckCacheGuard (void)
 			Sys_Error ("D_CheckCacheGuard: failed");
 }
 
-void D_ClearCacheGuard (void)
+static void D_ClearCacheGuard (void)
 {
 	byte    *s;
 	int             i;
@@ -141,7 +141,7 @@ int D_SurfaceMipLevel (msurface_t *surface, int miplevel)
 D_SCAlloc
 =================
 */
-surfcache_t     *D_SCAlloc (int width, int size)
+static surfcache_t     *D_SCAlloc (int width, int size)
 {
 	surfcache_t             *new;
 	bool                wrapped_this_time;

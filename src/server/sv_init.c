@@ -158,7 +158,7 @@ to the clients -- only the fields that differ from the
 baseline will be transmitted
 ================
 */
-void SV_CreateBaseline (void)
+static void SV_CreateBaseline (void)
 {
 	edict_t			*svent;
 	int				entnum;
@@ -209,7 +209,7 @@ and each client for saving across the
 transition to another level
 ================
 */
-void SV_SaveSpawnparms (void)
+static void SV_SaveSpawnparms (void)
 {
 	int		i, j;
 
@@ -314,7 +314,7 @@ byte *SV_LeafPHS (int leafnum)
 	return sv.phs_rows[leafnum];
 }
 
-unsigned SV_CheckModel(char *mdl)
+static unsigned SV_CheckModel(char *mdl)
 {
 	byte	*buf;
 	int		len;

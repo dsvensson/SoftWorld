@@ -104,8 +104,8 @@ static qpic_t		*scr_turtle;
 
 
 
-void SCR_ScreenShot_f (void);
-void SCR_RSShot_f (void);
+static void SCR_ScreenShot_f (void);
+static void SCR_RSShot_f (void);
 
 /*
 ===============================================================================
@@ -145,7 +145,7 @@ void SCR_CenterPrint (char *str)
 }
 
 // in the colors markup gives it, which go on from line to line
-void SCR_DrawCenterString (void)
+static void SCR_DrawCenterString (void)
 {
 	const char	*s, *line;
 	markup_t	m, ahead;
@@ -197,7 +197,7 @@ void SCR_DrawCenterString (void)
 	}
 }
 
-void SCR_CheckDrawCenterString (void)
+static void SCR_CheckDrawCenterString (void)
 {
 
 	scr_centertime_off = (float)(scr_centertime_off - cls.frametime);
@@ -232,7 +232,7 @@ static float SCR_WidenFov (float fov)
 CalcFov
 ====================
 */
-float CalcFov (float fov_x, float width, float height)
+static float CalcFov (float fov_x, float width, float height)
 {
         float   a;
         float   x;
@@ -389,7 +389,7 @@ SCR_SizeUp_f
 Keybinding command
 =================
 */
-void SCR_SizeUp_f (void)
+static void SCR_SizeUp_f (void)
 {
 	if (scr_viewsize.value < 120) {
 	Cvar_SetValue ("viewsize",scr_viewsize.value+10);
@@ -405,7 +405,7 @@ SCR_SizeDown_f
 Keybinding command
 =================
 */
-void SCR_SizeDown_f (void)
+static void SCR_SizeDown_f (void)
 {
 	Cvar_SetValue ("viewsize",scr_viewsize.value-10);
 	vid.recalc_refdef = 1;
@@ -453,7 +453,7 @@ void SCR_Init (void)
 SCR_DrawRam
 ==============
 */
-void SCR_DrawRam (void)
+static void SCR_DrawRam (void)
 {
 	if (!scr_showram.value)
 		return;
@@ -469,7 +469,7 @@ void SCR_DrawRam (void)
 SCR_DrawTurtle
 ==============
 */
-void SCR_DrawTurtle (void)
+static void SCR_DrawTurtle (void)
 {
 	static int	count;
 	
@@ -494,7 +494,7 @@ void SCR_DrawTurtle (void)
 SCR_DrawNet
 ==============
 */
-void SCR_DrawNet (void)
+static void SCR_DrawNet (void)
 {
 	if (cls.netchan.outgoing_sequence - cls.netchan.incoming_acknowledged < UPDATE_BACKUP-1)
 		return;
@@ -504,7 +504,7 @@ void SCR_DrawNet (void)
 	Draw_Pic (scr.vrect.x+64, scr.vrect.y, scr_net);
 }
 
-void SCR_DrawFPS (void)
+static void SCR_DrawFPS (void)
 {
 	extern cvar_t show_fps;
 	static double lastframetime;
@@ -535,7 +535,7 @@ void SCR_DrawFPS (void)
 DrawPause
 ==============
 */
-void SCR_DrawPause (void)
+static void SCR_DrawPause (void)
 {
 	qpic_t	*pic;
 
@@ -559,7 +559,7 @@ void SCR_DrawPause (void)
 SCR_SetUpToDrawConsole
 ==================
 */
-void SCR_SetUpToDrawConsole (void)
+static void SCR_SetUpToDrawConsole (void)
 {
 	Con_CheckResize ();
 	
@@ -595,7 +595,7 @@ void SCR_SetUpToDrawConsole (void)
 SCR_DrawConsole
 ==================
 */
-void SCR_DrawConsole (void)
+static void SCR_DrawConsole (void)
 {
 	if (scr.con_current)
 	{
@@ -623,7 +623,7 @@ void SCR_DrawConsole (void)
 WritePCXfile 
 ============== 
 */ 
-void WritePCXfile (char *filename, byte *data, int width, int height,
+static void WritePCXfile (char *filename, byte *data, int width, int height,
 	int rowbytes, byte *palette, bool upload) 
 {
 	int		i, j, length;
@@ -693,7 +693,7 @@ void WritePCXfile (char *filename, byte *data, int width, int height,
 SCR_ScreenShot_f
 ================== 
 */  
-void SCR_ScreenShot_f (void)
+static void SCR_ScreenShot_f (void)
 {
 	int		i;
 	char	filename[80];
@@ -731,7 +731,7 @@ void SCR_ScreenShot_f (void)
 /*
 Find closest color in the palette for named color
 */
-int MipColor(int r, int g, int b)
+static int MipColor(int r, int g, int b)
 {
 	int i;
 	float dist;
@@ -764,7 +764,7 @@ int MipColor(int r, int g, int b)
 // in draw.c
 extern byte		*draw_chars;				// 8*8 graphic characters
 
-void SCR_DrawCharToSnap (int num, byte *dest, int width)
+static void SCR_DrawCharToSnap (int num, byte *dest, int width)
 {
 	int		row, col;
 	byte	*source;
@@ -790,7 +790,7 @@ void SCR_DrawCharToSnap (int num, byte *dest, int width)
 
 }
 
-void SCR_DrawStringToSnap (const char *s, byte *buf, int x, int y, int width)
+static void SCR_DrawStringToSnap (const char *s, byte *buf, int x, int y, int width)
 {
 	byte *dest;
 	const unsigned char *p;
@@ -810,7 +810,7 @@ void SCR_DrawStringToSnap (const char *s, byte *buf, int x, int y, int width)
 SCR_RSShot_f
 ================== 
 */  
-void SCR_RSShot_f (void) 
+static void SCR_RSShot_f (void) 
 { 
 	int     x, y;
 	pixel_t		*src;
@@ -912,7 +912,7 @@ void SCR_RSShot_f (void)
 static char	*scr_notifystring;
 static bool	scr_drawdialog;
 
-void SCR_DrawNotifyString (void)
+static void SCR_DrawNotifyString (void)
 {
 	char	*start;
 	int		l;

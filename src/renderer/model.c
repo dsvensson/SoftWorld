@@ -26,10 +26,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 static model_t	*loadmodel;
 
-void Mod_LoadSpriteModel (model_t *mod, void *buffer);
+static void Mod_LoadSpriteModel (model_t *mod, void *buffer);
 static bool Mod_LoadBrushModel (model_t *mod, byte *buffer, int size);
-void Mod_LoadAliasModel (model_t *mod, void *buffer);
-model_t *Mod_LoadModel (model_t *mod, bool crash);
+static void Mod_LoadAliasModel (model_t *mod, void *buffer);
+static model_t *Mod_LoadModel (model_t *mod, bool crash);
 
 static model_t	**mod_known;		// every model ever named; entries never move
 static int		mod_numknown, mod_maxknown;
@@ -233,7 +233,7 @@ Mod_FindName
 
 ==================
 */
-model_t *Mod_FindName (char *modname)
+static model_t *Mod_FindName (char *modname)
 {
 	int		i;
 	model_t	*mod;
@@ -268,7 +268,7 @@ Mod_LoadModel
 Loads a model into the cache
 ==================
 */
-model_t *Mod_LoadModel (model_t *mod, bool crash)
+static model_t *Mod_LoadModel (model_t *mod, bool crash)
 {
 	byte	*buf;
 	int		size;
@@ -1140,7 +1140,7 @@ static bool Mod_LoadPlanes (void)
 RadiusFromBounds
 =================
 */
-float RadiusFromBounds (vec3_t mins, vec3_t maxs)
+static float RadiusFromBounds (vec3_t mins, vec3_t maxs)
 {
 	int		i;
 	vec3_t	corner;
@@ -1245,7 +1245,7 @@ ALIAS MODELS
 Mod_LoadAliasFrame
 =================
 */
-void * Mod_LoadAliasFrame (void * pin, int *pframeindex, int numv,
+static void * Mod_LoadAliasFrame (void * pin, int *pframeindex, int numv,
 	trivertx_t *pbboxmin, trivertx_t *pbboxmax, aliashdr_t *pheader, char *framename)
 {
 	trivertx_t		*pframe, *pinframe;
@@ -1294,7 +1294,7 @@ void * Mod_LoadAliasFrame (void * pin, int *pframeindex, int numv,
 Mod_LoadAliasGroup
 =================
 */
-void * Mod_LoadAliasGroup (void * pin, int *pframeindex, int numv,
+static void * Mod_LoadAliasGroup (void * pin, int *pframeindex, int numv,
 	trivertx_t *pbboxmin, trivertx_t *pbboxmax, aliashdr_t *pheader, char *framename)
 {
 	daliasgroup_t		*pingroup;
@@ -1359,7 +1359,7 @@ void * Mod_LoadAliasGroup (void * pin, int *pframeindex, int numv,
 Mod_LoadAliasSkin
 =================
 */
-void * Mod_LoadAliasSkin (void * pin, int *pskinindex, int skinsize,
+static void * Mod_LoadAliasSkin (void * pin, int *pskinindex, int skinsize,
 	aliashdr_t *pheader)
 {
 	byte	*pskin, *pinskin;
@@ -1381,7 +1381,7 @@ void * Mod_LoadAliasSkin (void * pin, int *pskinindex, int skinsize,
 Mod_LoadAliasSkinGroup
 =================
 */
-void * Mod_LoadAliasSkinGroup (void * pin, int *pskinindex, int skinsize,
+static void * Mod_LoadAliasSkinGroup (void * pin, int *pskinindex, int skinsize,
 	aliashdr_t *pheader)
 {
 	daliasskingroup_t		*pinskingroup;
@@ -1435,7 +1435,7 @@ void * Mod_LoadAliasSkinGroup (void * pin, int *pskinindex, int skinsize,
 Mod_LoadAliasModel
 =================
 */
-void Mod_LoadAliasModel (model_t *mod, void *buffer)
+static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 {
 	int					i;
 	mdl_t				*pmodel, *pinmodel;
@@ -1655,7 +1655,7 @@ void Mod_LoadAliasModel (model_t *mod, void *buffer)
 Mod_LoadSpriteFrame
 =================
 */
-void * Mod_LoadSpriteFrame (void * pin, mspriteframe_t **ppframe)
+static void * Mod_LoadSpriteFrame (void * pin, mspriteframe_t **ppframe)
 {
 	dspriteframe_t		*pinframe;
 	mspriteframe_t		*pspriteframe;
@@ -1693,7 +1693,7 @@ void * Mod_LoadSpriteFrame (void * pin, mspriteframe_t **ppframe)
 Mod_LoadSpriteGroup
 =================
 */
-void * Mod_LoadSpriteGroup (void * pin, mspriteframe_t **ppframe)
+static void * Mod_LoadSpriteGroup (void * pin, mspriteframe_t **ppframe)
 {
 	dspritegroup_t		*pingroup;
 	mspritegroup_t		*pspritegroup;
@@ -1745,7 +1745,7 @@ void * Mod_LoadSpriteGroup (void * pin, mspriteframe_t **ppframe)
 Mod_LoadSpriteModel
 =================
 */
-void Mod_LoadSpriteModel (model_t *mod, void *buffer)
+static void Mod_LoadSpriteModel (model_t *mod, void *buffer)
 {
 	int					i;
 	int					version;

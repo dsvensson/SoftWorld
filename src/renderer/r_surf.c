@@ -225,7 +225,7 @@ R_BuildLightMap
 Combine and scale multiple lightmaps into the 8.8 format in blocklights
 ===============
 */
-void R_BuildLightMap (void)
+static void R_BuildLightMap (void)
 {
 	int			t;
 	int			i, size, planesize;

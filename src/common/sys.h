@@ -44,8 +44,6 @@ void	Sys_CommitMemory (void *base, size_t size);
 //
 // system IO
 //
-void	Sys_Init (void);
-
 void	Sys_DebugLog (char *file, char *fmt, ...);
 
 // an error will cause the entire program to exit

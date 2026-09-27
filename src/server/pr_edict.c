@@ -32,8 +32,8 @@ pr_state_t		pr;
 
 static int		type_size[8] = {1,sizeof(void *)/4,1,3,1,1,sizeof(void *)/4,sizeof(void *)/4};
 
-ddef_t *ED_FieldAtOfs (int ofs);
-bool	ED_ParseEpair (void *base, ddef_t *key, char *s);
+static ddef_t *ED_FieldAtOfs (int ofs);
+static bool	ED_ParseEpair (void *base, ddef_t *key, char *s);
 
 #define	MAX_FIELD_LEN	64
 #define GEFV_CACHESIZE	2
@@ -54,7 +54,7 @@ ED_ClearEdict
 Sets everything to NULL
 =================
 */
-void ED_ClearEdict (edict_t *e)
+static void ED_ClearEdict (edict_t *e)
 {
 	memset (&e->v, 0, pr.progs->entityfields * 4);
 	e->alpha = 0;
@@ -139,7 +139,7 @@ void ED_Free (edict_t *ed)
 ED_GlobalAtOfs
 ============
 */
-ddef_t *ED_GlobalAtOfs (int ofs)
+static ddef_t *ED_GlobalAtOfs (int ofs)
 {
 	ddef_t		*def;
 	int			i;
@@ -158,7 +158,7 @@ ddef_t *ED_GlobalAtOfs (int ofs)
 ED_FieldAtOfs
 ============
 */
-ddef_t *ED_FieldAtOfs (int ofs)
+static ddef_t *ED_FieldAtOfs (int ofs)
 {
 	ddef_t		*def;
 	int			i;
@@ -177,7 +177,7 @@ ddef_t *ED_FieldAtOfs (int ofs)
 ED_FindField
 ============
 */
-ddef_t *ED_FindField (char *name)
+static ddef_t *ED_FindField (char *name)
 {
 	ddef_t		*def;
 	int			i;
@@ -196,7 +196,7 @@ ddef_t *ED_FindField (char *name)
 ED_FindFunction
 ============
 */
-dfunction_t *ED_FindFunction (char *name)
+static dfunction_t *ED_FindFunction (char *name)
 {
 	dfunction_t		*func;
 	int				i;
@@ -248,7 +248,7 @@ PR_ValueString
 Returns a string describing *data in a type specific manner
 =============
 */
-char *PR_ValueString (etype_t type, eval_t *val)
+static char *PR_ValueString (etype_t type, eval_t *val)
 {
 	static char	line[256];
 	ddef_t		*def;
@@ -427,7 +427,7 @@ ED_PrintEdict_f
 For debugging, prints a single edicy
 =============
 */
-void ED_PrintEdict_f (void)
+static void ED_PrintEdict_f (void)
 {
 	int		i;
 	
@@ -443,7 +443,7 @@ ED_Count
 For debugging
 =============
 */
-void ED_Count (void)
+static void ED_Count (void)
 {
 	int		i;
 	edict_t	*ent;
@@ -489,7 +489,7 @@ FIXME: need to tag constants, doesn't really work
 ED_NewString
 =============
 */
-char *ED_NewString (char *string)
+static char *ED_NewString (char *string)
 {
 	char	*new, *new_p;
 	int		i,l;
@@ -525,7 +525,7 @@ Can parse either fields or globals
 returns false if error
 =============
 */
-bool	ED_ParseEpair (void *base, ddef_t *key, char *s)
+static bool	ED_ParseEpair (void *base, ddef_t *key, char *s)
 {
 	int		i;
 	char	string[128];
@@ -599,7 +599,7 @@ ed should be a properly initialized empty edict.
 Used for initial level load and for savegames.
 ====================
 */
-char *ED_ParseEdict (char *data, edict_t *ent)
+static char *ED_ParseEdict (char *data, edict_t *ent)
 {
 	ddef_t		*key;
 	bool	anglehack;

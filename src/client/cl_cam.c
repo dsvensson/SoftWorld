@@ -120,7 +120,7 @@ bool Cam_DrawPlayer(int playernum)
 	return true;
 }
 
-void Cam_Unlock(void)
+static void Cam_Unlock(void)
 {
 	if (autocam) {
 		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
@@ -130,7 +130,7 @@ void Cam_Unlock(void)
 	}
 }
 
-void Cam_Lock(int playernum)
+static void Cam_Lock(int playernum)
 {
 	char st[40];
 
@@ -142,7 +142,7 @@ void Cam_Lock(int playernum)
 	locked = false;
 }
 
-trace_t Cam_DoTrace(vec3_t vec1, vec3_t vec2)
+static trace_t Cam_DoTrace(vec3_t vec1, vec3_t vec2)
 {
 
 	VectorCopy (vec1, cl.pmove.origin);

@@ -404,8 +404,6 @@ static inline entity_t *CL_StaticEntity (int i)
 	return &cl.static_blocks[i / STATIC_BLOCK][i % STATIC_BLOCK];
 }
 
-void Cmd_ForwardToServer (void);
-
 //=============================================================================
 
 
@@ -418,7 +416,6 @@ void	CL_DecayLights (void);
 void CL_WriteConfiguration (void);
 
 
-void CL_Disconnect_f (void);
 void CL_NextDemo (void);
 
 void CL_BeginServerConnect(void);
@@ -444,12 +441,7 @@ void CL_UpdateTEnts (void);
 
 void CL_ClearState (void);
 
-void CL_ReadPackets (void);
 
-void CL_BaseMove (usercmd_t *cmd);
-
-
-float CL_KeyState (kbutton_t *key);
 char *Key_KeynumToString (int keynum);
 
 //
@@ -517,7 +509,6 @@ int CL_CalcNet (void);
 void CL_ParseServerMessage (void);
 void CL_ProcessUserInfo (int slot, player_info_t *player);	// name, colors, skin from the userinfo
 double CL_ScoreClock (void);		// what the scoreboard's times count on
-void CL_NewTranslation (int slot);
 void CL_RequestNextDownload (void);
 bool CL_IsUploading(void);
 void CL_NextUpload(void);
@@ -545,7 +536,6 @@ void V_StopPitchDrift (void);
 void V_RenderView (void);
 void V_UpdateBlend (void);
 void V_ParseDamage (void);
-void V_SetContentsColor (int contents);
 
 
 //
@@ -624,7 +614,6 @@ typedef struct
 
 
 void	Skin_Find (player_info_t *sc);
-byte	*Skin_Cache (skin_t *skin);
 byte	*Skin_ForPlayer (player_info_t *info);	// NULL if the skin can't be loaded
 void	Skin_Skins_f (void);
 void	Skin_AllSkins_f (void);

@@ -52,7 +52,7 @@ SYSTEM IO
 Sys_Init
 ================
 */
-void Sys_Init (void)
+static void Sys_Init (void)
 {
 }
 

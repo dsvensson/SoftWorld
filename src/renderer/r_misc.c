@@ -271,7 +271,7 @@ void TransformVector (vec3_t in, vec3_t out)
 R_SetUpFrustumIndexes
 ===============
 */
-void R_SetUpFrustumIndexes (void)
+static void R_SetUpFrustumIndexes (void)
 {
 	int		i, j, *pindex;
 

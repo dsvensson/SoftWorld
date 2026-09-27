@@ -29,6 +29,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <string.h>
 
+static void	*SZ_GetSpace (sizebuf_t *buf, int length);
+static void	MSG_WriteAngle16 (sizebuf_t *sb, float f);
+
 usercmd_t	nullcmd;		// guaranteed to be zero
 
 static sizebuf_t	*msg_readbuf;
@@ -113,7 +116,7 @@ void MSG_WriteAngle (sizebuf_t *sb, float f)
 		MSG_WriteByte (sb, (int)(f*256/360) & 255);
 }
 
-void MSG_WriteAngle16 (sizebuf_t *sb, float f)
+static void MSG_WriteAngle16 (sizebuf_t *sb, float f)
 {
 	MSG_WriteShort (sb, (int)(f*65536/360) & 65535);
 }
@@ -326,7 +329,7 @@ int MSG_GetReadCount(void)
 	return msg_readcount;
 }
 
-int MSG_ReadChar (void)
+static int MSG_ReadChar (void)
 {
 	int	c;
 	
@@ -607,7 +610,7 @@ void SZ_Clear (sizebuf_t *buf)
 	buf->overflowed = false;
 }
 
-void *SZ_GetSpace (sizebuf_t *buf, int length)
+static void *SZ_GetSpace (sizebuf_t *buf, int length)
 {
 	void	*data;
 	

@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // snd_mem.c: sound caching
 
 #include "snd_local.h"
+static wavinfo_t GetWavinfo (char *name, byte *wav, int wavlength);
 
 
 
@@ -28,7 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 ResampleSfx
 ================
 */
-void ResampleSfx (sfx_t *sfx, int inrate, int inwidth, byte *data)
+static void ResampleSfx (sfx_t *sfx, int inrate, int inwidth, byte *data)
 {
 	int		outcount;
 	int		srcsample;
@@ -166,7 +167,7 @@ static byte 	*iff_data;
 static int 	iff_chunk_len;
 
 
-short GetLittleShort(void)
+static short GetLittleShort(void)
 {
 	short val = 0;
 	val = *data_p;
@@ -175,7 +176,7 @@ short GetLittleShort(void)
 	return val;
 }
 
-int GetLittleLong(void)
+static int GetLittleLong(void)
 {
 	int val = 0;
 	val = *data_p;
@@ -186,7 +187,7 @@ int GetLittleLong(void)
 	return val;
 }
 
-void FindNextChunk(char *chunkname)
+static void FindNextChunk(char *chunkname)
 {
 	while (1)
 	{
@@ -214,7 +215,7 @@ void FindNextChunk(char *chunkname)
 	}
 }
 
-void FindChunk(char *chunkname)
+static void FindChunk(char *chunkname)
 {
 	last_chunk = iff_data;
 	FindNextChunk (chunkname);
@@ -227,7 +228,7 @@ void FindChunk(char *chunkname)
 GetWavinfo
 ============
 */
-wavinfo_t GetWavinfo (char *sndname, byte *wav, int wavlength)
+static wavinfo_t GetWavinfo (char *sndname, byte *wav, int wavlength)
 {
 	wavinfo_t	info;
 	int     i;

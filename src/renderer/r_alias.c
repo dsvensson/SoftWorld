@@ -77,11 +77,11 @@ static float	r_avertexnormals[NUMVERTEXNORMALS][3] = {
 #include "anorms.inc"
 };
 
-void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv,
+static void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv,
 	stvert_t *pstverts);
-void R_AliasSetUpTransform (int trivial_accept);
-void R_AliasTransformVector (vec3_t in, vec3_t out);
-void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
+static void R_AliasSetUpTransform (int trivial_accept);
+static void R_AliasTransformVector (vec3_t in, vec3_t out);
+static void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
 	trivertx_t *pverts, stvert_t *pstverts);
 void R_AliasProjectFinalVert (finalvert_t *fv, auxvert_t *av);
 
@@ -255,7 +255,7 @@ bool R_AliasCheckBBox (void)
 R_AliasTransformVector
 ================
 */
-void R_AliasTransformVector (vec3_t in, vec3_t out)
+static void R_AliasTransformVector (vec3_t in, vec3_t out)
 {
 	out[0] = DotProduct(in, aliastransform[0]) + aliastransform[0][3];
 	out[1] = DotProduct(in, aliastransform[1]) + aliastransform[1][3];
@@ -270,7 +270,7 @@ R_AliasPreparePoints
 General clipped case
 ================
 */
-void R_AliasPreparePoints (void)
+static void R_AliasPreparePoints (void)
 {
 	int			i;
 	stvert_t	*pstverts;
@@ -339,7 +339,7 @@ void R_AliasPreparePoints (void)
 R_AliasSetUpTransform
 ================
 */
-void R_AliasSetUpTransform (int trivial_accept)
+static void R_AliasSetUpTransform (int trivial_accept)
 {
 	int				i;
 	float			rotationmatrix[3][4], t2matrix[3][4];
@@ -417,7 +417,7 @@ void R_AliasSetUpTransform (int trivial_accept)
 R_AliasTransformFinalVert
 ================
 */
-void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
+static void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
 	trivertx_t *pverts, stvert_t *pstverts)
 {
 	int		temp;
@@ -460,7 +460,7 @@ void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
 R_AliasTransformAndProjectFinalVerts
 ================
 */
-void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
+static void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
 {
 	int			i, temp;
 	float		lightcos, *plightnormal, zi;
@@ -533,7 +533,7 @@ void R_AliasProjectFinalVert (finalvert_t *fv, auxvert_t *av)
 R_AliasPrepareUnclippedPoints
 ================
 */
-void R_AliasPrepareUnclippedPoints (void)
+static void R_AliasPrepareUnclippedPoints (void)
 {
 	stvert_t	*pstverts;
 	finalvert_t	*fv;
@@ -561,7 +561,7 @@ void R_AliasPrepareUnclippedPoints (void)
 R_AliasSetupSkin
 ===============
 */
-void R_AliasSetupSkin (void)
+static void R_AliasSetupSkin (void)
 {
 	int					skinnum;
 	int					i, numskins;
@@ -624,7 +624,7 @@ void R_AliasSetupSkin (void)
 R_AliasSetupLighting
 ================
 */
-void R_AliasSetupLighting (alight_t *plighting)
+static void R_AliasSetupLighting (alight_t *plighting)
 {
 	int		i;
 
@@ -664,7 +664,7 @@ R_AliasSetupFrame
 set r_apverts
 =================
 */
-void R_AliasSetupFrame (void)
+static void R_AliasSetupFrame (void)
 {
 	int				frame;
 	int				i, numframes;

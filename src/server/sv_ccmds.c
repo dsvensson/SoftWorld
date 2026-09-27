@@ -41,7 +41,7 @@ SV_SetMaster_f
 Make a master server current
 ====================
 */
-void SV_SetMaster_f (void)
+static void SV_SetMaster_f (void)
 {
 	char	data[2];
 	int		i;
@@ -105,7 +105,7 @@ static bool SV_HasLocalClient (void)
 SV_Logfile_f
 ============
 */
-void SV_Logfile_f (void)
+static void SV_Logfile_f (void)
 {
 	char	name[MAX_OSPATH];
 
@@ -130,7 +130,7 @@ void SV_Logfile_f (void)
 SV_Fraglogfile_f
 ============
 */
-void SV_Fraglogfile_f (void)
+static void SV_Fraglogfile_f (void)
 {
 	char	name[MAX_OSPATH];
 	int		i;
@@ -175,7 +175,7 @@ SV_SetPlayer
 Sets host_client and sv_player to the player with idnum Cmd_Argv(1)
 ==================
 */
-bool SV_SetPlayer (void)
+static bool SV_SetPlayer (void)
 {
 	client_t	*cl;
 	int			i;
@@ -206,7 +206,7 @@ SV_God_f
 Sets client to godmode
 ==================
 */
-void SV_God_f (void)
+static void SV_God_f (void)
 {
 	if (!sv_allow_cheats)
 	{
@@ -225,7 +225,7 @@ void SV_God_f (void)
 }
 
 
-void SV_Noclip_f (void)
+static void SV_Noclip_f (void)
 {
 	if (!sv_allow_cheats)
 	{
@@ -254,7 +254,7 @@ void SV_Noclip_f (void)
 SV_Give_f
 ==================
 */
-void SV_Give_f (void)
+static void SV_Give_f (void)
 {
 	char	*t;
 	int		v;
@@ -312,7 +312,7 @@ map <mapname>
 command from the console or progs.
 ======================
 */
-void SV_Map_f (void)
+static void SV_Map_f (void)
 {
 	char	level[MAX_QPATH];
 	char	expanded[MAX_QPATH];
@@ -356,7 +356,7 @@ SV_Kick_f
 Kick a user off of the server
 ==================
 */
-void SV_Kick_f (void)
+static void SV_Kick_f (void)
 {
 	int			i;
 	client_t	*cl;
@@ -388,7 +388,7 @@ void SV_Kick_f (void)
 SV_Status_f
 ================
 */
-void SV_Status_f (void)
+static void SV_Status_f (void)
 {
 	int			i, j, l;
 	client_t	*cl;
@@ -494,7 +494,7 @@ void SV_Status_f (void)
 SV_ConSay_f
 ==================
 */
-void SV_ConSay_f(void)
+static void SV_ConSay_f(void)
 {
 	client_t *client;
 	int		j;
@@ -529,7 +529,7 @@ void SV_ConSay_f(void)
 SV_Heartbeat_f
 ==================
 */
-void SV_Heartbeat_f (void)
+static void SV_Heartbeat_f (void)
 {
 	svs.last_heartbeat = -9999;
 }
@@ -552,7 +552,7 @@ SV_Serverinfo_f
 ===========
 */
 char *CopyString(char *s);
-void SV_Serverinfo_f (void)
+static void SV_Serverinfo_f (void)
 {
 	cvar_t	*var;
 
@@ -597,7 +597,7 @@ SV_Serverinfo_f
 ===========
 */
 char *CopyString(char *s);
-void SV_Localinfo_f (void)
+static void SV_Localinfo_f (void)
 {
 	if (Cmd_Argc() == 1)
 	{
@@ -628,7 +628,7 @@ SV_User_f
 Examine a users info strings
 ===========
 */
-void SV_User_f (void)
+static void SV_User_f (void)
 {
 	if (Cmd_Argc() != 2)
 	{
@@ -649,7 +649,7 @@ SV_Gamedir
 Sets the fake *gamedir to a different directory.
 ================
 */
-void SV_Gamedir (void)
+static void SV_Gamedir (void)
 {
 	char			*dir;
 
@@ -685,7 +685,7 @@ Sets the gamedir and path to a different directory.
 ================
 */
 
-void SV_Floodprot_f (void)
+static void SV_Floodprot_f (void)
 {
 	int arg1, arg2, arg3;
 	
@@ -725,7 +725,7 @@ void SV_Floodprot_f (void)
 	svs.floodprot.secondsdead = arg3;
 }
 
-void SV_Floodprotmsg_f (void)
+static void SV_Floodprotmsg_f (void)
 {
 	if (Cmd_Argc() == 1) {
 		Con_Printf("Current msg: %s\n", svs.floodprot.msg);
@@ -745,7 +745,7 @@ Sets the gamedir and path to a different directory.
 ================
 */
 extern char	gamedirfile[MAX_OSPATH];
-void SV_Gamedir_f (void)
+static void SV_Gamedir_f (void)
 {
 	char			*dir;
 
@@ -779,7 +779,7 @@ void SV_Gamedir_f (void)
 SV_Snap
 ================
 */
-void SV_Snap (int uid)
+static void SV_Snap (int uid)
 {
 	client_t *cl;
 	char		pcxname[80]; 
@@ -835,7 +835,7 @@ void SV_Snap (int uid)
 SV_Snap_f
 ================
 */
-void SV_Snap_f (void)
+static void SV_Snap_f (void)
 {
 	int			uid;
 
@@ -855,7 +855,7 @@ void SV_Snap_f (void)
 SV_Snap
 ================
 */
-void SV_SnapAll_f (void)
+static void SV_SnapAll_f (void)
 {
 	client_t *cl;
 	int			i;

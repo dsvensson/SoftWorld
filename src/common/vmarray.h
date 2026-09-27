@@ -19,8 +19,5 @@ typedef struct vmarray_s
 
 void	VMArray_Init (vmarray_t *array, const char *name, size_t elemsize, size_t maxcount);
 
-// makes sure at least count elements are committed; fatal beyond maxcount
-void	VMArray_Resize (vmarray_t *array, size_t count);
-
 // commits room for n more elements after `used` and returns a pointer to the first
 void	*VMArray_Reserve (vmarray_t *array, size_t used, size_t n);

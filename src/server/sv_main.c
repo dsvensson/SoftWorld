@@ -20,6 +20,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "sv_local.h"
 
+static void SV_FinalMessage (char *message);
+static void Master_Heartbeat (void);
+
 
 
 
@@ -88,7 +91,7 @@ static cvar_t	watervis = {.name = "watervis", .string = "0", .serverinfo = true}
 static cvar_t	hostname = {.name = "hostname", .string = "unnamed", .serverinfo = true};
 
 
-void Master_Shutdown (void);
+static void Master_Shutdown (void);
 
 //============================================================================
 
@@ -210,7 +213,7 @@ not just stuck on the outgoing message list, because the server is going
 to totally exit after returning from this function.
 ==================
 */
-void SV_FinalMessage (char *message)
+static void SV_FinalMessage (char *message)
 {
 	int			i;
 	client_t	*cl;
@@ -398,7 +401,7 @@ Responds with all the info that qplug or qspy can see
 This message can be up to around 5k with worst case string lengths.
 ================
 */
-void SVC_Status (void)
+static void SVC_Status (void)
 {
 	int		i;
 	client_t	*cl;
@@ -434,7 +437,7 @@ SV_CheckLog
 */
 #define	LOG_HIGHWATER	4096
 #define	LOG_FLUSH		10*60
-void SV_CheckLog (void)
+static void SV_CheckLog (void)
 {
 	sizebuf_t	*sz;
 
@@ -465,7 +468,7 @@ the same as the current sequence, an A2A_NACK will be returned
 instead of the data.
 ================
 */
-void SVC_Log (void)
+static void SVC_Log (void)
 {
 	int		seq;
 	char	data[MAX_DATAGRAM+64];
@@ -497,7 +500,7 @@ SVC_Ping
 Just responds with an acknowledgement
 ================
 */
-void SVC_Ping (void)
+static void SVC_Ping (void)
 {
 	char	data;
 
@@ -517,7 +520,7 @@ flood the server with invalid connection IPs.  With a
 challenge, they must give a valid IP address.
 =================
 */
-void SVC_GetChallenge (void)
+static void SVC_GetChallenge (void)
 {
 	int		i;
 	int		oldest;
@@ -568,7 +571,7 @@ SVC_DirectConnect
 A connection request that did not come from the master
 ==================
 */
-void SVC_DirectConnect (void)
+static void SVC_DirectConnect (void)
 {
 	char		userinfo[1024];
 	static		int	userid;
@@ -842,7 +845,7 @@ bool SV_CanSwitchSide (client_t *cl, bool spectator)
 	return true;
 }
 
-int Rcon_Validate (void)
+static int Rcon_Validate (void)
 {
 	if (!strlen (rcon_password.string))
 		return 0;
@@ -862,7 +865,7 @@ Shift down the remaining args
 Redirect all printfs
 ===============
 */
-void SVC_RemoteCommand (void)
+static void SVC_RemoteCommand (void)
 {
 	int		i;
 	char	remaining[1024];
@@ -909,7 +912,7 @@ Clients that are in the game can still send
 connectionless packets.
 =================
 */
-void SV_ConnectionlessPacket (void)
+static void SV_ConnectionlessPacket (void)
 {
 	char	*s;
 	char	*c;
@@ -1011,7 +1014,7 @@ static cvar_t	filterban = {.name = "filterban", .string = "1"};
 StringToFilter
 =================
 */
-bool StringToFilter (char *s, ipfilter_t *f)
+static bool StringToFilter (char *s, ipfilter_t *f)
 {
 	char	num[128];
 	int		i, j;
@@ -1058,7 +1061,7 @@ bool StringToFilter (char *s, ipfilter_t *f)
 SV_AddIP_f
 =================
 */
-void SV_AddIP_f (void)
+static void SV_AddIP_f (void)
 {
 	int		i;
 	
@@ -1084,7 +1087,7 @@ void SV_AddIP_f (void)
 SV_RemoveIP_f
 =================
 */
-void SV_RemoveIP_f (void)
+static void SV_RemoveIP_f (void)
 {
 	ipfilter_t	f;
 	int			i, j;
@@ -1109,7 +1112,7 @@ void SV_RemoveIP_f (void)
 SV_ListIP_f
 =================
 */
-void SV_ListIP_f (void)
+static void SV_ListIP_f (void)
 {
 	int		i;
 	byte	b[4];
@@ -1127,7 +1130,7 @@ void SV_ListIP_f (void)
 SV_WriteIP_f
 =================
 */
-void SV_WriteIP_f (void)
+static void SV_WriteIP_f (void)
 {
 	FILE	*f;
 	char	name[MAX_OSPATH];
@@ -1159,7 +1162,7 @@ void SV_WriteIP_f (void)
 SV_SendBan
 =================
 */
-void SV_SendBan (void)
+static void SV_SendBan (void)
 {
 	char		data[128];
 
@@ -1176,7 +1179,7 @@ void SV_SendBan (void)
 SV_FilterPacket
 =================
 */
-bool SV_FilterPacket (void)
+static bool SV_FilterPacket (void)
 {
 	int		i;
 	unsigned	in;
@@ -1197,7 +1200,7 @@ bool SV_FilterPacket (void)
 SV_ReadPackets
 =================
 */
-void SV_ReadPackets (void)
+static void SV_ReadPackets (void)
 {
 	int			i;
 	client_t	*cl;
@@ -1270,7 +1273,7 @@ for a few seconds to make sure any final reliable message gets resent
 if necessary
 ==================
 */
-void SV_CheckTimeouts (void)
+static void SV_CheckTimeouts (void)
 {
 	int		i;
 	client_t	*cl;
@@ -1310,7 +1313,7 @@ SV_CheckVars
 
 ===================
 */
-void SV_CheckVars (void)
+static void SV_CheckVars (void)
 {
 	static char *pw, *spw;
 	int			v;
@@ -1423,7 +1426,7 @@ static void SV_ServerinfoCvarChanged (char *name, char *value)
 	SV_SendServerInfoChange (name, value);
 }
 
-void SV_InitLocal (void)
+static void SV_InitLocal (void)
 {
 	int		i;
 
@@ -1541,7 +1544,7 @@ let it know we are alive, and log information
 ================
 */
 #define	HEARTBEAT_SECONDS	300
-void Master_Heartbeat (void)
+static void Master_Heartbeat (void)
 {
 	char		string[2048];
 	int			active;
@@ -1582,7 +1585,7 @@ Master_Shutdown
 Informs all masters that this server is going down
 =================
 */
-void Master_Shutdown (void)
+static void Master_Shutdown (void)
 {
 	char		string[2048];
 	int			i;
@@ -1750,7 +1753,7 @@ void SV_ExtractFromUserinfo (client_t *cl)
 SV_InitNet
 ====================
 */
-void SV_InitNet (void)
+static void SV_InitNet (void)
 {
 	int	port;
 	int	p;

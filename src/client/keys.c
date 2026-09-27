@@ -146,7 +146,7 @@ static keyname_t keynames[] =
 ==============================================================================
 */
 
-bool CheckForCommand (void)
+static bool CheckForCommand (void)
 {
 	char	command[128];
 	char	*cmd, *s;
@@ -169,7 +169,7 @@ bool CheckForCommand (void)
 	return true;
 }
 
-void CompleteCommand (void)
+static void CompleteCommand (void)
 {
 	char	*cmd, *s;
 
@@ -199,7 +199,7 @@ Key_Console
 Interactive line editing and console scrollback
 ====================
 */
-void Key_Console (int key)
+static void Key_Console (int key)
 {
 	int		i;
 	char	*clipText;
@@ -340,7 +340,7 @@ void Key_Console (int key)
 
 key_input_t	key_input;
 
-void Key_Message (int key)
+static void Key_Message (int key)
 {
 
 	if (key == K_ENTER)
@@ -398,7 +398,7 @@ the given string.  Single ascii characters return themselves, while
 the K_* names are matched up.
 ===================
 */
-int Key_StringToKeynum (char *str)
+static int Key_StringToKeynum (char *str)
 {
 	keyname_t	*kn;
 	
@@ -491,7 +491,7 @@ void Key_SetBinding (int keynum, char *binding)
 Key_Unbind_f
 ===================
 */
-void Key_Unbind_f (void)
+static void Key_Unbind_f (void)
 {
 	int		b;
 
@@ -511,7 +511,7 @@ void Key_Unbind_f (void)
 	Key_SetBinding (b, "");
 }
 
-void Key_Unbindall_f (void)
+static void Key_Unbindall_f (void)
 {
 	int		i;
 	
@@ -526,7 +526,7 @@ void Key_Unbindall_f (void)
 Key_Bind_f
 ===================
 */
-void Key_Bind_f (void)
+static void Key_Bind_f (void)
 {
 	int			i, c, b;
 	char		cmd[1024];

@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "r_local.h"
 #include "r_local.h"
+static void	R_InitTurb (void);
 
 //define	PASSAGES
 
@@ -51,8 +52,6 @@ static surf_t	*r_surfaces_mem;	// heap block behind surfaces (which points one e
 int			r_clipflags;
 
 pixel_t		*r_warpbuffer;
-
-static byte		*r_stack_start;
 
 
 entity_t	r_worldentity;
@@ -110,7 +109,7 @@ int		d_lightstylevalue[256];	// 8.8 fraction of base light value
 float	dp_time1, dp_time2, db_time1, db_time2, rw_time1, rw_time2;
 float	se_time1, se_time2, de_time1, de_time2, dv_time1, dv_time2;
 
-void R_MarkLeaves (void);
+static void R_MarkLeaves (void);
 
 cvar_t	r_draworder = {.name = "r_draworder", .string = "0"};
 static cvar_t	r_speeds = {.name = "r_speeds", .string = "0"};
@@ -197,11 +196,6 @@ R_Init
 */
 void R_Init (void)
 {
-	int		dummy;
-	
-// get stack position so we can guess if we are going to overflow
-	r_stack_start = (byte *)&dummy;
-	
 	R_InitTurb ();
 	
 	Cmd_AddCommand ("timerefresh", R_TimeRefresh_f);	
@@ -606,7 +600,7 @@ void R_SetViewRect (const vrect_t *vrect, float aspect)
 R_MarkLeaves
 ===============
 */
-void R_MarkLeaves (void)
+static void R_MarkLeaves (void)
 {
 	static bool	oldnovis;
 	byte	*vis;
@@ -756,7 +750,7 @@ Translucent alias models go to R_DrawTranslucent, drawn back to front with
 the translucent surfaces
 =============
 */
-void R_DrawEntitiesOnList (void)
+static void R_DrawEntitiesOnList (void)
 {
 	int			i;
 
@@ -793,7 +787,7 @@ void R_DrawEntitiesOnList (void)
 R_DrawViewModel
 =============
 */
-void R_DrawViewModel (void)
+static void R_DrawViewModel (void)
 {
 	vec3_t		rgb;
 	float		color[3];
@@ -892,7 +886,7 @@ void R_DrawViewModel (void)
 R_BmodelCheckBBox
 =============
 */
-int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
+static int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
 {
 	int			i, *pindex, clipflags;
 	vec3_t		acceptpt, rejectpt;
@@ -956,7 +950,7 @@ int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
 R_DrawBEntitiesOnList
 =============
 */
-void R_DrawBEntitiesOnList (void)
+static void R_DrawBEntitiesOnList (void)
 {
 	int			i, j, k, clipflags;
 	vec3_t		oldorigin;
@@ -1094,7 +1088,7 @@ void R_DrawBEntitiesOnList (void)
 R_EdgeDrawing
 ================
 */
-void R_EdgeDrawing (void)
+static void R_EdgeDrawing (void)
 {
 	double	prof;
 
@@ -1154,7 +1148,7 @@ R_RenderView
 r_refdef must be set before the first call
 ================
 */
-void R_RenderView_ (void)
+void R_RenderView (void)
 {
 	double	prof;
 
@@ -1243,28 +1237,12 @@ void R_RenderView_ (void)
 // back to high floating-point precision
 }
 
-void R_RenderView (void)
-{
-	int		dummy;
-	int		delta;
-	
-	delta = (int)((byte *)&dummy - r_stack_start);
-	if (delta < -10000 || delta > 10000)
-		Sys_Error ("R_RenderView: called without enough stack");
-
-
-	if ( (uintptr_t)(&dummy) & 3 )
-		Sys_Error ("Stack is missaligned");
-
-	R_RenderView_ ();
-}
-
 /*
 ================
 R_InitTurb
 ================
 */
-void R_InitTurb (void)
+static void R_InitTurb (void)
 {
 	int		i;
 

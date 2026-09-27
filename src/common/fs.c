@@ -46,7 +46,7 @@ static int		static_registered = 1;	// only for startup check, then set
 
 
 static void COM_InitFilesystem (const char *basedir);
-void COM_Path_f (void);
+static void COM_Path_f (void);
 
 
 // if a packfile directory differs from this, it is assumed to be hacked
@@ -144,7 +144,7 @@ Immediately exits out if an alternate game was attempted to be started without
 being registered.
 ================
 */
-void COM_CheckRegistered (void)
+static void COM_CheckRegistered (void)
 {
 	FILE		*h;
 	unsigned short	check[128];
@@ -263,7 +263,7 @@ static searchpath_t	*com_base_searchpaths;	// without gamedirs
 COM_filelength
 ================
 */
-int COM_filelength (FILE *f)
+static int COM_filelength (FILE *f)
 {
 	int		pos;
 	int		end;
@@ -276,7 +276,7 @@ int COM_filelength (FILE *f)
 	return end;
 }
 
-int COM_FileOpenRead (char *path, FILE **hndl)
+static int COM_FileOpenRead (char *path, FILE **hndl)
 {
 	FILE	*f;
 
@@ -297,7 +297,7 @@ COM_Path_f
 
 ============
 */
-void COM_Path_f (void)
+static void COM_Path_f (void)
 {
 	searchpath_t	*s;
 	
@@ -511,7 +511,7 @@ Loads the header and directory, adding the files at the beginning
 of the list so they override previous pack files.
 =================
 */
-pack_t *COM_LoadPackFile (char *packfile)
+static pack_t *COM_LoadPackFile (char *packfile)
 {
 	dpackheader_t	header;
 	int				i;
@@ -580,7 +580,7 @@ Sets com_gamedir, adds the directory to the head of the path,
 then loads and adds pak1.pak pak2.pak ... 
 ================
 */
-void COM_AddGameDirectory (char *dir)
+static void COM_AddGameDirectory (char *dir)
 {
 	int				i;
 	searchpath_t	*search;

@@ -35,7 +35,6 @@ typedef struct sizebuf_s
 } sizebuf_t;
 
 void	SZ_Clear (sizebuf_t *buf);
-void	*SZ_GetSpace (sizebuf_t *buf, int length);
 void	SZ_Write (sizebuf_t *buf, void *data, int length);
 void	SZ_Print (sizebuf_t *buf, char *data);	// strcats onto the sizebuf
 
@@ -55,7 +54,6 @@ void	MSG_WriteString (sizebuf_t *sb, char *s);
 void	MSG_WriteCoord (sizebuf_t *sb, float f);
 void	MSG_WriteAngle (sizebuf_t *sb, float f);
 void	MSG_WriteOrigin (sizebuf_t *sb, float f, unsigned mvdext1);
-void	MSG_WriteAngle16 (sizebuf_t *sb, float f);
 void	MSG_WriteDeltaUsercmd (sizebuf_t *sb, struct usercmd_s *from, struct usercmd_s *cmd);
 
 // entity deltas (svc_packetentities, FTE's statics and baselines), for the
@@ -71,7 +69,6 @@ extern	bool	msg_badread;		// set if a read goes beyond end of message
 
 void	MSG_BeginReading (sizebuf_t *buf);
 int		MSG_GetReadCount (void);
-int		MSG_ReadChar (void);
 int		MSG_ReadByte (void);
 int		MSG_ReadShort (void);
 int		MSG_ReadLong (void);

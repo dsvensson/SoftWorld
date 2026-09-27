@@ -29,7 +29,7 @@ static edict_t	*nails[MAX_NAILS];
 static int		numnails;
 
 
-bool SV_AddNailUpdate (edict_t *ent)
+static bool SV_AddNailUpdate (edict_t *ent)
 {
 	if (sv.bigcoords)
 		return false;		// the packed nail positions only reach +-4096
@@ -43,7 +43,7 @@ bool SV_AddNailUpdate (edict_t *ent)
 	return true;
 }
 
-void SV_EmitNailUpdate (sizebuf_t *msg)
+static void SV_EmitNailUpdate (sizebuf_t *msg)
 {
 	byte	bits[6];	// [48 bits] xyzpy 12 12 12 4 8 
 	int		n, i;
@@ -172,7 +172,7 @@ Writes a delta update of a packet_entities_t to the message.
 
 =============
 */
-void SV_EmitPacketEntities (client_t *client, packet_entities_t *to, sizebuf_t *msg)
+static void SV_EmitPacketEntities (client_t *client, packet_entities_t *to, sizebuf_t *msg)
 {
 	edict_t	*ent;
 	client_frame_t	*fromframe;
@@ -273,7 +273,7 @@ SV_WritePlayersToClient
 
 =============
 */
-void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizebuf_t *msg)
+static void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizebuf_t *msg)
 {
 	int			i, j;
 	client_t	*cl;

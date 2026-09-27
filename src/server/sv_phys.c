@@ -54,14 +54,14 @@ cvar_t	sv_waterfriction	 = {.name = "sv_waterfriction", .string = "4"};
 
 #define	MOVE_EPSILON	0.01
 
-void SV_Physics_Toss (edict_t *ent);
+static void SV_Physics_Toss (edict_t *ent);
 
 /*
 ================
 SV_CheckVelocity
 ================
 */
-void SV_CheckVelocity (edict_t *ent)
+static void SV_CheckVelocity (edict_t *ent)
 {
 	int		i;
 
@@ -133,7 +133,7 @@ SV_Impact
 Two entities have touched, so run their touch functions
 ==================
 */
-void SV_Impact (edict_t *e1, edict_t *e2)
+static void SV_Impact (edict_t *e1, edict_t *e2)
 {
 	int		old_self, old_other;
 	
@@ -170,7 +170,7 @@ returns the blocked flags (1 = floor, 2 = step / wall)
 */
 #define	STOP_EPSILON	0.1
 
-int ClipVelocity (vec3_t in, vec3_t normal, vec3_t out, float overbounce)
+static int ClipVelocity (vec3_t in, vec3_t normal, vec3_t out, float overbounce)
 {
 	float	backoff;
 	float	change;
@@ -209,7 +209,7 @@ If steptrace is not NULL, the trace of any vertical wall hit will be stored
 ============
 */
 #define	MAX_CLIP_PLANES	5
-int SV_FlyMove (edict_t *ent, float time, trace_t *steptrace)
+static int SV_FlyMove (edict_t *ent, float time, trace_t *steptrace)
 {
 	int			bumpcount, numbumps;
 	vec3_t		dir;
@@ -348,7 +348,7 @@ SV_AddGravity
 
 ============
 */
-void SV_AddGravity (edict_t *ent, float scale)
+static void SV_AddGravity (edict_t *ent, float scale)
 {
 	ent->v.velocity[2] = (float)(ent->v.velocity[2] - scale * sv.movevars.gravity * sv.frametime);
 }
@@ -368,7 +368,7 @@ SV_PushEntity
 Does not change the entities velocity at all
 ============
 */
-trace_t SV_PushEntity (edict_t *ent, vec3_t push)
+static trace_t SV_PushEntity (edict_t *ent, vec3_t push)
 {
 	trace_t	trace;
 	vec3_t	end;
@@ -399,7 +399,7 @@ SV_Push
 
 ============
 */
-bool SV_Push (edict_t *pusher, vec3_t move)
+static bool SV_Push (edict_t *pusher, vec3_t move)
 {
 	int			i, e;
 	edict_t		*check, *block;
@@ -523,7 +523,7 @@ SV_PushMove
 
 ============
 */
-void SV_PushMove (edict_t *pusher, float movetime)
+static void SV_PushMove (edict_t *pusher, float movetime)
 {
 	int			i;
 	vec3_t		move;
@@ -548,7 +548,7 @@ SV_Physics_Pusher
 
 ================
 */
-void SV_Physics_Pusher (edict_t *ent)
+static void SV_Physics_Pusher (edict_t *ent)
 {
 	float	thinktime;
 	float	oldltime;
@@ -605,7 +605,7 @@ SV_Physics_None
 Non moving objects can only think
 =============
 */
-void SV_Physics_None (edict_t *ent)
+static void SV_Physics_None (edict_t *ent)
 {
 // regular thinking
 	SV_RunThink (ent);
@@ -618,7 +618,7 @@ SV_Physics_Noclip
 A moving object that doesn't obey physics
 =============
 */
-void SV_Physics_Noclip (edict_t *ent)
+static void SV_Physics_Noclip (edict_t *ent)
 {
 // regular thinking
 	if (!SV_RunThink (ent))
@@ -644,7 +644,7 @@ SV_CheckWaterTransition
 
 =============
 */
-void SV_CheckWaterTransition (edict_t *ent)
+static void SV_CheckWaterTransition (edict_t *ent)
 {
 	int		cont;
 
@@ -683,7 +683,7 @@ SV_Physics_Toss
 Toss, bounce, and fly movement.  When onground, do nothing.
 =============
 */
-void SV_Physics_Toss (edict_t *ent)
+static void SV_Physics_Toss (edict_t *ent)
 {
 	trace_t	trace;
 	vec3_t	move;
@@ -761,7 +761,7 @@ will fall if the floor is pulled out from under them.
 FIXME: is this true?
 =============
 */
-void SV_Physics_Step (edict_t *ent)
+static void SV_Physics_Step (edict_t *ent)
 {
 	bool	hitsound;
 
@@ -808,7 +808,7 @@ SV_RunEntity
 
 ================
 */
-void SV_RunEntity (edict_t *ent)
+static void SV_RunEntity (edict_t *ent)
 {
 	if (ent->v.lastruntime == (float)host.realtime)
 		return;

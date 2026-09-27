@@ -75,7 +75,6 @@ void D_DrawSpans (espan_t *pspans);
 void D_DrawZSpans (espan_t *pspans);
 void Turbulent8 (espan_t *pspan);
 int D_SurfaceMipLevel (msurface_t *surface, int miplevel);
-void D_SpriteDrawSpans (sspan_t *pspan);
 
 void D_DrawSkyScans (espan_t *pspan);
 
@@ -83,14 +82,12 @@ extern byte		*d_turbsource;	// the 64x64 texture of a turbulent surface
 
 extern void (*prealspandrawer)(void);
 surfcache_t	*D_CacheSurface (msurface_t *surface, int miplevel);
-void D_CalcGradients (msurface_t *pface);
 // a fence surface's clipped, projected polygon, with 1/z gradients set;
 // transformed_org is the view origin in the model's space
 void D_DrawFence (msurface_t *surf, const vec3_t transformed_org, emitpoint_t *pverts, int nump, float nearzi);
 void D_DrawTranslucentFace (msurface_t *surf, const vec3_t transformed_org, emitpoint_t *pverts, int nump,
 	float nearzi, int alpha);
 // the spans of a convex polygon on the screen, clockwise; false if it covers no scan line
-bool D_PolygonSpans (emitpoint_t *pverts, int nump, sspan_t *spans);
 void D_DrawFencePolygon (emitpoint_t *pverts, int nump);
 void D_DrawBlendedPolygon (emitpoint_t *pverts, int nump, int alpha, bool turb);
 void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb);
@@ -109,8 +106,6 @@ static inline pixel_t D_BlendPixel (pixel_t src, pixel_t dst, int a)
 		(((((src >> 10) & 1023) * (unsigned)a + ((dst >> 10) & 1023) * ia) >> 8) << 10) |
 		(((((src >> 20) & 1023) * (unsigned)a + ((dst >> 20) & 1023) * ia) >> 8) << 20);
 }
-
-extern int D_MipLevelForScale (float scale);
 
 
 // 1/z of the nearest thing drawn at each pixel; 0 is infinitely far

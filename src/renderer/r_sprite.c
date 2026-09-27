@@ -34,7 +34,7 @@ spritedesc_t			r_spritedesc;
 R_RotateSprite
 ================
 */
-void R_RotateSprite (float beamlength)
+static void R_RotateSprite (float beamlength)
 {
 	vec3_t	vec;
 	
@@ -55,7 +55,7 @@ Clips the winding at clip_verts[clip_current] and changes clip_current
 Throws out the back side
 ==============
 */
-int R_ClipSpriteFace (int nump, clipplane_t *pclipplane)
+static int R_ClipSpriteFace (int nump, clipplane_t *pclipplane)
 {
 	int		i, outcount;
 	float	dists[MAXWORKINGVERTS+1];
@@ -133,7 +133,7 @@ int R_ClipSpriteFace (int nump, clipplane_t *pclipplane)
 R_SetupAndDrawSprite
 ================
 */
-void R_SetupAndDrawSprite (void)
+static void R_SetupAndDrawSprite (void)
 {
 	int			i, nump;
 	float		dot, scale, *pv;
@@ -233,7 +233,7 @@ void R_SetupAndDrawSprite (void)
 R_GetSpriteframe
 ================
 */
-mspriteframe_t *R_GetSpriteframe (msprite_t *psprite)
+static mspriteframe_t *R_GetSpriteframe (msprite_t *psprite)
 {
 	mspritegroup_t	*pspritegroup;
 	mspriteframe_t	*pspriteframe;

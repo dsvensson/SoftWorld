@@ -49,7 +49,7 @@ Sends the first message from the server to a connected client.
 This will be sent on the initial connection and upon each server load.
 ================
 */
-void SV_New_f (void)
+static void SV_New_f (void)
 {
 	char		*gamedir;
 	int			playernum;
@@ -148,7 +148,7 @@ void SV_New_f (void)
 SV_Soundlist_f
 ==================
 */
-void SV_Soundlist_f (void)
+static void SV_Soundlist_f (void)
 {
 	char		**s;
 	int			n;
@@ -198,7 +198,7 @@ void SV_Soundlist_f (void)
 SV_Modellist_f
 ==================
 */
-void SV_Modellist_f (void)
+static void SV_Modellist_f (void)
 {
 	char		**s;
 	int			n, i, max;
@@ -332,7 +332,7 @@ buffers, as many as fit in half a message at a time; the client asks for
 the rest from the number it gets back
 ==================
 */
-void SV_PreSpawn_f (void)
+static void SV_PreSpawn_f (void)
 {
 	unsigned	buf, total, size;
 	unsigned	check;
@@ -449,7 +449,7 @@ static void SV_SetUpClientEdict (client_t *cl)
 SV_Spawn_f
 ==================
 */
-void SV_Spawn_f (void)
+static void SV_Spawn_f (void)
 {
 	int		i;
 	client_t	*client;
@@ -535,7 +535,7 @@ void SV_Spawn_f (void)
 SV_SpawnSpectator
 ==================
 */
-void SV_SpawnSpectator (void)
+static void SV_SpawnSpectator (void)
 {
 	int		i;
 	edict_t	*e;
@@ -662,7 +662,7 @@ static void SV_Observe_f (void)
 SV_Begin_f
 ==================
 */
-void SV_Begin_f (void)
+static void SV_Begin_f (void)
 {
 	unsigned pmodel = 0, emodel = 0;
 
@@ -868,7 +868,7 @@ static void SV_NextChunk (void)
 SV_NextDownload_f
 ==================
 */
-void SV_NextDownload_f (void)
+static void SV_NextDownload_f (void)
 {
 	byte	buffer[MAX_MSGLEN];
 	int		r;
@@ -909,7 +909,7 @@ void SV_NextDownload_f (void)
 
 }
 
-void OutofBandPrintf(netadr_t where, char *fmt, ...)
+static void OutofBandPrintf(netadr_t where, char *fmt, ...)
 {
 	va_list		argptr;
 	char	send[1024];
@@ -931,7 +931,7 @@ void OutofBandPrintf(netadr_t where, char *fmt, ...)
 SV_NextUpload
 ==================
 */
-void SV_NextUpload (void)
+static void SV_NextUpload (void)
 {
 	int		percent;
 	int		size;
@@ -1001,7 +1001,7 @@ A chunked download's client is told the size and asks for the chunks itself;
 a classic one gets the first block
 ==================
 */
-void SV_BeginDownload_f(void)
+static void SV_BeginDownload_f(void)
 {
 	char	name[MAX_QPATH];
 	char	*p;
@@ -1088,7 +1088,7 @@ static void SV_StopDownload_f (void)
 SV_Say
 ==================
 */
-void SV_Say (bool team)
+static void SV_Say (bool team)
 {
 	client_t *client;
 	int		j, tmp;
@@ -1183,7 +1183,7 @@ void SV_Say (bool team)
 SV_Say_f
 ==================
 */
-void SV_Say_f(void)
+static void SV_Say_f(void)
 {
 	SV_Say (false);
 }
@@ -1192,7 +1192,7 @@ void SV_Say_f(void)
 SV_Say_Team_f
 ==================
 */
-void SV_Say_Team_f(void)
+static void SV_Say_Team_f(void)
 {
 	SV_Say (true);
 }
@@ -1209,7 +1209,7 @@ The client is showing the scoreboard, so send new ping times for all
 clients
 =================
 */
-void SV_Pings_f (void)
+static void SV_Pings_f (void)
 {
 	client_t *client;
 	int		j;
@@ -1235,7 +1235,7 @@ void SV_Pings_f (void)
 SV_Kill_f
 ==================
 */
-void SV_Kill_f (void)
+static void SV_Kill_f (void)
 {
 	if (sv_player->v.health <= 0)
 	{
@@ -1279,7 +1279,7 @@ void SV_TogglePause (const char *msg)
 SV_Pause_f
 ==================
 */
-void SV_Pause_f (void)
+static void SV_Pause_f (void)
 {
 	char st[sizeof(host_client->name) + 32];
 
@@ -1309,7 +1309,7 @@ SV_Drop_f
 The client is going to disconnect, so remove the connection immediately
 =================
 */
-void SV_Drop_f (void)
+static void SV_Drop_f (void)
 {
 	SV_EndRedirect ();
 	if (!host_client->spectator)
@@ -1324,7 +1324,7 @@ SV_PTrack_f
 Change the bandwidth estimate for a client
 =================
 */
-void SV_PTrack_f (void)
+static void SV_PTrack_f (void)
 {
 	int		i;
 	edict_t *ent, *tent;
@@ -1367,7 +1367,7 @@ SV_Rate_f
 Change the bandwidth estimate for a client
 =================
 */
-void SV_Rate_f (void)
+static void SV_Rate_f (void)
 {
 	int		rate;
 	
@@ -1392,7 +1392,7 @@ SV_Msg_f
 Change the message level for a client
 =================
 */
-void SV_Msg_f (void)
+static void SV_Msg_f (void)
 {	
 	if (Cmd_Argc() != 2)
 	{
@@ -1413,7 +1413,7 @@ SV_SetInfo_f
 Allow clients to change userinfo
 ==================
 */
-void SV_SetInfo_f (void)
+static void SV_SetInfo_f (void)
 {
 	int i;
 	char oldval[MAX_INFO_STRING];
@@ -1464,12 +1464,12 @@ SV_ShowServerinfo_f
 Dumps the serverinfo info string
 ==================
 */
-void SV_ShowServerinfo_f (void)
+static void SV_ShowServerinfo_f (void)
 {
 	Info_Print (svs.info);
 }
 
-void SV_NoSnap_f(void)
+static void SV_NoSnap_f(void)
 {
 	if (*host_client->uploadfn) {
 		*host_client->uploadfn = 0;
@@ -1526,7 +1526,7 @@ static ucmd_t ucmds[] =
 SV_ExecuteUserCommand
 ==================
 */
-void SV_ExecuteUserCommand (char *s)
+static void SV_ExecuteUserCommand (char *s)
 {
 	ucmd_t	*u;
 	
@@ -1572,7 +1572,7 @@ AddLinksToPmove
 
 ====================
 */
-void AddLinksToPmove ( areanode_t *node )
+static void AddLinksToPmove ( areanode_t *node )
 {
 	link_t		*l, *next;
 	edict_t		*check;
@@ -1639,7 +1639,7 @@ Done before running a player command.  Clears the touch array
 */
 static byte playertouch[(MAX_EDICTS+7)/8];
 
-void SV_PreRunCmd(void)
+static void SV_PreRunCmd(void)
 {
 	memset(playertouch, 0, sizeof(playertouch));
 }
@@ -1717,7 +1717,7 @@ int SV_NoteFixangle (client_t *cl)
 SV_RunCmd
 ===========
 */
-void SV_RunCmd (usercmd_t *ucmd)
+static void SV_RunCmd (usercmd_t *ucmd)
 {
 	movevars_t	movevars;
 	edict_t		*ent;
@@ -1858,7 +1858,7 @@ SV_PostRunCmd
 ===========
 Done after running a player command.
 */
-void SV_PostRunCmd(void)
+static void SV_PostRunCmd(void)
 {
 	// run post-think
 

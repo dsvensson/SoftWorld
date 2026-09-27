@@ -33,7 +33,7 @@ static sspan_t	*sprite_spans;
 D_SpriteDrawSpans
 =====================
 */
-void D_SpriteDrawSpans (sspan_t *pspan)
+static void D_SpriteDrawSpans (sspan_t *pspan)
 {
 	int			count, spancount;
 	double		pixelzi;
@@ -335,7 +335,7 @@ static void D_ScanRightEdge (emitpoint_t *pverts, int nump, sspan_t *spans)
 D_SpriteCalculateGradients
 =====================
 */
-void D_SpriteCalculateGradients (void)
+static void D_SpriteCalculateGradients (void)
 {
 	vec3_t		p_normal, p_saxis, p_taxis, p_temp1;
 	float		distinv;
@@ -392,7 +392,7 @@ void D_SetSpriteSize (int height)
 D_PolygonSpans
 =====================
 */
-bool D_PolygonSpans (emitpoint_t *pverts, int nump, sspan_t *spans)
+static bool D_PolygonSpans (emitpoint_t *pverts, int nump, sspan_t *spans)
 {
 	int			i;
 	float		ymin, ymax;

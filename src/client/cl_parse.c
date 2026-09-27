@@ -262,7 +262,7 @@ static void VWepModel_NextDownload (void)
 Model_NextDownload
 =================
 */
-void Model_NextDownload (void)
+static void Model_NextDownload (void)
 {
 	char	*s;
 	int		i;
@@ -338,7 +338,7 @@ void Model_NextDownload (void)
 Sound_NextDownload
 =================
 */
-void Sound_NextDownload (void)
+static void Sound_NextDownload (void)
 {
 	char	*s;
 	int		i;
@@ -493,7 +493,7 @@ void CL_StopUpload(void)
 CL_ParseServerData
 ==================
 */
-void CL_ParseServerData (void)
+static void CL_ParseServerData (void)
 {
 	char	*str;
 	FILE	*f;
@@ -644,7 +644,7 @@ FTE's svc_fte_soundlistshort), the names, then the low byte of the number to
 ask for the rest from, 0 when there is no more
 ==================
 */
-void CL_ParseSoundlist (bool shortstart)
+static void CL_ParseSoundlist (bool shortstart)
 {
 	int	numsounds;
 	char	*str;
@@ -688,7 +688,7 @@ CL_ParseModellist
 As CL_ParseSoundlist, with svc_fte_modellistshort
 ==================
 */
-void CL_ParseModellist (bool shortstart)
+static void CL_ParseModellist (bool shortstart)
 {
 	int	nummodels;
 	char	*str;
@@ -736,7 +736,7 @@ void CL_ParseModellist (bool shortstart)
 CL_ParseBaseline
 ==================
 */
-void CL_ParseBaseline (entity_state_t *es)
+static void CL_ParseBaseline (entity_state_t *es)
 {
 	int			i;
 	
@@ -776,7 +776,7 @@ Static entities are non-interactive world objects
 like torches; FTE's svc_fte_spawnstatic2 sends them as deltas from nothing
 =====================
 */
-void CL_ParseStatic (bool delta)
+static void CL_ParseStatic (bool delta)
 {
 	static const entity_state_t	nullstate = {0};
 	entity_t *ent;
@@ -823,7 +823,7 @@ void CL_ParseStatic (bool delta)
 CL_ParseStaticSound
 ===================
 */
-void CL_ParseStaticSound (void)
+static void CL_ParseStaticSound (void)
 {
 	vec3_t		org;
 	int			sound_num, vol, atten;
@@ -877,7 +877,7 @@ double CL_ScoreClock (void)
 CL_ParseStartSoundPacket
 ==================
 */
-void CL_ParseStartSoundPacket(void)
+static void CL_ParseStartSoundPacket(void)
 {
     vec3_t  pos;
     int 	channel, ent;
@@ -922,7 +922,7 @@ CL_ParseClientdata
 Server information pertaining to this client only, sent every frame
 ==================
 */
-void CL_ParseClientdata (void)
+static void CL_ParseClientdata (void)
 {
 	int				i;
 	float		latency;
@@ -962,7 +962,7 @@ void CL_ParseClientdata (void)
 CL_NewTranslation
 =====================
 */
-void CL_NewTranslation (int slot)
+static void CL_NewTranslation (int slot)
 {
 	player_info_t	*player;
 	char s[512];
@@ -1011,7 +1011,7 @@ void CL_ProcessUserInfo (int slot, player_info_t *player)
 CL_UpdateUserinfo
 ==============
 */
-void CL_UpdateUserinfo (void)
+static void CL_UpdateUserinfo (void)
 {
 	int		slot;
 	player_info_t	*player;
@@ -1032,7 +1032,7 @@ void CL_UpdateUserinfo (void)
 CL_SetInfo
 ==============
 */
-void CL_SetInfo (void)
+static void CL_SetInfo (void)
 {
 	int		slot;
 	player_info_t	*player;
@@ -1062,7 +1062,7 @@ void CL_SetInfo (void)
 CL_ServerInfo
 ==============
 */
-void CL_ServerInfo (void)
+static void CL_ServerInfo (void)
 {
 	char key[MAX_MSGLEN];
 	char value[MAX_MSGLEN];
@@ -1083,7 +1083,7 @@ void CL_ServerInfo (void)
 CL_SetStat
 =====================
 */
-void CL_SetStat (int stat, int value)
+static void CL_SetStat (int stat, int value)
 {
 	int	j, target;
 
@@ -1118,7 +1118,7 @@ void CL_SetStat (int stat, int value)
 CL_MuzzleFlash
 ==============
 */
-void CL_MuzzleFlash (void)
+static void CL_MuzzleFlash (void)
 {
 	vec3_t		fv, rv, uv;
 	dlight_t	*dl;

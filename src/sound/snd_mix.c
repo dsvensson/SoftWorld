@@ -28,9 +28,9 @@ static int		snd_scaletable[32][256];
 static int 	*snd_p, snd_linear_count, snd_vol;
 static short	*snd_out;
 
-void Snd_WriteLinearBlastStereo16 (void);
+static void Snd_WriteLinearBlastStereo16 (void);
 
-void Snd_WriteLinearBlastStereo16 (void)
+static void Snd_WriteLinearBlastStereo16 (void)
 {
 	int		i;
 	int		val;
@@ -55,7 +55,7 @@ void Snd_WriteLinearBlastStereo16 (void)
 	}
 }
 
-void S_TransferStereo16 (int endtime)
+static void S_TransferStereo16 (int endtime)
 {
 	int		lpos;
 	int		lpaintedtime;
@@ -96,7 +96,7 @@ void S_TransferStereo16 (int endtime)
 	SNDDMA_UnlockBuffer (pbuf);
 }
 
-void S_TransferPaintBuffer(int endtime)
+static void S_TransferPaintBuffer(int endtime)
 {
 	int 	out_idx;
 	int 	count;
@@ -170,8 +170,8 @@ CHANNEL MIXING
 ===============================================================================
 */
 
-void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int endtime);
-void SND_PaintChannelFrom16 (channel_t *ch, sfxcache_t *sc, int endtime);
+static void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int endtime);
+static void SND_PaintChannelFrom16 (channel_t *ch, sfxcache_t *sc, int endtime);
 
 void S_PaintChannels(int endtime)
 {
@@ -257,7 +257,7 @@ void SND_InitScaletable (void)
 
 
 
-void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int count)
+static void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int count)
 {
 	int 	data;
 	int		*lscale, *rscale;
@@ -285,7 +285,7 @@ void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int count)
 
 
 
-void SND_PaintChannelFrom16 (channel_t *ch, sfxcache_t *sc, int count)
+static void SND_PaintChannelFrom16 (channel_t *ch, sfxcache_t *sc, int count)
 {
 	int data;
 	int left, right;

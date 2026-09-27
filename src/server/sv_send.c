@@ -45,7 +45,7 @@ extern cvar_t sv_phs;
 SV_FlushRedirect
 ==================
 */
-void SV_FlushRedirect (void)
+static void SV_FlushRedirect (void)
 {
 	char	send[8000+6];
 
@@ -431,7 +431,7 @@ SV_WriteClientdataToMessage
 
 ==================
 */
-void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
+static void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
 {
 	int		i;
 	edict_t	*other;
@@ -492,7 +492,7 @@ Performs a delta update of the stats array.  This should only be performed
 when a reliable message can be delivered this frame.
 =======================
 */
-void SV_UpdateClientStats (client_t *client)
+static void SV_UpdateClientStats (client_t *client)
 {
 	edict_t	*ent;
 	int		stats[MAX_CL_STATS];
@@ -545,7 +545,7 @@ void SV_UpdateClientStats (client_t *client)
 SV_SendClientDatagram
 =======================
 */
-bool SV_SendClientDatagram (client_t *client)
+static bool SV_SendClientDatagram (client_t *client)
 {
 	byte		buf[MAX_DATAGRAM];
 	sizebuf_t	msg;
@@ -595,7 +595,7 @@ bool SV_SendClientDatagram (client_t *client)
 SV_UpdateToReliableMessages
 =======================
 */
-void SV_UpdateToReliableMessages (void)
+static void SV_UpdateToReliableMessages (void)
 {
 	int			i, j;
 	client_t *client;

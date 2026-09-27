@@ -85,7 +85,7 @@ static entity_t	*r_addent;
 R_SplitEntityOnNode
 ===================
 */
-void R_SplitEntityOnNode (mnode_t *node)
+static void R_SplitEntityOnNode (mnode_t *node)
 {
 	efrag_t		*ef;
 	mplane_t	*splitplane;

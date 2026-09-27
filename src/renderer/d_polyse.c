@@ -131,14 +131,14 @@ static void D_PolysetBlendSpan (spanpackage_t *p, int count, const simd_aliasmap
 			p->pdest[i] = D_BlendPixel (row[i], p->pdest[i], d_alpha);
 }
 
-void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage);
-void D_PolysetCalcGradients (int skinw);
-void D_DrawSubdiv (void);
-void D_DrawNonSubdiv (void);
-void D_PolysetRecursiveTriangle (int *p1, int *p2, int *p3);
-void D_PolysetSetEdgeTable (void);
-void D_RasterizeAliasPolySmooth (void);
-void D_PolysetScanLeftEdge (int height);
+static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage);
+static void D_PolysetCalcGradients (int skinw);
+static void D_DrawSubdiv (void);
+static void D_DrawNonSubdiv (void);
+static void D_PolysetRecursiveTriangle (int *p1, int *p2, int *p3);
+static void D_PolysetSetEdgeTable (void);
+static void D_RasterizeAliasPolySmooth (void);
+static void D_PolysetScanLeftEdge (int height);
 
 
 /*
@@ -244,7 +244,7 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int nverts)
 D_DrawSubdiv
 ================
 */
-void D_DrawSubdiv (void)
+static void D_DrawSubdiv (void)
 {
 	mtriangle_t		*ptri;
 	finalvert_t		*pfv, *index0, *index1, *index2;
@@ -305,7 +305,7 @@ void D_DrawSubdiv (void)
 D_DrawNonSubdiv
 ================
 */
-void D_DrawNonSubdiv (void)
+static void D_DrawNonSubdiv (void)
 {
 	mtriangle_t		*ptri;
 	finalvert_t		*pfv, *index0, *index1, *index2;
@@ -373,7 +373,7 @@ void D_DrawNonSubdiv (void)
 D_PolysetRecursiveTriangle
 ================
 */
-void D_PolysetRecursiveTriangle (int *lp1, int *lp2, int *lp3)
+static void D_PolysetRecursiveTriangle (int *lp1, int *lp2, int *lp3)
 {
 	int		*temp;
 	int		d;
@@ -454,7 +454,7 @@ nodraw:
 D_PolysetScanLeftEdge
 ====================
 */
-void D_PolysetScanLeftEdge (int height)
+static void D_PolysetScanLeftEdge (int height)
 {
 
 	do
@@ -522,7 +522,7 @@ void D_PolysetScanLeftEdge (int height)
 D_PolysetSetUpForLineScan
 ====================
 */
-void D_PolysetSetUpForLineScan(fixed8_t startvertu, fixed8_t startvertv,
+static void D_PolysetSetUpForLineScan(fixed8_t startvertu, fixed8_t startvertv,
 		fixed8_t endvertu, fixed8_t endvertv)
 {
 	double		dm, dn;
@@ -562,7 +562,7 @@ void D_PolysetSetUpForLineScan(fixed8_t startvertu, fixed8_t startvertv,
 D_PolysetCalcGradients
 ================
 */
-void D_PolysetCalcGradients (int skinw)
+static void D_PolysetCalcGradients (int skinw)
 {
 	float	xstepdenominv, ystepdenominv, t0, t1;
 	float	p01_minus_p21, p11_minus_p21, p00_minus_p20, p10_minus_p20;
@@ -621,7 +621,7 @@ void D_PolysetCalcGradients (int skinw)
 D_PolysetDrawSpans8
 ================
 */
-void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
+static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 {
 	int				lcount;
 	simd_aliasmap_t	map = {
@@ -664,7 +664,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 D_RasterizeAliasPolySmooth
 ================
 */
-void D_RasterizeAliasPolySmooth (void)
+static void D_RasterizeAliasPolySmooth (void)
 {
 	int				initialleftheight, initialrightheight;
 	int				*plefttop, *prighttop, *pleftbottom, *prightbottom;
@@ -845,7 +845,7 @@ void D_RasterizeAliasPolySmooth (void)
 D_PolysetSetEdgeTable
 ================
 */
-void D_PolysetSetEdgeTable (void)
+static void D_PolysetSetEdgeTable (void)
 {
 	int			edgetableindex;
 

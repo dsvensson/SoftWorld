@@ -56,5 +56,4 @@ extern	char	com_token[1024];
 char	*COM_Parse (char *data);
 
 void	COM_StripExtension (char *in, char *out);
-void	COM_FileBase (char *in, char *out);
 void	COM_DefaultExtension (char *path, char *extension);

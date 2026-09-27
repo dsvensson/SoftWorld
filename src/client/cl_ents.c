@@ -83,7 +83,7 @@ dlight_t *CL_AllocDlight (int key)
 CL_NewDlight
 ===============
 */
-void CL_NewDlight (int key, float x, float y, float z, float radius, float time,
+static void CL_NewDlight (int key, float x, float y, float z, float radius, float time,
 				   int type)
 {
 	dlight_t	*dl;
@@ -155,7 +155,7 @@ PACKET ENTITY PARSING / LINKING
 FlushEntityPacket
 =================
 */
-void FlushEntityPacket (void)
+static void FlushEntityPacket (void)
 {
 	int			word, num, bits, ext;
 	entity_state_t	olde, newe;
@@ -638,7 +638,7 @@ CL_LinkPacketEntities
 
 ===============
 */
-void CL_LinkPacketEntities (void)
+static void CL_LinkPacketEntities (void)
 {
 	entity_t			*ent;
 	packet_entities_t	*pack;
@@ -837,7 +837,7 @@ CL_LinkProjectiles
 
 =============
 */
-void CL_LinkProjectiles (void)
+static void CL_LinkProjectiles (void)
 {
 	int		i;
 	projectile_t	*pr;
@@ -1119,7 +1119,7 @@ CL_AddFlagModels
 Called when the CTF flags are set
 ================
 */
-void CL_AddFlagModels (entity_t *ent, int team)
+static void CL_AddFlagModels (entity_t *ent, int team)
 {
 	int		i;
 	float	f;
@@ -1224,7 +1224,7 @@ Create visible entities in the correct position
 for all current players
 =============
 */
-void CL_LinkPlayers (void)
+static void CL_LinkPlayers (void)
 {
 	int				j;
 	player_info_t	*info;

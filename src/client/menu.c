@@ -22,29 +22,29 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 static enum {m_none, m_main, m_singleplayer, m_load, m_save, m_multiplayer, m_setup, m_net, m_options, m_keys, m_help, m_quit, m_serialconfig, m_modemconfig, m_lanconfig, m_gameoptions, m_search, m_slist} m_state;
 
-void M_Menu_Main_f (void);
-	void M_Menu_SinglePlayer_f (void);
-	void M_Menu_MultiPlayer_f (void);
-	void M_Menu_Options_f (void);
-		void M_Menu_Keys_f (void);
-	void M_Menu_Help_f (void);
+static void M_Menu_Main_f (void);
+	static void M_Menu_SinglePlayer_f (void);
+	static void M_Menu_MultiPlayer_f (void);
+	static void M_Menu_Options_f (void);
+		static void M_Menu_Keys_f (void);
+	static void M_Menu_Help_f (void);
 	void M_Menu_Quit_f (void);
 
-void M_Main_Draw (void);
-	void M_SinglePlayer_Draw (void);
-	void M_MultiPlayer_Draw (void);
-	void M_Options_Draw (void);
-		void M_Keys_Draw (void);
-	void M_Help_Draw (void);
-	void M_Quit_Draw (void);
+static void M_Main_Draw (void);
+	static void M_SinglePlayer_Draw (void);
+	static void M_MultiPlayer_Draw (void);
+	static void M_Options_Draw (void);
+		static void M_Keys_Draw (void);
+	static void M_Help_Draw (void);
+	static void M_Quit_Draw (void);
 
-void M_Main_Key (int key);
-	void M_SinglePlayer_Key (int key);
-	void M_MultiPlayer_Key (int key);
-	void M_Options_Key (int key);
-		void M_Keys_Key (int key);
-	void M_Help_Key (int key);
-	void M_Quit_Key (int key);
+static void M_Main_Key (int key);
+	static void M_SinglePlayer_Key (int key);
+	static void M_MultiPlayer_Key (int key);
+	static void M_Options_Key (int key);
+		static void M_Keys_Key (int key);
+	static void M_Help_Key (int key);
+	static void M_Quit_Key (int key);
 
 static bool	m_entersound;		// play after drawing a frame, so caching
 								// won't disrupt the sound
@@ -69,12 +69,12 @@ M_DrawCharacter
 Draws one solid graphics character
 ================
 */
-void M_DrawCharacter (int cx, int line, int num)
+static void M_DrawCharacter (int cx, int line, int num)
 {
 	Draw_Character ( cx + ((vid.conwidth - 320)>>1), line, num);
 }
 
-void M_Print (int cx, int cy, char *str)
+static void M_Print (int cx, int cy, char *str)
 {
 	while (*str)
 	{
@@ -84,7 +84,7 @@ void M_Print (int cx, int cy, char *str)
 	}
 }
 
-void M_PrintWhite (int cx, int cy, char *str)
+static void M_PrintWhite (int cx, int cy, char *str)
 {
 	while (*str)
 	{
@@ -94,12 +94,12 @@ void M_PrintWhite (int cx, int cy, char *str)
 	}
 }
 
-void M_DrawTransPic (int x, int y, qpic_t *pic)
+static void M_DrawTransPic (int x, int y, qpic_t *pic)
 {
 	Draw_TransPic (x + ((vid.conwidth - 320)>>1), y, pic);
 }
 
-void M_DrawPic (int x, int y, qpic_t *pic)
+static void M_DrawPic (int x, int y, qpic_t *pic)
 {
 	Draw_Pic (x + ((vid.conwidth - 320)>>1), y, pic);
 }
@@ -202,7 +202,7 @@ static int	m_main_cursor;
 #define	MAIN_ITEMS	5
 
 
-void M_Menu_Main_f (void)
+static void M_Menu_Main_f (void)
 {
 	if (cls.key_dest != key_menu)
 	{
@@ -215,7 +215,7 @@ void M_Menu_Main_f (void)
 }
 				
 
-void M_Main_Draw (void)
+static void M_Main_Draw (void)
 {
 	int		f;
 	qpic_t	*p;
@@ -231,7 +231,7 @@ void M_Main_Draw (void)
 }
 
 
-void M_Main_Key (int key)
+static void M_Main_Key (int key)
 {
 	switch (key)
 	{
@@ -293,7 +293,7 @@ void M_Main_Key (int key)
 
 static int		options_cursor;
 
-void M_Menu_Options_f (void)
+static void M_Menu_Options_f (void)
 {
 	cls.key_dest = key_menu;
 	m_state = m_options;
@@ -301,7 +301,7 @@ void M_Menu_Options_f (void)
 }
 
 
-void M_AdjustSliders (int dir)
+static void M_AdjustSliders (int dir)
 {
 	S_LocalSound ("misc/menu3.wav");
 
@@ -392,7 +392,7 @@ void M_AdjustSliders (int dir)
 }
 
 
-void M_DrawSlider (int x, int y, float range)
+static void M_DrawSlider (int x, int y, float range)
 {
 	int	i;
 
@@ -407,7 +407,7 @@ void M_DrawSlider (int x, int y, float range)
 	M_DrawCharacter ((int)(x + (SLIDER_RANGE-1)*8 * range), y, 131);
 }
 
-void M_DrawCheckbox (int x, int y, int on)
+static void M_DrawCheckbox (int x, int y, int on)
 {
 	if (on)
 		M_Print (x, y, "on");
@@ -415,7 +415,7 @@ void M_DrawCheckbox (int x, int y, int on)
 		M_Print (x, y, "off");
 }
 
-void M_Options_Draw (void)
+static void M_Options_Draw (void)
 {
 	float		r;
 	qpic_t	*p;
@@ -480,7 +480,7 @@ void M_Options_Draw (void)
 }
 
 
-void M_Options_Key (int k)
+static void M_Options_Key (int k)
 {
 	switch (k)
 	{
@@ -573,7 +573,7 @@ static char *bindnames[][2] =
 static int		keys_cursor;
 static int		bind_grab;
 
-void M_Menu_Keys_f (void)
+static void M_Menu_Keys_f (void)
 {
 	cls.key_dest = key_menu;
 	m_state = m_keys;
@@ -581,7 +581,7 @@ void M_Menu_Keys_f (void)
 }
 
 
-void M_FindKeysForCommand (char *command, int *twokeys)
+static void M_FindKeysForCommand (char *command, int *twokeys)
 {
 	int		count;
 	int		j;
@@ -607,7 +607,7 @@ void M_FindKeysForCommand (char *command, int *twokeys)
 	}
 }
 
-void M_UnbindCommand (char *command)
+static void M_UnbindCommand (char *command)
 {
 	int		j;
 	int		l;
@@ -626,7 +626,7 @@ void M_UnbindCommand (char *command)
 }
 
 
-void M_Keys_Draw (void)
+static void M_Keys_Draw (void)
 {
 	int		i;
 	int		keys[2];
@@ -675,7 +675,7 @@ void M_Keys_Draw (void)
 }
 
 
-void M_Keys_Key (int k)
+static void M_Keys_Key (int k)
 {
 	char	cmd[80];
 	int		keys[2];
@@ -742,7 +742,7 @@ static int		help_page;
 #define	NUM_HELP_PAGES	6
 
 
-void M_Menu_Help_f (void)
+static void M_Menu_Help_f (void)
 {
 	cls.key_dest = key_menu;
 	m_state = m_help;
@@ -752,13 +752,13 @@ void M_Menu_Help_f (void)
 
 
 
-void M_Help_Draw (void)
+static void M_Help_Draw (void)
 {
 	M_DrawPic (0, 0, Draw_CachePic ( va("gfx/help%i.lmp", help_page)) );
 }
 
 
-void M_Help_Key (int key)
+static void M_Help_Key (int key)
 {
 	switch (key)
 	{
@@ -803,7 +803,7 @@ void M_Menu_Quit_f (void)
 }
 
 
-void M_Quit_Key (int key)
+static void M_Quit_Key (int key)
 {
 	switch (key)
 	{
@@ -835,11 +835,11 @@ void M_Quit_Key (int key)
 
 }
 
-void M_Menu_SinglePlayer_f (void) {
+static void M_Menu_SinglePlayer_f (void) {
 	m_state = m_singleplayer;
 }
 
-void M_SinglePlayer_Draw (void) {
+static void M_SinglePlayer_Draw (void) {
 	qpic_t	*p;
 
 	M_DrawTransPic (16, 4, Draw_CachePic ("gfx/qplaque.lmp") );
@@ -854,16 +854,16 @@ void M_SinglePlayer_Draw (void) {
 
 }
 
-void M_SinglePlayer_Key (int key) {
+static void M_SinglePlayer_Key (int key) {
 	if (key == K_ESCAPE || key==K_ENTER)
 		m_state = m_main;
 }
 
-void M_Menu_MultiPlayer_f (void) {
+static void M_Menu_MultiPlayer_f (void) {
 	m_state = m_multiplayer;
 }
 
-void M_MultiPlayer_Draw (void) {
+static void M_MultiPlayer_Draw (void) {
 	qpic_t	*p;
 
 	M_DrawTransPic (16, 4, Draw_CachePic ("gfx/qplaque.lmp") );
@@ -882,12 +882,12 @@ void M_MultiPlayer_Draw (void) {
 	M_PrintWhite (72, 16*8, "        started!        ");
 }
 
-void M_MultiPlayer_Key (int key) {
+static void M_MultiPlayer_Key (int key) {
 	if (key == K_ESCAPE || key==K_ENTER)
 		m_state = m_main;
 }
 
-void M_Quit_Draw (void)
+static void M_Quit_Draw (void)
 {
 #define VSTR(x) #x
 #define VSTR2(x) VSTR(x)

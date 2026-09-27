@@ -71,7 +71,7 @@ V_CalcRoll
 
 ===============
 */
-float V_CalcRoll (vec3_t angles, vec3_t velocity)
+static float V_CalcRoll (vec3_t angles, vec3_t velocity)
 {
 	return PM_CalcRoll (angles, velocity);
 }
@@ -83,7 +83,7 @@ V_CalcBob
 
 ===============
 */
-float V_CalcBob (void)
+static float V_CalcBob (void)
 {
 	static	double	bobtime;
 	static float	bob;
@@ -160,7 +160,7 @@ Drifting is enabled when the center view key is hit, mlook is released and
 lookspring is non 0, or when 
 ===============
 */
-void V_DriftPitch (void)
+static void V_DriftPitch (void)
 {
 	float		delta, move;
 
@@ -311,7 +311,7 @@ void V_ParseDamage (void)
 V_cshift_f
 ==================
 */
-void V_cshift_f (void)
+static void V_cshift_f (void)
 {
 	cshift_empty.destcolor[0] = atoi(Cmd_Argv(1));
 	cshift_empty.destcolor[1] = atoi(Cmd_Argv(2));
@@ -327,7 +327,7 @@ V_BonusFlash_f
 When you run over an item, the server sends this command
 ==================
 */
-void V_BonusFlash_f (void)
+static void V_BonusFlash_f (void)
 {
 	cl.cshifts[CSHIFT_BONUS].destcolor[0] = 215;
 	cl.cshifts[CSHIFT_BONUS].destcolor[1] = 186;
@@ -342,7 +342,7 @@ V_SetContentsColor
 Underwater, lava, etc each has a color shift
 =============
 */
-void V_SetContentsColor (int contents)
+static void V_SetContentsColor (int contents)
 {
 	if (!v_contentblend.value) {
 		cl.cshifts[CSHIFT_CONTENTS] = cshift_empty;
@@ -371,7 +371,7 @@ void V_SetContentsColor (int contents)
 V_CalcPowerupCshift
 =============
 */
-void V_CalcPowerupCshift (void)
+static void V_CalcPowerupCshift (void)
 {
 	if (cl.stats[STAT_ITEMS] & IT_QUAD)
 	{
@@ -465,7 +465,7 @@ void V_UpdateBlend (void)
 ============================================================================== 
 */ 
 
-float angledelta (float a)
+static float angledelta (float a)
 {
 	a = anglemod(a);
 	if (a > 180)
@@ -478,7 +478,7 @@ float angledelta (float a)
 CalcGunAngle
 ==================
 */
-void CalcGunAngle (void)
+static void CalcGunAngle (void)
 {	
 	float	yaw, pitch, move;
 	static float oldyaw = 0;
@@ -534,7 +534,7 @@ V_AddIdle
 Idle swaying
 ==============
 */
-void V_AddIdle (void)
+static void V_AddIdle (void)
 {
 	r_refdef.viewangles[ROLL] += v_idlescale.value * (float)sin(cl.time*v_iroll_cycle.value) * v_iroll_level.value;
 	r_refdef.viewangles[PITCH] += v_idlescale.value * (float)sin(cl.time*v_ipitch_cycle.value) * v_ipitch_level.value;
@@ -553,7 +553,7 @@ V_CalcViewRoll
 Roll is induced by movement and damage
 ==============
 */
-void V_CalcViewRoll (void)
+static void V_CalcViewRoll (void)
 {
 	float		side;
 		
@@ -576,7 +576,7 @@ V_CalcIntermissionRefdef
 
 ==================
 */
-void V_CalcIntermissionRefdef (void)
+static void V_CalcIntermissionRefdef (void)
 {
 	entity_t	*view;
 	float		old;
@@ -601,7 +601,7 @@ V_CalcRefdef
 
 ==================
 */
-void V_CalcRefdef (void)
+static void V_CalcRefdef (void)
 {
 	entity_t	*view;
 	int			i;
@@ -693,7 +693,7 @@ void V_CalcRefdef (void)
 DropPunchAngle
 =============
 */
-void DropPunchAngle (void)
+static void DropPunchAngle (void)
 {
 	cl.punchangle = (float)(cl.punchangle - 10*cls.frametime);
 	if (cl.punchangle < 0)
