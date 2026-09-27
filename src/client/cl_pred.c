@@ -25,8 +25,8 @@ static cvar_t	cl_pushlatency = {.name = "pushlatency", .string = "-999"};
 static cvar_t	cl_independentPhysics = {.name = "cl_independentPhysics", .string = "1", .archive = true};
 // commands per second; 0 uses 77, never more than the server's maxfps
 cvar_t	cl_physfps = {.name = "cl_physfps", .string = "0", .archive = true};
-// don't interpolate the view between commands
-static cvar_t	cl_nolerp = {.name = "cl_nolerp", .string = "0", .archive = true};
+// don't interpolate the view between commands, nor entities between updates
+cvar_t	cl_nolerp = {.name = "cl_nolerp", .string = "0", .archive = true};
 
 
 /*

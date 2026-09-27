@@ -186,6 +186,189 @@ void FlushEntityPacket (void)
 }
 
 /*
+===============================================================================
+
+SMOOTHING
+
+Everything the server places but the players is drawn a little in the past,
+between two positions the server sent, so that it moves smoothly however the
+updates arrive (qualia): the drawn moment trails the newest update by one and
+a half times the mean gap between updates, 10 to 120 msec. A new entity,
+another model or a move of over 200 units is a snap. The players are run
+forward to the present through the movement code instead (CL_LinkPlayers).
+
+===============================================================================
+*/
+
+#define	LERP_SNAP		200			// units: farther is a teleport
+#define	LERP_MINTRAIL	0.010
+#define	LERP_MAXTRAIL	0.120
+#define	LERP_MINSPAN	0.0005		// a window shorter than this is a snap
+
+typedef struct
+{
+	vec3_t	val[3];		// newest first
+	double	at[3];		// when each arrived
+} lerptrail_t;
+
+typedef struct
+{
+	lerptrail_t	origin, angles;
+	int			modelindex;
+	int			stamp;		// the last update it was in
+} entlerp_t;
+
+static entlerp_t	cl_entlerp[MAX_EDICTS];
+static int			lerp_update = 1;	// counts updates; 0 is never
+static double		lerp_lastat;		// when the last update arrived
+static double		lerp_interval;		// the mean gap between updates
+
+void CL_ResetSmoothing (void)
+{
+	lerp_update += 2;	// nothing tracked carries over
+	lerp_lastat = 0;
+	lerp_interval = 0;
+}
+
+static void Trail_Fix (lerptrail_t *t, const vec3_t v, double now)
+{
+	int		i;
+
+	for (i=0 ; i<3 ; i++)
+	{
+		VectorCopy (v, t->val[i]);
+		t->at[i] = now;
+	}
+}
+
+static void Trail_Push (lerptrail_t *t, const vec3_t v, double now)
+{
+	VectorCopy (t->val[1], t->val[2]);
+	t->at[2] = t->at[1];
+	VectorCopy (t->val[0], t->val[1]);
+	t->at[1] = t->at[0];
+	VectorCopy (v, t->val[0]);
+	t->at[0] = now;
+}
+
+/*
+===============
+Trail_Sample
+
+Where the trail is at time: between the two values that bracket it
+===============
+*/
+static void Trail_Sample (const lerptrail_t *t, double time, vec3_t out)
+{
+	int		from, to, i;
+	double	span;
+	float	f;
+
+	if (time >= t->at[1])
+	{
+		from = 1;
+		to = 0;
+	}
+	else
+	{
+		from = 2;
+		to = 1;
+	}
+	span = t->at[to] - t->at[from];
+	if (span <= LERP_MINSPAN)
+	{
+		VectorCopy (t->val[to], out);
+		return;
+	}
+	f = (float)((time - t->at[from]) / span);
+	f = f < 0 ? 0 : f > 1 ? 1 : f;
+	for (i=0 ; i<3 ; i++)
+		out[i] = t->val[from][i] + f * (t->val[to][i] - t->val[from][i]);
+}
+
+/*
+===============
+CL_LerpSnapshot
+
+An update of the entities arrived: aim each one's trails at where it now is
+===============
+*/
+static void CL_LerpSnapshot (const packet_entities_t *pack)
+{
+	const entity_state_t	*s;
+	entlerp_t	*l;
+	vec3_t		angles, d;
+	double		now, gap;
+	int			i, j, previous;
+
+	// the mean gap, gently: one late update must not drag everything into
+	// the past and let it snap forward again; a stall is not a gap
+	now = host.realtime;
+	gap = now - lerp_lastat;
+	if (lerp_lastat && gap >= 0 && gap < 0.5)
+		lerp_interval = lerp_interval ? lerp_interval * 0.95 + gap * 0.05 : gap;
+	lerp_lastat = now;
+
+	previous = lerp_update++;
+	for (i=0 ; i<pack->num_entities ; i++)
+	{
+		s = &pack->entities[i];
+		l = &cl_entlerp[s->number];
+
+		// the angles the short way round from the newest
+		for (j=0 ; j<3 ; j++)
+		{
+			angles[j] = s->angles[j];
+			while (angles[j] - l->angles.val[0][j] > 180)
+				angles[j] -= 360;
+			while (angles[j] - l->angles.val[0][j] < -180)
+				angles[j] += 360;
+		}
+
+		VectorSubtract (s->origin, l->origin.val[0], d);
+		if (l->stamp == previous && l->modelindex == s->modelindex && DotProduct (d, d) <= LERP_SNAP*LERP_SNAP)
+		{
+			if (d[0] || d[1] || d[2])
+				Trail_Push (&l->origin, s->origin, now);
+			if (angles[0] != l->angles.val[0][0] || angles[1] != l->angles.val[0][1] || angles[2] != l->angles.val[0][2])
+				Trail_Push (&l->angles, angles, now);
+		}
+		else
+		{	// new, teleported, or something else now: just be there
+			Trail_Fix (&l->origin, s->origin, now);
+			Trail_Fix (&l->angles, s->angles, now);
+			l->modelindex = s->modelindex;
+		}
+		l->stamp = lerp_update;
+	}
+}
+
+/*
+===============
+CL_EntityPlace
+
+Where to draw an entity of the newest update
+===============
+*/
+static void CL_EntityPlace (const entity_state_t *s, vec3_t origin, vec3_t angles)
+{
+	const entlerp_t	*l = &cl_entlerp[s->number];
+	double			trail;
+
+	if (cl_nolerp.value || l->stamp != lerp_update)
+	{
+		VectorCopy (s->origin, origin);
+		VectorCopy (s->angles, angles);
+		return;
+	}
+
+	trail = lerp_interval * 1.5;
+	trail = trail < LERP_MINTRAIL ? LERP_MINTRAIL : trail > LERP_MAXTRAIL ? LERP_MAXTRAIL : trail;
+	Trail_Sample (&l->origin, host.realtime - trail, origin);
+	Trail_Sample (&l->angles, host.realtime - trail, angles);
+}
+
+/*
 ==================
 CL_ParsePacketEntities
 
@@ -328,6 +511,7 @@ void CL_ParsePacketEntities (bool delta)
 	}
 
 	newp->num_entities = newindex;
+	CL_LerpSnapshot (newp);
 }
 
 
@@ -341,10 +525,9 @@ void CL_LinkPacketEntities (void)
 {
 	entity_t			*ent;
 	packet_entities_t	*pack;
-	entity_state_t		*s1, *s2;
-	float				f;
+	entity_state_t		*s1;
 	model_t				*model;
-	vec3_t				old_origin;
+	vec3_t				old_origin, origin, angles;
 	float				autorotate;
 	int					i;
 	int					pnum;
@@ -354,24 +537,22 @@ void CL_LinkPacketEntities (void)
 
 	autorotate = anglemod((float)(100*cl.time));
 
-	f = 0;		// FIXME: no interpolation right now
-
 	for (pnum=0 ; pnum<pack->num_entities ; pnum++)
 	{
 		s1 = &pack->entities[pnum];
-		s2 = s1;	// FIXME: no interpolation right now
+		CL_EntityPlace (s1, origin, angles);
 
 		// spawn light flashes, even ones coming from invisible objects
 		if ((s1->effects & (EF_BLUE | EF_RED)) == (EF_BLUE | EF_RED))
-			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], (float)(200 + (rand()&31)), 0.1f, 3);
+			CL_NewDlight (s1->number, origin[0], origin[1], origin[2], (float)(200 + (rand()&31)), 0.1f, 3);
 		else if (s1->effects & EF_BLUE)
-			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], (float)(200 + (rand()&31)), 0.1f, 1);
+			CL_NewDlight (s1->number, origin[0], origin[1], origin[2], (float)(200 + (rand()&31)), 0.1f, 1);
 		else if (s1->effects & EF_RED)
-			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], (float)(200 + (rand()&31)), 0.1f, 2);
+			CL_NewDlight (s1->number, origin[0], origin[1], origin[2], (float)(200 + (rand()&31)), 0.1f, 2);
 		else if (s1->effects & EF_BRIGHTLIGHT)
-			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2] + 16, (float)(400 + (rand()&31)), 0.1f, 0);
+			CL_NewDlight (s1->number, origin[0], origin[1], origin[2] + 16, (float)(400 + (rand()&31)), 0.1f, 0);
 		else if (s1->effects & EF_DIMLIGHT)
-			CL_NewDlight (s1->number, s1->origin[0], s1->origin[1], s1->origin[2], (float)(200 + (rand()&31)), 0.1f, 0);
+			CL_NewDlight (s1->number, origin[0], origin[1], origin[2], (float)(200 + (rand()&31)), 0.1f, 0);
 
 		// if set to invisible, skip
 		if (!s1->modelindex)
@@ -418,25 +599,9 @@ void CL_LinkPacketEntities (void)
 			ent->angles[2] = 0;
 		}
 		else
-		{
-			float	a1, a2;
+			VectorCopy (angles, ent->angles);
 
-			for (i=0 ; i<3 ; i++)
-			{
-				a1 = s1->angles[i];
-				a2 = s2->angles[i];
-				if (a1 - a2 > 180)
-					a1 -= 360;
-				if (a1 - a2 < -180)
-					a1 += 360;
-				ent->angles[i] = a2 + f * (a1 - a2);
-			}
-		}
-
-		// calculate origin
-		for (i=0 ; i<3 ; i++)
-			ent->origin[i] = s2->origin[i] + 
-			f * (s1->origin[i] - s2->origin[i]);
+		VectorCopy (origin, ent->origin);
 
 		// add automatic particle trails
 		if (!model->flags)
@@ -605,6 +770,11 @@ static void CL_PlayerMoveType (player_state_t *state, int num, int flags)
 
 	if (cl.z_ext & Z_EXT_PF_ONGROUND)
 		state->onground = (flags & PF_ONGROUND) != 0;
+
+	// another player's water jump timer would be whatever an earlier
+	// prediction left in the frame: a stale one throws the player (qualia)
+	if (num != cl.playernum)
+		state->waterjumptime = 0;
 
 	if (!(cl.z_ext & Z_EXT_PM_TYPE) || code > PMC_LOCK
 	 || (code > PMC_OLD_SPECTATOR && !(cl.z_ext & Z_EXT_PM_TYPE_NEW)))
@@ -857,8 +1027,8 @@ void CL_LinkPlayers (void)
 		ent->angles[ROLL] = 0;
 		ent->angles[ROLL] = PM_CalcRoll (ent->angles, state->velocity)*4;
 
-		// only predict half the move to minimize overruns
-		msec = (int)(500*(playertime - state->state_time));
+		// run forward to the present (qualia), where vanilla ran half of it
+		msec = (int)(1000*(playertime - state->state_time));
 		if (msec <= 0 || (!cl_predict_players.value && !cl_predict_players2.value))
 		{
 			VectorCopy (state->origin, ent->origin);

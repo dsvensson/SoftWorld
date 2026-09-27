@@ -327,6 +327,7 @@ void CL_ClearState (void)
 	Mod_ClearAll ();
 
 	CL_ClearTEnts ();
+	CL_ResetSmoothing ();
 
 // wipe the entire cl structure
 	if (cl.map)

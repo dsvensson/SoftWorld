@@ -500,6 +500,8 @@ void CL_SetSolidPlayers (int playernum);
 void CL_SetUpPlayerPrediction(bool dopred);
 void CL_EmitEntities (void);
 void CL_ClearProjectiles (void);
+void CL_ResetSmoothing (void);		// a new level, or a new connection
+extern cvar_t	cl_nolerp;
 void CL_ParseProjectiles (bool numbered);
 
 // the model with that number, NULL if there is none

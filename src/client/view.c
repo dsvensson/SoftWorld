@@ -92,7 +92,9 @@ float V_CalcBob (void)
 	if (cl.spectator)
 		return 0;
 
-	if (!cl.pmove.onground)
+	// the local player's ground: cl.pmove holds whichever player moved last,
+	// often another one run forward to be drawn
+	if (!cl.onground)
 		return bob;		// just use old value
 
 	bobtime += cls.frametime;
