@@ -191,11 +191,15 @@ typedef struct
 	int			surfmip;	// mipmapped ratio of surface texels / world pixels
 	int			surfwidth;	// in mipmapped texels
 	int			surfheight;	// in mipmapped texels
+	unsigned	*keptlight;	// where the light the texels are drawn with is kept, or NULL
+	bool		keptvalid;	// it holds the light surfdat was drawn with: only blocks
+							// whose light changed are drawn again
 } drawsurf_t;
 
 extern drawsurf_t	r_drawsurf;
 
 void R_DrawSurface (void);
+int R_SurfaceLightCount (const msurface_t *surf, int miplevel);	// values keptlight holds, 0 for none
 
 
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!

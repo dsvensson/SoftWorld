@@ -237,6 +237,7 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 {
 	double			prof;
 	surfcache_t     *cache;
+	int				lightcount;
 
 //
 // if the surface is animating or flashing, flush the cache
@@ -270,24 +271,32 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 	r_drawsurf.surfheight = surface->extents[1] >> miplevel;
 	
 //
-// allocate memory if needed
+// allocate memory if needed, with room for the light the texels are drawn with
 //
+	lightcount = R_SurfaceLightCount (surface, miplevel);
 	if (!cache)     // if a texture just animated, don't reallocate it
 	{
 		cache = D_SCAlloc (r_drawsurf.surfwidth,
-						   r_drawsurf.surfwidth * r_drawsurf.surfheight * (int)sizeof(pixel_t));
+						   r_drawsurf.surfwidth * r_drawsurf.surfheight * (int)sizeof(pixel_t)
+						   + lightcount * (int)sizeof(unsigned));
 		surface->cachespots[miplevel] = cache;
 		cache->owner = &surface->cachespots[miplevel];
 		cache->mipscale = surfscale;
+		cache->lightcount = 0;
 	}
-	
+
 	if (surface->dlightframe == r_framecount)
 		cache->dlight = 1;
 	else
 		cache->dlight = 0;
 
 	r_drawsurf.surfdat = cache->data;
-	
+
+	// texels drawn with the same texture are drawn again only where the light changed
+	r_drawsurf.keptlight = lightcount ? (unsigned *)(cache->data + r_drawsurf.surfwidth * r_drawsurf.surfheight) : NULL;
+	r_drawsurf.keptvalid = cache->lightcount == lightcount && cache->texture == r_drawsurf.texture;
+	cache->lightcount = lightcount;
+
 	cache->texture = r_drawsurf.texture;
 	cache->lightadj[0] = r_drawsurf.lightadj[0];
 	cache->lightadj[1] = r_drawsurf.lightadj[1];
@@ -300,6 +309,8 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 	r_drawsurf.surf = surface;
 
 	c_surf++;
+	R_ProfCount (PROFN_SURFACES, 1);
+	R_ProfCount (PROFN_DLIT, cache->dlight);
 	prof = R_ProfStart ();
 	R_DrawSurface ();
 	R_ProfEnd (PROF_SURFCACHE, prof);

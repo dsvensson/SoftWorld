@@ -45,6 +45,8 @@ static void R_DrawSurfaceBlockRGB (void);
 static unsigned		*blocklights;			// r_lightmode 0: 8.8
 static unsigned		*blocklights_rgb;		// r_lightmode 1: LIGHT_ONE is 1.0
 static int			blocklights_size;		// samples they hold
+static byte			*r_lightchanged;		// per sample: not the light kept with the texels
+static const byte	*r_columnchanged;		// the block column's, NULL to draw every block
 
 // the light of the surface being built is on a grid of 1 << r_lightshift
 // texels, r_lightgrid[0] x r_lightgrid[1] points; for a lightmap that isn't
@@ -74,6 +76,32 @@ static void R_BlocklightsForSize (int size)
 	blocklights = Mem_Realloc (blocklights, (size_t)size * sizeof(*blocklights));
 	blocklights_rgb = Mem_Realloc (blocklights_rgb, (size_t)size * 3 * sizeof(*blocklights_rgb));
 	r_lightsamples = Mem_Realloc (r_lightsamples, (size_t)size * sizeof(*r_lightsamples));
+	r_lightchanged = Mem_Realloc (r_lightchanged, (size_t)size);
+}
+
+// the texels per light sample on a side, as a shift, is this less the mip level
+static int R_LightShift (const msurface_t *surf, int miplevel)
+{
+	return surf->lmvanilla ? 4 : (surf->lmgridshift > miplevel ? surf->lmgridshift : miplevel);
+}
+
+/*
+===============
+R_SurfaceLightCount
+
+The values of a surface's light at a mip level, kept with its texels in the
+surface cache so that drawing it again (a dynamic light, a light style) draws
+only the blocks whose light changed; 0 where the blocks are too small to pay
+for keeping it
+===============
+*/
+int R_SurfaceLightCount (const msurface_t *surf, int miplevel)
+{
+	int		shift = R_LightShift (surf, miplevel);
+
+	if (shift - miplevel < 3)
+		return 0;
+	return ((surf->extents[0] >> shift) + 1) * ((surf->extents[1] >> shift) + 1) * (r_lightmode.value ? 3 : 1);
 }
 
 /*
@@ -91,7 +119,7 @@ static int R_LightGrid (msurface_t *surf, int miplevel)
 	int				i, j, u0, v0;
 	float			s, t, u, v;
 
-	r_lightshift = surf->lmvanilla ? 4 : (surf->lmgridshift > miplevel ? surf->lmgridshift : miplevel);
+	r_lightshift = R_LightShift (surf, miplevel);
 	r_lightgrid[0] = (surf->extents[0] >> r_lightshift) + 1;
 	r_lightgrid[1] = (surf->extents[1] >> r_lightshift) + 1;
 	R_BlocklightsForSize (r_lightgrid[0] * r_lightgrid[1]);
@@ -438,6 +466,39 @@ static void R_MarkFenceTexels (void)
 	}
 }
 
+/*
+===============
+R_KeepLight
+
+Which light samples differ from the light kept with the texels, which were
+drawn with it, and the light they are drawn with now kept in its place
+===============
+*/
+static const byte *R_KeepLight (void)
+{
+	int				channels = r_lightmode.value ? 3 : 1;
+	int				samples = r_lightgrid[0] * r_lightgrid[1];
+	const unsigned	*light = r_lightmode.value ? blocklights_rgb : blocklights;
+	unsigned		*kept = r_drawsurf.keptlight;
+	const byte		*changed = NULL;
+	int				i, c;
+
+	if (!kept)
+		return NULL;
+	if (r_drawsurf.keptvalid)
+	{
+		for (i=0 ; i<samples ; i++)
+		{
+			r_lightchanged[i] = 0;
+			for (c=0 ; c<channels ; c++)
+				r_lightchanged[i] |= light[i*channels + c] != kept[i*channels + c];
+		}
+		changed = r_lightchanged;
+	}
+	memcpy (kept, light, (size_t)(samples * channels) * sizeof(*kept));
+	return changed;
+}
+
 void R_DrawSurface (void)
 {
 	unsigned char	*basetptr;
@@ -447,13 +508,15 @@ void R_DrawSurface (void)
 	int				horzblockstep;
 	pixel_t			*pcolumndest;
 	texture_t		*mt;
+	const byte		*changed;
 
 // calculate the lightings
 	if (r_lightmode.value)
 		R_BuildLightMapRGB ();
 	else
 		R_BuildLightMap ();
-	
+	changed = R_KeepLight ();
+
 	surfrowpixels = r_drawsurf.rowpixels;
 
 	mt = r_drawsurf.texture;
@@ -500,6 +563,7 @@ void R_DrawSurface (void)
 	{
 		r_lightptr = blocklights + u;
 		r_lightptr_rgb = blocklights_rgb + u*3;
+		r_columnchanged = changed ? changed + u : NULL;
 
 		prowdestbase = pcolumndest;
 
@@ -525,6 +589,18 @@ void R_DrawSurface (void)
 //=============================================================================
 
 
+// the block of the column at v is lit as its texels were drawn: its four
+// corners' light is the light kept
+static inline bool R_BlockUnchanged (int v)
+{
+	const byte	*c;
+
+	if (!r_columnchanged)
+		return false;
+	c = r_columnchanged + v * r_lightwidth;
+	return !(c[0] | c[1] | c[r_lightwidth] | c[r_lightwidth + 1]);
+}
+
 /*
 ================
 R_DrawSurfaceBlock
@@ -543,13 +619,22 @@ static void R_DrawSurfaceBlock (void)
 	psource = pbasesource;
 	prowdest = prowdestbase;
 
-	for (v=0 ; v<r_numvblocks ; v++)
+	for (v=0 ; v<r_numvblocks ; v++, r_lightptr += r_lightwidth)
 	{
+		if (R_BlockUnchanged (v))
+		{
+			psource += sourcetstep << shift;
+			prowdest += surfrowpixels << shift;
+			if (psource >= r_sourcemax)
+				psource -= r_stepback;
+			continue;
+		}
+
+		R_ProfCount (PROFN_TEXELS, blocksize * blocksize);
 		lightleft = r_lightptr[0];
 		lightright = r_lightptr[1];
-		r_lightptr += r_lightwidth;
-		lightleftstep = (r_lightptr[0] - lightleft) >> shift;
-		lightrightstep = (r_lightptr[1] - lightright) >> shift;
+		lightleftstep = (r_lightptr[r_lightwidth] - lightleft) >> shift;
+		lightrightstep = (r_lightptr[r_lightwidth + 1] - lightright) >> shift;
 
 		for (i=0 ; i<blocksize ; i++)
 		{
@@ -590,18 +675,27 @@ static void R_DrawSurfaceBlockRGB (void)
 	psource = pbasesource;
 	prowdest = prowdestbase;
 
-	for (v=0 ; v<r_numvblocks ; v++)
+	for (v=0 ; v<r_numvblocks ; v++, lp += r_lightwidth * 3)
 	{
+		if (R_BlockUnchanged (v))
+		{
+			psource += sourcetstep << shift;
+			prowdest += surfrowpixels << shift;
+			if (psource >= r_sourcemax)
+				psource -= r_stepback;
+			continue;
+		}
+
+		R_ProfCount (PROFN_TEXELS, blocksize * blocksize);
 		for (c=0 ; c<3 ; c++)
 		{
 			left[c] = (int)lp[c];
 			right[c] = (int)lp[3 + c];
 		}
-		lp += r_lightwidth * 3;
 		for (c=0 ; c<3 ; c++)
 		{
-			leftstep[c] = ((int)lp[c] - left[c]) >> shift;
-			rightstep[c] = ((int)lp[3 + c] - right[c]) >> shift;
+			leftstep[c] = ((int)lp[r_lightwidth * 3 + c] - left[c]) >> shift;
+			rightstep[c] = ((int)lp[r_lightwidth * 3 + 3 + c] - right[c]) >> shift;
 		}
 
 		for (i=0 ; i<blocksize ; i++)

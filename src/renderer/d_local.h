@@ -42,6 +42,7 @@ typedef struct surfcache_s
 	struct surfcache_s 	**owner;		// NULL is an empty chunk of memory
 	int					lightadj[MAXLIGHTMAPS]; // checked for strobe flush
 	int					dlight;
+	int					lightcount;	// light values kept after the texels, 0 if none are yet
 	int					size;		// including header
 	unsigned			width;
 	unsigned			height;		// DEBUG only needed for debug

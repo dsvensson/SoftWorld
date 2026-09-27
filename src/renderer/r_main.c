@@ -304,6 +304,9 @@ static void R_LightTint (const vec3_t rgb, float color[3])
 
 static double	r_prof[PROF_COUNT];
 static int		r_profframes;
+static double	r_profsince;		// when the first frame counted began
+static int64_t	r_profn[PROFN_COUNT];
+static int		r_profthrash;		// frames the surface cache ran out in
 
 double R_ProfStart (void)
 {
@@ -316,17 +319,25 @@ void R_ProfEnd (prof_t stage, double start)
 		r_prof[stage] += Sys_DoubleTime () - start;
 }
 
+void R_ProfCount (profn_t what, int n)
+{
+	if (r_profile.value)
+		r_profn[what] += n;
+}
+
 /*
 ===============
 R_Profile_f
 
-Average microseconds per frame of each stage since the last call
+Average microseconds per frame of each stage since the last call, of the
+whole frame, and of what no stage covers (the game, sound, the waits)
 ===============
 */
 static void R_Profile_f (void)
 {
 	static const char	*names[PROF_COUNT] = {"edges", "spans", "draw", "surfcache", "models", "viewmodel",
 		"particles", "warp", "2d", "present"};
+	double	frame, staged;
 	int		i;
 
 	if (!r_profframes)
@@ -335,10 +346,23 @@ static void R_Profile_f (void)
 		return;
 	}
 	Con_Printf ("%d frames, microseconds per frame:\n", r_profframes);
+	staged = 0;
 	for (i=0 ; i<PROF_COUNT ; i++)
+	{
 		Con_Printf ("  %-10s %8.1f\n", names[i], r_prof[i] * 1e6 / r_profframes);
+		if (i != PROF_DRAW && i != PROF_SURFCACHE)		// parts of PROF_SPANS
+			staged += r_prof[i];
+	}
+	frame = Sys_DoubleTime () - r_profsince;
+	Con_Printf ("  %-10s %8.1f\n", "other", (frame - staged) * 1e6 / r_profframes);
+	Con_Printf ("  %-10s %8.1f\n", "frame", frame * 1e6 / r_profframes);
+	Con_Printf ("  %-10s %8.1f a frame (%.1f for dynamic lights), %.0f texels; cache ran out in %.1f%% of frames\n",
+		"surfaces", (double)r_profn[PROFN_SURFACES] / r_profframes, (double)r_profn[PROFN_DLIT] / r_profframes,
+		(double)r_profn[PROFN_TEXELS] / r_profframes, 100.0 * r_profthrash / r_profframes);
 	memset (r_prof, 0, sizeof(r_prof));
+	memset (r_profn, 0, sizeof(r_profn));
 	r_profframes = 0;
+	r_profthrash = 0;
 }
 
 /*
@@ -1153,7 +1177,11 @@ void R_RenderView (void)
 	double	prof;
 
 	if (r_profile.value)
+	{
+		if (!r_profframes)
+			r_profsince = Sys_DoubleTime ();
 		r_profframes++;
+	}
 	if (r_timegraph.value || r_speeds.value || r_dspeeds.value)
 		r_time1 = (float)Sys_DoubleTime ();
 
@@ -1211,6 +1239,8 @@ void R_RenderView (void)
 	if (r_dowarp)
 		D_WarpScreen ();
 	R_ProfEnd (PROF_WARP, prof);
+	if (r_profile.value && r_cache_thrash)
+		r_profthrash++;
 
 	r_scene.viewcontents = r_viewleaf->contents;
 

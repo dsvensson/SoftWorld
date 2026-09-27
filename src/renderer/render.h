@@ -156,6 +156,17 @@ typedef enum
 
 double	R_ProfStart (void);						// 0 unless profiling
 void	R_ProfEnd (prof_t stage, double start);
+
+// and what the surface cache did
+typedef enum
+{
+	PROFN_SURFACES,		// surfaces lit into the surface cache
+	PROFN_TEXELS,		// their texels
+	PROFN_DLIT,			// the surfaces lit because a dynamic light touches them
+	PROFN_COUNT
+} profn_t;
+
+void	R_ProfCount (profn_t what, int n);
 // palette.lmp and colormap.lmp, before any drawing
 void R_InitPalette (const byte *palette, const byte *colormap);
 void R_InitTextures (void);
