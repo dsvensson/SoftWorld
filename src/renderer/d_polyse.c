@@ -124,11 +124,9 @@ static void D_PolysetBlendSpan (spanpackage_t *p, int count, const simd_aliasmap
 	int		i;
 
 	for (i=0 ; i<count ; i++)
-		row[i] = 0xffffffffu;		// no texel: no pixel is that
+		row[i] = 0xffffffffu;		// no texel: its top bit, which no pixel has
 	simd_aliasspan (row, p->pz, p->ptex, p->sfrac, p->tfrac, p->light, p->zi, count, map);
-	for (i=0 ; i<count ; i++)
-		if (row[i] != 0xffffffffu)
-			p->pdest[i] = D_BlendPixel (row[i], p->pdest[i], d_alpha);
+	simd_blendspan (p->pdest, row, NULL, 0, 0, d_alpha, count);
 }
 
 static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage);

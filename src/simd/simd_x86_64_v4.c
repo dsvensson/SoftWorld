@@ -396,6 +396,51 @@ static void Simd_V4_ExpandTables (void)
 	expand_ready = true;
 }
 
+// one 10 bit channel of src over dest, at bit shift
+static inline __m512i Simd_V4_BlendChannel (__m512i s, __m512i d, __m512i a, __m512i ia, int shift)
+{
+	const __m512i	mask = _mm512_set1_epi32 (1023);
+	__m512i			sc = _mm512_and_si512 (_mm512_srli_epi32 (s, (unsigned)shift), mask);
+	__m512i			dc = _mm512_and_si512 (_mm512_srli_epi32 (d, (unsigned)shift), mask);
+	__m512i			c = _mm512_add_epi32 (_mm512_mullo_epi32 (sc, a), _mm512_mullo_epi32 (dc, ia));
+
+	return _mm512_slli_epi32 (_mm512_srli_epi32 (c, 8), (unsigned)shift);
+}
+
+void Simd_V4_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
+	int alpha, int count)
+{
+	const __m512	lane = _mm512_cvtepi32_ps (Simd_V4_Iota ());
+	const __m512	vzi = _mm512_set1_ps (zi);
+	const __m512	vstep = _mm512_set1_ps (step);
+	const __m512i	a = _mm512_set1_epi32 (alpha);
+	const __m512i	ia = _mm512_set1_epi32 (256 - alpha);
+	const __m512i	cutout = _mm512_set1_epi32 ((int)0x80000000u);
+	__m512i			s, d, out;
+	__mmask16		m;
+	int				i;
+
+	for (i = 0 ; i < count ; i += 16)
+	{
+		m = Simd_V4_Lanes (count - i);
+		s = _mm512_maskz_loadu_epi32 (m, src + i);
+		m &= (__mmask16)~_mm512_test_epi32_mask (s, cutout);
+		if (zbuf)
+		{
+			__m512	idx = _mm512_add_ps (_mm512_set1_ps ((float)i), lane);	// whole numbers, exact
+			__m512	z = _mm512_add_ps (vzi, _mm512_mul_ps (idx, vstep));
+
+			m = _mm512_mask_cmp_ps_mask (m, _mm512_maskz_loadu_ps (m, zbuf + i), z, _CMP_LE_OQ);
+		}
+		if (!m)
+			continue;
+		d = _mm512_maskz_loadu_epi32 (m, dest + i);
+		out = _mm512_or_si512 (Simd_V4_BlendChannel (s, d, a, ia, 0),
+			_mm512_or_si512 (Simd_V4_BlendChannel (s, d, a, ia, 10), Simd_V4_BlendChannel (s, d, a, ia, 20)));
+		_mm512_mask_storeu_epi32 (dest + i, m, out);
+	}
+}
+
 void Simd_V4_Expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
 	int scale, int transparent)
 {

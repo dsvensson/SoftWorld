@@ -57,6 +57,12 @@ void simd_aliasspan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, in
 	Simd_Scalar_AliasSpan (dest, zbuf, tex, sfrac, tfrac, light, zi, count, map);
 }
 
+void simd_blendspan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
+	int alpha, int count)
+{
+	Simd_Scalar_BlendSpan (dest, src, zbuf, zi, step, alpha, count);
+}
+
 void simd_expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
 	int scale, int transparent)
 {

@@ -87,6 +87,13 @@ typedef struct
 void	simd_aliasspan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,
 			int light, int zi, int count, const simd_aliasmap_t *map);
 
+// a translucent span: src[i] (RGB30) blended alpha of 256 over dest[i],
+// each channel (src * alpha + dest * (256 - alpha)) >> 8, where src[i] hasn't
+// its top bit set (a cut-out texel, or none) and, with a z buffer, zbuf[i] is
+// at most zi + i * step (1/z as simd_zspan makes it); zbuf may be NULL
+void	simd_blendspan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
+			int alpha, int count);
+
 // 8 bit texels through a palette, each written scale times: dest[i*scale + k]
 // = palette[src[i]]; texels equal to transparent (if not -1) are skipped
 void	simd_expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,

@@ -164,17 +164,16 @@ pixel_t *D_BlendRow (int count)
 D_DrawBlendedSpans
 
 Spans of a translucent surface: each texel mapped as D_DrawSpans or
-Turbulent8 maps it, then blended in where it isn't behind the depth buffer;
-the depth buffer keeps what is behind
+Turbulent8 maps it, then blended in where it isn't behind the depth buffer
+(its 1/z as D_DrawZSpans makes it); the depth buffer keeps what is behind
 =============
 */
 void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb)
 {
 	simd_texmap_t	map = D_SpanTexmap ();
 	const int		*turbtab = sintable + ((int)(r_scene.time*SPEED)&(CYCLE-1));
-	pixel_t			*pdest, *row, texel;
-	float			*pz, zi;
-	int				i;
+	pixel_t			*row;
+	float			zi;
 
 	for ( ; pspan->count != DS_SPAN_LIST_END ; pspan++)
 	{
@@ -186,15 +185,9 @@ void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb)
 		else
 			simd_texspan (row, &map, cacheblock, cachewidth, pspan->u, pspan->v, pspan->count);
 
-		pdest = d_viewbuffer + screenwidth * pspan->v + pspan->u;
-		pz = d_pzbuffer + d_zwidth * pspan->v + pspan->u;
-		zi = d_ziorigin + pspan->v * d_zistepv + pspan->u * d_zistepu;
-		for (i = 0 ; i < pspan->count ; i++, zi += d_zistepu)
-		{
-			texel = row[i];
-			if (!(texel & PIXEL_TRANSPARENT) && pz[i] <= zi)
-				pdest[i] = D_BlendPixel (texel, pdest[i], alpha);
-		}
+		zi = d_ziorigin + (float)pspan->v * d_zistepv + (float)pspan->u * d_zistepu;
+		simd_blendspan (d_viewbuffer + screenwidth * pspan->v + pspan->u, row,
+			d_pzbuffer + d_zwidth * pspan->v + pspan->u, zi, d_zistepu, alpha, pspan->count);
 	}
 }
 

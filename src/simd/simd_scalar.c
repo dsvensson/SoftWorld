@@ -244,6 +244,27 @@ void Simd_Scalar_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sf
 	}
 }
 
+void Simd_Scalar_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
+	int alpha, int count)
+{
+	unsigned	a = (unsigned)alpha, ia = 256 - (unsigned)alpha;
+	uint32_t	s, d;
+	int			i;
+
+	for (i = 0 ; i < count ; i++)
+	{
+		s = src[i];
+		if (s & 0x80000000u)
+			continue;
+		if (zbuf && !(zbuf[i] <= zi + (float)i * step))
+			continue;
+		d = dest[i];
+		dest[i] = (((s & 1023) * a + (d & 1023) * ia) >> 8)
+			| (((((s >> 10) & 1023) * a + ((d >> 10) & 1023) * ia) >> 8) << 10)
+			| (((((s >> 20) & 1023) * a + ((d >> 20) & 1023) * ia) >> 8) << 20);
+	}
+}
+
 void Simd_Scalar_Expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
 	int scale, int transparent)
 {

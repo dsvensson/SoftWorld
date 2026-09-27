@@ -75,6 +75,34 @@ static void TestZSpan (void)
 	}
 }
 
+// a span blended over another, with or without a depth test; the z buffer
+// near the span's own 1/z, so both sides of the test come up
+static void TestBlendSpan (void)
+{
+	uint32_t	dest[300], a[300], b[300], src[300];
+	float		zbuf[300];
+	int			r, i, count, alpha;
+
+	for (r = 0 ; r < ROUNDS ; r++)
+	{
+		float	zi = RandFloat (0.01f, 1), step = RandFloat (-1e-4f, 1e-4f);
+
+		count = RandRange (0, 300);
+		alpha = RandRange (0, 256);
+		for (i = 0 ; i < 300 ; i++)
+		{
+			dest[i] = Rand () & 0x3FFFFFFF;
+			src[i] = Rand () & ((Rand () & 7) ? 0x3FFFFFFFu : 0xFFFFFFFFu);
+			zbuf[i] = zi + (float)i * step + RandFloat (-2e-4f, 2e-4f) * (float)(Rand () & 1);
+		}
+		memcpy (a, dest, sizeof(a));
+		memcpy (b, dest, sizeof(b));
+		Simd_Scalar_BlendSpan (a, src, (r & 1) ? zbuf : NULL, zi, step, alpha, count);
+		Simd_V4_BlendSpan (b, src, (r & 1) ? zbuf : NULL, zi, step, alpha, count);
+		Check ("BlendSpan", r, !memcmp (a, b, sizeof(a)));
+	}
+}
+
 // a texture on a random plane, seen from a span that stays in front of the
 // viewer: 1/z at least 0.002 over u, v below 2048
 static simd_texmap_t RandTexmap (int width, int height)
@@ -319,6 +347,7 @@ int main (void)
 	TestLitRowColormap ();
 	TestLitRowRGB ();
 	TestAliasSpan ();
+	TestBlendSpan ();
 	TestExpand8 ();
 	TestCopyStream ();
 
