@@ -38,6 +38,17 @@ void S_StopAllSoundsC(void);
 snd_state_t	snd;
 
 static void S_Startup (void);
+
+// sound's own random numbers: how far the mixer has got depends on the
+// clock, and taking from rand () then would move the particles, which draw
+// from it too; frames of a timedemo must come out the same every run
+static unsigned	snd_randstate = 0x2545F491;
+
+static int S_Rand (void)
+{
+	snd_randstate = snd_randstate * 1664525u + 1013904223u;
+	return (int)(snd_randstate >> 16);
+}
 static vec_t		sound_nominal_clip_dist=1000.0;
 
 cvar_t bgmvolume = {.name = "bgmvolume", .string = "1", .archive = true};
@@ -447,7 +458,7 @@ void S_StartSound(int entnum, int entchannel, sfx_t *sfx, vec3_t origin, float f
 			continue;
 		if (check->sfx == sfx && !check->pos)
 		{
-			skip = rand () % (int)(0.1*snd.dma.speed);
+			skip = S_Rand () % (int)(0.1*snd.dma.speed);
 			if (skip >= target_chan->end)
 				skip = target_chan->end - 1;
 			target_chan->pos += skip;
