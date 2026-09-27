@@ -587,6 +587,40 @@ entity_t *CL_NewTempEntity (void);
 
 /*
 ===================
+CL_PlayerMoveType
+
+How the player moves, for prediction: the server says with Z_EXT_PM_TYPE, and
+whether the player is on the ground with Z_EXT_PF_ONGROUND; else a guess
+(ezQuake)
+===================
+*/
+static void CL_PlayerMoveType (player_state_t *state, int num, int flags)
+{
+	static const int	types[] = {
+		[PMC_OLD_SPECTATOR] = PM_OLD_SPECTATOR, [PMC_SPECTATOR] = PM_SPECTATOR,
+		[PMC_FLY] = PM_FLY, [PMC_NONE] = PM_NONE, [PMC_LOCK] = PM_LOCK
+	};
+	int		code = (flags >> PF_PMC_SHIFT) & PF_PMC_MASK;
+	bool	spectator = num == cl.playernum ? cl.spectator : cl.players[num].spectator != 0;
+
+	if (cl.z_ext & Z_EXT_PF_ONGROUND)
+		state->onground = (flags & PF_ONGROUND) != 0;
+
+	if (!(cl.z_ext & Z_EXT_PM_TYPE) || code > PMC_LOCK
+	 || (code > PMC_OLD_SPECTATOR && !(cl.z_ext & Z_EXT_PM_TYPE_NEW)))
+		state->pm_type = spectator ? PM_OLD_SPECTATOR : (flags & PF_DEAD) ? PM_DEAD : PM_NORMAL;
+	else if (code == PMC_NORMAL || code == PMC_NORMAL_JUMP_HELD)
+	{
+		state->pm_type = (flags & PF_DEAD) ? PM_DEAD : PM_NORMAL;
+		if (!(flags & PF_DEAD))
+			state->jump_held = code == PMC_NORMAL_JUMP_HELD;
+	}
+	else
+		state->pm_type = types[code];
+}
+
+/*
+===================
 CL_ParsePlayerinfo
 ===================
 */
@@ -615,6 +649,7 @@ void CL_ParsePlayerinfo (void)
 	else
 		flags = (flags & 0x3fff) | ((flags & 0xc000) << 8);
 	state->flags = flags;
+	CL_PlayerMoveType (state, num, flags);
 
 	state->messagenum = cl.parsecount;
 	state->origin[0] = MSG_ReadOrigin (cls.mvdext1);
@@ -839,7 +874,7 @@ void CL_LinkPlayers (void)
 
 			oldphysent = cl.pmove.numphysent;
 			CL_SetSolidPlayers (j);
-			CL_PredictUsercmd (state, &exact, &state->command, false);
+			CL_PredictUsercmd (state, &exact, &state->command);
 			cl.pmove.numphysent = oldphysent;
 			VectorCopy (exact.origin, ent->origin);
 		}
@@ -958,7 +993,7 @@ void CL_SetUpPlayerPrediction(bool dopred)
 				state->command.msec = (byte)msec;
 	//Con_DPrintf ("predict: %i\n", msec);
 
-				CL_PredictUsercmd (state, &exact, &state->command, false);
+				CL_PredictUsercmd (state, &exact, &state->command);
 				VectorCopy (exact.origin, pplayer->origin);
 			}
 		}
@@ -995,8 +1030,9 @@ void CL_SetSolidPlayers (int playernum)
 		if (j == playernum)
 			continue;
 
-		if (pplayer->flags & PF_DEAD)
-			continue; // dead players aren't solid
+		// dead players aren't solid; the server says who is with Z_EXT_PF_SOLID
+		if ((cl.z_ext & Z_EXT_PF_SOLID) ? !(pplayer->flags & PF_SOLID) : (pplayer->flags & PF_DEAD))
+			continue;
 
 		pent->model = 0;
 		VectorCopy(pplayer->origin, pent->origin);

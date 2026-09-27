@@ -543,6 +543,7 @@ void SV_SpawnSpectator (void)
 	VectorCopy (vec3_origin, sv_player->v.origin);
 	VectorCopy (vec3_origin, sv_player->v.view_ofs);
 	sv_player->v.view_ofs[2] = 22;
+	sv_player->v.movetype = MOVETYPE_NOCLIP;	// a spectator's movement; progs may change it (mvdsv)
 
 	// search for an info_playerstart to spawn the spectator at
 	for (i=MAX_CLIENTS-1 ; i<sv.num_edicts ; i++)
@@ -1645,6 +1646,30 @@ void SV_PreRunCmd(void)
 
 /*
 ===================
+SV_PMTypeForClient
+
+From the player's movetype, as mvdsv has it: noclip is a spectator's
+movement, QuakeWorld's own for clients that don't know the new one
+===================
+*/
+int SV_PMTypeForClient (const client_t *cl)
+{
+	switch ((int)cl->edict->v.movetype)
+	{
+	case MOVETYPE_NOCLIP:
+		return (cl->z_ext & Z_EXT_PM_TYPE_NEW) ? PM_SPECTATOR : PM_OLD_SPECTATOR;
+	case MOVETYPE_FLY:
+		return PM_FLY;
+	case MOVETYPE_NONE:
+		return PM_NONE;
+	case MOVETYPE_LOCK:
+		return PM_LOCK;
+	}
+	return cl->edict->v.health <= 0 ? PM_DEAD : PM_NORMAL;
+}
+
+/*
+===================
 SV_TurnMove / SV_NoteFixangle
 
 MVD1 high-lag teleport: after a teleport, the moves the client sent before
@@ -1761,17 +1786,24 @@ void SV_RunCmd (usercmd_t *ucmd)
 	VectorCopy (sv_player->v.velocity, sv_pmove.velocity);
 	VectorCopy (sv_player->v.v_angle, sv_pmove.angles);
 
-	sv_pmove.spectator = host_client->spectator;
 	sv_pmove.waterjumptime = sv_player->v.teleport_time;
 	sv_pmove.numphysent = 1;
 	sv_pmove.physents[0].model = sv.worldmodel;
 	sv_pmove.cmd = *ucmd;
-	sv_pmove.dead = sv_player->v.health <= 0;
-	sv_pmove.oldbuttons = host_client->oldbuttons;
+	sv_pmove.pm_type = SV_PMTypeForClient (host_client);
+	sv_pmove.onground = ((int)sv_player->v.flags & FL_ONGROUND) != 0;
+	sv_pmove.jump_held = host_client->jump_held;
+	sv_pmove.jump_msec = 0;
 
 	movevars = sv.movevars;
 	movevars.entgravity = host_client->entgravity;
 	movevars.maxspeed = host_client->maxspeed;
+	movevars.bunnyspeedcap = pm_bunnyspeedcap.value;
+	movevars.ktjump = pm_ktjump.value;
+	movevars.slidefix = pm_slidefix.value != 0;
+	movevars.airstep = pm_airstep.value != 0;
+	movevars.pground = pm_pground.value != 0;
+	movevars.rampjump = pm_rampjump.value != 0;
 
 	for (i=0 ; i<3 ; i++)
 	{
@@ -1782,14 +1814,14 @@ void SV_RunCmd (usercmd_t *ucmd)
 
 	PM_PlayerMove (&sv_pmove, &movevars);
 
-	host_client->oldbuttons = sv_pmove.oldbuttons;
+	host_client->jump_held = sv_pmove.jump_held;
 	sv_player->v.teleport_time = sv_pmove.waterjumptime;
 	sv_player->v.waterlevel = (float)sv_pmove.waterlevel;
 	sv_player->v.watertype = (float)sv_pmove.watertype;
-	if (sv_pmove.onground != -1)
+	if (sv_pmove.onground)
 	{
 		sv_player->v.flags = (float)((int)sv_player->v.flags | FL_ONGROUND);
-		sv_player->v.groundentity = EDICT_TO_PROG(EDICT_NUM(sv_pmove.physents[sv_pmove.onground].info));
+		sv_player->v.groundentity = EDICT_TO_PROG(EDICT_NUM(sv_pmove.physents[sv_pmove.groundent].info));
 	}
 	else
 		sv_player->v.flags = (float)((int)sv_player->v.flags & ~FL_ONGROUND);

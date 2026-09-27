@@ -65,8 +65,10 @@ typedef struct
 	byte		colormod[3];	// FTE_PEXT_COLOURMOD: 32 is 1.0; 0 0 0 is unset
 
 	float		waterjumptime;
-	int			onground;		// -1 = in air, else pmove entity number
-	int			oldbuttons;
+	bool		onground;		// the server's with Z_EXT_PF_ONGROUND, else predicted
+	bool		jump_held;		// the server's with Z_EXT_PM_TYPE, else predicted
+	int			jump_msec;
+	int			pm_type;		// pmtype_t: the server's with Z_EXT_PM_TYPE, else a guess
 } player_state_t;
 
 
@@ -523,7 +525,7 @@ void CL_DisableLerpMove (void);
 // commands at the physics rate, frames at the render rate
 bool CL_IndependentPhysics (void);
 extern cvar_t	cl_physfps;
-void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u, bool spectator);
+void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u);
 
 //
 // cl_cam.c

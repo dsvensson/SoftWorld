@@ -522,6 +522,21 @@ void CL_ProcessServerInfo (void)
 		cl.maxpitch = cl.maxpitch < 0 ? 0 : cl.maxpitch > 89.9f ? 89.9f : cl.maxpitch;
 		cl.minpitch = cl.minpitch > 0 ? 0 : cl.minpitch < -89.9f ? -89.9f : cl.minpitch;
 	}
+
+	// the server's player movement, as ezQuake reads it: pm_ktjump is on
+	// unless said otherwise, except for Team Fortress; pm_pground needs the
+	// ground from the server
+	cl.movevars.bunnyspeedcap = (float)atof (Info_ValueForKey (cl.serverinfo, "pm_bunnyspeedcap"));
+	cl.movevars.slidefix = atof (Info_ValueForKey (cl.serverinfo, "pm_slidefix")) != 0;
+	cl.movevars.airstep = atof (Info_ValueForKey (cl.serverinfo, "pm_airstep")) != 0;
+	cl.movevars.pground = atof (Info_ValueForKey (cl.serverinfo, "pm_pground")) != 0
+		&& (cl.z_ext & Z_EXT_PF_ONGROUND);
+	cl.movevars.rampjump = atof (Info_ValueForKey (cl.serverinfo, "pm_rampjump")) != 0;
+	s = Info_ValueForKey (cl.serverinfo, "pm_ktjump");
+	if (*s)
+		cl.movevars.ktjump = (float)atof (s);
+	else
+		cl.movevars.ktjump = Q_strcasecmp (Info_ValueForKey (cl.serverinfo, "*gamedir"), "fortress") ? 1.0f : 0.0f;
 }
 
 /*

@@ -242,6 +242,33 @@ void SV_EmitPacketEntities (client_t *client, packet_entities_t *to, sizebuf_t *
 
 /*
 =============
+SV_PMCode
+
+The PF_PMC code for how the player moves; dead is normal, with PF_DEAD
+=============
+*/
+static int SV_PMCode (const client_t *cl)
+{
+	switch (SV_PMTypeForClient (cl))
+	{
+	case PM_OLD_SPECTATOR:
+		return PMC_OLD_SPECTATOR;
+	case PM_SPECTATOR:
+		return PMC_SPECTATOR;
+	case PM_FLY:
+		return PMC_FLY;
+	case PM_NONE:
+		return PMC_NONE;
+	case PM_LOCK:
+		return PMC_LOCK;
+	case PM_NORMAL:
+		return cl->jump_held ? PMC_NORMAL_JUMP_HELD : PMC_NORMAL;
+	}
+	return PMC_NORMAL;
+}
+
+/*
+=============
 SV_WritePlayersToClient
 
 =============
@@ -319,8 +346,14 @@ void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizeb
 		}
 
 		if (client->spec_track && client->spec_track - 1 == j &&
-			ent->v.weaponframe) 
+			ent->v.weaponframe)
 			pflags |= PF_WEAPONFRAME;
+
+		// how the player moves (Z_EXT_PM_TYPE), for prediction
+		if (client->z_ext & Z_EXT_PM_TYPE)
+			pflags |= SV_PMCode (cl) << PF_PMC_SHIFT;
+		if (SV_PMTypeForClient (cl) == PM_LOCK && ent == clent)
+			pflags |= PF_COMMAND;	// the view angles the server sets
 
 		MSG_WriteByte (msg, svc_playerinfo);
 		MSG_WriteByte (msg, j);
@@ -363,6 +396,12 @@ void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizeb
 
 			cmd.buttons = 0;	// never send buttons
 			cmd.impulse = 0;	// never send impulses
+
+			if (ent == clent)
+			{	// PM_LOCK: only the view angles
+				VectorCopy (ent->v.v_angle, cmd.angles);
+				cmd.forwardmove = cmd.sidemove = cmd.upmove = 0;
+			}
 
 			MSG_WriteDeltaUsercmd (msg, &nullcmd, &cmd);
 		}

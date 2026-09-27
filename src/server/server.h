@@ -169,7 +169,7 @@ typedef struct client_s
 
 	usercmd_t		lastcmd;			// for filling in big drops and partial predictions
 	double			localtime;			// of last message
-	int				oldbuttons;
+	bool			jump_held;			// don't jump again until the button is released
 
 	float			maxspeed;			// localized maxspeed
 	float			entgravity;			// localized ent gravity
@@ -341,6 +341,7 @@ typedef struct
 #define	MOVETYPE_NOCLIP			8
 #define	MOVETYPE_FLYMISSILE		9		// extra size to monsters
 #define	MOVETYPE_BOUNCE			10
+#define	MOVETYPE_LOCK			15		// the server moves the player and turns the view (mvdsv)
 
 // edict->solid values
 #define	SOLID_NOT				0		// no interaction with other objects
@@ -399,6 +400,7 @@ extern	cvar_t	sv_mintic, sv_maxtic;
 extern	cvar_t	sv_bigcoords;
 extern	cvar_t	sv_maxdrate;
 extern	cvar_t	sv_maxpitch, sv_minpitch;
+extern	cvar_t	pm_ktjump, pm_bunnyspeedcap, pm_slidefix, pm_airstep, pm_pground, pm_rampjump;
 
 #define	SV_BIGCOORDS_REFUSAL	"This map goes past the standard coordinates of +-4096:\n" \
 	"it needs a client with FTE float coordinates (ezQuake, FTE, SoftWorld).\n"
@@ -525,6 +527,9 @@ void SV_ClientBaseline (const client_t *client, const edict_t *ent, entity_state
 // the reason to it when not
 bool SV_CanSwitchSide (client_t *cl, bool spectator);
 int SV_BoundRate (int rate);
+
+// sv_user.c: how the client's player moves (pmtype_t)
+int SV_PMTypeForClient (const client_t *cl);
 void SV_SetChannelRate (client_t *cl);	// before sending to it
 
 // sv_user.c: the view angles are being set for the client (MVD1 high-lag

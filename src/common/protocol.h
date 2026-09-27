@@ -156,8 +156,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	Z_EXT_VWEP			(1<<7)	// players carry visible weapons
 #define	Z_EXT_PF_SOLID		(1<<8)	// PF_SOLID is set in every playerinfo
 
-#define	SW_Z_EXTENSIONS		(Z_EXT_VIEWHEIGHT | Z_EXT_SERVERTIME | Z_EXT_PITCHLIMITS | Z_EXT_JOIN_OBSERVE | \
-	Z_EXT_PF_ONGROUND | Z_EXT_PF_SOLID)
+#define	SW_Z_EXTENSIONS		(Z_EXT_PM_TYPE | Z_EXT_PM_TYPE_NEW | Z_EXT_VIEWHEIGHT | Z_EXT_SERVERTIME | \
+	Z_EXT_PITCHLIMITS | Z_EXT_JOIN_OBSERVE | Z_EXT_PF_ONGROUND | Z_EXT_PF_SOLID)
 
 // what the client reads in recordings as well: FTE's voice chat is skipped
 #define	CL_FTE_READABLE		CL_FTE_EXTENSIONS
@@ -311,12 +311,22 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	PF_WEAPONFRAME	(1<<8)		// only sent for view player
 #define	PF_DEAD			(1<<9)		// don't block movement any more
 #define	PF_GIB			(1<<10)		// offset the view height differently
-#define	PF_NOGRAV		(1<<11)		// don't apply gravity for prediction
+#define	PF_PMC_SHIFT	11			// Z_EXT_PM_TYPE: how the player moves, 3 bits
+#define	PF_PMC_MASK		7
 #define	PF_EXTRA_PFS	(1<<15)		// FTE_PEXT_TRANS: a byte of flags 16-23 follows
 #define	PF_TRANS		(1<<17)		// FTE_PEXT_TRANS: a byte of alpha, after the weapon frame
 #define	PF_COLOURMOD	(1<<19)		// FTE_PEXT_COLOURMOD: three bytes of color, after the alpha
 #define	PF_ONGROUND		(1<<22)		// ZQuake; bit 14 on the wire without FTE_PEXT_TRANS
 #define	PF_SOLID		(1<<23)		// ZQuake; bit 15 on the wire without FTE_PEXT_TRANS
+
+// the PF_PMC codes; 3 and up need Z_EXT_PM_TYPE_NEW
+#define	PMC_NORMAL				0	// or dead, with PF_DEAD
+#define	PMC_NORMAL_JUMP_HELD	1
+#define	PMC_OLD_SPECTATOR		2
+#define	PMC_SPECTATOR			3
+#define	PMC_FLY					4
+#define	PMC_NONE				5
+#define	PMC_LOCK				6
 
 //==============================================
 

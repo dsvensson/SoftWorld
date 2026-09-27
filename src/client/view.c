@@ -92,7 +92,7 @@ float V_CalcBob (void)
 	if (cl.spectator)
 		return 0;
 
-	if (cl.pmove.onground == -1)
+	if (!cl.pmove.onground)
 		return bob;		// just use old value
 
 	bobtime += cls.frametime;
@@ -162,7 +162,7 @@ void V_DriftPitch (void)
 {
 	float		delta, move;
 
-	if (view_message->onground == -1 || cls.demoplayback )
+	if (!view_message->onground || cls.demoplayback )
 	{
 		cl.driftmove = 0;
 		cl.pitchvel = 0;

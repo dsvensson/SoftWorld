@@ -34,7 +34,7 @@ static cvar_t	cl_nolerp = {.name = "cl_nolerp", .string = "0", .archive = true};
 CL_PredictUsercmd
 ==============
 */
-void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u, bool spectator)
+void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u)
 {
 	// split up very long moves
 	if (u->msec > 50)
@@ -45,8 +45,8 @@ void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u, 
 		split = *u;
 		split.msec /= 2;
 
-		CL_PredictUsercmd (from, &temp, &split, spectator);
-		CL_PredictUsercmd (&temp, to, &split, spectator);
+		CL_PredictUsercmd (from, &temp, &split);
+		CL_PredictUsercmd (&temp, to, &split);
 		return;
 	}
 
@@ -55,10 +55,12 @@ void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u, 
 	VectorCopy (u->angles, cl.pmove.angles);
 	VectorCopy (from->velocity, cl.pmove.velocity);
 
-	cl.pmove.oldbuttons = from->oldbuttons;
+	// the jump's 50 msec carry over only from moves predicted here (ezQuake)
+	cl.pmove.jump_msec = (cl.z_ext & Z_EXT_PM_TYPE) ? 0 : from->jump_msec;
+	cl.pmove.jump_held = from->jump_held;
 	cl.pmove.waterjumptime = from->waterjumptime;
-	cl.pmove.dead = cl.stats[STAT_HEALTH] <= 0;
-	cl.pmove.spectator = spectator;
+	cl.pmove.pm_type = from->pm_type;
+	cl.pmove.onground = from->onground;
 
 	cl.pmove.cmd = *u;
 
@@ -66,7 +68,9 @@ void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u, 
 //for (i=0 ; i<3 ; i++)
 //pmove.origin[i] = ((int)(pmove.origin[i]*8))*0.125;
 	to->waterjumptime = cl.pmove.waterjumptime;
-	to->oldbuttons = cl.pmove.cmd.buttons;
+	to->pm_type = cl.pmove.pm_type;
+	to->jump_held = cl.pmove.jump_held;
+	to->jump_msec = cl.pmove.jump_msec;
 	VectorCopy (cl.pmove.origin, to->origin);
 	VectorCopy (cl.pmove.angles, to->viewangles);
 	VectorCopy (cl.pmove.velocity, to->velocity);
@@ -97,7 +101,7 @@ static void CL_PredictOrigin (void)
 
 	// this is the last frame received from the server
 	from = &cl.frames[cls.netchan.incoming_sequence & UPDATE_MASK];
-	cl.onground = from->playerstate[cl.playernum].onground != -1;
+	cl.onground = from->playerstate[cl.playernum].onground;
 
 	if (cl_nopred.value)
 	{
@@ -117,8 +121,8 @@ static void CL_PredictOrigin (void)
 	{
 		to = &cl.frames[(cls.netchan.incoming_sequence+i) & UPDATE_MASK];
 		CL_PredictUsercmd (&from->playerstate[cl.playernum]
-			, &to->playerstate[cl.playernum], &to->cmd, cl.spectator);
-		cl.onground = to->playerstate[cl.playernum].onground != -1;
+			, &to->playerstate[cl.playernum], &to->cmd);
+		cl.onground = to->playerstate[cl.playernum].onground;
 		if (to->senttime >= cl.time)
 			break;
 		from = to;
@@ -329,6 +333,8 @@ CL_PredictMove
 */
 void CL_PredictMove (bool repredict)
 {
+	player_state_t	*state;
+
 	if (cl_pushlatency.value > 0)
 		Cvar_Set ("pushlatency", "0");
 
@@ -362,6 +368,18 @@ void CL_PredictMove (bool repredict)
 		cls.state = ca_active;
 		snprintf (text, sizeof(text), "QuakeWorld: %s", cls.servername);
 		VID_SetCaption (text);
+	}
+
+	// PM_LOCK: the server moves the player and turns the view
+	state = &cl.frames[cls.netchan.incoming_sequence & UPDATE_MASK].playerstate[cl.playernum];
+	if (state->pm_type == PM_LOCK)
+	{
+		VectorCopy (state->velocity, cl.simvel);
+		VectorCopy (state->origin, cl.simorg);
+		VectorCopy (state->command.angles, cl.simangles);
+		cl.onground = false;
+		cl.crouch = 0;
+		return;
 	}
 
 	if (repredict || !CL_IndependentPhysics ())

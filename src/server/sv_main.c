@@ -55,6 +55,15 @@ static cvar_t	sv_maxrate = {.name = "sv_maxrate", .string = "50000"};
 // bytes per second to a client downloading, 0 no limit (FTE's)
 cvar_t	sv_maxdrate = {.name = "sv_maxdrate", .string = "10000000"};
 
+// player movement: serverinfo keys, so the clients predict the same (mvdsv's
+// names and defaults); pm_pground follows pm_airstep
+cvar_t	pm_ktjump = {.name = "pm_ktjump", .string = "1", .serverinfo = true};
+cvar_t	pm_bunnyspeedcap = {.name = "pm_bunnyspeedcap", .string = "", .serverinfo = true};
+cvar_t	pm_slidefix = {.name = "pm_slidefix", .string = "", .serverinfo = true};
+cvar_t	pm_airstep = {.name = "pm_airstep", .string = "", .serverinfo = true};
+cvar_t	pm_pground = {.name = "pm_pground", .string = "", .serverinfo = true};
+cvar_t	pm_rampjump = {.name = "pm_rampjump", .string = "", .serverinfo = true};
+
 // how far players may look up and down: serverinfo keys for the clients
 // (Z_EXT_PITCHLIMITS), and the server holds commands to them
 cvar_t sv_maxpitch = {.name = "maxpitch", .string = "80", .serverinfo = true};
@@ -1306,6 +1315,10 @@ void SV_CheckVars (void)
 	static char *pw, *spw;
 	int			v;
 
+	// the air step works best with the ground found by landing (mvdsv)
+	if (!pm_airstep.value != !pm_pground.value)
+		Cvar_Set ("pm_pground", pm_airstep.value ? "1" : "");
+
 	if (password.string == pw && spectator_password.string == spw)
 		return;
 	pw = password.string;
@@ -1441,6 +1454,12 @@ void SV_InitLocal (void)
 	Cvar_RegisterVariable (&sv_bigcoords);
 	Cvar_RegisterVariable (&sv_maxrate);
 	Cvar_RegisterVariable (&sv_maxdrate);
+	Cvar_RegisterVariable (&pm_ktjump);
+	Cvar_RegisterVariable (&pm_bunnyspeedcap);
+	Cvar_RegisterVariable (&pm_slidefix);
+	Cvar_RegisterVariable (&pm_airstep);
+	Cvar_RegisterVariable (&pm_pground);
+	Cvar_RegisterVariable (&pm_rampjump);
 	Cvar_RegisterVariable (&sv_maxpitch);
 	Cvar_RegisterVariable (&sv_minpitch);
 

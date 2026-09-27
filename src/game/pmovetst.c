@@ -39,6 +39,37 @@ int PM_PointContents (const playermove_t *pm, const vec3_t p)
 }
 
 /*
+==================
+PM_PointContentsAllBSPs
+
+The world and the brush models, not the boxes: solid if any is solid
+==================
+*/
+int PM_PointContentsAllBSPs (const playermove_t *pm, const vec3_t p)
+{
+	const physent_t	*pe;
+	const hull_t	*hull;
+	vec3_t	test;
+	int		i, result, contents;
+
+	contents = CONTENTS_EMPTY;
+	for (i=0 ; i<pm->numphysent ; i++)
+	{
+		pe = &pm->physents[i];
+		if (!pe->model)
+			continue;
+		hull = &pe->model->hulls[0];
+		VectorSubtract (p, pe->origin, test);
+		result = CM_HullPointContents (hull, hull->firstclipnode, test);
+		if (result == CONTENTS_SOLID)
+			return CONTENTS_SOLID;
+		if (contents == CONTENTS_EMPTY)
+			contents = result;
+	}
+	return contents;
+}
+
+/*
 ================
 PM_TestPlayerPosition
 
