@@ -1399,6 +1399,14 @@ void CL_SetUpPlayerPrediction(bool dopred)
 	frame_t			*frame;
 	struct predicted_player *pplayer;
 
+	// an MVD's players are where the recording has them (CL_PlayerPlace), and
+	// nothing is predicted against them: their moves here were a third of a frame
+	if (cls.mvdplayback)
+	{
+		memset (predicted_players, 0, sizeof(predicted_players));
+		return;
+	}
+
 	playertime = host.realtime - cls.latency + 0.02;
 	if (playertime > host.realtime)
 		playertime = host.realtime;
