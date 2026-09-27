@@ -70,6 +70,13 @@ void Sys_mkdir (char *path) { (void)path; }
 double Sys_DoubleTime (void) { return 0; }
 void *Sys_ReserveMemory (size_t size) { return calloc (1, size); }
 void Sys_CommitMemory (void *base, size_t size) { (void)base; (void)size; }
+int Sys_NumCores (void) { return 1; }
+void Sys_SetWorkers (int workers) { (void)workers; }
+void Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx)
+{
+	for (int i = 0 ; i < count ; i++)
+		job (ctx, i);
+}
 viddef_t vid;
 void VID_Update (void) { }
 

@@ -108,10 +108,10 @@ void D_WarpScreen (void)
 =============
 D_SpanTexmap
 
-The current surface's texture mapping, for the span kernels
+The current surface's texture mapping and 1/z, for the span kernels
 =============
 */
-static simd_texmap_t D_SpanTexmap (void)
+simd_texmap_t D_SpanTexmap (void)
 {
 	return (simd_texmap_t){
 		.sdivzorigin = d_sdivzorigin, .sdivzstepu = d_sdivzstepu, .sdivzstepv = d_sdivzstepv,
@@ -126,16 +126,17 @@ static simd_texmap_t D_SpanTexmap (void)
 /*
 =============
 Turbulent8
+
+The spans of a liquid, mapped as map says from its 64x64 texture
 =============
 */
-void Turbulent8 (espan_t *pspan)
+void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture)
 {
-	simd_texmap_t	map = D_SpanTexmap ();
 	const int		*turb = sintable + ((int)(r_scene.time*SPEED)&(CYCLE-1));
 
 	do
 	{
-		simd_turbspan (d_viewbuffer + (screenwidth * pspan->v) + pspan->u, &map, d_turbsource, d_pal30, turb,
+		simd_turbspan (d_viewbuffer + (screenwidth * pspan->v) + pspan->u, map, texture, d_pal30, turb,
 			pspan->u, pspan->v, pspan->count);
 	} while ((pspan = pspan->pnext) != NULL);
 }
@@ -194,15 +195,15 @@ void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb)
 /*
 =============
 D_DrawSpans
+
+Spans mapped as map says from a surface cache block
 =============
 */
-void D_DrawSpans (espan_t *pspan)
+void D_DrawSpans (espan_t *pspan, const simd_texmap_t *map, const pixel_t *block, int blockwidth)
 {
-	simd_texmap_t	map = D_SpanTexmap ();
-
 	do
 	{
-		simd_texspan (d_viewbuffer + (screenwidth * pspan->v) + pspan->u, &map, cacheblock, cachewidth,
+		simd_texspan (d_viewbuffer + (screenwidth * pspan->v) + pspan->u, map, block, blockwidth,
 			pspan->u, pspan->v, pspan->count);
 	} while ((pspan = pspan->pnext) != NULL);
 }
@@ -211,9 +212,11 @@ void D_DrawSpans (espan_t *pspan)
 /*
 =============
 D_DrawZSpans
+
+The 1/z of spans, as map has it
 =============
 */
-void D_DrawZSpans (espan_t *pspan)
+void D_DrawZSpans (espan_t *pspan, const simd_texmap_t *map)
 {
 	float	zi, du, dv;
 
@@ -222,9 +225,9 @@ void D_DrawZSpans (espan_t *pspan)
 	// calculate the initial 1/z
 		du = (float)pspan->u;
 		dv = (float)pspan->v;
-		zi = d_ziorigin + dv*d_zistepv + du*d_zistepu;
+		zi = map->ziorigin + dv*map->zistepv + du*map->zistepu;
 
-		simd_zspan (d_pzbuffer + (d_zwidth * pspan->v) + pspan->u, pspan->count, zi, d_zistepu);
+		simd_zspan (d_pzbuffer + (d_zwidth * pspan->v) + pspan->u, pspan->count, zi, map->zistepu);
 	} while ((pspan = pspan->pnext) != NULL);
 }
 

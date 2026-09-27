@@ -196,9 +196,9 @@ typedef struct
 							// whose light changed are drawn again
 } drawsurf_t;
 
-extern drawsurf_t	r_drawsurf;
+extern thread_local drawsurf_t	r_drawsurf;		// each thread draws surfaces of its own
 
-void R_DrawSurface (void);
+int R_DrawSurface (void);		// r_drawsurf; returns the texels drawn
 int R_SurfaceLightCount (const msurface_t *surf, int miplevel);	// values keptlight holds, 0 for none
 
 

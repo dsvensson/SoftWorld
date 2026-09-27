@@ -121,6 +121,9 @@ cvar_t	r_waterwarp = {.name = "r_waterwarp", .string = "1"};
 cvar_t	r_fullbright = {.name = "r_fullbright", .string = "0"};
 // 0: light through the colormap as Quake did; 1: light in RGB with 4x headroom
 static cvar_t	r_profile = {.name = "r_profile", .string = "0"};
+// threads drawing the view, this one included; 0 has one a core, at most R_AUTO_THREADS
+static cvar_t	r_threads = {.name = "r_threads", .string = "0", .archive = true};
+#define R_AUTO_THREADS	8		// the most r_threads 0 picks: more drew no faster (Ryzen 7950X)
 static void R_Profile_f (void);
 cvar_t	r_lightmode = {.name = "r_lightmode", .string = "1", .archive = true};
 // dynamic lights have color (r_lightmode 1)
@@ -213,6 +216,7 @@ void R_Init (void)
 	R_LightDataInit ();
 	Cvar_RegisterVariable (&r_lightmode);
 	Cvar_RegisterVariable (&r_profile);
+	Cvar_RegisterVariable (&r_threads);
 	Cmd_AddCommand ("r_profile_show", R_Profile_f);
 	Cvar_RegisterVariable (&r_dlight_color);
 	Cvar_RegisterVariable (&r_fullbright_scale);
@@ -359,6 +363,7 @@ static void R_Profile_f (void)
 	Con_Printf ("  %-10s %8.1f a frame (%.1f for dynamic lights), %.0f texels; cache ran out in %.1f%% of frames\n",
 		"surfaces", (double)r_profn[PROFN_SURFACES] / r_profframes, (double)r_profn[PROFN_DLIT] / r_profframes,
 		(double)r_profn[PROFN_TEXELS] / r_profframes, 100.0 * r_profthrash / r_profframes);
+	Con_Printf ("  %-10s %8.1f a frame\n", "batches", (double)r_profn[PROFN_BATCHES] / r_profframes);
 	Con_Printf ("  %-10s %8.1f%% of frames drew the 2D layer again\n", "hud",
 		100.0 * (double)r_profn[PROFN_HUD] / r_profframes);
 	memset (r_prof, 0, sizeof(r_prof));
@@ -390,6 +395,26 @@ R_CheckLightSettings
 Surfaces cached with other light settings are drawn again
 ===============
 */
+/*
+===============
+R_CheckThreads
+
+The worker threads r_threads asks for
+===============
+*/
+static void R_CheckThreads (void)
+{
+	static int	threads;
+	int			wanted = (int)r_threads.value;
+
+	if (wanted <= 0)
+		wanted = Sys_NumCores () < R_AUTO_THREADS ? Sys_NumCores () : R_AUTO_THREADS;
+	if (wanted == threads)
+		return;
+	threads = wanted;
+	Sys_SetWorkers (threads - 1);
+}
+
 static void R_CheckLightSettings (void)
 {
 	static float	lightmode = -1, dlightcolor = -1, fbscale = -1;
@@ -1188,6 +1213,7 @@ void R_RenderView (void)
 		r_time1 = (float)Sys_DoubleTime ();
 
 	R_CheckLightSettings ();
+	R_CheckThreads ();
 	R_SetupFrame ();
 
 	R_MarkLeaves ();	// done here so we know if we're in water

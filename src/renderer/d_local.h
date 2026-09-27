@@ -43,6 +43,7 @@ typedef struct surfcache_s
 	int					lightadj[MAXLIGHTMAPS]; // checked for strobe flush
 	int					dlight;
 	int					lightcount;	// light values kept after the texels, 0 if none are yet
+	unsigned			batch;		// the batch of surfaces that last used it (D_BeginSurfaceBatch)
 	int					size;		// including header
 	unsigned			width;
 	unsigned			height;		// DEBUG only needed for debug
@@ -72,9 +73,10 @@ extern fixed16_t	sadjust, tadjust;
 extern fixed16_t	bbextents, bbextentt;
 
 
-void D_DrawSpans (espan_t *pspans);
-void D_DrawZSpans (espan_t *pspans);
-void Turbulent8 (espan_t *pspan);
+simd_texmap_t D_SpanTexmap (void);		// of the current surface, from the d_ gradients
+void D_DrawSpans (espan_t *pspan, const simd_texmap_t *map, const pixel_t *block, int blockwidth);
+void D_DrawZSpans (espan_t *pspan, const simd_texmap_t *map);
+void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture);
 int D_SurfaceMipLevel (msurface_t *surface, int miplevel);
 
 void D_DrawSkyScans (espan_t *pspan);
@@ -83,6 +85,19 @@ extern byte		*d_turbsource;	// the 64x64 texture of a turbulent surface
 
 extern void (*prealspandrawer)(void);
 surfcache_t	*D_CacheSurface (msurface_t *surface, int miplevel);
+
+// surfaces cached in batches: prepared one by one, then their blocks drawn
+// together, on any threads (D_DrawSurfaces)
+typedef enum
+{
+	CACHE_READY,		// the block's texels are right
+	CACHE_DRAW,			// they are to be drawn first
+	CACHE_TAKEN			// an earlier surface of the batch needs the block, or its room
+} cacheprep_t;
+
+void		D_BeginSurfaceBatch (void);
+cacheprep_t	D_PrepareCacheSurface (msurface_t *surface, int miplevel, surfcache_t **pcache, drawsurf_t *draw);
+int			D_DrawCacheSurface (const drawsurf_t *draw);	// returns the texels drawn
 // a fence surface's clipped, projected polygon, with 1/z gradients set;
 // transformed_org is the view origin in the model's space
 void D_DrawFence (msurface_t *surf, const vec3_t transformed_org, emitpoint_t *pverts, int nump, float nearzi);
@@ -136,4 +151,3 @@ void D_SetSpriteSize (int height);
 extern int		d_minmip;
 extern float	d_scalemip[3];
 
-extern void (*d_drawspans) (espan_t *pspan);

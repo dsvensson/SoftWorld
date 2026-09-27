@@ -191,17 +191,211 @@ void D_DrawTranslucentFace (msurface_t *surf, const vec3_t transformed_org, emit
 
 
 /*
+===============================================================================
+
+THE SURFACES OF A FRAME
+
+Drawn in batches: the surfaces whose spans the edge scan has gathered are
+prepared one by one on this thread (mip level, texture mapping, cache block,
+and a rotated brush model's view), then the cache blocks that must be drawn
+are drawn, and then the surfaces' spans, both spread over the worker threads.
+Each pixel is in the spans of one surface only, so the order the surfaces are
+drawn in makes no difference.
+
+===============================================================================
+*/
+
+typedef enum
+{
+	DS_SOLID,			// one color
+	DS_SKY,
+	DS_TURB,			// a liquid, from its texture
+	DS_CACHED			// from its surface cache block
+} dsdraw_t;
+
+typedef struct
+{
+	surf_t			*surf;
+	dsdraw_t		draw;
+	int				color;			// DS_SOLID: palette index
+	simd_texmap_t	map;			// the texture mapping, and the 1/z of all
+	const byte		*turb;			// DS_TURB: the 64x64 texture
+	msurface_t		*face;			// DS_CACHED: the surface, its entity,
+	entity_t		*entity;
+	int				miplevel;		// mip level and block
+	surfcache_t		*cache;
+	bool			build;			// the block is drawn first, as buildsurf says
+	drawsurf_t		buildsurf;
+	int				texels;			// drawn into the block
+} dsjob_t;
+
+static dsjob_t	*d_jobs;			// the batch
+static int		*d_builds;			// the jobs whose blocks are drawn first
+static int		d_numjobs, d_maxjobs;
+static vec3_t	world_transformed_modelorg;
+
+/*
+==============
+D_PrepareSurface
+
+A surface with spans as a job of the batch. Returns false if an earlier job
+of the batch has the cache block it needs, or the room for it: the batch is
+drawn first, and the surface prepared again in the next.
+==============
+*/
+static bool D_PrepareSurface (surf_t *s, dsjob_t *job)
+{
+	msurface_t	*pface = s->data;
+	vec3_t		local_modelorg;
+	cacheprep_t	prep = CACHE_READY;
+
+	*job = (dsjob_t){.surf = s};
+	d_zistepu = s->d_zistepu;
+	d_zistepv = s->d_zistepv;
+	d_ziorigin = s->d_ziorigin;
+
+	if (s->flags & SURF_DRAWSKY)
+	{
+		if (!r_skymade)
+			R_MakeSky ();
+		job->draw = DS_SKY;
+	}
+	else if (s->flags & SURF_DRAWBACKGROUND)
+	{
+	// the background is infinitely far: 1/z is 0
+		d_zistepu = 0;
+		d_zistepv = 0;
+		d_ziorigin = 0;
+		job->draw = DS_SOLID;
+		job->color = (int)r_clearcolor.value & 0xFF;
+	}
+	else
+	{
+		if (s->insubmodel)
+		{
+		// FIXME: we don't want to do all this for every polygon!
+		// TODO: store once at start of frame
+			currententity = s->entity;	//FIXME: make this passed in to
+										// R_RotateBmodel ()
+			VectorSubtract (r_origin, currententity->origin, local_modelorg);
+			TransformVector (local_modelorg, transformed_modelorg);
+
+			R_RotateBmodel ();	// FIXME: don't mess with the frustum,
+								// make entity passed in
+		}
+
+		if (s->flags & SURF_DRAWTURB)
+		{
+			miplevel = 0;
+			job->draw = DS_TURB;
+			job->turb = (byte *)pface->texinfo->texture + pface->texinfo->texture->offsets[0];
+		}
+		else
+		{
+			miplevel = D_MipLevelForScale (s->nearzi * scale_for_mip * pface->texinfo->mipadjust);
+			miplevel = D_SurfaceMipLevel (pface, miplevel);
+			prep = D_PrepareCacheSurface (pface, miplevel, &job->cache, &job->buildsurf);
+			job->draw = DS_CACHED;
+			job->face = pface;
+			job->entity = currententity;
+			job->miplevel = miplevel;
+			job->build = prep == CACHE_DRAW;
+		}
+		D_CalcGradients (pface);
+
+		if (s->insubmodel)
+		{
+		//
+		// restore the old drawing state
+		// FIXME: we don't want to do this every time!
+		// TODO: speed up
+		//
+			VectorCopy (world_transformed_modelorg, transformed_modelorg);
+			VectorCopy (base_vpn, vpn);
+			VectorCopy (base_vup, vup);
+			VectorCopy (base_vright, vright);
+			VectorCopy (base_modelorg, modelorg);
+			R_TransformFrustum ();
+			currententity = &r_worldentity;
+		}
+	}
+
+	job->map = D_SpanTexmap ();
+	return prep != CACHE_TAKEN;
+}
+
+// a job's block drawn (D_PrepareCacheSurface)
+static void D_BuildJob (void *ctx, int index)
+{
+	dsjob_t	*job = &d_jobs[((int *)ctx)[index]];
+
+	job->texels = D_DrawCacheSurface (&job->buildsurf);
+}
+
+// a job's spans and their 1/z
+static void D_DrawJob (void *ctx, int index)
+{
+	dsjob_t	*job = &((dsjob_t *)ctx)[index];
+	espan_t	*spans = job->surf->spans;
+
+	switch (job->draw)
+	{
+	case DS_SOLID:
+		D_DrawSolidSurface (job->surf, job->color);
+		break;
+	case DS_SKY:
+		D_DrawSkyScans (spans);
+		break;
+	case DS_TURB:
+		Turbulent8 (spans, &job->map, job->turb);
+		break;
+	case DS_CACHED:
+		D_DrawSpans (spans, &job->map, job->cache->data, (int)job->cache->width);
+		break;
+	}
+	D_DrawZSpans (spans, &job->map);
+}
+
+/*
+==============
+D_DrawBatch
+
+The prepared surfaces: their blocks, then their spans
+==============
+*/
+static void D_DrawBatch (void)
+{
+	double	prof;
+	int		i, numbuilds, texels;
+
+	numbuilds = 0;
+	for (i=0 ; i<d_numjobs ; i++)
+		if (d_jobs[i].build)
+			d_builds[numbuilds++] = i;
+	prof = R_ProfStart ();
+	Sys_Parallel (numbuilds, D_BuildJob, d_builds);
+	R_ProfEnd (PROF_SURFCACHE, prof);
+	Sys_Parallel (d_numjobs, D_DrawJob, d_jobs);
+
+	texels = 0;
+	for (i=0 ; i<d_numjobs ; i++)
+		texels += d_jobs[i].texels;
+	R_ProfCount (PROFN_TEXELS, texels);
+	R_ProfCount (PROFN_BATCHES, 1);
+	d_numjobs = 0;
+	D_BeginSurfaceBatch ();
+}
+
+/*
 ==============
 D_DrawSurfaces
+
+The surfaces' spans the edge scan has gathered
 ==============
 */
 void D_DrawSurfaces (void)
 {
 	surf_t			*s;
-	msurface_t		*pface;
-	surfcache_t		*pcurrentcache;
-	vec3_t			world_transformed_modelorg;
-	vec3_t			local_modelorg;
 	double			prof = R_ProfStart ();
 
 	currententity = &r_worldentity;
@@ -213,144 +407,35 @@ void D_DrawSurfaces (void)
 	{
 		for (s = &surfaces[1] ; s<surface_p ; s++)
 		{
+			simd_texmap_t	map = {.ziorigin = s->d_ziorigin, .zistepu = s->d_zistepu, .zistepv = s->d_zistepv};
+
 			if (!s->spans)
 				continue;
-
-			d_zistepu = s->d_zistepu;
-			d_zistepv = s->d_zistepv;
-			d_ziorigin = s->d_ziorigin;
 
 			D_DrawSolidSurface (s, (int)((intptr_t)s->data & 0xFF));
-			D_DrawZSpans (s->spans);
+			D_DrawZSpans (s->spans, &map);
 		}
+		R_ProfEnd (PROF_DRAW, prof);
+		return;
 	}
-	else
+
+	D_BeginSurfaceBatch ();
+	for (s = &surfaces[1] ; s<surface_p ; s++)
 	{
-		for (s = &surfaces[1] ; s<surface_p ; s++)
+		if (!s->spans)
+			continue;
+
+		r_drawnpolycount++;
+		if (d_numjobs == d_maxjobs)
 		{
-			if (!s->spans)
-				continue;
-
-			r_drawnpolycount++;
-
-			d_zistepu = s->d_zistepu;
-			d_zistepv = s->d_zistepv;
-			d_ziorigin = s->d_ziorigin;
-
-			if (s->flags & SURF_DRAWSKY)
-			{
-				if (!r_skymade)
-				{
-					R_MakeSky ();
-				}
-
-				D_DrawSkyScans (s->spans);
-				D_DrawZSpans (s->spans);
-			}
-			else if (s->flags & SURF_DRAWBACKGROUND)
-			{
-			// the background is infinitely far: 1/z is 0
-				d_zistepu = 0;
-				d_zistepv = 0;
-				d_ziorigin = 0;
-
-				D_DrawSolidSurface (s, (int)r_clearcolor.value & 0xFF);
-				D_DrawZSpans (s->spans);
-			}
-			else if (s->flags & SURF_DRAWTURB)
-			{
-				pface = s->data;
-				miplevel = 0;
-				d_turbsource = (byte *)pface->texinfo->texture +
-						pface->texinfo->texture->offsets[0];
-
-				if (s->insubmodel)
-				{
-				// FIXME: we don't want to do all this for every polygon!
-				// TODO: store once at start of frame
-					currententity = s->entity;	//FIXME: make this passed in to
-												// R_RotateBmodel ()
-					VectorSubtract (r_origin, currententity->origin,
-							local_modelorg);
-					TransformVector (local_modelorg, transformed_modelorg);
-
-					R_RotateBmodel ();	// FIXME: don't mess with the frustum,
-										// make entity passed in
-				}
-
-				D_CalcGradients (pface);
-
-				Turbulent8 (s->spans);
-				D_DrawZSpans (s->spans);
-
-				if (s->insubmodel)
-				{
-				//
-				// restore the old drawing state
-				// FIXME: we don't want to do this every time!
-				// TODO: speed up
-				//
-					currententity = &r_worldentity;
-					VectorCopy (world_transformed_modelorg,
-								transformed_modelorg);
-					VectorCopy (base_vpn, vpn);
-					VectorCopy (base_vup, vup);
-					VectorCopy (base_vright, vright);
-					VectorCopy (base_modelorg, modelorg);
-					R_TransformFrustum ();
-				}
-			}
-			else
-			{
-				if (s->insubmodel)
-				{
-				// FIXME: we don't want to do all this for every polygon!
-				// TODO: store once at start of frame
-					currententity = s->entity;	//FIXME: make this passed in to
-												// R_RotateBmodel ()
-					VectorSubtract (r_origin, currententity->origin, local_modelorg);
-					TransformVector (local_modelorg, transformed_modelorg);
-
-					R_RotateBmodel ();	// FIXME: don't mess with the frustum,
-										// make entity passed in
-				}
-
-				pface = s->data;
-				miplevel = D_MipLevelForScale (s->nearzi * scale_for_mip
-				* pface->texinfo->mipadjust);
-				miplevel = D_SurfaceMipLevel (pface, miplevel);
-
-			// FIXME: make this passed in to D_CacheSurface
-				pcurrentcache = D_CacheSurface (pface, miplevel);
-
-				cacheblock = pcurrentcache->data;
-				cachewidth = pcurrentcache->width;
-
-				D_CalcGradients (pface);
-
-				(*d_drawspans) (s->spans);
-
-				D_DrawZSpans (s->spans);
-
-				if (s->insubmodel)
-				{
-				//
-				// restore the old drawing state
-				// FIXME: we don't want to do this every time!
-				// TODO: speed up
-				//
-					VectorCopy (world_transformed_modelorg,
-								transformed_modelorg);
-					VectorCopy (base_vpn, vpn);
-					VectorCopy (base_vup, vup);
-					VectorCopy (base_vright, vright);
-					VectorCopy (base_modelorg, modelorg);
-					R_TransformFrustum ();
-					currententity = &r_worldentity;
-				}
-			}
+			d_maxjobs = d_maxjobs ? d_maxjobs * 2 : 256;
+			d_jobs = Mem_Realloc (d_jobs, (size_t)d_maxjobs * sizeof(*d_jobs));
+			d_builds = Mem_Realloc (d_builds, (size_t)d_maxjobs * sizeof(*d_builds));
 		}
+		while (!D_PrepareSurface (s, &d_jobs[d_numjobs]))
+			D_DrawBatch ();
+		d_numjobs++;
 	}
+	D_DrawBatch ();
 	R_ProfEnd (PROF_DRAW, prof);
 }
-

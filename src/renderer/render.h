@@ -164,6 +164,7 @@ typedef enum
 	PROFN_TEXELS,		// their texels
 	PROFN_DLIT,			// the surfaces lit because a dynamic light touches them
 	PROFN_HUD,			// frames whose 2D changed and was drawn
+	PROFN_BATCHES,		// batches of surfaces drawn (D_DrawSurfaces)
 	PROFN_COUNT
 } profn_t;
 

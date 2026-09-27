@@ -72,3 +72,19 @@ void	Sys_SendKeyEvents (void);
 
 // returns the clipboard's text as a malloc'd string the caller frees, or NULL
 char	*Sys_GetClipboardText (void);
+
+//
+// worker threads
+//
+
+// the processor's cores (not the threads each may run at once)
+int		Sys_NumCores (void);
+
+// the worker threads besides the calling one, 0 for none; they are started
+// and stopped here, between runs of Sys_Parallel
+void	Sys_SetWorkers (int workers);
+
+// job (ctx, i) for each i of 0 .. count-1, spread over the calling thread and
+// the workers in no particular order; returns once all have finished. Jobs
+// must not call Sys_Parallel, Sys_SetWorkers or Sys_Error.
+void	Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx);

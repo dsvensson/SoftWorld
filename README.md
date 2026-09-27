@@ -74,6 +74,9 @@ Worth knowing:
 | `-scale n`, `vid_scale` | render at 320×200 times n; 0 picks the largest that fits the window |
 | `vid_widescreen`, `vid_crt` | wider view (hor+); CRT pixel aspect |
 | `r_lightmode` | 1 HDR light (the default), 0 lighting as Quake had it |
+| `r_threads` | threads drawing the view; 0 (the default) one a core, at most 8 |
+| `gamma`, `vid_contrast` | the view's gamma and contrast; the HUD keeps its own |
+| `r_profile 1`, `r_profile_show` | time a frame takes, by stage |
 | `cl_maxfps` | frame rate cap; 0 is none but the display's |
 | `demo_speed`, `pause` | MVD playback speed, and pause |
 | `demo_jump [+\|-][m:]s` | seek in an MVD |

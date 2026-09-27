@@ -12,8 +12,8 @@ endforeach()
 
 # Windows services shared by every program
 sw_add_module(sw_platform_win
-	win/sys_win.c win/net_udp_win.c win/net_tcp_win.c)
-target_link_libraries(sw_platform_win PUBLIC sw_net sw_common ws2_32)
+	win/sys_win.c win/sys_win_workers.c win/net_udp_win.c win/net_tcp_win.c)
+target_link_libraries(sw_platform_win PUBLIC sw_net sw_common ws2_32 synchronization)
 
 set(SW_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 file(MAKE_DIRECTORY "${SW_SHADER_DIR}")

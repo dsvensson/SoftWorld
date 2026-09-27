@@ -22,44 +22,47 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 #include "r_local.h"
 
-drawsurf_t	r_drawsurf;
+// a thread's surface being drawn, and what drawing it takes: each thread draws
+// surfaces of its own (D_DrawSurfaces)
+thread_local drawsurf_t	r_drawsurf;
 
-static int				lightleft, blocksize, sourcetstep;
-static int				lightright, lightleftstep, lightrightstep, blockdivshift;
-static unsigned		blockdivmask;
-static pixel_t			*prowdestbase;
-static unsigned char	*pbasesource;
-static int				surfrowpixels;
-static unsigned		*r_lightptr;			// the light at the column's block corners
-static unsigned		*r_lightptr_rgb;
-static int				r_stepback;
-static int				r_lightwidth;
-static int				r_numhblocks, r_numvblocks;
-static unsigned char	*r_source, *r_sourcemax;
+static thread_local int				lightleft, blocksize, sourcetstep;
+static thread_local int				lightright, lightleftstep, lightrightstep, blockdivshift;
+static thread_local unsigned		blockdivmask;
+static thread_local pixel_t			*prowdestbase;
+static thread_local unsigned char	*pbasesource;
+static thread_local int				surfrowpixels;
+static thread_local unsigned		*r_lightptr;			// the light at the column's block corners
+static thread_local unsigned		*r_lightptr_rgb;
+static thread_local int				r_stepback;
+static thread_local int				r_lightwidth;
+static thread_local int				r_numhblocks, r_numvblocks;
+static thread_local unsigned char	*r_source, *r_sourcemax;
+static thread_local int				r_texels;		// drawn of the surface
 
 static void R_DrawSurfaceBlock (void);
 static void R_DrawSurfaceBlockRGB (void);
 
 
 
-static unsigned		*blocklights;			// r_lightmode 0: 8.8
-static unsigned		*blocklights_rgb;		// r_lightmode 1: LIGHT_ONE is 1.0
-static int			blocklights_size;		// samples they hold
-static byte			*r_lightchanged;		// per sample: not the light kept with the texels
-static const byte	*r_columnchanged;		// the block column's, NULL to draw every block
+static thread_local unsigned		*blocklights;			// r_lightmode 0: 8.8
+static thread_local unsigned		*blocklights_rgb;		// r_lightmode 1: LIGHT_ONE is 1.0
+static thread_local int			blocklights_size;		// samples they hold
+static thread_local byte			*r_lightchanged;		// per sample: not the light kept with the texels
+static thread_local const byte	*r_columnchanged;		// the block column's, NULL to draw every block
 
 // the light of the surface being built is on a grid of 1 << r_lightshift
 // texels, r_lightgrid[0] x r_lightgrid[1] points; for a lightmap that isn't
 // vanilla, where each point takes its luxels from
-static int			r_lightshift;
-static int			r_lightgrid[2];
+static thread_local int			r_lightshift;
+static thread_local int			r_lightgrid[2];
 typedef struct
 {
 	int		index;			// the top left luxel
 	int		dx, dy;			// to the right and lower ones, 0 on the lightmap's edge
 	int		fx, fy;			// the weights of those, 0 .. 256
 } lightsample_t;
-static lightsample_t	*r_lightsamples;
+static thread_local lightsample_t	*r_lightsamples;
 
 /*
 ===============
@@ -499,7 +502,7 @@ static const byte *R_KeepLight (void)
 	return changed;
 }
 
-void R_DrawSurface (void)
+int R_DrawSurface (void)
 {
 	unsigned char	*basetptr;
 	int				smax, tmax, twidth;
@@ -516,6 +519,7 @@ void R_DrawSurface (void)
 	else
 		R_BuildLightMap ();
 	changed = R_KeepLight ();
+	r_texels = 0;
 
 	surfrowpixels = r_drawsurf.rowpixels;
 
@@ -583,6 +587,7 @@ void R_DrawSurface (void)
 
 	if (r_drawsurf.surf->flags & SURF_DRAWFENCE)
 		R_MarkFenceTexels ();
+	return r_texels;
 }
 
 
@@ -630,7 +635,7 @@ static void R_DrawSurfaceBlock (void)
 			continue;
 		}
 
-		R_ProfCount (PROFN_TEXELS, blocksize * blocksize);
+		r_texels += blocksize * blocksize;
 		lightleft = r_lightptr[0];
 		lightright = r_lightptr[1];
 		lightleftstep = (r_lightptr[r_lightwidth] - lightleft) >> shift;
@@ -686,7 +691,7 @@ static void R_DrawSurfaceBlockRGB (void)
 			continue;
 		}
 
-		R_ProfCount (PROFN_TEXELS, blocksize * blocksize);
+		r_texels += blocksize * blocksize;
 		for (c=0 ; c<3 ; c++)
 		{
 			left[c] = (int)lp[c];
