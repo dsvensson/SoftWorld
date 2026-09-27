@@ -64,9 +64,6 @@ unsigned	Sys_Seed (void);
 // arrives; may return early, so callers recheck what they wait for
 void	Sys_WaitUntil (double time);
 
-// directory holding the running executable, with '/' separators and no trailing '/'
-const char *Sys_ExecutableDir (void);
-
 // a line typed on the dedicated server console, or NULL
 char	*Sys_ConsoleInput (void);
 

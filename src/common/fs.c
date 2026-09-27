@@ -715,12 +715,6 @@ static void COM_InitFilesystem (const char *basedir)
 		Q_strncpyz (com_basedir, basedir, sizeof(com_basedir));
 
 //
-// files shipped next to the executable (qw/qwprogs.dat) have the lowest priority
-//
-	if (Q_strcasecmp (Sys_ExecutableDir (), com_basedir))
-		COM_AddGameDirectory (va("%s/qw", Sys_ExecutableDir ()));
-
-//
 // start up with id1 by default
 //
 	COM_AddGameDirectory (va("%s/id1", com_basedir) );

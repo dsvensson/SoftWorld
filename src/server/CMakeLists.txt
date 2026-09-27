@@ -4,6 +4,10 @@ sw_add_module(sw_server
 target_link_libraries(sw_server PUBLIC sw_game sw_net sw_common)
 target_include_directories(sw_server PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+# the game the server runs when the game directory has none: qw-qc, built in
+include(qwprogs)
+target_sources(sw_server PRIVATE "${SW_QC_BUILD}/qwprogs_data.c")
+
 # the client-only program's server: sv_public.h with nothing behind it
 sw_add_module(sw_server_null
 	sv_null.c)

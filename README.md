@@ -18,6 +18,9 @@ You need Windows 10 or 11 on x64, and:
 - Visual Studio 2026 with the C++ workload. It provides MSVC, CMake, Ninja and the Windows
   SDK.
 - For the clang build, Visual Studio's LLVM (clang-cl) component.
+- Optionally, fteqcc: found on the PATH, or named by the `FTEQCC` environment variable when
+  configuring, it compiles the server's game (`qw-qc`). Without it, the `qwprogs.dat` in
+  `qw-qc` is used as it is.
 
 Build from a Visual Studio developer prompt (x64):
 
@@ -42,12 +45,14 @@ directory the `SW_BASEDIR` environment variable names, and is skipped without it
 
 ## Programs
 
-The executables land in `build/<preset>/<config>/`, with the server's game code in `qw/`
-beside them.
+The executables land in `build/<preset>/<config>/`.
 
 - **`softworld`:** the client, and a server of its own for `map`.
 - **`softworld-client`:** the client without a server.
 - **`softworld-server`:** the dedicated server, in a console.
+
+The two with a server carry its game inside them: a game directory without a `qwprogs.dat`
+runs the built-in one.
 
 ## Running
 

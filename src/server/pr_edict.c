@@ -774,7 +774,7 @@ PR_LoadProgs
 */
 void PR_LoadProgs (void)
 {
-	int		i;
+	int		i, size;
 	char	num[32];
 	dfunction_t *f;
 	ddef_t	*def;
@@ -785,15 +785,21 @@ void PR_LoadProgs (void)
 
 	if (pr.progs)
 		Mem_Free (pr.progs);
+	// the game directory's, else the one the program was built with (a
+	// progs.dat would be NetQuake's, which id1 always has)
 	pr.progs = (dprograms_t *)FS_LoadFile ("qwprogs.dat", NULL);
+	size = com_filesize;
 	if (!pr.progs)
-		pr.progs = (dprograms_t *)FS_LoadFile ("progs.dat", NULL);
-	if (!pr.progs)
-		SV_Error ("PR_LoadProgs: couldn't load progs.dat");
-	Con_DPrintf ("Programs occupy %iK.\n", com_filesize/1024);
+	{
+		size = (int)sv_qwprogs_size;
+		pr.progs = Mem_Alloc (sv_qwprogs_size);
+		memcpy (pr.progs, sv_qwprogs, sv_qwprogs_size);
+		Con_DPrintf ("qwprogs.dat: the one built in\n");
+	}
+	Con_DPrintf ("Programs occupy %iK.\n", size/1024);
 
 // add prog crc to the serverinfo
-	snprintf (num, sizeof(num), "%i", CRC_Block ((byte *)pr.progs, com_filesize));
+	snprintf (num, sizeof(num), "%i", CRC_Block ((byte *)pr.progs, size));
 	Info_SetValueForStarKey (svs.info, "*progs", num, MAX_SERVERINFO_STRING, SV_InfoCharset ());
 
 // byte swap the header

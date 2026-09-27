@@ -53,11 +53,6 @@ sw_add_program(softworld-server
 	$<TARGET_OBJECTS:sw_entry_con>)
 target_link_libraries(softworld-server PRIVATE sw_server sw_platform_con)
 
-# The server loads qwprogs.dat from <exe dir>/qw.
 foreach(target softworld softworld-server)
 	sw_copy_sanitizer_runtime(${target})
-	add_custom_command(TARGET ${target} POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${target}>/qw"
-		COMMAND ${CMAKE_COMMAND} -E copy_if_different
-			"${PROJECT_SOURCE_DIR}/qw-qc/qwprogs.dat" "$<TARGET_FILE_DIR:${target}>/qw/qwprogs.dat")
 endforeach()

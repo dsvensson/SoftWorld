@@ -95,6 +95,11 @@ void PR_ResetStack (void);	// after an error left functions running
 void PR_ExecuteProgram (func_t fnum);
 void PR_LoadProgs (void);
 
+// qw-qc's qwprogs.dat as the program was built with it (qwprogs_data.c, which
+// cmake/qwprogs.cmake makes): the game when the game directory has none
+extern const unsigned char	sv_qwprogs[];
+extern const size_t			sv_qwprogs_size;
+
 void PR_Profile_f (void);
 
 edict_t *ED_Alloc (void);

@@ -99,31 +99,6 @@ double Sys_DoubleTime (void)
 	return (double)(now.QuadPart - start.QuadPart) / (double)frequency.QuadPart;
 }
 
-const char *Sys_ExecutableDir (void)
-{
-	static char	dir[MAX_PATH];
-	char		*p;
-	DWORD		len;
-
-	if (dir[0])
-		return dir;
-
-	len = GetModuleFileNameA (NULL, dir, sizeof(dir));
-	if (!len || len >= sizeof(dir))
-	{
-		dir[0] = '.';
-		dir[1] = 0;
-		return dir;
-	}
-	for (p = dir ; *p ; p++)
-		if (*p == '\\')
-			*p = '/';
-	p = strrchr (dir, '/');
-	if (p)
-		*p = 0;
-	return dir;
-}
-
 void *Sys_ReserveMemory (size_t size)
 {
 	void	*base = VirtualAlloc (NULL, size, MEM_RESERVE, PAGE_NOACCESS);

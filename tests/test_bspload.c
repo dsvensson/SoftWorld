@@ -67,7 +67,6 @@ void Sys_Error (char *error, ...)
 // the rest is linked in but never called while loading maps
 int Sys_FileTime (char *path) { (void)path; return -1; }
 void Sys_mkdir (char *path) { (void)path; }
-const char *Sys_ExecutableDir (void) { return "."; }
 double Sys_DoubleTime (void) { return 0; }
 void *Sys_ReserveMemory (size_t size) { return calloc (1, size); }
 void Sys_CommitMemory (void *base, size_t size) { (void)base; (void)size; }
