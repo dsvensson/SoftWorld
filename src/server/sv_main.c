@@ -50,6 +50,10 @@ cvar_t sv_phs = {.name = "sv_phs", .string = "1"};
 // float coordinates (FTE_PEXT_FLOATCOORDS) for every map, not just those
 // past the standard +-4096; clients without them can't join
 cvar_t sv_bigcoords = {.name = "sv_bigcoords", .string = "0"};
+// the most bytes per second a client's rate may ask for, 0 no limit (FTE's)
+static cvar_t	sv_maxrate = {.name = "sv_maxrate", .string = "50000"};
+// bytes per second to a client downloading, 0 no limit (FTE's)
+cvar_t	sv_maxdrate = {.name = "sv_maxdrate", .string = "10000000"};
 
 // how far players may look up and down: serverinfo keys for the clients
 // (Z_EXT_PITCHLIMITS), and the server holds commands to them
@@ -1435,6 +1439,8 @@ void SV_InitLocal (void)
 	Cvar_RegisterVariable (&sv_mintic);
 	Cvar_RegisterVariable (&sv_maxtic);
 	Cvar_RegisterVariable (&sv_bigcoords);
+	Cvar_RegisterVariable (&sv_maxrate);
+	Cvar_RegisterVariable (&sv_maxdrate);
 	Cvar_RegisterVariable (&sv_maxpitch);
 	Cvar_RegisterVariable (&sv_minpitch);
 
@@ -1574,6 +1580,37 @@ void Master_Shutdown (void)
 }
 
 /*
+==================
+SV_BoundRate
+
+A client's rate, at least 500 and at most sv_maxrate
+==================
+*/
+int SV_BoundRate (int rate)
+{
+	if (sv_maxrate.value > 0 && rate > sv_maxrate.value)
+		rate = (int)sv_maxrate.value;
+	if (rate < 500)
+		rate = 500;
+	return rate;
+}
+
+/*
+==================
+SV_SetChannelRate
+
+The client's rate, or while it downloads sv_maxdrate (FTE)
+==================
+*/
+void SV_SetChannelRate (client_t *cl)
+{
+	if (!cl->download)
+		cl->netchan.rate = cl->rate;
+	else
+		cl->netchan.rate = sv_maxdrate.value > 0 ? 1.0 / sv_maxdrate.value : 0;
+}
+
+/*
 =================
 SV_ExtractFromUserinfo
 
@@ -1673,17 +1710,9 @@ void SV_ExtractFromUserinfo (client_t *cl)
 
 	strncpy (cl->name, val, sizeof(cl->name)-1);	
 
-	// rate command
+	// rate command; vanilla's 2500 without one
 	val = Info_ValueForKey (cl->userinfo, "rate");
-	if (strlen(val))
-	{
-		i = atoi(val);
-		if (i < 500)
-			i = 500;
-		if (i > 10000)
-			i = 10000;
-		cl->netchan.rate = 1.0/i;
-	}
+	cl->rate = 1.0 / SV_BoundRate (*val ? atoi (val) : 2500);
 
 	// msg command
 	val = Info_ValueForKey (cl->userinfo, "msg");

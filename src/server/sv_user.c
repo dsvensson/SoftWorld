@@ -708,12 +708,168 @@ void SV_Begin_f (void)
 
 /*
 ==================
+SV_DownloadFailed
+
+Tells the client why it is not getting the file, or no more of it. A chunked
+download's client hears the reason: -1 not found, -2 not allowed, -3 the
+server stopped sending.
+==================
+*/
+static void SV_DownloadFailed (client_t *cl, const char *name, int reason)
+{
+	if (cl->download)
+	{
+		fclose (cl->download);
+		cl->download = NULL;
+	}
+
+	if (cl->fteext & FTE_PEXT_CHUNKEDDOWNLOADS)
+	{
+		ClientReliableWrite_Begin (cl, svc_download, 10 + (int)strlen (name));
+		ClientReliableWrite_Long (cl, -1);
+		ClientReliableWrite_Long (cl, reason);
+		ClientReliableWrite_String (cl, (char *)name);
+		return;
+	}
+	ClientReliableWrite_Begin (cl, svc_download, 4);
+	ClientReliableWrite_Short (cl, -1);
+	ClientReliableWrite_Byte (cl, 0);
+}
+
+/*
+==================
+SV_WriteChunk
+
+One chunk of the file, the last one padded with zeros. False when the file
+cannot be read.
+==================
+*/
+static bool SV_WriteChunk (client_t *cl, sizebuf_t *msg, int chunk)
+{
+	byte	data[DL_CHUNKSIZE];
+	int		len;
+
+	len = cl->downloadsize - chunk * DL_CHUNKSIZE;
+	if (len > DL_CHUNKSIZE)
+		len = DL_CHUNKSIZE;
+	if (fseek (cl->download, cl->downloadbase + (long)chunk * DL_CHUNKSIZE, SEEK_SET)
+	 || (int)fread (data, 1, len, cl->download) != len)
+		return false;
+	memset (data + len, 0, DL_CHUNKSIZE - len);
+
+	MSG_WriteByte (msg, svc_download);
+	MSG_WriteLong (msg, chunk);
+	SZ_Write (msg, data, DL_CHUNKSIZE);
+	return true;
+}
+
+/*
+==================
+SV_SendChunkOOB
+
+A chunk out of band, as a print starting "\chunk" and the file's number, which
+tells it from a chunk of the file before. Paced by sv_maxdrate, when set, on a
+clock of its own; one over the pace is dropped, and the client asks again.
+==================
+*/
+static bool SV_SendChunkOOB (client_t *cl, int chunk)
+{
+	byte		data[1 + 6 + 4 + 1 + 4 + DL_CHUNKSIZE];
+	sizebuf_t	msg = {.data = data, .maxsize = sizeof(data)};
+
+	if (sv_maxdrate.value > 0 && cl->dlcleartime > host.realtime)
+		return true;
+
+	MSG_WriteByte (&msg, A2C_PRINT);
+	SZ_Write (&msg, "\\chunk", 6);
+	MSG_WriteLong (&msg, cl->dlcookie);
+	if (!SV_WriteChunk (cl, &msg, chunk))
+		return false;
+	Netchan_OutOfBand (cl->netchan.sock, cl->netchan.remote_address, msg.cursize, data);
+
+	// a short burst after a pause, then the pace
+	if (sv_maxdrate.value > 0)
+	{
+		if (cl->dlcleartime < host.realtime - 0.05)
+			cl->dlcleartime = host.realtime - 0.05;
+		cl->dlcleartime += (msg.cursize + 4) / sv_maxdrate.value;
+	}
+	return true;
+}
+
+/*
+==================
+SV_DownloadDatagram
+
+The chunk a chunked download asked for rides on the datagram, or goes out of
+band when the datagram has no room
+==================
+*/
+void SV_DownloadDatagram (client_t *cl, sizebuf_t *msg)
+{
+	int		chunk = cl->dlchunk;
+	bool	sent;
+
+	cl->dlchunk = -1;
+	if (chunk < 0 || !cl->download)
+		return;
+
+	if (!msg->overflowed && msg->cursize + 5 + DL_CHUNKSIZE <= msg->maxsize)
+		sent = SV_WriteChunk (cl, msg, chunk);
+	else if (cl->dlcookie)
+		sent = SV_SendChunkOOB (cl, chunk);
+	else
+		return;
+	if (!sent)
+		SV_DownloadFailed (cl, cl->downloadfn, -3);
+}
+
+/*
+==================
+SV_NextChunk
+
+nextdl <chunk> <percent> <file>, the chunked form (FTE, as its server answers
+it): each asks for one chunk. The first since the last datagram rides on the
+next one; the rest go out of band, which needs the file's number. Chunk -1
+means the client has the whole file.
+==================
+*/
+static void SV_NextChunk (void)
+{
+	int		chunk = atoi (Cmd_Argv (1));
+
+	if (Cmd_Argc () > 3)
+		host_client->dlcookie = atoi (Cmd_Argv (3));
+
+	if (chunk < 0)
+	{
+		fclose (host_client->download);
+		host_client->download = NULL;
+		return;
+	}
+	if (chunk >= (host_client->downloadsize + DL_CHUNKSIZE - 1) / DL_CHUNKSIZE)
+	{
+		SV_ClientPrintf (host_client, PRINT_HIGH, "Warning: invalid chunk %d of %s requested\n",
+			chunk, host_client->downloadfn);
+		fclose (host_client->download);
+		host_client->download = NULL;
+		return;
+	}
+
+	if (host_client->dlchunk < 0)
+		host_client->dlchunk = chunk;
+	else if (host_client->dlcookie && !SV_SendChunkOOB (host_client, chunk))
+		SV_DownloadFailed (host_client, host_client->downloadfn, -3);
+}
+
+/*
+==================
 SV_NextDownload_f
 ==================
 */
 void SV_NextDownload_f (void)
 {
-	byte	buffer[1024];
+	byte	buffer[MAX_MSGLEN];
 	int		r;
 	int		percent;
 	int		size;
@@ -721,9 +877,17 @@ void SV_NextDownload_f (void)
 	if (!host_client->download)
 		return;
 
+	if (host_client->fteext & FTE_PEXT_CHUNKEDDOWNLOADS)
+	{
+		SV_NextChunk ();
+		return;
+	}
+
+	// a block per round trip: as big as a reliable message leaves room for
+	// (mvdsv's size), not 768
 	r = host_client->downloadsize - host_client->downloadcount;
-	if (r > 768)
-		r = 768;
+	if (r > MAX_MSGLEN - 100)
+		r = MAX_MSGLEN - 100;
 	r = (int)fread (buffer, 1, r, host_client->download);
 	ClientReliableWrite_Begin (host_client, svc_download, 6+r);
 	ClientReliableWrite_Short (host_client, r);
@@ -831,11 +995,16 @@ Con_DPrintf ("UPLOAD: %d received\n", size);
 /*
 ==================
 SV_BeginDownload_f
+
+A chunked download's client is told the size and asks for the chunks itself;
+a classic one gets the first block
 ==================
 */
 void SV_BeginDownload_f(void)
 {
-	char	*name;
+	char	name[MAX_QPATH];
+	char	*p;
+	bool	allowed;
 	extern	cvar_t	allow_download;
 	extern	cvar_t	allow_download_skins;
 	extern	cvar_t	allow_download_models;
@@ -843,67 +1012,72 @@ void SV_BeginDownload_f(void)
 	extern	cvar_t	allow_download_maps;
 	extern	int		file_from_pak; // ZOID did file come from pak?
 
-	name = Cmd_Argv(1);
-// hacked by zoid to allow more conrol over download
-		// first off, no .. or global allow check
-	if (strstr (name, "..") || !allow_download.value
-		// leading dot is no good
-		|| *name == '.' 
-		// leading slash bad as well, must be in subdir
-		|| *name == '/'
-		// next up, skin check
-		|| (strncmp(name, "skins/", 6) == 0 && !allow_download_skins.value)
-		// now models
-		|| (strncmp(name, "progs/", 6) == 0 && !allow_download_models.value)
-		// now sounds
-		|| (strncmp(name, "sound/", 6) == 0 && !allow_download_sounds.value)
-		// now maps (note special case for maps, must not be in pak)
-		|| (strncmp(name, "maps/", 6) == 0 && !allow_download_maps.value)
-		// MUST be in a subdirectory	
-		|| !strstr (name, "/") )	
-	{	// don't allow anything with .. path
-		ClientReliableWrite_Begin (host_client, svc_download, 4);
-		ClientReliableWrite_Short (host_client, -1);
-		ClientReliableWrite_Byte (host_client, 0);
-		return;
-	}
+	// lowercase name (needed for casesen file systems)
+	Q_strncpyz (name, Cmd_Argv(1), sizeof(name));
+	for (p = name; *p; p++)
+		*p = (char)tolower(*p);
 
 	if (host_client->download) {
 		fclose (host_client->download);
 		host_client->download = NULL;
 	}
 
-	// lowercase name (needed for casesen file systems)
+// hacked by zoid to allow more conrol over download
+	allowed = allow_download.value
+		// no .., no leading dot or slash, and in a subdirectory
+		&& !strstr (name, "..") && *name != '.' && *name != '/' && strchr (name, '/')
+		&& (strncmp (name, "skins/", 6) || allow_download_skins.value)
+		&& (strncmp (name, "progs/", 6) || allow_download_models.value)
+		&& (strncmp (name, "sound/", 6) || allow_download_sounds.value)
+		&& (strncmp (name, "maps/", 5) || allow_download_maps.value);
+	if (!allowed)
 	{
-		char *p;
-
-		for (p = name; *p; p++)
-			*p = (char)tolower(*p);
+		SV_DownloadFailed (host_client, name, -2);
+		return;
 	}
-
 
 	host_client->downloadsize = COM_FOpenFile (name, &host_client->download);
 	host_client->downloadcount = 0;
 
-	if (!host_client->download
-		// special check for maps, if it came from a pak file, don't allow
-		// download  ZOID
-		|| (strncmp(name, "maps/", 5) == 0 && file_from_pak))
+	// special check for maps, if it came from a pak file, don't allow
+	// download  ZOID
+	if (!host_client->download || (strncmp (name, "maps/", 5) == 0 && file_from_pak))
 	{
-		if (host_client->download) {
-			fclose(host_client->download);
-			host_client->download = NULL;
-		}
-
 		Sys_Printf ("Couldn't download %s to %s\n", name, host_client->name);
-		ClientReliableWrite_Begin (host_client, svc_download, 4);
-		ClientReliableWrite_Short (host_client, -1);
-		ClientReliableWrite_Byte (host_client, 0);
+		SV_DownloadFailed (host_client, name, host_client->download ? -2 : -1);
 		return;
 	}
 
-	SV_NextDownload_f ();
+	host_client->downloadbase = ftell (host_client->download);
+	Q_strncpyz (host_client->downloadfn, name, sizeof(host_client->downloadfn));
+	host_client->dlchunk = -1;
+
+	if (host_client->fteext & FTE_PEXT_CHUNKEDDOWNLOADS)
+	{
+		ClientReliableWrite_Begin (host_client, svc_download, 10 + (int)strlen (name));
+		ClientReliableWrite_Long (host_client, -1);
+		ClientReliableWrite_Long (host_client, host_client->downloadsize);
+		ClientReliableWrite_String (host_client, name);
+	}
+	else
+		SV_NextDownload_f ();
 	Sys_Printf ("Downloading %s to %s\n", name, host_client->name);
+}
+
+/*
+==================
+SV_StopDownload_f
+
+The client has the file, or no longer wants it
+==================
+*/
+static void SV_StopDownload_f (void)
+{
+	if (host_client->download)
+	{
+		fclose (host_client->download);
+		host_client->download = NULL;
+	}
 }
 
 //=============================================================================
@@ -1199,18 +1373,14 @@ void SV_Rate_f (void)
 	if (Cmd_Argc() != 2)
 	{
 		SV_ClientPrintf (host_client, PRINT_HIGH, "Current rate is %i\n",
-			(int)(1.0/host_client->netchan.rate + 0.5));
+			(int)(1.0/host_client->rate + 0.5));
 		return;
 	}
 	
-	rate = atoi(Cmd_Argv(1));
-	if (rate < 500)
-		rate = 500;
-	if (rate > 10000)
-		rate = 10000;
+	rate = SV_BoundRate (atoi (Cmd_Argv(1)));
 
 	SV_ClientPrintf (host_client, PRINT_HIGH, "Net rate set to %i\n", rate);
-	host_client->netchan.rate = 1.0/rate;
+	host_client->rate = 1.0/rate;
 }
 
 
@@ -1341,6 +1511,7 @@ static ucmd_t ucmds[] =
 
 	{"download", SV_BeginDownload_f},
 	{"nextdl", SV_NextDownload_f},
+	{"stopdownload", SV_StopDownload_f},
 
 	{"ptrack", SV_PTrack_f}, //ZOID - used with autocam
 

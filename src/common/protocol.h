@@ -124,6 +124,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	FTE_PEXT_SPAWNSTATIC2		0x00400000	// statics and baselines as deltas
 #define	FTE_PEXT_256PACKETENTITIES	0x01000000	// 256 entities in a packet
 #define	FTE_PEXT_CHUNKEDDOWNLOADS	0x20000000	// downloads in numbered chunks
+#define	DL_CHUNKSIZE				1024		// their size
 
 #define	MVD_PEXT1_FLOATCOORDS		0x00000001	// entity and player origins as floats
 #define	MVD_PEXT1_HIGHLAGTELEPORT	0x00000002	// svc_setangle carries a leading byte
@@ -136,7 +137,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // the extensions this program speaks: CL_ as a client, SV_ as a server
 #define	SV_FTE_EXTENSIONS	(FTE_PEXT_TRANS | FTE_PEXT_ACCURATETIMINGS | FTE_PEXT_MODELDBL | FTE_PEXT_ENTITYDBL | \
 	FTE_PEXT_ENTITYDBL2 | FTE_PEXT_FLOATCOORDS | FTE_PEXT_COLOURMOD | FTE_PEXT_SPAWNSTATIC2 | \
-	FTE_PEXT_256PACKETENTITIES)
+	FTE_PEXT_256PACKETENTITIES | FTE_PEXT_CHUNKEDDOWNLOADS)
 #define	CL_FTE_EXTENSIONS	SV_FTE_EXTENSIONS
 #define	SV_MVD1_EXTENSIONS	(MVD_PEXT1_FLOATCOORDS | MVD_PEXT1_HIGHLAGTELEPORT)
 #define	CL_MVD1_EXTENSIONS	SV_MVD1_EXTENSIONS
@@ -158,9 +159,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	SW_Z_EXTENSIONS		(Z_EXT_VIEWHEIGHT | Z_EXT_SERVERTIME | Z_EXT_PITCHLIMITS | Z_EXT_JOIN_OBSERVE | \
 	Z_EXT_PF_ONGROUND | Z_EXT_PF_SOLID)
 
-// what the client reads in recordings as well: no download comes up there,
-// and FTE's voice chat is skipped
-#define	CL_FTE_READABLE		(CL_FTE_EXTENSIONS | FTE_PEXT_CHUNKEDDOWNLOADS)
+// what the client reads in recordings as well: FTE's voice chat is skipped
+#define	CL_FTE_READABLE		CL_FTE_EXTENSIONS
 #define	CL_FTE2_READABLE	FTE_PEXT2_VOICECHAT
 
 #define QW_CHECK_HASH 0x5157

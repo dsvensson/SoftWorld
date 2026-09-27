@@ -207,6 +207,15 @@ typedef struct client_s
 	FILE			*download;			// file being downloaded
 	int				downloadsize;		// total bytes
 	int				downloadcount;		// bytes sent
+	long			downloadbase;		// where the file starts, inside a pak
+	char			downloadfn[MAX_QPATH];
+
+	// FTE chunked downloads: the chunk to send with the next datagram, -1
+	// none; the file number the client last named; when out-of-band chunks
+	// may go again
+	int				dlchunk;
+	int				dlcookie;
+	double			dlcleartime;
 
 	int				spec_track;			// entnum of player tracking
 
@@ -224,6 +233,7 @@ typedef struct client_s
 //===== NETWORK ============
 	int				chokecount;
 	int				delta_sequence;		// -1 = no compression
+	double			rate;				// seconds per byte, the client's rate
 	netchan_t		netchan;
 
 	// protocol extensions both ends know, from the connect packet; ZQuake's
@@ -387,6 +397,7 @@ typedef struct
 
 extern	cvar_t	sv_mintic, sv_maxtic;
 extern	cvar_t	sv_bigcoords;
+extern	cvar_t	sv_maxdrate;
 extern	cvar_t	sv_maxpitch, sv_minpitch;
 
 #define	SV_BIGCOORDS_REFUSAL	"This map goes past the standard coordinates of +-4096:\n" \
@@ -483,6 +494,8 @@ void SV_FindModelNumbers (void);
 // sv_user.c
 //
 void SV_ExecuteClientMessage (client_t *cl);
+// the chunk a chunked download asked for, on the datagram or out of band
+void SV_DownloadDatagram (client_t *cl, sizebuf_t *msg);
 void SV_UserInit (void);
 void SV_TogglePause (const char *msg);
 
@@ -511,6 +524,8 @@ void SV_ClientBaseline (const client_t *client, const edict_t *ent, entity_state
 // sv_main.c: whether a client may join (spectator false) or observe; prints
 // the reason to it when not
 bool SV_CanSwitchSide (client_t *cl, bool spectator);
+int SV_BoundRate (int rate);
+void SV_SetChannelRate (client_t *cl);	// before sending to it
 
 // sv_user.c: the view angles are being set for the client (MVD1 high-lag
 // teleport): returns what it is told, 1 a teleport, 2 a respawn

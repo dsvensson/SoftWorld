@@ -60,8 +60,8 @@ void SV_FlushRedirect (void)
 
 		NET_SendPacket (NS_SERVER, (int)strlen(send)+1, send, svs.net_from);
 	}
-	else if (svs.redirected == RD_CLIENT)
-	{
+	else if (svs.redirected == RD_CLIENT && outputbuf[0])
+	{	// a command that printed nothing sends nothing (nextdl comes by the dozen)
 		ClientReliableWrite_Begin (host_client, svc_print, (int)strlen(outputbuf)+3);
 		ClientReliableWrite_Byte (host_client, PRINT_HIGH);
 		ClientReliableWrite_String (host_client, outputbuf);
@@ -572,6 +572,7 @@ bool SV_SendClientDatagram (client_t *client)
 	else
 		SZ_Write (&msg, client->datagram.data, client->datagram.cursize);
 	SZ_Clear (&client->datagram);
+	SV_DownloadDatagram (client, &msg);
 
 	// send deltas over reliable stream
 	if (Netchan_CanReliable (&client->netchan))
@@ -743,6 +744,7 @@ void SV_SendClientMessages (void)
 		if (!c->send_message)
 			continue;
 		c->send_message = false;	// try putting this after choke?
+		SV_SetChannelRate (c);
 		if (!sv.paused && !Netchan_CanPacket (&c->netchan))
 		{
 			c->chokecount++;
@@ -752,7 +754,13 @@ void SV_SendClientMessages (void)
 		if (c->state == cs_spawned)
 			SV_SendClientDatagram (c);
 		else
-			Netchan_Transmit (&c->netchan, 0, NULL);	// just update reliable
+		{	// the reliable, and a chunk for a download during the signon
+			byte		buf[MAX_DATAGRAM];
+			sizebuf_t	msg = {.data = buf, .maxsize = sizeof(buf)};
+
+			SV_DownloadDatagram (c, &msg);
+			Netchan_Transmit (&c->netchan, msg.cursize, buf);
+		}
 
 		// don't let rate limiting build up while the game is paused
 		if (sv.paused)

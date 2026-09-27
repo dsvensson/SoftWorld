@@ -534,11 +534,10 @@ void Con_DrawConsole (int lines)
 		else
 			text = cls.downloadname;
 
-		x = con.linewidth - ((con.linewidth * 7) / 40);
-		y = (int)(x - strlen(text) - 8);
+		// the name, cut to a third of the line, then the bar, then the
+		// percent and the speed: " 100%  12.3 MB/s", 16 wide
 		i = con.linewidth/3;
 		if (strlen(text) > (size_t)i) {
-			y = x - i - 11;
 			strncpy(dlbar, text, i);
 			dlbar[i] = 0;
 			Q_strncatz(dlbar, "...", sizeof(dlbar));
@@ -546,6 +545,9 @@ void Con_DrawConsole (int lines)
 			Q_strncpyz(dlbar, text, sizeof(dlbar));
 		Q_strncatz(dlbar, ": ", sizeof(dlbar));
 		i = (int)strlen(dlbar);
+		y = con.linewidth - i - 2 - 16;
+		if (y < 1)
+			y = 1;
 		dlbar[i++] = '\x80';
 		// where's the dot go?
 		if (cls.downloadpercent == 0)
@@ -561,7 +563,8 @@ void Con_DrawConsole (int lines)
 		dlbar[i++] = '\x82';
 		dlbar[i] = 0;
 
-		snprintf(dlbar + strlen(dlbar), sizeof(dlbar) - strlen(dlbar), " %02d%%", cls.downloadpercent);
+		snprintf(dlbar + strlen(dlbar), sizeof(dlbar) - strlen(dlbar), " %3d%% %s", cls.downloadpercent,
+			CL_DownloadSpeed ());
 
 		// draw it
 		y = con.vislines-22 + 8;

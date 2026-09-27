@@ -26,6 +26,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 static cvar_t	rcon_address = {.name = "rcon_address", .string = ""};
 
 static cvar_t	cl_timeout = {.name = "cl_timeout", .string = "60"};
+// 0 keeps FTE chunked downloads out of the extensions offered (ezQuake's name)
+static cvar_t	cl_pext_chunkeddownloads = {.name = "cl_pext_chunkeddownloads", .string = "1", .archive = true};
 
 cvar_t	cl_shownet = {.name = "cl_shownet", .string = "0"};	// can be 0, 1, or 2
 
@@ -60,7 +62,7 @@ static cvar_t	team = {.name = "team", .string = "", .archive = true, .userinfo =
 static cvar_t	skin = {.name = "skin", .string = "", .archive = true, .userinfo = true};
 static cvar_t	topcolor = {.name = "topcolor", .string = "0", .archive = true, .userinfo = true};
 static cvar_t	bottomcolor = {.name = "bottomcolor", .string = "0", .archive = true, .userinfo = true};
-static cvar_t	rate = {.name = "rate", .string = "2500", .archive = true, .userinfo = true};
+static cvar_t	rate = {.name = "rate", .string = "30000", .archive = true, .userinfo = true};	// FTE's; ezQuake's is 25000
 static cvar_t	noaim = {.name = "noaim", .string = "0", .archive = true, .userinfo = true};
 static cvar_t	msg = {.name = "msg", .string = "1", .archive = true, .userinfo = true};
 
@@ -386,11 +388,7 @@ void CL_Disconnect (void)
 	cls.fteext = cls.mvdext1 = 0;
 	cls.net_message.floatcoords = false;
 
-	if (cls.download) {
-		fclose(cls.download);
-		cls.download = NULL;
-	}
-
+	CL_StopDownload ();
 	CL_StopUpload();
 
 }
@@ -813,6 +811,18 @@ void CL_Reconnect_f (void)
 
 /*
 =================
+CL_FTEExtensions
+
+The FTE extensions the client offers
+=================
+*/
+static unsigned CL_FTEExtensions (void)
+{
+	return CL_FTE_EXTENSIONS & (cl_pext_chunkeddownloads.value ? ~0u : ~(unsigned)FTE_PEXT_CHUNKEDDOWNLOADS);
+}
+
+/*
+=================
 CL_ConnectionlessPacket
 
 Responses to broadcasts, etc
@@ -828,6 +838,8 @@ void CL_ConnectionlessPacket (void)
     MSG_ReadLong ();        // skip the -1
 
 	c = MSG_ReadByte ();
+	if (c == A2C_PRINT && CL_ParseChunkPacket ())
+		return;		// a download's chunk, dressed as a print
 	if (!cls.demoplayback)
 		Con_Printf ("%s: ", NET_AdrToString (cls.net_from));
 //	Con_DPrintf ("%s", net_message.data + 5);
@@ -941,7 +953,7 @@ void CL_ConnectionlessPacket (void)
 				break;
 			Con_DPrintf ("The server offers protocol extensions 0x%x 0x%x\n", magic, mask);
 			if (magic == PROTOCOL_VERSION_FTE)
-				cls.fteext = mask & CL_FTE_EXTENSIONS;
+				cls.fteext = mask & CL_FTEExtensions ();
 			else if (magic == PROTOCOL_VERSION_MVD1)
 				cls.mvdext1 = mask & CL_MVD1_EXTENSIONS;
 		}
@@ -1012,49 +1024,6 @@ void CL_ReadPackets (void)
 //=============================================================================
 
 /*
-=====================
-CL_Download_f
-=====================
-*/
-void CL_Download_f (void)
-{
-	char *p, *q;
-
-	if (cls.state == ca_disconnected)
-	{
-		Con_Printf ("Must be connected.\n");
-		return;
-	}
-
-	if (Cmd_Argc() != 2)
-	{
-		Con_Printf ("Usage: download <datafile>\n");
-		return;
-	}
-
-	snprintf (cls.downloadname, sizeof(cls.downloadname), "%s/%s", com_gamedir, Cmd_Argv(1));
-
-	p = cls.downloadname;
-	for (;;) {
-		if ((q = strchr(p, '/')) != NULL) {
-			*q = 0;
-			Sys_mkdir(cls.downloadname);
-			*q = '/';
-			p = q + 1;
-		} else
-			break;
-	}
-
-	Q_strncpyz(cls.downloadtempname, cls.downloadname, sizeof(cls.downloadtempname));
-	cls.download = fopen (cls.downloadname, "wb");
-	cls.downloadtype = dl_single;
-
-	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
-	SZ_Print (&cls.netchan.message, va("download %s\n",Cmd_Argv(1)));
-}
-
-
-/*
 ===================
 Cmd_ForwardToServer
 
@@ -1104,7 +1073,7 @@ void Cmd_ForwardToServer_f (void)
 	if (Cmd_Argc() == 2 && !Q_strcasecmp (Cmd_Argv(1), "pext"))
 	{
 		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
-		SZ_Print (&cls.netchan.message, va("pext 0x%x 0x%x 0x%x 0x%x", PROTOCOL_VERSION_FTE, CL_FTE_EXTENSIONS,
+		SZ_Print (&cls.netchan.message, va("pext 0x%x 0x%x 0x%x 0x%x", PROTOCOL_VERSION_FTE, CL_FTEExtensions (),
 			PROTOCOL_VERSION_MVD1, CL_MVD1_EXTENSIONS));
 		return;
 	}
@@ -1157,7 +1126,7 @@ static void CL_InitLocal (void)
 	Info_SetValueForKey (cls.userinfo, "name", "unnamed", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 	Info_SetValueForKey (cls.userinfo, "topcolor", "0", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 	Info_SetValueForKey (cls.userinfo, "bottomcolor", "0", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
-	Info_SetValueForKey (cls.userinfo, "rate", "2500", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
+	Info_SetValueForKey (cls.userinfo, "rate", rate.string, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 	Info_SetValueForKey (cls.userinfo, "msg", "1", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 	snprintf (st, sizeof(st), "%4.2f-%04d", VERSION, build_number());
 	Info_SetValueForStarKey (cls.userinfo, "*ver", st, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
@@ -1187,6 +1156,7 @@ static void CL_InitLocal (void)
 	Cvar_RegisterVariable (&cl_hudswap);
 	Cvar_RegisterVariable (&cl_maxfps);
 	Cvar_RegisterVariable (&cl_timeout);
+	Cvar_RegisterVariable (&cl_pext_chunkeddownloads);
 	Cvar_RegisterVariable (&lookspring);
 	Cvar_RegisterVariable (&lookstrafe);
 	Cvar_RegisterVariable (&sensitivity);

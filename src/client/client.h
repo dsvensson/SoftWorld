@@ -455,11 +455,23 @@ void CL_DumpTimedemoFrame (void);	// when timedemo_dump asks for it
 int CL_CalcNet (void);
 void CL_ParseServerMessage (void);
 void CL_NewTranslation (int slot);
-bool	CL_CheckOrDownloadFile (char *filename);
+void CL_RequestNextDownload (void);
 bool CL_IsUploading(void);
 void CL_NextUpload(void);
 void CL_StartUpload (byte *data, int size);
 void CL_StopUpload(void);
+
+//
+// cl_download.c
+//
+bool CL_CheckOrDownloadFile (char *filename);
+void CL_Download_f (void);
+void CL_ParseDownload (void);
+bool CL_ParseChunkPacket (void);		// an out-of-band chunk
+int CL_DownloadRequests (void);			// how many chunks to ask for this frame
+int CL_WriteDownloadRequests (sizebuf_t *buf, int want);	// returns how many went in
+void CL_StopDownload (void);
+const char *CL_DownloadSpeed (void);	// for the download bar, in a fixed width
 
 //
 // view.c

@@ -403,12 +403,14 @@ CL_SendCmd
 void CL_SendCmd (void)
 {
 	sizebuf_t	buf;
-	byte		data[128];
+	byte		data[MAX_MSGLEN];
 	int			i;
 	usercmd_t	*cmd, *oldcmd;
 	int			checksumIndex;
 	int			lost;
 	int			seq_hash;
+	int			want, sent;
+	frame_t		*f;
 
 	if (cls.demoplayback)
 		return; // sendcmds come from the demo
@@ -438,7 +440,7 @@ void CL_SendCmd (void)
 
 // send this and the previous cmds in the message, so
 // if the last packet was dropped, it can be recovered
-	buf.maxsize = 128;
+	buf.maxsize = sizeof(data);
 	buf.cursize = 0;
 	buf.data = data;
 
@@ -488,10 +490,33 @@ void CL_SendCmd (void)
 	if (cls.demorecording)
 		CL_WriteDemoCmd(cmd);
 
+	// a chunked download's requests ride along
+	want = CL_DownloadRequests ();
+	want -= CL_WriteDownloadRequests (&buf, want);
+
 //
 // deliver the message
 //
-	Netchan_Transmit (&cls.netchan, buf.cursize, buf.data);	
+	Netchan_Transmit (&cls.netchan, buf.cursize, buf.data);
+
+	// before the client is in the game nothing needs the packet rate: the
+	// requests one packet can't hold go in packets of their own, which repeat
+	// the command for the frames that follow
+	while (want > 0 && cls.state < ca_active)
+	{
+		buf.cursize = 0;
+		sent = CL_WriteDownloadRequests (&buf, want);
+		if (!sent)
+			break;
+		want -= sent;
+
+		f = &cl.frames[cls.netchan.outgoing_sequence & UPDATE_MASK];
+		f->cmd = *cmd;
+		f->senttime = host.realtime;
+		f->receivedtime = -1;
+		f->delta_sequence = -1;
+		Netchan_Transmit (&cls.netchan, buf.cursize, buf.data);
+	}
 }
 
 

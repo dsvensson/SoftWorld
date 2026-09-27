@@ -114,6 +114,10 @@ udpsocket_t *UDP_Open (int port)
 	if (ioctlsocket (s->socket, FIONBIO, &nonblocking) == SOCKET_ERROR)
 		Sys_Error ("UDP_Open: ioctl FIONBIO: Winsock error %i", WSAGetLastError ());
 
+	// room for a burst of download chunks between two reads; the default
+	// 64 KB holds about 60
+	setsockopt (s->socket, SOL_SOCKET, SO_RCVBUF, (const char *)&(int){1 << 21}, sizeof(int));
+
 //ZOID -- check for interface binding option
 	if ((i = COM_CheckParm("-ip")) != 0 && i + 1 < com_argc)
 	{
