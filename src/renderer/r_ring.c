@@ -67,9 +67,11 @@ static int R_ClipRing (vec3_t *in, int n, vec3_t *out, const clipplane_t *plane)
 /*
 ================
 R_DrawRingQuad
+
+Clipped by the view planes in clipflags, those that cut the ring
 ================
 */
-static void R_DrawRingQuad (vec3_t quad[4], pixel_t color, int alpha)
+static void R_DrawRingQuad (vec3_t quad[4], pixel_t color, int alpha, int clipflags)
 {
 	vec3_t		a[MAXWORKINGVERTS], b[MAXWORKINGVERTS], *in, *out, *swap, local, transformed;
 	emitpoint_t	verts[MAXWORKINGVERTS + 1];
@@ -81,6 +83,8 @@ static void R_DrawRingQuad (vec3_t quad[4], pixel_t color, int alpha)
 	n = 4;
 	for (i=0 ; i<4 ; i++)
 	{
+		if (!(clipflags & (1 << i)))
+			continue;
 		n = R_ClipRing (in, n, out, &view_clipplanes[i]);
 		if (n < 3)
 			return;
@@ -102,30 +106,67 @@ static void R_DrawRingQuad (vec3_t quad[4], pixel_t color, int alpha)
 	D_DrawFlatPolygon (verts, n, color, alpha);
 }
 
-static void R_RingPoint (vec3_t out, const r_ring_t *ring, float radius, float angle, float z)
+// the cosine and sine of the ring's angle at segment s, fractions allowed
+static void R_RingAngle (const r_ring_t *ring, float s, float cs[2])
 {
-	out[0] = ring->centre[0] + radius * cosf (angle);
-	out[1] = ring->centre[1] + radius * sinf (angle);
+	float	angle = ring->phase + s * RING_TAU / RING_SEGMENTS;
+
+	cs[0] = cosf (angle);
+	cs[1] = sinf (angle);
+}
+
+static void R_RingPoint (vec3_t out, const r_ring_t *ring, float radius, const float cs[2], float z)
+{
+	out[0] = ring->centre[0] + radius * cs[0];
+	out[1] = ring->centre[1] + radius * cs[1];
 	out[2] = z;
 }
 
-// the ring from segment from to segment to, fractions allowed
-static void R_DrawRingPart (const r_ring_t *ring, float from, float to, pixel_t color, int alpha)
+// the ring between two angles
+static void R_DrawRingPart (const r_ring_t *ring, const float from[2], const float to[2], pixel_t color, int alpha,
+	int clipflags)
 {
 	vec3_t	quad[4];
-	float	a0, a1, inner, outer, z;
+	float	inner, outer, z;
 
-	a0 = ring->phase + from * RING_TAU / RING_SEGMENTS;
-	a1 = ring->phase + to * RING_TAU / RING_SEGMENTS;
 	inner = ring->radius * (1 - RING_WIDTH);
 	outer = ring->radius * (1 + RING_WIDTH);
 	z = ring->centre[2] + RING_LIFT;
 
-	R_RingPoint (quad[0], ring, outer, a0, z);
-	R_RingPoint (quad[1], ring, outer, a1, z);
-	R_RingPoint (quad[2], ring, inner, a1, z);
-	R_RingPoint (quad[3], ring, inner, a0, z);
-	R_DrawRingQuad (quad, color, alpha);
+	R_RingPoint (quad[0], ring, outer, from, z);
+	R_RingPoint (quad[1], ring, outer, to, z);
+	R_RingPoint (quad[2], ring, inner, to, z);
+	R_RingPoint (quad[3], ring, inner, from, z);
+	R_DrawRingQuad (quad, color, alpha, clipflags);
+}
+
+/*
+================
+R_RingClipFlags
+
+The view planes that cut the ring, as bits; -1 if it is out of view. The
+ring is taken as the sphere around it, a unit larger for its corners'
+rounding.
+================
+*/
+static int R_RingClipFlags (const r_ring_t *ring)
+{
+	vec3_t	centre;
+	float	reach, d;
+	int		i, clipflags = 0;
+
+	VectorCopy (ring->centre, centre);
+	centre[2] += RING_LIFT;
+	reach = ring->radius * (1 + RING_WIDTH) + 1;
+	for (i=0 ; i<4 ; i++)
+	{
+		d = DotProduct (centre, view_clipplanes[i].normal) - view_clipplanes[i].dist;
+		if (d < -reach)
+			return -1;
+		if (d < reach)
+			clipflags |= 1 << i;
+	}
+	return clipflags;
 }
 
 static unsigned R_RingChannel (float c)
@@ -145,23 +186,29 @@ void R_DrawRings (void)
 {
 	const r_ring_t	*ring;
 	pixel_t			color;
-	float			lit;
-	int				i, s;
+	float			lit, cs[RING_SEGMENTS + 1][2], end[2];
+	int				i, s, clipflags;
 
 	for (i=0, ring = r_scene.rings ; i<r_scene.numrings ; i++, ring++)
 	{
+		clipflags = R_RingClipFlags (ring);
+		if (clipflags < 0)
+			continue;
 		color = RGB30 (R_RingChannel (ring->color[0]), R_RingChannel (ring->color[1]), R_RingChannel (ring->color[2]));
 		lit = (ring->fill < 0 ? 0 : ring->fill > 1 ? 1 : ring->fill) * RING_SEGMENTS;
+		for (s=0 ; s<=RING_SEGMENTS ; s++)
+			R_RingAngle (ring, (float)s, cs[s]);
 		for (s=0 ; s<RING_SEGMENTS ; s++)
 		{
 			if (s + 1 <= lit)
-				R_DrawRingPart (ring, (float)s, s + 1.0f, color, FILL_ALPHA);
+				R_DrawRingPart (ring, cs[s], cs[s + 1], color, FILL_ALPHA, clipflags);
 			else if (s >= lit)
-				R_DrawRingPart (ring, (float)s, s + 1.0f, color, TRACK_ALPHA);
+				R_DrawRingPart (ring, cs[s], cs[s + 1], color, TRACK_ALPHA, clipflags);
 			else
 			{	// where the lit part ends
-				R_DrawRingPart (ring, (float)s, lit, color, FILL_ALPHA);
-				R_DrawRingPart (ring, lit, s + 1.0f, color, TRACK_ALPHA);
+				R_RingAngle (ring, lit, end);
+				R_DrawRingPart (ring, cs[s], end, color, FILL_ALPHA, clipflags);
+				R_DrawRingPart (ring, end, cs[s + 1], color, TRACK_ALPHA, clipflags);
 			}
 		}
 	}
