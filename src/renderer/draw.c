@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // draw.c -- 2D drawing. Coordinates are con units, the 320x200 layout;
 // each texel covers vid.scale x vid.scale pixels.
 
+#include "markup.h"
 #include "r_local.h"
 
 typedef struct {
@@ -144,11 +145,12 @@ void Draw_Init (void)
 ================
 Draw_Image
 
-An 8 bit image at con x,y; texels equal to transparent (if not -1) are
-skipped
+An 8 bit image at con x,y through pal; texels equal to transparent (if not
+-1) are skipped
 ================
 */
-static void Draw_Image (int x, int y, const byte *src, int srcrow, int w, int h, int transparent)
+static void Draw_Image (int x, int y, const byte *src, int srcrow, int w, int h, const pixel_t *pal,
+	int transparent)
 {
 	int		k = (int)vid.scale;
 	int		v, j;
@@ -157,14 +159,14 @@ static void Draw_Image (int x, int y, const byte *src, int srcrow, int w, int h,
 	for (v=0 ; v<h ; v++, src += srcrow)
 	{
 		dest = vid.buffer + (y+v)*k*vid.rowpixels + x*k;
-		simd_expand8 (dest, src, d_pal30, w, k, transparent);
+		simd_expand8 (dest, src, pal, w, k, transparent);
 		// the other rows of the block: copies, or drawn again around transparent texels
 		for (j=1 ; j<k ; j++)
 		{
 			if (transparent < 0)
 				memcpy (dest + j*vid.rowpixels, dest, (size_t)w * k * sizeof(pixel_t));
 			else
-				simd_expand8 (dest + j*vid.rowpixels, src, d_pal30, w, k, transparent);
+				simd_expand8 (dest + j*vid.rowpixels, src, pal, w, k, transparent);
 		}
 	}
 }
@@ -192,16 +194,82 @@ static void Draw_Block (int x, int y, int w, int h, pixel_t p)
 
 /*
 ================
-Draw_Character
+Draw_ImageHalf
 
-Draws one 8*8 graphics character with 0 being transparent.
-It can be clipped to the top of the screen to allow the console to be
-smoothly scrolled off.
+An 8 bit image through pal, half over what is there; texels of 0 are skipped
 ================
 */
-void Draw_Character (int x, int y, int num)
+static void Draw_ImageHalf (int x, int y, const byte *src, int srcrow, int w, int h, const pixel_t *pal)
+{
+	const pixel_t	even = 0x3feffbfeu;	// all but each channel's lowest bit
+	int				k = (int)vid.scale;
+	int				u, v, i, j;
+	pixel_t			*dest, p;
+
+	for (v=0 ; v<h ; v++, src += srcrow)
+		for (j=0 ; j<k ; j++)
+		{
+			dest = vid.buffer + ((y+v)*k + j)*vid.rowpixels + x*k;
+			for (u=0 ; u<w ; u++)
+			{
+				if (!src[u])
+					continue;
+				p = (pal[src[u]] & even) >> 1;
+				for (i=0 ; i<k ; i++)
+					dest[u*k + i] = ((dest[u*k + i] & even) >> 1) + p;
+			}
+		}
+}
+
+/*
+================
+Draw_TintPalette
+
+The palette multiplied by a text color's four bits a channel (markup.h),
+kept for the last few colors: text goes through the same ones again and
+again
+================
+*/
+#define	DRAW_TINTS	8
+
+static const pixel_t *Draw_TintPalette (unsigned rgb)
+{
+	static struct { unsigned rgb; pixel_t pal[256]; }	tints[DRAW_TINTS];
+	static int		used, next;
+	unsigned		r, g, b;
+	pixel_t			p;
+	int				i, j;
+
+	for (i=0 ; i<used ; i++)
+		if (tints[i].rgb == rgb)
+			return tints[i].pal;
+
+	i = used < DRAW_TINTS ? used++ : next++ % DRAW_TINTS;
+	tints[i].rgb = rgb;
+	r = (rgb >> 8) & 15;
+	g = (rgb >> 4) & 15;
+	b = rgb & 15;
+	for (j=0 ; j<256 ; j++)
+	{
+		p = d_pal30[j];
+		tints[i].pal[j] = RGB30 (RGB30_R (p) * r / 15, RGB30_G (p) * g / 15, RGB30_B (p) * b / 15);
+	}
+	return tints[i].pal;
+}
+
+/*
+================
+Draw_ColoredCharacter
+
+Draws one 8*8 graphics character with 0 being transparent, in a text color
+(markup.h). It can be clipped to the top of the screen to allow the console
+to be smoothly scrolled off.
+================
+*/
+void Draw_ColoredCharacter (int x, int y, int num, unsigned color)
 {
 	byte			*source;
+	const pixel_t	*pal;
 	int				drawline;
 	int				row, col;
 
@@ -211,6 +279,9 @@ void Draw_Character (int x, int y, int num)
 		return;			// totally off screen
 
 	if ((unsigned)y > vid.conheight - 8 || x < 0 || (unsigned)x > vid.conwidth - 8)
+		return;
+
+	if ((color & TEXT_BLINK) && ((int)(Sys_DoubleTime () * 2) & 1))
 		return;
 
 	row = num>>4;
@@ -226,7 +297,36 @@ void Draw_Character (int x, int y, int num)
 	else
 		drawline = 8;
 
-	Draw_Image (x, y, source, 128, 8, drawline, 0);
+	pal = (color & TEXT_TINT) ? Draw_TintPalette (color & TEXT_RGBMASK) : d_pal30;
+	if (color & TEXT_HALF)
+		Draw_ImageHalf (x, y, source, 128, 8, drawline, pal);
+	else
+		Draw_Image (x, y, source, 128, 8, drawline, pal, 0);
+}
+
+void Draw_Character (int x, int y, int num)
+{
+	Draw_ColoredCharacter (x, y, num, 0);
+}
+
+/*
+================
+Draw_MarkupString
+
+A string with its colors read out of it (markup.h)
+================
+*/
+void Draw_MarkupString (int x, int y, const char *str)
+{
+	markup_t	m;
+	int			c;
+
+	Markup_Begin (&m);
+	while ((c = Markup_Next (&str, &m)) >= 0)
+	{
+		Draw_ColoredCharacter (x, y, c, m.color);
+		x += 8;
+	}
 }
 
 /*
@@ -290,7 +390,7 @@ void Draw_SubPic (int x, int y, qpic_t *pic, int srcx, int srcy, int width, int 
 		Sys_Error ("Draw_Pic: bad coordinates");
 	}
 
-	Draw_Image (x, y, pic->data + srcy * pic->width + srcx, pic->width, width, height, -1);
+	Draw_Image (x, y, pic->data + srcy * pic->width + srcx, pic->width, width, height, d_pal30, -1);
 }
 
 
@@ -307,7 +407,7 @@ void Draw_TransPic (int x, int y, qpic_t *pic)
 		Sys_Error ("Draw_TransPic: bad coordinates");
 	}
 
-	Draw_Image (x, y, pic->data, pic->width, pic->width, pic->height, TRANSPARENT_COLOR);
+	Draw_Image (x, y, pic->data, pic->width, pic->width, pic->height, d_pal30, TRANSPARENT_COLOR);
 }
 
 void Draw_CharToConback (int num, byte *dest)
@@ -378,7 +478,7 @@ void Draw_ConsoleBackground (int lines, bool downloading)
 			row[x] = src[f>>16];
 			f += fstep;
 		}
-		Draw_Image (0, y, row, 0, vid.conwidth, 1, -1);
+		Draw_Image (0, y, row, 0, vid.conwidth, 1, d_pal30, -1);
 	}
 
 	// put it back
@@ -395,7 +495,7 @@ A rectangle of an 8 bit image
 */
 static void R_DrawRect (vrect_t *prect, int rowbytes, byte *psrc)
 {
-	Draw_Image (prect->x, prect->y, psrc, rowbytes, prect->width, prect->height, -1);
+	Draw_Image (prect->x, prect->y, psrc, rowbytes, prect->width, prect->height, d_pal30, -1);
 }
 
 /*

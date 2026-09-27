@@ -11,6 +11,11 @@ sw_add_program(test_msg test_msg.c)
 target_link_libraries(test_msg PRIVATE sw_common)
 add_test(NAME msg COMMAND test_msg)
 
+# test_markup reads ezQuake's and FTE's colors out of text.
+sw_add_program(test_markup test_markup.c)
+target_link_libraries(test_markup PRIVATE sw_common)
+add_test(NAME markup COMMAND test_markup)
+
 # test_bspload loads every map under C:\quakedev as a collision map and as a
 # render model. It needs the maps, so only the msvc-v4-maps test preset runs it.
 sw_add_program(test_bspload test_bspload.c)

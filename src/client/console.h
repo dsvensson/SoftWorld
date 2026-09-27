@@ -31,13 +31,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 typedef struct
 {
 	char	text[CON_TEXTSIZE];
+	uint16_t	colors[CON_TEXTSIZE];	// each character's, from the markup printed (markup.h)
 	int		current;		// line where next message will be printed
 	int		x;				// offset in current line for next print
 	int		display;		// bottom of console displays this line
 
 	int		linewidth;		// characters across screen
 	int		totallines;		// total lines in console scrollback
-	int		ormask;			// or'ed into printed characters, 128 colors them
 	float	times[NUM_CON_TIMES];	// realtime the line was generated,
 									// for transparent notify lines
 	int		vislines;		// scan lines the console covers

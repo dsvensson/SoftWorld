@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // cl_parse.c  -- parse a message received from the server
 
 #include "cl_local.h"
+#include "markup.h"
 
 static const char *svc_strings[] =
 {
@@ -1203,12 +1204,84 @@ static void CL_TurnPendingMoves (bool teleport)
 CL_ParseServerMessage
 =====================
 */
+/*
+==================
+CL_ChatNameLength
+
+How much of a chat line is its sender's name as the server puts it: "name: ",
+"(name): " in a team message, "[SPEC] name: " (ezQuake); 0 for none
+==================
+*/
+static int CL_ChatNameLength (const char *s)
+{
+	const char	*sender;
+	int			i, len, msglen = (int)strlen (s);
+
+	for (i=0 ; i<MAX_CLIENTS ; i++)
+	{
+		if (!cl.players[i].name[0])
+			continue;
+		sender = Info_ValueForKey (cl.players[i].userinfo, "name");
+		len = (int)strlen (sender);
+		if (len + 2 <= msglen && s[len] == ':' && s[len+1] == ' ' && !strncmp (sender, s, len))
+			return len + 2;
+		if (s[0] == '(' && len + 4 <= msglen && !strncmp (s + len + 1, "): ", 3) && !strncmp (sender, s + 1, len))
+			return len + 4;
+		if (!strncmp (s, "[SPEC] ", 7) && len + 9 <= msglen && s[len+7] == ':' && s[len+8] == ' '
+		 && !strncmp (sender, s + 7, len))
+			return len + 9;
+	}
+	return 0;
+}
+
+/*
+==================
+CL_ChatText
+
+A chat line as ezQuake shows it (its cl_parseWhiteText): in the other
+charset, but what the sender put in braces, after the name, in the usual one
+and without the braces. Color codes are kept as they are.
+==================
+*/
+static void CL_ChatText (const char *in, char *out, size_t size)
+{
+	const char	*p, *close;
+	size_t		len, n;
+	int			sender = CL_ChatNameLength (in);
+
+	for (p = in, len = 0 ; *p && len + 1 < size ; )
+	{
+		if (p - in >= sender && *p == '{' && (close = strchr (p + 1, '}')))
+		{
+			n = (size_t)(close - p - 1);
+			if (n > size - 1 - len)
+				n = size - 1 - len;
+			memcpy (out + len, p + 1, n);
+			len += n;
+			p = close + 1;
+			continue;
+		}
+		n = (size_t)Markup_CodeLength (p);
+		if (n && n <= size - 1 - len)
+		{
+			memcpy (out + len, p, n);
+			len += n;
+			p += n;
+			continue;
+		}
+		out[len++] = (char)(*p == '\n' || *p == '\r' ? *p : *p | 128);
+		p++;
+	}
+	out[len] = 0;
+}
+
 static int	received_framecount;
 static int	projectiles_frame;
 void CL_ParseServerMessage (void)
 {
 	int			cmd;
 	char		*s;
+	char		chat[2048];
 	int			i, j;
 	float		f;
 
@@ -1285,10 +1358,10 @@ void CL_ParseServerMessage (void)
 			if (i == PRINT_CHAT)
 			{
 				S_LocalSound ("misc/talk.wav");
-				con.ormask = 128;
+				CL_ChatText (s, chat, sizeof(chat));
+				s = chat;
 			}
 			Con_Printf ("%s", s);
-			con.ormask = 0;
 			break;
 
 		case svc_centerprint:

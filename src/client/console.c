@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // console.c
 
 #include "cl_local.h"
+#include "markup.h"
 
 console_t	con;
 
@@ -84,6 +85,7 @@ Con_Clear_f
 void Con_Clear_f (void)
 {
 	Q_memset (con.text, ' ', CON_TEXTSIZE);
+	memset (con.colors, 0, sizeof(con.colors));
 }
 
 
@@ -131,7 +133,8 @@ Con_Resize
 */
 static void Con_Resize (void)
 {
-	int		i, j, width, oldwidth, oldtotallines, numlines, numchars;
+	static uint16_t	cbuf[CON_TEXTSIZE];
+	int		i, j, width, oldwidth, oldtotallines, numlines, numchars, from, to;
 	char	tbuf[CON_TEXTSIZE];
 
 	width = (vid.conwidth >> 3) - 2;
@@ -145,6 +148,7 @@ static void Con_Resize (void)
 		con.linewidth = width;
 		con.totallines = CON_TEXTSIZE / con.linewidth;
 		Q_memset (con.text, ' ', CON_TEXTSIZE);
+		memset (con.colors, 0, sizeof(con.colors));
 	}
 	else
 	{
@@ -163,15 +167,18 @@ static void Con_Resize (void)
 			numchars = con.linewidth;
 
 		Q_memcpy (tbuf, con.text, CON_TEXTSIZE);
+		memcpy (cbuf, con.colors, sizeof(cbuf));
 		Q_memset (con.text, ' ', CON_TEXTSIZE);
+		memset (con.colors, 0, sizeof(con.colors));
 
 		for (i=0 ; i<numlines ; i++)
 		{
 			for (j=0 ; j<numchars ; j++)
 			{
-				con.text[(con.totallines - 1 - i) * con.linewidth + j] =
-						tbuf[((con.current - i + oldtotallines) %
-							  oldtotallines) * oldwidth + j];
+				to = (con.totallines - 1 - i) * con.linewidth + j;
+				from = ((con.current - i + oldtotallines) % oldtotallines) * oldwidth + j;
+				con.text[to] = tbuf[from];
+				con.colors[to] = cbuf[from];
 			}
 		}
 
@@ -240,6 +247,7 @@ void Con_Linefeed (void)
 	con.current++;
 	Q_memset (&con.text[(con.current%con.totallines)*con.linewidth]
 	, ' ', con.linewidth);
+	memset (&con.colors[(con.current%con.totallines)*con.linewidth], 0, con.linewidth * sizeof(con.colors[0]));
 }
 
 /*
@@ -249,6 +257,8 @@ Con_Print
 Handles cursor positioning, line wrapping, etc
 All console printing must go through this in order to be logged to disk
 If no console is visible, the notify window will pop up.
+The colors ezQuake's and FTE's markup give are kept with the characters;
+each print starts with none (ezQuake).
 ================
 */
 void Con_Print (char *txt)
@@ -257,6 +267,8 @@ void Con_Print (char *txt)
 	int		c, l;
 	static int	cr;
 	int		mask;
+	markup_t	m, ahead;
+	const char	*s, *word;
 
 	if (txt[0] == 1 || txt[0] == 2)
 	{
@@ -266,19 +278,26 @@ void Con_Print (char *txt)
 	else
 		mask = 0;
 
-
-	while ( (c = *txt) )
+	Markup_Begin (&m);
+	for (s = txt ; ; )
 	{
-	// count word length
+	// count word length, in characters shown
+		ahead = m;
+		word = s;
 		for (l=0 ; l< con.linewidth ; l++)
-			if ( txt[l] <= ' ')
+		{
+			c = Markup_Next (&word, &ahead);
+			if (c < 0 || (c & 127) <= ' ')
 				break;
+		}
+
+		c = Markup_Next (&s, &m);
+		if (c < 0)
+			break;
 
 	// word wrap
 		if (l != con.linewidth && (con.x + l > con.linewidth) )
 			con.x = 0;
-
-		txt++;
 
 		if (cr)
 		{
@@ -308,7 +327,8 @@ void Con_Print (char *txt)
 
 		default:	// display character and advance
 			y = con.current % con.totallines;
-			con.text[y*con.linewidth+con.x] = (char)(c | mask | con.ormask);
+			con.text[y*con.linewidth+con.x] = (char)(c | mask);
+			con.colors[y*con.linewidth+con.x] = m.color;
 			con.x++;
 			if (con.x >= con.linewidth)
 				con.x = 0;
@@ -417,6 +437,7 @@ void Con_DrawNotify (void)
 {
 	int		x, v;
 	char	*text;
+	uint16_t	*colors;
 	int		i;
 	float	time;
 	char	*s;
@@ -434,10 +455,10 @@ void Con_DrawNotify (void)
 		if (time > con_notifytime.value)
 			continue;
 		text = con.text + (i % con.totallines)*con.linewidth;
-		
+		colors = con.colors + (i % con.totallines)*con.linewidth;
 
 		for (x = 0 ; x < con.linewidth ; x++)
-			Draw_Character ( (x+1)<<3, v, text[x]);
+			Draw_ColoredCharacter ( (x+1)<<3, v, text[x], colors[x]);
 
 		v += 8;
 	}
@@ -484,6 +505,7 @@ void Con_DrawConsole (int lines)
 	int				i, j, x, y, n;
 	int				rows;
 	char			*text;
+	uint16_t		*colors;
 	int				row;
 	char			dlbar[1024];
 	
@@ -521,9 +543,10 @@ void Con_DrawConsole (int lines)
 			break;		// past scrollback wrap point
 			
 		text = con.text + (row % con.totallines)*con.linewidth;
+		colors = con.colors + (row % con.totallines)*con.linewidth;
 
 		for (x=0 ; x<con.linewidth ; x++)
-			Draw_Character ( (x+1)<<3, y, text[x]);
+			Draw_ColoredCharacter ( (x+1)<<3, y, text[x], colors[x]);
 	}
 
 	// draw the download bar

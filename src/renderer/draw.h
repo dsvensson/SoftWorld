@@ -30,6 +30,8 @@ extern	qpic_t		*draw_disc;	// also used on sbar
 
 void Draw_Init (void);
 void Draw_Character (int x, int y, int num);
+void Draw_ColoredCharacter (int x, int y, int num, unsigned color);	// a text color (markup.h)
+void Draw_MarkupString (int x, int y, const char *str);			// colored as the markup in it says
 void Draw_Pixel (int x, int y, byte color);
 void Draw_SubPic(int x, int y, qpic_t *pic, int srcx, int srcy, int width, int height);
 void Draw_Pic (int x, int y, qpic_t *pic);

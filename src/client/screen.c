@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // screen.c -- master for refresh, status bar, console, chat, notify, etc
 
 #include "cl_local.h"
+#include "markup.h"
 #include "png.h"
 
 #include <time.h>
@@ -143,13 +144,14 @@ void SCR_CenterPrint (char *str)
 	}
 }
 
+// in the colors markup gives it, which go on from line to line
 void SCR_DrawCenterString (void)
 {
-	char	*start;
-	int		l;
-	int		j;
-	int		x, y;
-	int		remaining;
+	const char	*s, *line;
+	markup_t	m, ahead;
+	int			c, l;
+	int			x, y;
+	int			remaining;
 
 // the finale prints the characters one at a time
 	if (cl.intermission)
@@ -157,36 +159,42 @@ void SCR_DrawCenterString (void)
 	else
 		remaining = 9999;
 
-	start = scr_centerstring;
+	s = scr_centerstring;
 
 	if (scr_center_lines <= 4)
 		y = (int)(vid.conheight*0.35);
 	else
 		y = 48;
 
-	do	
+	Markup_Begin (&m);
+	for (;;)
 	{
-	// scan the width of the line
+	// scan the width of the line, in characters shown
+		ahead = m;
+		line = s;
 		for (l=0 ; l<40 ; l++)
-			if (start[l] == '\n' || !start[l])
-				break;
-		x = (vid.conwidth - l*8)/2;
-		for (j=0 ; j<l ; j++, x+=8)
 		{
-			Draw_Character (x, y, start[j]);	
+			c = Markup_Next (&line, &ahead);
+			if (c < 0 || c == '\n')
+				break;
+		}
+		x = (vid.conwidth - l*8)/2;
+		for ( ; l>0 ; l--, x+=8)
+		{
+			c = Markup_Next (&s, &m);
+			Draw_ColoredCharacter (x, y, c, m.color);
 			if (!remaining--)
 				return;
 		}
-			
+
 		y += 8;
 
-		while (*start && *start != '\n')
-			start++;
-
-		if (!*start)
+	// past the \n, and what didn't fit before it
+		while ((c = Markup_Next (&s, &m)) >= 0 && c != '\n')
+			;
+		if (c < 0)
 			break;
-		start++;		// skip the \n
-	} while (1);
+	}
 }
 
 void SCR_CheckDrawCenterString (void)

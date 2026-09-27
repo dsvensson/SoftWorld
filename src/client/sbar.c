@@ -258,9 +258,10 @@ void Sbar_DrawCharacter (int x, int y, int num)
 Sbar_DrawString
 ================
 */
+// in the colors a player's name in it may give
 void Sbar_DrawString (int x, int y, char *str)
 {
-	Draw_String (x /*+ ((vid.conwidth - 320)>>1) */, y+ vid.conheight-SBAR_HEIGHT, str);
+	Draw_MarkupString (x /*+ ((vid.conwidth - 320)>>1) */, y+ vid.conheight-SBAR_HEIGHT, str);
 }
 
 /*
@@ -986,9 +987,9 @@ void Sbar_DeathmatchOverlay (int start)
 			Draw_String (x+40, y, "(spectator)");
 			// draw name
 			if (teamplay)
-				Draw_String (x+152+40, y, s->name);
+				Draw_MarkupString (x+152+40, y, s->name);
 			else
-				Draw_String (x+152, y, s->name);
+				Draw_MarkupString (x+152, y, s->name);
 			y += skip;
 			continue;
 		}
@@ -1039,9 +1040,9 @@ void Sbar_DeathmatchOverlay (int start)
 
 		// draw name
 		if (teamplay)
-			Draw_String (x+152+40, y, s->name);
+			Draw_MarkupString (x+152+40, y, s->name);
 		else
-			Draw_String (x+152, y, s->name);
+			Draw_MarkupString (x+152, y, s->name);
 		
 		y += skip;
 	}
@@ -1151,9 +1152,9 @@ void Sbar_MiniDeathmatchOverlay (void)
 		shortname[16] = 0;
 		strncpy(shortname, s->name, 16);
 		if (teamplay)
-			Draw_String (x+48+40, y, shortname);
+			Draw_MarkupString (x+48+40, y, shortname);
 		else
-			Draw_String (x+48, y, shortname);
+			Draw_MarkupString (x+48, y, shortname);
 		y += 8;
 	}
 
