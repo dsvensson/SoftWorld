@@ -235,6 +235,8 @@ typedef struct
 	int			servercount;	// server identification for prespawns
 
 	char		serverinfo[MAX_SERVERINFO_STRING];
+	int			z_ext;			// the ZQuake extensions in use: the server's "*z_ext" and ours
+	float		minpitch, maxpitch;	// how far the view may look down and up
 
 	int			parsecount;		// server message counter
 	int			validsequence;	// this is the sequence number of the last good
@@ -488,6 +490,12 @@ void CL_ParseProjectiles (bool numbered);
 
 // the model with that number, NULL if there is none
 struct model_s *CL_Model (int index);
+
+// what the serverinfo tells: the ZQuake extensions, the pitch limits
+void CL_ProcessServerInfo (void);
+
+// the view's height above the player's origin
+float CL_ViewHeight (void);
 void CL_ParsePacketEntities (bool delta);
 void CL_SetSolidEntities (void);
 void CL_ParsePlayerinfo (void);

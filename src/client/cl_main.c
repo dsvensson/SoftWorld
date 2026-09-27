@@ -330,6 +330,7 @@ void CL_ClearState (void)
 	if (cl.map)
 		CM_FreeMap (cl.map);
 	memset (&cl, 0, sizeof(cl));
+	CL_ProcessServerInfo ();
 
 	SZ_Clear (&cls.netchan.message);
 
@@ -501,6 +502,76 @@ void CL_Color_f (void)
 
 /*
 ==================
+CL_ProcessServerInfo
+==================
+*/
+void CL_ProcessServerInfo (void)
+{
+	char	*s;
+
+	cl.z_ext = atoi (Info_ValueForKey (cl.serverinfo, "*z_ext")) & SW_Z_EXTENSIONS;
+
+	cl.maxpitch = 80;
+	cl.minpitch = -70;
+	if (cl.z_ext & Z_EXT_PITCHLIMITS)
+	{
+		s = Info_ValueForKey (cl.serverinfo, "maxpitch");
+		if (*s)
+			cl.maxpitch = (float)atof (s);
+		s = Info_ValueForKey (cl.serverinfo, "minpitch");
+		if (*s)
+			cl.minpitch = (float)atof (s);
+		cl.maxpitch = cl.maxpitch < 0 ? 0 : cl.maxpitch > 89.9f ? 89.9f : cl.maxpitch;
+		cl.minpitch = cl.minpitch > 0 ? 0 : cl.minpitch < -89.9f ? -89.9f : cl.minpitch;
+	}
+}
+
+/*
+==================
+CL_ViewHeight
+==================
+*/
+float CL_ViewHeight (void)
+{
+	if ((cl.z_ext & Z_EXT_VIEWHEIGHT) && cl.stats[STAT_VIEWHEIGHT])
+		return (float)cl.stats[STAT_VIEWHEIGHT];
+	return 22;
+}
+
+/*
+==================
+CL_Join_f / CL_Observe_f
+
+Play or watch: on a server with Z_EXT_JOIN_OBSERVE without reconnecting,
+elsewhere by reconnecting with the spectator userinfo changed
+==================
+*/
+static void CL_JoinObserve (bool observe)
+{
+	Cvar_Set ("spectator", observe ? "1" : "");
+	if (cls.state < ca_connected || cls.demoplayback)
+		return;
+	if (cl.z_ext & Z_EXT_JOIN_OBSERVE)
+	{
+		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
+		MSG_WriteString (&cls.netchan.message, observe ? "observe" : "join");
+		return;
+	}
+	Cbuf_AddText ("reconnect\n");
+}
+
+static void CL_Join_f (void)
+{
+	CL_JoinObserve (false);
+}
+
+static void CL_Observe_f (void)
+{
+	CL_JoinObserve (true);
+}
+
+/*
+==================
 CL_FullServerinfo_f
 
 Sent by server when serverinfo changes
@@ -518,6 +589,7 @@ void CL_FullServerinfo_f (void)
 	}
 
 	Q_strncpyz (cl.serverinfo, Cmd_Argv(1), sizeof(cl.serverinfo));
+	CL_ProcessServerInfo ();
 
 	if ((p = Info_ValueForKey(cl.serverinfo, "*vesion")) && *p) {
 		v = Q_atof(p);
@@ -1074,6 +1146,7 @@ static void CL_InitLocal (void)
 
 	cls.state = ca_disconnected;
 	Cvar_SetUserinfoHook (CL_UserinfoCvarChanged);
+	Info_SetValueForStarKey (cls.userinfo, "*z_ext", va("%i", SW_Z_EXTENSIONS), MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 
 	r_scene.numvisedicts = &cl.numvisedicts;
 	r_scene.maxvisedicts = MAX_VISEDICTS;
@@ -1177,6 +1250,8 @@ static void CL_InitLocal (void)
 	Cmd_AddCommand ("setinfo", CL_SetInfo_f);
 	Cmd_AddCommand ("fullinfo", CL_FullInfo_f);
 	Cmd_AddCommand ("fullserverinfo", CL_FullServerinfo_f);
+	Cmd_AddCommand ("join", CL_Join_f);
+	Cmd_AddCommand ("observe", CL_Observe_f);
 
 	Cmd_AddCommand ("color", CL_Color_f);
 	Cmd_AddCommand ("download", CL_Download_f);

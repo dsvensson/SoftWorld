@@ -634,7 +634,7 @@ void V_CalcRefdef (void)
 	else if (view_message->flags & PF_DEAD)
 		r_refdef.vieworg[2] -= 16;	// corpse view height
 	else
-		r_refdef.vieworg[2] += 22;	// view height
+		r_refdef.vieworg[2] += CL_ViewHeight ();
 
 	if (view_message->flags & PF_DEAD)		// PF_GIB will also set PF_DEAD
 		r_refdef.viewangles[ROLL] = 80;	// dead view angle
@@ -649,7 +649,7 @@ void V_CalcRefdef (void)
 	CalcGunAngle ();
 
 	VectorCopy (cl.simorg, view->origin);
-	view->origin[2] += 22;
+	view->origin[2] += CL_ViewHeight ();
 
 	for (i=0 ; i<3 ; i++)
 	{

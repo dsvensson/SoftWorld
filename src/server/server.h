@@ -226,9 +226,12 @@ typedef struct client_s
 	int				delta_sequence;		// -1 = no compression
 	netchan_t		netchan;
 
-	// protocol extensions both ends know, from the connect packet
+	// protocol extensions both ends know, from the connect packet; ZQuake's
+	// from the userinfo
 	unsigned		fteext;
 	unsigned		mvdext1;
+	int				z_ext;
+	double			lastservertime;		// host.realtime STAT_TIME went out last
 } client_t;
 
 // a client can leave the server in one of four ways:
@@ -377,6 +380,7 @@ typedef struct
 
 extern	cvar_t	sv_mintic, sv_maxtic;
 extern	cvar_t	sv_bigcoords;
+extern	cvar_t	sv_maxpitch, sv_minpitch;
 
 #define	SV_BIGCOORDS_REFUSAL	"This map goes past the standard coordinates of +-4096:\n" \
 	"it needs a client with FTE float coordinates (ezQuake, FTE, SoftWorld).\n"
@@ -496,6 +500,10 @@ void SV_WriteDelta (const client_t *client, const entity_state_t *from, const en
 bool SV_EntityFits (const client_t *client, int number, int modelindex);
 void SV_EntityLook (const edict_t *ent, entity_state_t *s);
 void SV_ClientBaseline (const client_t *client, const edict_t *ent, entity_state_t *base);
+
+// sv_main.c: whether a client may join (spectator false) or observe; prints
+// the reason to it when not
+bool SV_CanSwitchSide (client_t *cl, bool spectator);
 
 //
 // sv_nchan.c

@@ -293,6 +293,11 @@ void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizeb
 		SV_EntityLook (ent, &look);
 		if (look.alpha && (client->fteext & FTE_PEXT_TRANS))
 			pflags |= PF_TRANS;
+		// ZQuake's, to clients that asked for them
+		if ((client->z_ext & Z_EXT_PF_ONGROUND) && ((int)ent->v.flags & FL_ONGROUND))
+			pflags |= PF_ONGROUND;
+		if ((client->z_ext & Z_EXT_PF_SOLID) && (ent->v.solid == SOLID_BBOX || ent->v.solid == SOLID_SLIDEBOX))
+			pflags |= PF_SOLID;
 		// the flag rides in the byte that comes with FTE_PEXT_TRANS
 		if ((look.colormod[0] | look.colormod[1] | look.colormod[2]) &&
 			(client->fteext & FTE_PEXT_TRANS) && (client->fteext & FTE_PEXT_COLOURMOD))

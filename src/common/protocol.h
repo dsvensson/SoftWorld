@@ -56,7 +56,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	STAT_SECRETS		13		// bumped on client side by svc_foundsecret
 #define	STAT_MONSTERS		14		// bumped by svc_killedmonster
 #define	STAT_ITEMS			15
-//define	STAT_VIEWHEIGHT		16
+#define	STAT_VIEWHEIGHT		16		// Z_EXT_VIEWHEIGHT: the view's height above the origin
+#define	STAT_TIME			17		// Z_EXT_SERVERTIME, FTE_PEXT_ACCURATETIMINGS: the server's time in ms
 
 
 //
@@ -132,13 +133,30 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define	FTE_PEXT2_VOICECHAT			0x00000002	// svc_fte_voicechat
 
-// the extensions this program speaks: CL_ as a client, SV_ as a server. The
-// server doesn't send STAT_TIME yet (ACCURATETIMINGS).
-#define	SV_FTE_EXTENSIONS	(FTE_PEXT_TRANS | FTE_PEXT_MODELDBL | FTE_PEXT_ENTITYDBL | FTE_PEXT_ENTITYDBL2 | \
-	FTE_PEXT_FLOATCOORDS | FTE_PEXT_COLOURMOD | FTE_PEXT_SPAWNSTATIC2 | FTE_PEXT_256PACKETENTITIES)
-#define	CL_FTE_EXTENSIONS	(SV_FTE_EXTENSIONS | FTE_PEXT_ACCURATETIMINGS)
+// the extensions this program speaks: CL_ as a client, SV_ as a server
+#define	SV_FTE_EXTENSIONS	(FTE_PEXT_TRANS | FTE_PEXT_ACCURATETIMINGS | FTE_PEXT_MODELDBL | FTE_PEXT_ENTITYDBL | \
+	FTE_PEXT_ENTITYDBL2 | FTE_PEXT_FLOATCOORDS | FTE_PEXT_COLOURMOD | FTE_PEXT_SPAWNSTATIC2 | \
+	FTE_PEXT_256PACKETENTITIES)
+#define	CL_FTE_EXTENSIONS	SV_FTE_EXTENSIONS
 #define	SV_MVD1_EXTENSIONS	(MVD_PEXT1_FLOATCOORDS)
 #define	CL_MVD1_EXTENSIONS	(MVD_PEXT1_FLOATCOORDS)
+
+//
+// ZQuake's extensions: a client lists them in its "*z_ext" userinfo key, a
+// server in its "*z_ext" serverinfo key; both use those both list
+//
+#define	Z_EXT_PM_TYPE		(1<<0)	// playerinfo carries the movement type (PF_PMC)
+#define	Z_EXT_PM_TYPE_NEW	(1<<1)	// with the fly and spectator types
+#define	Z_EXT_VIEWHEIGHT	(1<<2)	// STAT_VIEWHEIGHT
+#define	Z_EXT_SERVERTIME	(1<<3)	// STAT_TIME now and then
+#define	Z_EXT_PITCHLIMITS	(1<<4)	// serverinfo maxpitch and minpitch
+#define	Z_EXT_JOIN_OBSERVE	(1<<5)	// the join and observe commands switch sides without reconnecting
+#define	Z_EXT_PF_ONGROUND	(1<<6)	// PF_ONGROUND is set in every playerinfo
+#define	Z_EXT_VWEP			(1<<7)	// players carry visible weapons
+#define	Z_EXT_PF_SOLID		(1<<8)	// PF_SOLID is set in every playerinfo
+
+#define	SW_Z_EXTENSIONS		(Z_EXT_VIEWHEIGHT | Z_EXT_SERVERTIME | Z_EXT_PITCHLIMITS | Z_EXT_JOIN_OBSERVE | \
+	Z_EXT_PF_ONGROUND | Z_EXT_PF_SOLID)
 
 // what the client reads in recordings as well: no download comes up there,
 // and FTE's voice chat is skipped

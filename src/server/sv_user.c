@@ -415,6 +415,37 @@ void SV_PreSpawn_f (void)
 
 /*
 ==================
+SV_SetUpClientEdict
+
+A client's edict, fresh for a player or a spectator
+==================
+*/
+static void SV_SetUpClientEdict (client_t *cl)
+{
+	edict_t	*ent;
+	eval_t	*val;
+
+	ent = cl->edict;
+
+	memset (&ent->v, 0, pr.progs->entityfields * 4);
+	ent->alpha = 0;
+	memset (ent->colormod, 0, sizeof(ent->colormod));
+	ent->v.colormap = (float)NUM_FOR_EDICT(ent);
+	ent->v.team = 0;	// FIXME
+	ent->v.netname = PR_SetString(cl->name);
+
+	cl->entgravity = 1.0;
+	val = GetEdictFieldValue(ent, "gravity");
+	if (val)
+		val->_float = 1.0;
+	cl->maxspeed = sv_maxspeed.value;
+	val = GetEdictFieldValue(ent, "maxspeed");
+	if (val)
+		val->_float = sv_maxspeed.value;
+}
+
+/*
+==================
 SV_Spawn_f
 ==================
 */
@@ -422,8 +453,6 @@ void SV_Spawn_f (void)
 {
 	int		i;
 	client_t	*client;
-	edict_t	*ent;
-	eval_t *val;
 	int n;
 
 	if (host_client->state != cs_connected)
@@ -471,22 +500,7 @@ void SV_Spawn_f (void)
 		ClientReliableWrite_String (host_client, sv.lightstyles[i]);
 	}
 
-	// set up the edict
-	ent = host_client->edict;
-
-	memset (&ent->v, 0, pr.progs->entityfields * 4);
-	ent->v.colormap = (float)NUM_FOR_EDICT(ent);
-	ent->v.team = 0;	// FIXME
-	ent->v.netname = PR_SetString(host_client->name);
-
-	host_client->entgravity = 1.0;
-	val = GetEdictFieldValue(ent, "gravity");
-	if (val)
-		val->_float = 1.0;
-	host_client->maxspeed = sv_maxspeed.value;
-	val = GetEdictFieldValue(ent, "maxspeed");
-	if (val)
-		val->_float = sv_maxspeed.value;
+	SV_SetUpClientEdict (host_client);
 
 //
 // force stats to be updated
@@ -545,13 +559,111 @@ void SV_SpawnSpectator (void)
 
 /*
 ==================
+SV_PutClientInGame
+
+host_client, as a player or a spectator, through the progs
+==================
+*/
+static void SV_PutClientInGame (void)
+{
+	int		i;
+
+	if (host_client->spectator)
+	{
+		SV_SpawnSpectator ();
+
+		if (pr.SpectatorConnect) {
+			// copy spawn parms out of the client_t
+			for (i=0 ; i< NUM_SPAWN_PARMS ; i++)
+				(&pr.global_struct->parm1)[i] = host_client->spawn_parms[i];
+
+			// call the spawn function
+			pr.global_struct->time = (float)sv.time;
+			pr.global_struct->self = EDICT_TO_PROG(sv_player);
+			PR_ExecuteProgram (pr.SpectatorConnect);
+		}
+		return;
+	}
+
+	// copy spawn parms out of the client_t
+	for (i=0 ; i< NUM_SPAWN_PARMS ; i++)
+		(&pr.global_struct->parm1)[i] = host_client->spawn_parms[i];
+
+	// call the spawn function
+	pr.global_struct->time = (float)sv.time;
+	pr.global_struct->self = EDICT_TO_PROG(sv_player);
+	PR_ExecuteProgram (pr.global_struct->ClientConnect);
+
+	// actually spawn the player
+	pr.global_struct->time = (float)sv.time;
+	pr.global_struct->self = EDICT_TO_PROG(sv_player);
+	PR_ExecuteProgram (pr.global_struct->PutClientInServer);
+}
+
+/*
+==================
+SV_Join_f / SV_Observe_f
+
+A spectator becomes a player, or the other way, without reconnecting
+(ZQuake's Z_EXT_JOIN_OBSERVE)
+==================
+*/
+static void SV_SwitchSide (bool spectator)
+{
+	int		i;
+
+	if (host_client->state != cs_spawned || host_client->spectator == spectator)
+		return;
+	if (!(host_client->z_ext & Z_EXT_JOIN_OBSERVE))
+	{
+		SV_ClientPrintf (host_client, PRINT_HIGH, "Your client doesn't support this command.\n");
+		return;
+	}
+	if (!SV_CanSwitchSide (host_client, spectator))
+		return;
+
+	// the old side leaves, as SV_DropClient has it
+	pr.global_struct->self = EDICT_TO_PROG(sv_player);
+	if (!host_client->spectator)
+		PR_ExecuteProgram (pr.global_struct->ClientDisconnect);
+	else if (pr.SpectatorDisconnect)
+		PR_ExecuteProgram (pr.SpectatorDisconnect);
+
+	host_client->old_frags = 0;
+	host_client->spectator = spectator;
+	host_client->spec_track = 0;
+	if (spectator)
+		Info_SetValueForStarKey (host_client->userinfo, "*spectator", "1", MAX_INFO_STRING, SV_InfoCharset ());
+	else
+		Info_RemoveKey (host_client->userinfo, "*spectator");
+
+	// and comes in on the new one, as a new client would
+	SV_SetUpClientEdict (host_client);
+	PR_ExecuteProgram (pr.global_struct->SetNewParms);
+	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
+		host_client->spawn_parms[i] = (&pr.global_struct->parm1)[i];
+	SV_PutClientInGame ();
+	host_client->sendinfo = true;
+}
+
+static void SV_Join_f (void)
+{
+	SV_SwitchSide (false);
+}
+
+static void SV_Observe_f (void)
+{
+	SV_SwitchSide (true);
+}
+
+/*
+==================
 SV_Begin_f
 ==================
 */
 void SV_Begin_f (void)
 {
 	unsigned pmodel = 0, emodel = 0;
-	int		i;
 
 	if (host_client->state == cs_spawned)
 		return; // don't begin again
@@ -566,37 +678,7 @@ void SV_Begin_f (void)
 		return;
 	}
 
-	if (host_client->spectator)
-	{
-		SV_SpawnSpectator ();
-
-		if (pr.SpectatorConnect) {
-			// copy spawn parms out of the client_t
-			for (i=0 ; i< NUM_SPAWN_PARMS ; i++)
-				(&pr.global_struct->parm1)[i] = host_client->spawn_parms[i];
-	
-			// call the spawn function
-			pr.global_struct->time = (float)sv.time;
-			pr.global_struct->self = EDICT_TO_PROG(sv_player);
-			PR_ExecuteProgram (pr.SpectatorConnect);
-		}
-	}
-	else
-	{
-		// copy spawn parms out of the client_t
-		for (i=0 ; i< NUM_SPAWN_PARMS ; i++)
-			(&pr.global_struct->parm1)[i] = host_client->spawn_parms[i];
-
-		// call the spawn function
-		pr.global_struct->time = (float)sv.time;
-		pr.global_struct->self = EDICT_TO_PROG(sv_player);
-		PR_ExecuteProgram (pr.global_struct->ClientConnect);
-
-		// actually spawn the player
-		pr.global_struct->time = (float)sv.time;
-		pr.global_struct->self = EDICT_TO_PROG(sv_player);
-		PR_ExecuteProgram (pr.global_struct->PutClientInServer);	
-	}
+	SV_PutClientInGame ();
 
 	// clear the net statistics, because connecting gives a bogus picture
 	host_client->netchan.frame_latency = 0;
@@ -1238,6 +1320,8 @@ static ucmd_t ucmds[] =
 	{"prespawn", SV_PreSpawn_f},
 	{"spawn", SV_Spawn_f},
 	{"begin", SV_Begin_f},
+	{"join", SV_Join_f},
+	{"observe", SV_Observe_f},
 
 	{"drop", SV_Drop_f},
 	{"pings", SV_Pings_f},
@@ -1401,6 +1485,12 @@ void SV_RunCmd (usercmd_t *ucmd)
 	int			oldmsec;
 
 	cmd = *ucmd;
+
+	// the pitch limits in the serverinfo (Z_EXT_PITCHLIMITS)
+	if (cmd.angles[PITCH] > sv_maxpitch.value)
+		cmd.angles[PITCH] = sv_maxpitch.value;
+	if (cmd.angles[PITCH] < sv_minpitch.value)
+		cmd.angles[PITCH] = sv_minpitch.value;
 
 	// chop up very long commands
 	if (cmd.msec > 50)

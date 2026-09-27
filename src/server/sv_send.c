@@ -469,6 +469,17 @@ void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
 			MSG_WriteAngle (msg, ent->v.angles[i] );
 		ent->v.fixangle = 0;
 	}
+
+	// the server's time: in every datagram with FTE_PEXT_ACCURATETIMINGS,
+	// every few seconds with Z_EXT_SERVERTIME, which only keeps a clock near
+	if ((client->fteext & FTE_PEXT_ACCURATETIMINGS) ||
+		((client->z_ext & Z_EXT_SERVERTIME) && host.realtime - client->lastservertime >= 5))
+	{
+		MSG_WriteByte (msg, svc_updatestatlong);
+		MSG_WriteByte (msg, STAT_TIME);
+		MSG_WriteLong (msg, (int)(sv.time * 1000));
+		client->lastservertime = host.realtime;
+	}
 }
 
 /*
@@ -505,6 +516,8 @@ void SV_UpdateClientStats (client_t *client)
 		stats[STAT_ACTIVEWEAPON] = (int)ent->v.weapon;
 	// stuff the sigil bits into the high bits of items for sbar
 	stats[STAT_ITEMS] = (int)ent->v.items | ((int)pr.global_struct->serverflags << 28);
+	if (client->z_ext & Z_EXT_VIEWHEIGHT)
+		stats[STAT_VIEWHEIGHT] = (int)ent->v.view_ofs[2];
 
 	for (i=0 ; i<MAX_CL_STATS ; i++)
 		if (stats[i] != client->stats[i])

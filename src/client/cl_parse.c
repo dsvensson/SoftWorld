@@ -1093,6 +1093,7 @@ void CL_ServerInfo (void)
 	Con_DPrintf("SERVERINFO: %s=%s\n", key, value);
 
 	Info_SetValueForKey (cl.serverinfo, key, value, MAX_SERVERINFO_STRING, INFO_CHARSET_USERINFO);
+	CL_ProcessServerInfo ();
 }
 
 /*

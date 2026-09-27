@@ -51,6 +51,11 @@ cvar_t sv_phs = {.name = "sv_phs", .string = "1"};
 // past the standard +-4096; clients without them can't join
 cvar_t sv_bigcoords = {.name = "sv_bigcoords", .string = "0"};
 
+// how far players may look up and down: serverinfo keys for the clients
+// (Z_EXT_PITCHLIMITS), and the server holds commands to them
+cvar_t sv_maxpitch = {.name = "maxpitch", .string = "80", .serverinfo = true};
+cvar_t sv_minpitch = {.name = "minpitch", .string = "-70", .serverinfo = true};
+
 cvar_t pausable	= {.name = "pausable", .string = "1"};
 
 
@@ -744,6 +749,7 @@ void SVC_DirectConnect (void)
 	newcl->fteext = fteext;
 	newcl->mvdext1 = mvdext1;
 	memcpy (newcl->userinfo, info, sizeof(newcl->userinfo));
+	newcl->z_ext = atoi (Info_ValueForKey (newcl->userinfo, "*z_ext")) & SW_Z_EXTENSIONS;
 
 	Netchan_OutOfBandPrint (NS_SERVER, adr, "%c", S2C_CONNECTION );
 
@@ -783,6 +789,44 @@ void SVC_DirectConnect (void)
 	else
 		Con_DPrintf ("Client %s connected\n", newcl->name);
 	newcl->sendinfo = true;
+}
+
+/*
+==================
+SV_CanSwitchSide
+==================
+*/
+bool SV_CanSwitchSide (client_t *cl, bool spectator)
+{
+	client_t	*c;
+	int			i, clients, spectators;
+	const char	*pw;
+
+	// a password we can't check now: the client must reconnect with it
+	pw = spectator ? spectator_password.string : password.string;
+	if (pw[0] && Q_strcasecmp (pw, "none"))
+	{
+		SV_ClientPrintf (cl, PRINT_HIGH, "This server needs a %s password: reconnect as a %s with it set.\n",
+			spectator ? "spectator" : "player", spectator ? "spectator" : "player");
+		return false;
+	}
+
+	clients = spectators = 0;
+	for (i=0, c=svs.clients ; i<MAX_CLIENTS ; i++, c++)
+	{
+		if (c == cl || c->state == cs_free)
+			continue;
+		if (c->spectator)
+			spectators++;
+		else
+			clients++;
+	}
+	if (spectator ? spectators >= (int)maxspectators.value : clients >= (int)maxclients.value)
+	{
+		SV_ClientPrintf (cl, PRINT_HIGH, "All %s slots are taken.\n", spectator ? "spectator" : "player");
+		return false;
+	}
+	return true;
 }
 
 int Rcon_Validate (void)
@@ -1391,6 +1435,8 @@ void SV_InitLocal (void)
 	Cvar_RegisterVariable (&sv_mintic);
 	Cvar_RegisterVariable (&sv_maxtic);
 	Cvar_RegisterVariable (&sv_bigcoords);
+	Cvar_RegisterVariable (&sv_maxpitch);
+	Cvar_RegisterVariable (&sv_minpitch);
 
 	Cvar_RegisterVariable (&fraglimit);
 	Cvar_RegisterVariable (&timelimit);
@@ -1443,6 +1489,7 @@ void SV_InitLocal (void)
 		snprintf (svs.localmodels[i], sizeof(svs.localmodels[i]), "*%i", i);
 
 	Info_SetValueForStarKey (svs.info, "*version", va("%4.2f", VERSION), MAX_SERVERINFO_STRING, SV_InfoCharset ());
+	Info_SetValueForStarKey (svs.info, "*z_ext", va("%i", SW_Z_EXTENSIONS), MAX_SERVERINFO_STRING, SV_InfoCharset ());
 
 	// init fraglog stuff
 	svs.logsequence = 1;
