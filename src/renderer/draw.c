@@ -260,7 +260,6 @@ static const hudpixel_t *Draw_TintPalette (unsigned rgb)
 	static struct { unsigned rgb; hudpixel_t pal[256]; }	tints[DRAW_TINTS];
 	static int		used, next;
 	unsigned		r, g, b;
-	pixel_t			p;
 	int				i, j;
 
 	for (i=0 ; i<used ; i++)
@@ -273,10 +272,7 @@ static const hudpixel_t *Draw_TintPalette (unsigned rgb)
 	g = (rgb >> 4) & 15;
 	b = rgb & 15;
 	for (j=0 ; j<256 ; j++)
-	{
-		p = d_pal30[j];
-		tints[i].pal[j] = HUD_RGBA (RGB30_R (p) * r / 15, RGB30_G (p) * g / 15, RGB30_B (p) * b / 15, 255);
-	}
+		tints[i].pal[j] = HUD_RGBA (d_palrgb[j][0] * r / 15, d_palrgb[j][1] * g / 15, d_palrgb[j][2] * b / 15, 255);
 	return tints[i].pal;
 }
 
@@ -535,7 +531,7 @@ void Draw_Flush (void)
 	R_ProfCount (PROFN_HUD, 1);
 
 	for (i=0 ; i<256 ; i++)
-		draw_pal[i] = HUD_RGBA (RGB30_R (d_pal30[i]), RGB30_G (d_pal30[i]), RGB30_B (d_pal30[i]), 255);
+		draw_pal[i] = HUD_RGBA (d_palrgb[i][0], d_palrgb[i][1], d_palrgb[i][2], 255);
 	memset (vid.hud, 0, (size_t)vid.rowpixels * vid.height * sizeof(hudpixel_t));
 
 	for (i=0, c = draw_calls[now] ; i<draw_numcalls[now] ; i++, c++)

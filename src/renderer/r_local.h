@@ -101,6 +101,8 @@ extern pixel_t	d_cm30[VID_GRADES * 256];	// the palette through each colormap ro
 extern byte		r_identityremap[256];		// no player colors
 extern byte		d_palrgb[256][3];
 extern pixel_t	d_pal30_floor[256];
+double		R_SrgbToLinear (double c);
+unsigned	R_LightCode (double light);
 
 void R_SetFullbrightScale (float scale);
 void R_BuildMips (texture_t *tx, bool fence);
@@ -141,11 +143,13 @@ void R_FindFaceLumps (bspfile_t *bsp, int numfaces, facelumps_t *lumps);
 void R_SetFaceLightmap (model_t *mod, msurface_t *surf, const bspface_t *face, const facelumps_t *lumps,
 	int facenum, const double texmins[2], const double texmaxs[2]);
 
-// r_lightmode 1: light in RGB, 128 << 8 is 1.0, clamped at 4.0 keeping the hue
+// r_lightmode 1: linear light in RGB, 128 << 8 is 1.0, clamped keeping the hue
+// at the brightest a pixel holds (vid.h)
 #define LIGHT_ONE		(128 << 8)
-#define LIGHT_MAX		(4 * LIGHT_ONE)
+#define LIGHT_MAX		(15 * LIGHT_ONE)
 
 extern cvar_t	r_lightmode;
+extern cvar_t	r_dlight_scale;		// dynamic lights' light times this
 void R_DlightColor (const dlight_t *dl, float color[3]);
 
 // lit texel color: a color times light, with 15 fraction bits. A fullbright

@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "simd_backends.h"
 
+#include <math.h>
 #include <string.h>
 
 void Simd_Scalar_ZSpan (float *dest, int count, float zi, float step)
@@ -244,10 +245,25 @@ void Simd_Scalar_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sf
 	}
 }
 
+// a channel of src over dest in linear light, a channel being the fourth root
+// of its light: ((s^4 * a + d^4 * ia) / 256)^(1/4)
+static inline unsigned Simd_Scalar_BlendChannel (unsigned s, unsigned d, float a, float ia)
+{
+	float		fs = (float)s, fd = (float)d;
+	unsigned	c;
+
+	fs *= fs;
+	fs *= fs;
+	fd *= fd;
+	fd *= fd;
+	c = (unsigned)(sqrtf (sqrtf ((fs * a + fd * ia) * (1.0f / 256.0f))) + 0.5f);
+	return c < 1023 ? c : 1023;
+}
+
 void Simd_Scalar_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
 	int alpha, int count)
 {
-	unsigned	a = (unsigned)alpha, ia = 256 - (unsigned)alpha;
+	float		a = (float)alpha, ia = (float)(256 - alpha);
 	uint32_t	s, d;
 	int			i;
 
@@ -259,9 +275,9 @@ void Simd_Scalar_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zb
 		if (zbuf && !(zbuf[i] <= zi + (float)i * step))
 			continue;
 		d = dest[i];
-		dest[i] = (((s & 1023) * a + (d & 1023) * ia) >> 8)
-			| (((((s >> 10) & 1023) * a + ((d >> 10) & 1023) * ia) >> 8) << 10)
-			| (((((s >> 20) & 1023) * a + ((d >> 20) & 1023) * ia) >> 8) << 20);
+		dest[i] = Simd_Scalar_BlendChannel (s & 1023, d & 1023, a, ia)
+			| (Simd_Scalar_BlendChannel ((s >> 10) & 1023, (d >> 10) & 1023, a, ia) << 10)
+			| (Simd_Scalar_BlendChannel ((s >> 20) & 1023, (d >> 20) & 1023, a, ia) << 20);
 	}
 }
 

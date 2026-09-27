@@ -188,6 +188,7 @@ static void R_AddDynamicLights (unsigned *bl, bool rgb)
 	int			i;
 	int			smax, tmax;
 	mtexinfo_t	*tex;
+	float		scale = r_dlight_scale.value > 0 ? r_dlight_scale.value : 0;
 
 	surf = r_drawsurf.surf;
 	smax = r_lightgrid[0];
@@ -243,7 +244,7 @@ static void R_AddDynamicLights (unsigned *bl, bool rgb)
 					continue;
 				}
 				for (i=0 ; i<3 ; i++)
-					bl[(t*smax + s)*3 + i] = (unsigned)(bl[(t*smax + s)*3 + i] + (rad - dist)*256*color[i]);
+					bl[(t*smax + s)*3 + i] = (unsigned)(bl[(t*smax + s)*3 + i] + (rad - dist)*256*color[i]*scale);
 			}
 		}
 	}
@@ -322,9 +323,10 @@ static void R_BuildLightMap (void)
 ===============
 R_BuildLightMapRGB
 
-The light of each block corner in red, green and blue, LIGHT_ONE for
-1.0, from RGB samples if the map has them. The brightest channel is
-held to LIGHT_MAX, the others scaled with it to keep the hue.
+The light of each block corner in red, green and blue, from RGB samples if
+the map has them: linear light, LIGHT_ONE for 1.0, the brightest channel
+held to LIGHT_MAX and the others scaled with it to keep the hue, and then its
+fourth root, which is what multiplies a pixel (vid.h).
 ===============
 */
 static void R_BuildLightMapRGB (void)
@@ -343,17 +345,10 @@ static void R_BuildLightMapRGB (void)
 	rgb = surf->samples_rgb;
 	bl = blocklights_rgb;
 
-	if (!r_scene.worldmodel->lightdata)
-	{
-		for (i=0 ; i<size*3 ; i++)
-			bl[i] = 255 << 8;
-		return;
-	}
-
 	for (i=0 ; i<size*3 ; i++)
-		bl[i] = (unsigned)r_refdef.ambientlight << 8;
+		bl[i] = r_scene.worldmodel->lightdata ? (unsigned)r_refdef.ambientlight << 8 : LIGHT_ONE;
 
-	for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ; maps++)
+	for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 && r_scene.worldmodel->lightdata ; maps++)
 	{
 		scale = r_drawsurf.lightadj[maps];	// 8.8 fraction
 		if (rgb && surf->lmvanilla)
@@ -382,17 +377,19 @@ static void R_BuildLightMapRGB (void)
 		}
 	}
 
-	if (surf->dlightframe == r_framecount)
+	if (surf->dlightframe == r_framecount && r_scene.worldmodel->lightdata)
 		R_AddDynamicLights (bl, true);
 
 	for (i=0 ; i<size ; i++, bl += 3)
 	{
 		m = bl[0] > bl[1] ? bl[0] : bl[1];
 		m = bl[2] > m ? bl[2] : m;
-		if (m <= LIGHT_MAX)
-			continue;
+		if (m > LIGHT_MAX)
+			for (c=0 ; c<3 ; c++)
+				bl[c] = (unsigned)((uint64_t)bl[c] * LIGHT_MAX / m);
+		// a pixel is the fourth root of its light (vid.h), so light multiplies it as its fourth root
 		for (c=0 ; c<3 ; c++)
-			bl[c] = (unsigned)((uint64_t)bl[c] * LIGHT_MAX / m);
+			bl[c] = (unsigned)(sqrtf (sqrtf ((float)bl[c] / LIGHT_ONE)) * LIGHT_ONE + 0.5f);
 	}
 }
 

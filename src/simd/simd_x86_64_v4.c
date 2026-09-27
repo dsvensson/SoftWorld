@@ -396,15 +396,23 @@ static void Simd_V4_ExpandTables (void)
 	expand_ready = true;
 }
 
-// one 10 bit channel of src over dest, at bit shift
-static inline __m512i Simd_V4_BlendChannel (__m512i s, __m512i d, __m512i a, __m512i ia, int shift)
+// one 10 bit channel of src over dest at bit shift, in linear light as
+// simd_scalar.c blends it
+static inline __m512i Simd_V4_BlendChannel (__m512i s, __m512i d, __m512 a, __m512 ia, int shift)
 {
 	const __m512i	mask = _mm512_set1_epi32 (1023);
-	__m512i			sc = _mm512_and_si512 (_mm512_srli_epi32 (s, (unsigned)shift), mask);
-	__m512i			dc = _mm512_and_si512 (_mm512_srli_epi32 (d, (unsigned)shift), mask);
-	__m512i			c = _mm512_add_epi32 (_mm512_mullo_epi32 (sc, a), _mm512_mullo_epi32 (dc, ia));
+	__m512			fs = _mm512_cvtepi32_ps (_mm512_and_si512 (_mm512_srli_epi32 (s, (unsigned)shift), mask));
+	__m512			fd = _mm512_cvtepi32_ps (_mm512_and_si512 (_mm512_srli_epi32 (d, (unsigned)shift), mask));
+	__m512			x;
+	__m512i			c;
 
-	return _mm512_slli_epi32 (_mm512_srli_epi32 (c, 8), (unsigned)shift);
+	fs = _mm512_mul_ps (fs, fs);
+	fs = _mm512_mul_ps (fs, fs);
+	fd = _mm512_mul_ps (fd, fd);
+	fd = _mm512_mul_ps (fd, fd);
+	x = _mm512_mul_ps (_mm512_add_ps (_mm512_mul_ps (fs, a), _mm512_mul_ps (fd, ia)), _mm512_set1_ps (1.0f / 256.0f));
+	c = _mm512_cvttps_epi32 (_mm512_add_ps (_mm512_sqrt_ps (_mm512_sqrt_ps (x)), _mm512_set1_ps (0.5f)));
+	return _mm512_slli_epi32 (_mm512_min_epi32 (c, mask), (unsigned)shift);
 }
 
 void Simd_V4_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
@@ -413,8 +421,8 @@ void Simd_V4_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, 
 	const __m512	lane = _mm512_cvtepi32_ps (Simd_V4_Iota ());
 	const __m512	vzi = _mm512_set1_ps (zi);
 	const __m512	vstep = _mm512_set1_ps (step);
-	const __m512i	a = _mm512_set1_epi32 (alpha);
-	const __m512i	ia = _mm512_set1_epi32 (256 - alpha);
+	const __m512	a = _mm512_set1_ps ((float)alpha);
+	const __m512	ia = _mm512_set1_ps ((float)(256 - alpha));
 	const __m512i	cutout = _mm512_set1_epi32 ((int)0x80000000u);
 	__m512i			s, d, out;
 	__mmask16		m;

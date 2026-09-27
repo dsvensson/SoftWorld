@@ -746,54 +746,73 @@ static void VID_SetScale (int scale)
 
 #define VID_MIDGRAY		0.18f	// linear light that contrast keeps
 
-// the contrast of linear light, as present.hlsl makes it
-static float VID_Contrast (float lin)
+static double VID_LinearToSrgb (double l)
 {
-	float	contrast = vid_contrast.value > 0 ? vid_contrast.value : 1;
+	return l <= 0.0031308 ? l * 12.92 : 1.055 * pow (l, 1 / 2.4) - 0.055;
+}
 
-	return lin > 0 ? VID_MIDGRAY * powf (lin / VID_MIDGRAY, contrast) : 0;
+// a channel of the view as linear light (vid.h)
+static float VID_ChannelLight (unsigned code)
+{
+	float	c = code / 512.0f;
+
+	c *= c;
+	return c * c;
 }
 
 /*
 ================
 VID_FrameToRGB
 
-What present.hlsl does for SDR (the view's blend, gamma, contrast and clip,
-through a table per channel, then the 2D over it), or if not shown only the
-clip and the 2D
+What present.hlsl does for SDR (in light the view's gamma and contrast, what
+is brighter than white toward white, then sRGB, the view's blend and the 2D
+over it), or if not shown only white clipped, sRGB and the 2D
 ================
 */
 void VID_FrameToRGB (byte *rgb, bool shown)
 {
-	static byte	lut[3][1024];
-	float		c;
+	static byte	raw[1024];
+	pixel_t		p;
+	hudpixel_t	h;
+	float		light[3], c, m, contrast;
 	unsigned	x, y, a, i;
-	int			ch, v;
+	int			v;
 
-	for (ch = 0 ; ch < 3 ; ch++)
-		for (v = 0 ; v < 1024 ; v++)
-		{
-			if (!shown)
-			{
-				lut[ch][v] = (byte)(v > 255 ? 255 : v);
-				continue;
-			}
-			c = v / 255.0f;
-			c += (vid_present.blend[ch] - c) * vid_present.blend[3];
-			c = powf (fmaxf (c, 0), vid_present.gamma);
-			c = VID_Contrast (powf (c, 2.2f));
-			lut[ch][v] = (byte)(powf (fminf (c, 1), 1 / 2.2f) * 255 + 0.5f);
-		}
+	for (v = 0 ; v < 1024 ; v++)
+		raw[v] = (byte)(255 * VID_LinearToSrgb (fmin (pow (v / 512.0, 4), 1)) + 0.5);
+	contrast = vid_contrast.value > 0 ? vid_contrast.value : 1;
 
 	for (y = 0 ; y < vid.height ; y++)
 		for (x = 0 ; x < vid.width ; x++, rgb += 3)
 		{
-			pixel_t		p = vid.buffer[y * vid.rowpixels + x];
-			hudpixel_t	h = vid.hud[y * vid.rowpixels + x];
-
-			rgb[0] = lut[0][RGB30_R (p)];
-			rgb[1] = lut[1][RGB30_G (p)];
-			rgb[2] = lut[2][RGB30_B (p)];
+			p = vid.buffer[y * vid.rowpixels + x];
+			h = vid.hud[y * vid.rowpixels + x];
+			if (!shown)
+			{
+				rgb[0] = raw[RGB30_R (p)];
+				rgb[1] = raw[RGB30_G (p)];
+				rgb[2] = raw[RGB30_B (p)];
+			}
+			else
+			{
+				light[0] = VID_ChannelLight (RGB30_R (p));
+				light[1] = VID_ChannelLight (RGB30_G (p));
+				light[2] = VID_ChannelLight (RGB30_B (p));
+				for (i = 0 ; i < 3 ; i++)
+				{
+					light[i] = powf (fmaxf (light[i], 0), vid_present.gamma);
+					light[i] = VID_MIDGRAY * powf (light[i] / VID_MIDGRAY, contrast);
+				}
+				m = fmaxf (light[0], fmaxf (light[1], light[2]));
+				for (i = 0 ; i < 3 ; i++)
+				{
+					if (m > 1)
+						light[i] = light[i] / m + (1 - light[i] / m) * (1 - 1 / m);
+					c = (float)VID_LinearToSrgb (fminf (light[i], 1));
+					c += (vid_present.blend[i] - c) * vid_present.blend[3];
+					rgb[i] = (byte)(255 * c + 0.5f);
+				}
+			}
 			a = HUD_A (h);
 			if (!a)
 				continue;

@@ -26,11 +26,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define VID_CBITS	6
 #define VID_GRADES	(1 << VID_CBITS)
 
-// A pixel is RGB30: 10 bits per channel, red lowest. SDR white is 255, which
-// leaves headroom for light brighter than white.
+// A pixel is RGB30: 10 bits per channel, red lowest, each 512 times the
+// fourth root of the channel's linear light, so 512 is SDR white and 1023
+// light 15.9 times as bright. Light multiplies a pixel as its fourth root
+// multiplies the channels; the root keeps dark colors finer than 8 bit sRGB.
 typedef uint32_t pixel_t;
 
-#define RGB30_WHITE		255
+#define RGB30_WHITE		512
 
 static inline pixel_t RGB30 (unsigned r, unsigned g, unsigned b)
 {
@@ -98,18 +100,17 @@ bool	VID_IsFullscreen (void);
 bool	VID_IsActive (void);		// the window has the focus
 bool	VID_IsMinimized (void);
 
-// How the presenter turns the 3D view into screen colors: the blend and gamma
-// over its display values, then in linear light (the display values to the
-// power 2.2) its contrast (vid_contrast), then the display's range. The 2D
-// layer is laid over it as it is.
+// How the presenter turns the 3D view into screen colors: in its light gamma
+// and contrast (vid_contrast), then the display's range, and the blend over
+// its sRGB values, as Quake laid it. The 2D layer is laid over it as it is.
 typedef struct
 {
-	float	blend[4];		// rgb and how much of it covers the whole view (0: none)
-	float	gamma;			// exponent applied to the view; 1 keeps it
+	float	blend[4];		// sRGB color and how much of it covers the whole view (0: none)
+	float	gamma;			// exponent applied to the view's light; 1 keeps it
 } vid_present_t;
 
 void	VID_SetPresent (const vid_present_t *present);
 
-// the frame with its 2D, 8 bit RGB rows vid.width wide: as the screen shows it
+// the frame with its 2D, 8 bit sRGB rows vid.width wide: as the screen shows it
 // in SDR, or if not shown as drawn (no blend or gamma, SDR white clipped)
 void	VID_FrameToRGB (byte *rgb, bool shown);

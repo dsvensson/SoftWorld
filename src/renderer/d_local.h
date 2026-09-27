@@ -115,14 +115,29 @@ void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb);
 extern int	d_alpha;
 pixel_t	*D_BlendRow (int count);
 
+// a channel of src over dst, as simd_blendspan blends it: in linear light, a
+// channel being the fourth root of its light
+static inline unsigned D_BlendChannel (unsigned s, unsigned d, float a, float ia)
+{
+	float		fs = (float)s, fd = (float)d;
+	unsigned	c;
+
+	fs *= fs;
+	fs *= fs;
+	fd *= fd;
+	fd *= fd;
+	c = (unsigned)(sqrtf (sqrtf ((fs * a + fd * ia) * (1.0f / 256.0f))) + 0.5f);
+	return c < 1023 ? c : 1023;
+}
+
 // src over dst, src weighted a of 256
 static inline pixel_t D_BlendPixel (pixel_t src, pixel_t dst, int a)
 {
-	unsigned	ia = 256 - (unsigned)a;
+	float	fa = (float)a, fia = (float)(256 - a);
 
-	return ((((src & 1023) * (unsigned)a + (dst & 1023) * ia) >> 8)) |
-		(((((src >> 10) & 1023) * (unsigned)a + ((dst >> 10) & 1023) * ia) >> 8) << 10) |
-		(((((src >> 20) & 1023) * (unsigned)a + ((dst >> 20) & 1023) * ia) >> 8) << 20);
+	return D_BlendChannel (src & 1023, dst & 1023, fa, fia)
+		| (D_BlendChannel ((src >> 10) & 1023, (dst >> 10) & 1023, fa, fia) << 10)
+		| (D_BlendChannel ((src >> 20) & 1023, (dst >> 20) & 1023, fa, fia) << 20);
 }
 
 

@@ -129,7 +129,9 @@ cvar_t	r_lightmode = {.name = "r_lightmode", .string = "1", .archive = true};
 // dynamic lights have color (r_lightmode 1)
 static cvar_t	r_dlight_color = {.name = "r_dlight_color", .string = "1", .archive = true};
 // fullbright colors are this much brighter than white allows (r_lightmode 1)
-static cvar_t	r_fullbright_scale = {.name = "r_fullbright_scale", .string = "1.3", .archive = true};
+// fullbrights' light, and dynamic lights' on surfaces, times these
+static cvar_t	r_fullbright_scale = {.name = "r_fullbright_scale", .string = "1.5", .archive = true};
+cvar_t	r_dlight_scale = {.name = "r_dlight_scale", .string = "1", .archive = true};
 static cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1"};
 
 // how opaque liquids are drawn, 0 .. 1; seeing through them needs a map whose
@@ -220,6 +222,7 @@ void R_Init (void)
 	Cmd_AddCommand ("r_profile_show", R_Profile_f);
 	Cvar_RegisterVariable (&r_dlight_color);
 	Cvar_RegisterVariable (&r_fullbright_scale);
+	Cvar_RegisterVariable (&r_dlight_scale);
 	Cvar_RegisterVariable (&r_fullbright);
 	Cvar_RegisterVariable (&r_drawentities);
 	Cvar_RegisterVariable (&r_wateralpha);

@@ -171,6 +171,7 @@ typedef enum
 void	R_ProfCount (profn_t what, int n);
 // palette.lmp and colormap.lmp, before any drawing
 void R_InitPalette (const byte *palette, const byte *colormap);
+pixel_t R_ColorPixel (int r, int g, int b);		// an sRGB color as a pixel (vid.h)
 void R_InitTextures (void);
 void R_RenderView (void);		// must set r_refdef first
 void R_ViewChanged (vrect_t *vrect, float aspect);

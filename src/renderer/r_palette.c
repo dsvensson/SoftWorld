@@ -18,16 +18,39 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 // r_palette.c -- the palette and the colormap as RGB30 pixels
+//
+// The palette's colors are sRGB, as Quake's textures are: they are decoded
+// to linear light, and lit, blended and shown as light (vid.h).
 
 #include "r_local.h"
 
 pixel_t	d_pal30[256];
 pixel_t	d_cm30[VID_GRADES * 256];
 byte	r_identityremap[256];
-byte	d_palrgb[256][3];		// the palette, for lighting by multiplication
+byte	d_palrgb[256][3];		// the palette as it is, sRGB: the 2D, and finding colors
 static bool	d_fullbright[256];	// colors light doesn't change
 pixel_t	d_pal30_floor[256];		// the least a lit color can be: fullbrights brightened
 								// by r_fullbright_scale, 0 for the others
+
+// an sRGB value, 0 .. 1, as linear light
+double R_SrgbToLinear (double c)
+{
+	return c <= 0.04045 ? c / 12.92 : pow ((c + 0.055) / 1.055, 2.4);
+}
+
+// linear light as a pixel's channel (vid.h), 1023 at most
+unsigned R_LightCode (double light)
+{
+	double	code = light > 0 ? 512 * sqrt (sqrt (light)) + 0.5 : 0;
+
+	return code < 1023 ? (unsigned)code : 1023;
+}
+
+pixel_t R_ColorPixel (int r, int g, int b)
+{
+	return RGB30 (R_LightCode (R_SrgbToLinear (r / 255.0)), R_LightCode (R_SrgbToLinear (g / 255.0)),
+		R_LightCode (R_SrgbToLinear (b / 255.0)));
+}
 
 /*
 ===============
@@ -43,7 +66,7 @@ void R_InitPalette (const byte *palette, const byte *colormap)
 
 	for (i = 0 ; i < 256 ; i++)
 	{
-		d_pal30[i] = RGB30 (palette[i * 3], palette[i * 3 + 1], palette[i * 3 + 2]);
+		d_pal30[i] = R_ColorPixel (palette[i * 3], palette[i * 3 + 1], palette[i * 3 + 2]);
 		r_identityremap[i] = (byte)i;
 	}
 	for (i = 0 ; i < VID_GRADES * 256 ; i++)
@@ -63,6 +86,8 @@ void R_InitPalette (const byte *palette, const byte *colormap)
 /*
 ===============
 R_SetFullbrightScale
+
+The fullbrights' floors: their light times scale
 ===============
 */
 void R_SetFullbrightScale (float scale)
@@ -73,11 +98,7 @@ void R_SetFullbrightScale (float scale)
 	for (i = 0 ; i < 256 ; i++)
 	{
 		for (c = 0 ; c < 3 ; c++)
-		{
-			v[c] = (unsigned)(d_palrgb[i][c] * scale + 0.5f);
-			if (v[c] > 1023)
-				v[c] = 1023;
-		}
+			v[c] = R_LightCode (R_SrgbToLinear (d_palrgb[i][c] / 255.0) * scale);
 		d_pal30_floor[i] = d_fullbright[i] ? RGB30 (v[0], v[1], v[2]) : 0;
 	}
 }

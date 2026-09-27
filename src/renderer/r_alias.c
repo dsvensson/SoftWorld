@@ -412,6 +412,26 @@ static void R_AliasSetUpTransform (int trivial_accept)
 }
 
 
+
+// a vertex's light, (255 - level) << 6 with a level of 8192 being 1.0: with
+// RGB light the level's fourth root, which is what multiplies a pixel (vid.h)
+static int R_AliasVertexLight (int light)
+{
+	static short	root[(255 << 6) + 1];		// of each light
+	static bool		rooted;
+	int				i;
+
+	if (!r_affinetridesc.rgblight)
+		return light;
+	if (!rooted)
+	{
+		for (i = 0 ; i <= (255 << 6) ; i++)
+			root[i] = (short)((255 << 6) - (int)(sqrtf (sqrtf ((float)((255 << 6) - i) / 8192.0f)) * 8192.0f + 0.5f));
+		rooted = true;
+	}
+	return root[light < (255 << 6) ? light : 255 << 6];
+}
+
 /*
 ================
 R_AliasTransformFinalVert
@@ -450,7 +470,7 @@ static void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
 			temp = 0;
 	}
 
-	fv->v[4] = temp;
+	fv->v[4] = R_AliasVertexLight (temp);
 }
 
 
@@ -503,7 +523,7 @@ static void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pst
 				temp = 0;
 		}
 
-		fv->v[4] = temp;
+		fv->v[4] = R_AliasVertexLight (temp);
 	}
 }
 
@@ -648,8 +668,8 @@ static void R_AliasSetupLighting (alight_t *plighting)
 	r_shadelight *= VID_GRADES;
 
 	r_affinetridesc.rgblight = r_lightmode.value != 0;
-	for (i=0 ; i<3 ; i++)
-		r_affinetridesc.tint[i] = (unsigned)(plighting->color[i] * 256);
+	for (i=0 ; i<3 ; i++)		// the tint multiplies light, so as its fourth root
+		r_affinetridesc.tint[i] = (unsigned)(sqrtf (sqrtf (plighting->color[i])) * 256 + 0.5f);
 
 // rotate the lighting vector into the model's frame of reference
 	r_plightvec[0] = DotProduct (plighting->plightvec, alias_forward);

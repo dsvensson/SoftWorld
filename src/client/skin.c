@@ -403,7 +403,7 @@ void Skin_Colors (player_info_t *player)
 	for (i=0 ; i<256 ; i++)
 	{
 		player->translate[i] = (byte)i;
-		player->palette[i] = RGB30 (pal[i*3], pal[i*3+1], pal[i*3+2]);
+		player->palette[i] = R_ColorPixel (pal[i*3], pal[i*3+1], pal[i*3+2]);
 	}
 
 	for (r=0 ; r<2 ; r++)
@@ -416,7 +416,7 @@ void Skin_Colors (player_info_t *player)
 			{
 				index = start < 128 ? start + i : start + 15 - i;
 				player->translate[ranges[r] + i] = (byte)index;
-				player->palette[ranges[r] + i] = RGB30 (pal[index*3], pal[index*3+1], pal[index*3+2]);
+				player->palette[ranges[r] + i] = R_ColorPixel (pal[index*3], pal[index*3+1], pal[index*3+2]);
 			}
 			continue;
 		}
@@ -425,7 +425,7 @@ void Skin_Colors (player_info_t *player)
 		for (i=0 ; i<16 ; i++)
 		{
 			player->translate[ranges[r] + i] = Skin_Nearest (shades[i]);
-			player->palette[ranges[r] + i] = RGB30 (shades[i][0], shades[i][1], shades[i][2]);
+			player->palette[ranges[r] + i] = R_ColorPixel (shades[i][0], shades[i][1], shades[i][2]);
 		}
 	}
 }

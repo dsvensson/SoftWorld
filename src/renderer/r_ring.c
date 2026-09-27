@@ -169,10 +169,10 @@ static int R_RingClipFlags (const r_ring_t *ring)
 	return clipflags;
 }
 
+// an sRGB channel of a ring's color
 static unsigned R_RingChannel (float c)
 {
-	c *= RGB30_WHITE;
-	return c <= 0 ? 0 : c >= 1023 ? 1023 : (unsigned)c;
+	return R_LightCode (R_SrgbToLinear (c < 0 ? 0 : c > 1 ? 1 : c));
 }
 
 /*

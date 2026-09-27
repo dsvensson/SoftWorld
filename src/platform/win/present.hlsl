@@ -1,10 +1,12 @@
 // present.hlsl -- draws the software-rendered frame into the letterboxed viewport.
 //
-// The 3D view is R10G10B10A2 with SDR white at 255 of 1023, which leaves headroom for
-// overbright light. The shader applies the view blend and gamma to its display values, then
-// in linear light (display values to the power 2.2) the contrast, and takes it to the
-// display: SDR clipped, or scRGB (linear, 1.0 = 80 nits) for HDR displays with SDR white at
-// paper white. The 2D is laid over it as it is (RGBA8, premultiplied, SDR).
+// The 3D view is R10G10B10A2 holding linear light, each channel 512 times the fourth root of
+// its light: 512 is SDR white, 1023 light 15.9 times as bright. The shader applies gamma and
+// contrast to the light and takes it to the display, laying the view blend over its sRGB
+// values as Quake did (in light it would wash the view out). For SDR, light brighter than
+// white goes toward white keeping its hue, the rest is as it is. For HDR it is scRGB (linear,
+// 1.0 = 80 nits) with SDR white at paper white, and only light near and past the display's
+// peak is compressed. The 2D (RGBA8, sRGB, premultiplied) is laid over it as it is.
 
 Texture2D<float4> g_frame : register(t0);
 Texture2D<float4> g_hud : register(t1);
@@ -12,10 +14,10 @@ SamplerState g_linear : register(s0);
 
 cbuffer Present : register(b0)
 {
-	float4	g_blend;		// rgb, and how much of it covers the view
+	float4	g_blend;		// sRGB color, and how much of it covers the view
 	float2	g_texsize;		// frame size in texels
 	float2	g_scale;		// screen pixels per texel
-	float	g_gamma;		// exponent applied to the view's display values; 1 keeps it
+	float	g_gamma;		// exponent applied to the view's light; 1 keeps it
 	float	g_contrast;		// the light as mid gray times (light / mid gray) to this; 1 keeps it
 	float	g_sharp;		// 0: integer scale, nearest texel; 1: sharp bilinear
 	float	g_hdr;			// 0: SDR output; 1: scRGB output
@@ -65,6 +67,32 @@ float4 SampleLayer (Texture2D<float4> layer, float2 uv)
 
 static const float MIDGRAY = 0.18;		// linear light that contrast keeps
 
+// the view's linear light from its channels, fourth roots of it scaled to 512
+float3 ViewLight (float3 texel)
+{
+	float3 c = texel * (1023.0 / 512.0);
+	c *= c;
+	return c * c;
+}
+
+float3 SrgbToLinear (float3 c)
+{
+	return c <= 0.04045 ? c / 12.92 : pow(max((c + 0.055) / 1.055, 0), 2.4);
+}
+
+float3 LinearToSrgb (float3 l)
+{
+	return l <= 0.0031308 ? l * 12.92 : 1.055 * pow(max(l, 0), 1.0 / 2.4) - 0.055;
+}
+
+// light for SDR: what is brighter than white keeps its hue and goes toward white the
+// brighter it is; the rest is as it is
+float3 FitWhite (float3 c)
+{
+	float m = max(c.r, max(c.g, c.b));
+	return m <= 1 ? c : lerp(c / m, 1, 1 - 1 / m);
+}
+
 // compresses what is brighter than knee toward peak instead of clipping it
 float3 RollOff (float3 c, float knee, float peak)
 {
@@ -75,18 +103,21 @@ float3 RollOff (float3 c, float knee, float peak)
 
 float4 PSMain (VSOut i) : SV_Target
 {
-	float3 c = SampleLayer(g_frame, i.uv).rgb * (1023.0 / 255.0);
+	float3 light = ViewLight(SampleLayer(g_frame, i.uv).rgb);
 	float4 hud = SampleLayer(g_hud, i.uv);
 
-	c = lerp(c, g_blend.rgb, g_blend.a);
-	c = pow(max(c, 0), g_gamma);
-	float3 lin = MIDGRAY * pow(pow(max(c, 0), 2.2) / MIDGRAY, g_contrast);
+	light = pow(max(light, 0), g_gamma);
+	light = MIDGRAY * pow(max(light / MIDGRAY, 0), g_contrast);
 
 	if (g_hdr == 0)
-		return float4(pow(saturate(lin), 1 / 2.2) * (1 - hud.a) + hud.rgb, 1);
+	{
+		float3 c = lerp(LinearToSrgb(FitWhite(light)), g_blend.rgb, g_blend.a);
+		return float4(c * (1 - hud.a) + hud.rgb, 1);
+	}
 
-	// SDR white at paper white, highlights up to the peak; the 2D over it in linear light
-	lin = RollOff(lin * g_paperwhite, g_paperwhite, g_peak);
-	float3 hudlin = pow(max(hud.rgb / max(hud.a, 1.0 / 255.0), 0), 2.2) * g_paperwhite * hud.a;
-	return float4(hudlin + lin * (1 - hud.a), 1);
+	// SDR white at paper white, linear up to near the peak; the 2D over it in linear light
+	light = SrgbToLinear(lerp(LinearToSrgb(light), g_blend.rgb, g_blend.a));
+	light = RollOff(light * g_paperwhite, max(g_paperwhite, 0.75 * g_peak), g_peak);
+	float3 hudlin = SrgbToLinear(hud.rgb / max(hud.a, 1.0 / 255.0)) * g_paperwhite * hud.a;
+	return float4(hudlin + light * (1 - hud.a), 1);
 }
