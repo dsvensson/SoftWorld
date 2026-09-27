@@ -465,6 +465,8 @@ void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
 	if ( ent->v.fixangle )
 	{
 		MSG_WriteByte (msg, svc_setangle);
+		if (client->mvdext1 & MVD_PEXT1_HIGHLAGTELEPORT)
+			MSG_WriteByte (msg, SV_NoteFixangle (client));
 		for (i=0 ; i < 3 ; i++)
 			MSG_WriteAngle (msg, ent->v.angles[i] );
 		ent->v.fixangle = 0;

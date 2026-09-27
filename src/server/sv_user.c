@@ -1473,6 +1473,50 @@ void SV_PreRunCmd(void)
 }
 
 /*
+===================
+SV_TurnMove / SV_NoteFixangle
+
+MVD1 high-lag teleport: after a teleport, the moves the client sent before
+it saw the new view angles are turned by how far the view turned, as the
+client turns its own copies; after a respawn they get the new yaw. The
+progs' "teleported" field (KTX) tells a teleport, else the vanilla progs'
+teleport_time, set 0.7 seconds ahead in the frame they teleport.
+===================
+*/
+static void SV_TurnMove (client_t *cl, usercmd_t *move)
+{
+	if (cl->teleported)
+		PM_RotateMove (move, cl->teleport_yaw);
+	else
+		move->angles[YAW] = cl->edict->v.angles[YAW];
+}
+
+int SV_NoteFixangle (client_t *cl)
+{
+	edict_t	*ent = cl->edict;
+	eval_t	*val;
+	float	ahead;
+
+	val = GetEdictFieldValue (ent, "teleported");
+	if (val)
+	{
+		cl->teleported = val->_int != 0;
+		val->_int = 0;
+	}
+	else
+	{
+		val = GetEdictFieldValue (ent, "teleport_time");
+		ahead = val ? val->_float - (float)sv.time : 0;
+		cl->teleported = ahead > 0.45f && ahead < 0.75f;
+	}
+	cl->teleport_outgoing = cl->netchan.outgoing_sequence;
+	cl->teleport_incoming = cl->netchan.incoming_sequence;
+	cl->teleport_yaw = ent->v.angles[YAW] - cl->lastcmd.angles[YAW];
+	SV_TurnMove (cl, &cl->lastcmd);
+	return cl->teleported ? 1 : 2;
+}
+
+/*
 ===========
 SV_RunCmd
 ===========
@@ -1729,6 +1773,21 @@ void SV_ExecuteClientMessage (client_t *cl)
 				Con_DPrintf ("Failed command checksum for %s(%d) (%d != %d)\n", 
 					cl->name, cl->netchan.incoming_sequence, checksum, calculatedChecksum);
 				return;
+			}
+
+			// moves sent before the client saw a teleport's new view angles
+			if ((cl->mvdext1 & MVD_PEXT1_HIGHLAGTELEPORT) && cl->teleport_outgoing)
+			{
+				if (cl->netchan.incoming_acknowledged < cl->teleport_outgoing)
+				{
+					if (cl->netchan.incoming_sequence - 2 > cl->teleport_incoming)
+						SV_TurnMove (cl, &oldest);
+					if (cl->netchan.incoming_sequence - 1 > cl->teleport_incoming)
+						SV_TurnMove (cl, &oldcmd);
+					SV_TurnMove (cl, &newcmd);
+				}
+				else
+					cl->teleport_outgoing = 0;
 			}
 
 			if (!sv.paused) {

@@ -899,6 +899,24 @@ void PM_PlayerMove (playermove_t *pmove, const movevars_t *movevars)
 }
 
 /*
+================
+PM_RotateMove
+
+As ezQuake and mvdsv turn it: the move as (side, forward), rotated about the
+up axis
+================
+*/
+void PM_RotateMove (usercmd_t *cmd, float degrees)
+{
+	double	angle = degrees * Q_PI / 180;
+	float	c = (float)cos (angle), s = (float)sin (angle);
+	float	side = cmd->sidemove, fwd = cmd->forwardmove;
+
+	cmd->sidemove = (short)(c * side - s * fwd);
+	cmd->forwardmove = (short)(s * side + c * fwd);
+}
+
+/*
 ===============
 PM_CalcRoll
 

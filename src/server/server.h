@@ -232,6 +232,13 @@ typedef struct client_s
 	unsigned		mvdext1;
 	int				z_ext;
 	double			lastservertime;		// host.realtime STAT_TIME went out last
+
+	// MVD1 high-lag teleport: the last view angles the server set, to turn
+	// the moves the client sent before it saw them
+	bool			teleported;			// a teleport, not a respawn
+	int				teleport_outgoing;	// the outgoing sequence they went out in, 0 once seen
+	int				teleport_incoming;	// the incoming sequence then
+	float			teleport_yaw;		// how far they turned the view
 } client_t;
 
 // a client can leave the server in one of four ways:
@@ -504,6 +511,10 @@ void SV_ClientBaseline (const client_t *client, const edict_t *ent, entity_state
 // sv_main.c: whether a client may join (spectator false) or observe; prints
 // the reason to it when not
 bool SV_CanSwitchSide (client_t *cl, bool spectator);
+
+// sv_user.c: the view angles are being set for the client (MVD1 high-lag
+// teleport): returns what it is told, 1 a teleport, 2 a respawn
+int SV_NoteFixangle (client_t *cl);
 
 //
 // sv_nchan.c

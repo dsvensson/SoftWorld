@@ -1155,6 +1155,37 @@ void CL_MuzzleFlash (void)
 }
 
 
+/*
+==================
+CL_TurnPendingMoves
+
+The server turns the moves it gets that the client sent before it saw a
+teleport's new view angles (MVD1 high-lag teleport); the client turns its
+copies it predicts from the same way, and keeps the view turning the mouse
+did since. After a respawn the server gives them the new yaw instead.
+==================
+*/
+static void CL_TurnPendingMoves (bool teleport)
+{
+	frame_t	*f;
+	float	newyaw, delta;
+	int		i;
+
+	newyaw = cl.viewangles[YAW];
+	delta = newyaw - cl.frames[cl.parsecountmod].cmd.angles[YAW];
+	for (i=2 ; i<UPDATE_BACKUP-1 && cl.validsequence + i < cls.netchan.outgoing_sequence ; i++)
+	{
+		f = &cl.frames[(cl.validsequence + i) & UPDATE_MASK];
+		if (teleport)
+		{
+			PM_RotateMove (&f->cmd, delta);
+			cl.viewangles[YAW] = f->cmd.angles[YAW] + delta;
+		}
+		else
+			f->cmd.angles[YAW] = newyaw;
+	}
+}
+
 #define SHOWNET(x) if(cl_shownet.value==2)Con_Printf ("%3i:%s\n", msg_readcount-1, x);
 /*
 =====================
@@ -1256,9 +1287,17 @@ void CL_ParseServerMessage (void)
 			break;
 			
 		case svc_setangle:
+			// with MVD1 high-lag teleport first why: 1 a teleport, 2 a
+			// respawn, 0 unknown
+			j = (cls.mvdext1 & MVD_PEXT1_HIGHLAGTELEPORT) ? MSG_ReadByte () : 0;
 			for (i=0 ; i<3 ; i++)
 				cl.viewangles[i] = MSG_ReadAngle ();
 			CL_DisableLerpMove ();
+			if (j == 1 || j == 2)
+			{
+				Con_DPrintf ("View angles set by a %s: yaw %.1f\n", j == 1 ? "teleport" : "respawn", cl.viewangles[YAW]);
+				CL_TurnPendingMoves (j == 1);
+			}
 //			cl.viewangles[PITCH] = cl.viewangles[ROLL] = 0;
 			break;
 			

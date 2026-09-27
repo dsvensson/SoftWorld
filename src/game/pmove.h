@@ -83,6 +83,10 @@ extern	vec3_t	player_maxs;
 // results filled in
 void	PM_PlayerMove (playermove_t *pm, const movevars_t *mv);
 
+// turns a command's movement, its forward and side moves, by degrees of yaw;
+// its angles stay (MVD1 high-lag teleport, both ends)
+void	PM_RotateMove (usercmd_t *cmd, float degrees);
+
 // how far the view rolls when strafing at velocity
 // the view roll while strafing, from cl_rollangle and cl_rollspeed
 float	PM_CalcRoll (const vec3_t angles, const vec3_t velocity);
