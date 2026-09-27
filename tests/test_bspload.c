@@ -17,10 +17,10 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// test_bspload.c -- loads every map under a directory (C:\quakedev unless
-// given), loose and inside pak files, as a collision map and as a render
-// model. BSP29 and BSP2 maps must load; anything else must be refused with a
-// reason, never crash.
+// test_bspload.c -- loads every map under a directory (the argument, else the
+// SW_BASEDIR environment variable; neither is a skipped test), loose and
+// inside pak files, as a collision map and as a render model. BSP29 and BSP2
+// maps must load; anything else must be refused with a reason, never crash.
 
 #include "bspfile.h"
 #include "cmodel.h"
@@ -227,10 +227,17 @@ static void TestDirectory (const char *dir)
 	_findclose (h);
 }
 
+#define	SKIPPED		77		// ctest's SKIP_RETURN_CODE
+
 int main (int argc, char **argv)
 {
-	const char	*root = argc > 1 ? argv[1] : "C:/quakedev";
+	const char	*root = argc > 1 ? argv[1] : getenv ("SW_BASEDIR");
 
+	if (!root || !*root)
+	{
+		printf ("no maps: give a directory, or set SW_BASEDIR\n");
+		return SKIPPED;
+	}
 	R_InitTextures ();	// the checkerboard for textures a map lacks
 	TestDirectory (root);
 	printf ("%d maps loaded, %d other files refused, %d failures\n", loaded, refused, failures);
