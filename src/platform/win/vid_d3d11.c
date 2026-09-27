@@ -75,6 +75,8 @@ static IDXGIFactory2			*d3d_factory;
 static ID3D11Device				*d3d_device;
 static ID3D11DeviceContext		*d3d_context;
 static IDXGISwapChain1			*d3d_swapchain;
+static IDXGISwapChain2			*d3d_swapchain2;	// the same, for the frame latency
+static UINT						d3d_latency;		// frames queued at most
 static ID3D11RenderTargetView	*d3d_rtv;
 static ID3D11Texture2D			*d3d_frame;
 static ID3D11ShaderResourceView	*d3d_frame_srv;
@@ -343,7 +345,6 @@ static void VID_CreateDevice (void)
 {
 	static const D3D_FEATURE_LEVEL	levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0};
 	IDXGIFactory5		*factory5;
-	IDXGISwapChain2		*swapchain2;
 	HRESULT				hr;
 	RECT				client;
 	BOOL				tearing = FALSE;
@@ -390,12 +391,12 @@ static void VID_CreateDevice (void)
 	// fullscreen is a borderless window toggled by us, never DXGI exclusive mode
 	IDXGIFactory2_MakeWindowAssociation (d3d_factory, mainwindow, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES);
 
-	// queue at most one frame, and wait for room before drawing the next
-	VID_CheckHR (IDXGISwapChain1_QueryInterface (d3d_swapchain, &IID_IDXGISwapChain2, (void **)&swapchain2),
+	// queue few frames (VID_Update), and wait for room before drawing the next
+	VID_CheckHR (IDXGISwapChain1_QueryInterface (d3d_swapchain, &IID_IDXGISwapChain2, (void **)&d3d_swapchain2),
 		"IDXGISwapChain2");
-	IDXGISwapChain2_SetMaximumFrameLatency (swapchain2, 1);
-	d3d_waitable = IDXGISwapChain2_GetFrameLatencyWaitableObject (swapchain2);
-	IDXGISwapChain2_Release (swapchain2);
+	d3d_latency = 1;
+	IDXGISwapChain2_SetMaximumFrameLatency (d3d_swapchain2, d3d_latency);
+	d3d_waitable = IDXGISwapChain2_GetFrameLatencyWaitableObject (d3d_swapchain2);
 
 	VID_CreateBackbufferView ();
 
@@ -637,6 +638,7 @@ void VID_Shutdown (void)
 	VID_RELEASE (d3d_frame_srv);
 	VID_RELEASE (d3d_frame);
 	VID_RELEASE (d3d_rtv);
+	VID_RELEASE (d3d_swapchain2);
 	VID_RELEASE (d3d_swapchain);
 	VID_RELEASE (d3d_context);
 	VID_RELEASE (d3d_device);
@@ -771,7 +773,7 @@ void VID_Update (void)
 	D3D11_MAPPED_SUBRESOURCE	mapped;
 	present_constants_t			constants;
 	float						scale, sx, sy, stretch;
-	UINT						flags = 0, interval;
+	UINT						flags = 0, interval, latency;
 	int							i;
 
 	if (!vid_initialized || Minimized)
@@ -779,6 +781,18 @@ void VID_Update (void)
 
 	if (vid_outputdirty || vid_hdr.value != vid_hdrwanted || !IDXGIFactory2_IsCurrent (d3d_factory))
 		VID_CheckOutput ();
+
+	// frames in flight: one with vsync, where the display sets the pace and a
+	// second would be a refresh more of input lag; two without, so a frame is
+	// drawn while the last is presented (at 1300 fps a sixth more frames, for
+	// under a millisecond)
+	interval = vid_vsync.value ? 1 : 0;
+	latency = interval ? 1 : 2;
+	if (latency != d3d_latency)
+	{
+		IDXGISwapChain2_SetMaximumFrameLatency (d3d_swapchain2, latency);
+		d3d_latency = latency;
+	}
 
 	// room for this frame in the queue
 	WaitForSingleObjectEx (d3d_waitable, 100, TRUE);
@@ -834,7 +848,6 @@ void VID_Update (void)
 	ID3D11DeviceContext_PSSetConstantBuffers (d3d_context, 0, 1, &d3d_constants);
 	ID3D11DeviceContext_Draw (d3d_context, 3, 0);
 
-	interval = vid_vsync.value ? 1 : 0;
 	if (!interval && d3d_allow_tearing)
 		flags |= DXGI_PRESENT_ALLOW_TEARING;
 	IDXGISwapChain1_Present (d3d_swapchain, interval, flags);
