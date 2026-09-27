@@ -389,6 +389,7 @@ void CL_LinkPacketEntities (void)
 
 		ent->keynum = s1->number;
 		ent->model = model;
+		ent->alpha = s1->alpha;
 	
 		// set colormap
 		if (s1->colormap && (s1->colormap < MAX_CLIENTS) 
@@ -569,6 +570,7 @@ void CL_LinkProjectiles (void)
 		if (pr->modelindex < 1)
 			continue;
 		ent->model = cl.model_precache[pr->modelindex];
+		ent->alpha = 0;
 		ent->skinnum = 0;
 		ent->frame = 0;
 		ent->translate = NULL;
@@ -803,6 +805,7 @@ void CL_LinkPlayers (void)
 		ent->keynum = 0;
 
 		ent->model = CL_Model (state->modelindex);
+		ent->alpha = state->alpha;
 		ent->skinnum = state->skinnum;
 		ent->frame = state->frame;
 		ent->translate = info->translate;

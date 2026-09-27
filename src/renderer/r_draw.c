@@ -380,7 +380,7 @@ R_RenderFace
 */
 void R_RenderFace (msurface_t *fa, int clipflags)
 {
-	int			i, lindex;
+	int			i, lindex, alpha;
 	unsigned	mask;
 	mplane_t	*pplane;
 	float		distinv;
@@ -388,7 +388,14 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	medge_t		*pedges, tedge;
 	clipplane_t	*pclip;
 
-// a fence mustn't hide what's behind its holes: drawn after the world
+// a translucent surface is blended in after the models; a fence mustn't
+// hide what's behind its holes: drawn after the world
+	alpha = R_SurfaceAlpha (fa);
+	if (alpha < 256)
+	{
+		R_AddTranslucent (fa, alpha);
+		return;
+	}
 	if (fa->flags & SURF_DRAWFENCE)
 	{
 		R_AddFence (fa);
@@ -585,7 +592,7 @@ R_RenderBmodelFace
 */
 void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 {
-	int			i;
+	int			i, alpha;
 	unsigned	mask;
 	mplane_t	*pplane;
 	float		distinv;
@@ -593,6 +600,12 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	medge_t		tedge;
 	clipplane_t	*pclip;
 
+	alpha = R_SurfaceAlpha (psurf);
+	if (alpha < 256)
+	{
+		R_AddTranslucent (psurf, alpha);
+		return;
+	}
 	if (psurf->flags & SURF_DRAWFENCE)
 	{
 		R_AddFence (psurf);

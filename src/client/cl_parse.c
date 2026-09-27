@@ -832,6 +832,7 @@ void CL_ParseStatic (bool delta)
 
 // copy it to the current state
 	ent->model = model;
+	ent->alpha = es.alpha;
 	ent->frame = es.frame;
 	ent->translate = NULL;
 	ent->skinnum = es.skinnum;

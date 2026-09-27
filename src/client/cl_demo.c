@@ -634,6 +634,7 @@ void CL_Record_f (void)
 		state.modelindex = j == MAX_MODELS ? 0 : j;
 		state.frame = ent->frame;
 		state.skinnum = ent->skinnum;
+		state.alpha = ent->alpha;
 		VectorCopy (ent->origin, state.origin);
 		VectorCopy (ent->angles, state.angles);
 		CL_RecordEntity (&buf, true, 1, &state);

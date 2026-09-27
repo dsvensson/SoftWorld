@@ -129,6 +129,16 @@ static cvar_t	r_dlight_color = {.name = "r_dlight_color", .string = "1", .archiv
 // fullbright colors are this much brighter than white allows (r_lightmode 1)
 static cvar_t	r_fullbright_scale = {.name = "r_fullbright_scale", .string = "1.3", .archive = true};
 static cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1"};
+
+// how opaque liquids are drawn, 0 .. 1; seeing through them needs a map whose
+// visibility was built for it
+static cvar_t	r_wateralpha = {.name = "r_wateralpha", .string = "1", .archive = true};
+static cvar_t	r_lavaalpha = {.name = "r_lavaalpha", .string = "1", .archive = true};
+static cvar_t	r_slimealpha = {.name = "r_slimealpha", .string = "1", .archive = true};
+static cvar_t	r_telealpha = {.name = "r_telealpha", .string = "1", .archive = true};
+// every leaf is drawn, not just what the view's leaf sees; liquids can then be
+// seen through on any map
+static cvar_t	r_novis = {.name = "r_novis", .string = "0"};
 static cvar_t	r_drawviewmodel = {.name = "r_drawviewmodel", .string = "1"};
 static cvar_t	r_aliasstats = {.name = "r_polymodelstats", .string = "0"};
 static cvar_t	r_dspeeds = {.name = "r_dspeeds", .string = "0"};
@@ -214,6 +224,11 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_fullbright_scale);
 	Cvar_RegisterVariable (&r_fullbright);
 	Cvar_RegisterVariable (&r_drawentities);
+	Cvar_RegisterVariable (&r_wateralpha);
+	Cvar_RegisterVariable (&r_lavaalpha);
+	Cvar_RegisterVariable (&r_slimealpha);
+	Cvar_RegisterVariable (&r_telealpha);
+	Cvar_RegisterVariable (&r_novis);
 	Cvar_RegisterVariable (&r_drawviewmodel);
 	Cvar_RegisterVariable (&r_aliasstats);
 	Cvar_RegisterVariable (&r_dspeeds);
@@ -375,13 +390,68 @@ static void R_CheckLightSettings (void)
 
 /*
 ===============
+R_CheckLiquidVis
+
+The liquids the map's visibility sees through: those that fill a leaf which
+sees open air. Most maps are built with liquids opaque to visibility, and
+what is behind their surface isn't drawn, so R_SurfaceAlpha keeps them
+opaque whatever r_*alpha says, as Quakespasm does.
+===============
+*/
+static int	r_liquidvis;	// the kinds seen through: SURF_LAVA, SURF_SLIME, SURF_TELE, SURF_DRAWTURB for water
+
+static int R_LiquidKind (int flags)
+{
+	return flags & (SURF_LAVA | SURF_SLIME | SURF_TELE) ? flags & (SURF_LAVA | SURF_SLIME | SURF_TELE) : SURF_DRAWTURB;
+}
+
+static void R_CheckLiquidVis (void)
+{
+	model_t		*world = r_scene.worldmodel;
+	mleaf_t		*leaf;
+	byte		*air, *vis;
+	int			i, j, k, kinds;
+
+	r_liquidvis = 0;
+	air = Mem_Calloc ((size_t)world->visbytes, 1);
+	for (i=0 ; i<world->numleafs ; i++)
+		if (world->leafs[i+1].contents == CONTENTS_EMPTY)
+			air[i>>3] |= 1<<(i&7);
+
+	for (i=0 ; i<world->numleafs ; i++)
+	{
+		leaf = &world->leafs[i+1];
+		if (leaf->contents != CONTENTS_WATER && leaf->contents != CONTENTS_SLIME && leaf->contents != CONTENTS_LAVA)
+			continue;
+		kinds = 0;
+		for (j=0 ; j<leaf->nummarksurfaces ; j++)
+			if (leaf->firstmarksurface[j]->flags & SURF_DRAWTURB)
+				kinds |= R_LiquidKind (leaf->firstmarksurface[j]->flags);
+		if (!(kinds & ~r_liquidvis))
+			continue;		// nothing new to learn here
+		vis = Mod_LeafPVS (leaf, world);
+		for (k=0 ; k<world->visbytes ; k++)
+			if (vis[k] & air[k])
+			{
+				r_liquidvis |= kinds;
+				break;
+			}
+	}
+	Mem_Free (air);
+	Con_DPrintf ("Liquids the map sees through:%s%s%s%s\n", r_liquidvis & SURF_DRAWTURB ? " water" : "",
+		r_liquidvis & SURF_LAVA ? " lava" : "", r_liquidvis & SURF_SLIME ? " slime" : "",
+		r_liquidvis & SURF_TELE ? " tele" : "");
+}
+
+/*
+===============
 R_NewMap
 ===============
 */
 void R_NewMap (void)
 {
 	int		i;
-	
+
 	memset (&r_worldentity, 0, sizeof(r_worldentity));
 	r_worldentity.model = r_scene.worldmodel;
 
@@ -392,6 +462,7 @@ void R_NewMap (void)
 		 	
 	r_viewleaf = NULL;
 	R_ClearParticles ();
+	R_CheckLiquidVis ();
 
 	r_maxedgesseen = 0;
 	r_maxsurfsseen = 0;
@@ -537,17 +608,19 @@ R_MarkLeaves
 */
 void R_MarkLeaves (void)
 {
+	static bool	oldnovis;
 	byte	*vis;
 	mnode_t	*node;
 	int		i;
 
-	if (r_oldviewleaf == r_viewleaf)
+	if (r_oldviewleaf == r_viewleaf && oldnovis == (r_novis.value != 0))
 		return;
 	
 	r_visframecount++;
 	r_oldviewleaf = r_viewleaf;
+	oldnovis = r_novis.value != 0;
 
-	vis = Mod_LeafPVS (r_viewleaf, r_scene.worldmodel);
+	vis = oldnovis ? r_scene.worldmodel->novis : Mod_LeafPVS (r_viewleaf, r_scene.worldmodel);
 		
 	for (i=0 ; i<r_scene.worldmodel->numleafs ; i++)
 	{
@@ -568,12 +641,61 @@ void R_MarkLeaves (void)
 
 /*
 =============
-R_DrawEntitiesOnList
+R_EntityAlpha
+
+How opaque an entity is drawn, of 256
 =============
 */
-void R_DrawEntitiesOnList (void)
+int R_EntityAlpha (const entity_t *ent)
 {
-	int			i, j;
+	if (!ent->alpha || ent->alpha >= 255)
+		return 256;
+	return (ent->alpha * 256 + 127) / 254;
+}
+
+/*
+=============
+R_SurfaceAlpha
+
+How opaque a surface of currententity is drawn, of 256: the entity's alpha,
+and a liquid's r_*alpha where the map sees through it (liquids of brush
+models don't fill leafs of their own and always may)
+=============
+*/
+int R_SurfaceAlpha (const msurface_t *surf)
+{
+	float	alpha;
+	int		a;
+
+	if (surf->flags & (SURF_DRAWSKY | SURF_DRAWBACKGROUND))
+		return 256;
+	alpha = R_EntityAlpha (currententity) / 256.0f;
+	if ((surf->flags & SURF_DRAWTURB) &&
+		(currententity != &r_worldentity || r_novis.value || (r_liquidvis & R_LiquidKind (surf->flags))))
+	{
+		if (surf->flags & SURF_LAVA)
+			alpha *= r_lavaalpha.value;
+		else if (surf->flags & SURF_SLIME)
+			alpha *= r_slimealpha.value;
+		else if (surf->flags & SURF_TELE)
+			alpha *= r_telealpha.value;
+		else
+			alpha *= r_wateralpha.value;
+	}
+	a = (int)(alpha * 256 + 0.5f);
+	return a < 0 ? 0 : a > 256 ? 256 : a;
+}
+
+/*
+=============
+R_DrawAliasEntity
+
+currententity, an alias model, lit from the world and the dynamic lights
+=============
+*/
+void R_DrawAliasEntity (void)
+{
+	int			j;
 	int			lnum;
 	alight_t	lighting;
 	vec3_t		rgb;
@@ -582,6 +704,61 @@ void R_DrawEntitiesOnList (void)
 	float		lightvec[3] = {-1, 0, 0};
 	vec3_t		dist;
 	float		add;
+
+	VectorCopy (currententity->origin, r_entorigin);
+	VectorSubtract (r_origin, r_entorigin, modelorg);
+
+// see if the bounding box lets us trivially reject, also sets
+// trivial accept status
+	if (!R_AliasCheckBBox ())
+		return;
+
+	j = R_LightPoint (currententity->origin, rgb);
+
+	lighting.ambientlight = j;
+	lighting.shadelight = j;
+
+	lighting.plightvec = lightvec;
+
+	for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
+	{
+		if (r_scene.dlights[lnum].die >= r_scene.time)
+		{
+			VectorSubtract (currententity->origin,
+							r_scene.dlights[lnum].origin,
+							dist);
+			add = r_scene.dlights[lnum].radius - Length(dist);
+
+			if (add > 0)
+			{
+				lighting.ambientlight = (int)(lighting.ambientlight + add);
+				R_DlightColor (&r_scene.dlights[lnum], color);
+				VectorMA (rgb, add, color, rgb);
+			}
+		}
+	}
+	R_LightTint (rgb, lighting.color);
+
+// clamp lighting so it doesn't overbright as much
+	if (lighting.ambientlight > 128)
+		lighting.ambientlight = 128;
+	if (lighting.ambientlight + lighting.shadelight > 192)
+		lighting.shadelight = 192 - lighting.ambientlight;
+
+	R_AliasDrawModel (&lighting);
+}
+
+/*
+=============
+R_DrawEntitiesOnList
+
+Translucent alias models go to R_DrawTranslucent, drawn back to front with
+the translucent surfaces
+=============
+*/
+void R_DrawEntitiesOnList (void)
+{
+	int			i;
 
 	if (!r_drawentities.value)
 		return;
@@ -599,48 +776,10 @@ void R_DrawEntitiesOnList (void)
 			break;
 
 		case mod_alias:
-			VectorCopy (currententity->origin, r_entorigin);
-			VectorSubtract (r_origin, r_entorigin, modelorg);
-
-		// see if the bounding box lets us trivially reject, also sets
-		// trivial accept status
-			if (R_AliasCheckBBox ())
-			{
-				j = R_LightPoint (currententity->origin, rgb);
-	
-				lighting.ambientlight = j;
-				lighting.shadelight = j;
-
-				lighting.plightvec = lightvec;
-
-				for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
-				{
-					if (r_scene.dlights[lnum].die >= r_scene.time)
-					{
-						VectorSubtract (currententity->origin,
-										r_scene.dlights[lnum].origin,
-										dist);
-						add = r_scene.dlights[lnum].radius - Length(dist);
-
-						if (add > 0)
-						{
-							lighting.ambientlight = (int)(lighting.ambientlight + add);
-							R_DlightColor (&r_scene.dlights[lnum], color);
-							VectorMA (rgb, add, color, rgb);
-						}
-					}
-				}
-				R_LightTint (rgb, lighting.color);
-	
-			// clamp lighting so it doesn't overbright as much
-				if (lighting.ambientlight > 128)
-					lighting.ambientlight = 128;
-				if (lighting.ambientlight + lighting.shadelight > 192)
-					lighting.shadelight = 192 - lighting.ambientlight;
-
-				R_AliasDrawModel (&lighting);
-			}
-
+			if (R_EntityAlpha (currententity) < 256)
+				R_AddTranslucentEntity (currententity);
+			else
+				R_DrawAliasEntity ();
 			break;
 
 		default:
@@ -882,10 +1021,16 @@ void R_DrawBEntitiesOnList (void)
 					}
 				}
 
+			// a translucent one is drawn after the models, blended, its faces
+			// sorted with the other translucent things
+				if (R_EntityAlpha (currententity) < 256)
+				{
+					R_AddTranslucentModel (clmodel);
+				}
 			// if the driver wants polygons, deliver those. Z-buffering is on
 			// at this point, so no clipping to the world tree is needed, just
 			// frustum clipping
-				if (r_drawpolys | r_drawculledpolys)
+				else if (r_drawpolys | r_drawculledpolys)
 				{
 					R_ZDrawSubmodelPolys (clmodel);
 				}
@@ -1041,6 +1186,7 @@ void R_RenderView_ (void)
 
 	prof = R_ProfStart ();
 	R_DrawEntitiesOnList ();
+	R_DrawTranslucent ();
 	R_ProfEnd (PROF_MODELS, prof);
 
 	if (r_dspeeds.value)

@@ -102,6 +102,27 @@ static byte	*skintable[MAX_LBM_HEIGHT];
 static int		skinwidth;
 static byte	*skinstart;
 
+/*
+================
+D_PolysetBlendSpan
+
+A span of a translucent model: its texels depth tested and depth written as
+usual, into a row that is then blended into the frame
+================
+*/
+static void D_PolysetBlendSpan (spanpackage_t *p, int count, const simd_aliasmap_t *map)
+{
+	pixel_t	*row = D_BlendRow (count);
+	int		i;
+
+	for (i=0 ; i<count ; i++)
+		row[i] = 0xffffffffu;		// no texel: no pixel is that
+	simd_aliasspan (row, p->pz, p->ptex, p->sfrac, p->tfrac, p->light, p->zi, count, map);
+	for (i=0 ; i<count ; i++)
+		if (row[i] != 0xffffffffu)
+			p->pdest[i] = D_BlendPixel (row[i], p->pdest[i], d_alpha);
+}
+
 void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage);
 void D_PolysetCalcGradients (int skinw);
 void D_DrawSubdiv (void);
@@ -164,6 +185,20 @@ static inline pixel_t D_AliasPixel (int index, int light)
 		(level * r_affinetridesc.tint[1]) >> 6, (level * r_affinetridesc.tint[2]) >> 6);
 }
 
+int		d_alpha = 256;
+
+/*
+================
+D_AliasPut
+
+A single pixel of a model, blended if it is translucent
+================
+*/
+static void D_AliasPut (pixel_t *dest, pixel_t color)
+{
+	*dest = d_alpha < 256 ? D_BlendPixel (color, *dest, d_alpha) : color;
+}
+
 /*
 ================
 D_PolysetDrawFinalVerts
@@ -189,7 +224,7 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int nverts)
 
 				*zbuf = z;
 				pix = r_affinetridesc.skinremap[skintable[fv->v[3]>>16][fv->v[2]>>16]];
-				d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]] = D_AliasPixel (pix, fv->v[4]);
+				D_AliasPut (&d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]], D_AliasPixel (pix, fv->v[4]));
 			}
 		}
 	}
@@ -394,8 +429,8 @@ split:
 	if (zf >= *zbuf)
 	{
 		*zbuf = zf;
-		d_viewbuffer[d_scantable[new[1]] + new[0]] =
-			D_AliasPixel (r_affinetridesc.skinremap[skintable[new[3]>>16][new[2]>>16]], d_tlight);
+		D_AliasPut (&d_viewbuffer[d_scantable[new[1]] + new[0]],
+			D_AliasPixel (r_affinetridesc.skinremap[skintable[new[3]>>16][new[2]>>16]], d_tlight));
 	}
 
 nodraw:
@@ -629,7 +664,9 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 			d_aspancount += ubasestep;
 		}
 
-		if (lcount)
+		if (lcount && d_alpha < 256)
+			D_PolysetBlendSpan (pspanpackage, lcount, &map);
+		else if (lcount)
 			simd_aliasspan (pspanpackage->pdest, pspanpackage->pz, pspanpackage->ptex, pspanpackage->sfrac,
 				pspanpackage->tfrac, pspanpackage->light, pspanpackage->zi, lcount, &map);
 

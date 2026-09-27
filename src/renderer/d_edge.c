@@ -158,6 +158,37 @@ void D_DrawFence (msurface_t *surf, const vec3_t transformed_org, emitpoint_t *p
 	D_DrawFencePolygon (pverts, nump);
 }
 
+/*
+==============
+D_DrawTranslucentFace
+
+A surface blended into the frame: a liquid from its texture, as Turbulent8
+draws it, anything else from its cache block, fence holes left out
+==============
+*/
+void D_DrawTranslucentFace (msurface_t *surf, const vec3_t transformed_org, emitpoint_t *pverts, int nump,
+	float nearzi, int alpha)
+{
+	surfcache_t	*cache;
+
+	VectorCopy (transformed_org, transformed_modelorg);
+	if (surf->flags & SURF_DRAWTURB)
+	{
+		miplevel = 0;
+		d_turbsource = (byte *)surf->texinfo->texture + surf->texinfo->texture->offsets[0];
+		D_CalcGradients (surf);
+		D_DrawBlendedPolygon (pverts, nump, alpha, true);
+		return;
+	}
+	miplevel = D_MipLevelForScale (nearzi * scale_for_mip * surf->texinfo->mipadjust);
+	miplevel = D_SurfaceMipLevel (surf, miplevel);
+	cache = D_CacheSurface (surf, miplevel);
+	cacheblock = cache->data;
+	cachewidth = cache->width;
+	D_CalcGradients (surf);
+	D_DrawBlendedPolygon (pverts, nump, alpha, false);
+}
+
 
 /*
 ==============

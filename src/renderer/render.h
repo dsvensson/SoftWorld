@@ -69,6 +69,7 @@ typedef struct entity_s
 	int						frame;
 	const byte				*translate;		// player colors: a palette index remap, NULL for none
 	int						skinnum;		// for Alias models
+	byte					alpha;			// FTE: 0 and 255 are opaque, else alpha * 254
 
 	byte					*skin;			// player skin (320x200), NULL for the model's own
 

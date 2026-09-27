@@ -121,6 +121,16 @@ typedef struct
 void R_ClearFences (void);
 void R_AddFence (msurface_t *surf);
 void R_DrawFences (void);
+
+// translucent surfaces and alias models: blended in after the models, back to
+// front; alpha is of 256
+int R_EntityAlpha (const entity_t *ent);
+int R_SurfaceAlpha (const msurface_t *surf);
+void R_AddTranslucent (msurface_t *surf, int alpha);
+void R_AddTranslucentModel (model_t *model);
+void R_AddTranslucentEntity (entity_t *ent);
+void R_DrawTranslucent (void);
+void R_DrawAliasEntity (void);
 void R_RotateBmodel (void);
 void R_TransformFrustum (void);
 

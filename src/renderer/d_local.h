@@ -87,9 +87,28 @@ void D_CalcGradients (msurface_t *pface);
 // a fence surface's clipped, projected polygon, with 1/z gradients set;
 // transformed_org is the view origin in the model's space
 void D_DrawFence (msurface_t *surf, const vec3_t transformed_org, emitpoint_t *pverts, int nump, float nearzi);
+void D_DrawTranslucentFace (msurface_t *surf, const vec3_t transformed_org, emitpoint_t *pverts, int nump,
+	float nearzi, int alpha);
 // the spans of a convex polygon on the screen, clockwise; false if it covers no scan line
 bool D_PolygonSpans (emitpoint_t *pverts, int nump, sspan_t *spans);
 void D_DrawFencePolygon (emitpoint_t *pverts, int nump);
+void D_DrawBlendedPolygon (emitpoint_t *pverts, int nump, int alpha, bool turb);
+void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb);
+
+// translucency: how opaque the alias model being drawn is, of 256; a scratch
+// row for a span's texels before they are blended in, at least count long
+extern int	d_alpha;
+pixel_t	*D_BlendRow (int count);
+
+// src over dst, src weighted a of 256
+static inline pixel_t D_BlendPixel (pixel_t src, pixel_t dst, int a)
+{
+	unsigned	ia = 256 - (unsigned)a;
+
+	return ((((src & 1023) * (unsigned)a + (dst & 1023) * ia) >> 8)) |
+		(((((src >> 10) & 1023) * (unsigned)a + ((dst >> 10) & 1023) * ia) >> 8) << 10) |
+		(((((src >> 20) & 1023) * (unsigned)a + ((dst >> 20) & 1023) * ia) >> 8) << 20);
+}
 
 extern int D_MipLevelForScale (float scale);
 

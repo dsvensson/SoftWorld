@@ -561,3 +561,14 @@ void D_DrawFencePolygon (emitpoint_t *pverts, int nump)
 		D_FenceDrawSpans (sprite_spans);
 }
 
+/*
+=====================
+D_DrawBlendedPolygon
+=====================
+*/
+void D_DrawBlendedPolygon (emitpoint_t *pverts, int nump, int alpha, bool turb)
+{
+	if (D_PolygonSpans (pverts, nump, sprite_spans))
+		D_DrawBlendedSpans (sprite_spans, alpha, turb);
+}
+

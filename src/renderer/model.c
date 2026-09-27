@@ -881,6 +881,12 @@ static bool Mod_LoadFaces (void)
 		if (!Q_strncmp (out->texinfo->texture->name, "*", 1))		// turbulent
 		{
 			out->flags |= (SURF_DRAWTURB | SURF_DRAWTILED);
+			if (!Q_strncasecmp (out->texinfo->texture->name, "*lava", 5))
+				out->flags |= SURF_LAVA;
+			else if (!Q_strncasecmp (out->texinfo->texture->name, "*slime", 6))
+				out->flags |= SURF_SLIME;
+			else if (!Q_strncasecmp (out->texinfo->texture->name, "*tele", 5))
+				out->flags |= SURF_TELE;
 			for (i=0 ; i<2 ; i++)
 			{
 				out->extents[i] = 16384;

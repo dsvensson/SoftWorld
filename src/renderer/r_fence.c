@@ -17,11 +17,13 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// r_fence.c -- surfaces with fence textures ({ names), whose texture index
-// 255 is cut out. The edge sort gives every pixel to one surface, so these
-// can't take part in it: what's behind their holes would never be drawn.
-// They are drawn after the world instead, depth tested and depth writing,
-// skipping the cut-out texels.
+// r_fence.c -- surfaces the edge sort can't draw, because it gives every
+// pixel to one surface and what's behind them would never be drawn:
+// - fences ({ texture names), whose texture index 255 is cut out: drawn
+//   after the world, depth tested and depth writing, skipping the holes;
+// - translucent surfaces (liquids with r_*alpha, brush models with an
+//   alpha): blended in after the models, back to front with translucent
+//   alias models, depth tested but not depth writing.
 
 #include "r_local.h"
 #include "d_local.h"
@@ -34,7 +36,18 @@ typedef struct
 
 static fence_t	*r_fences;
 static int		r_numfences, r_maxfences;
-static int		r_fencepass;		// the edge pass the list belongs to
+static int		r_fencepass;		// the edge pass the lists belong to
+
+typedef struct
+{
+	msurface_t	*surf;				// NULL for an alias model
+	entity_t	*entity;
+	int			alpha;				// of 256
+	float		dist;				// from the view, squared; the far ones are drawn first
+} translucent_t;
+
+static translucent_t	*r_translucent;
+static int		r_numtranslucent, r_maxtranslucent;
 
 static vec3_t	*r_fenceverts[2];	// clipping ping-pong
 static emitpoint_t	*r_fencepoints;
@@ -50,6 +63,7 @@ At the start of every edge pass (a pass is redone when its edges overflow)
 void R_ClearFences (void)
 {
 	r_numfences = 0;
+	r_numtranslucent = 0;
 	r_fencepass++;
 }
 
@@ -120,7 +134,7 @@ the clip planes set for it): clipped to the view, projected, and handed to
 the drawer with its 1/z gradients
 ================
 */
-static void R_DrawFence (msurface_t *surf, model_t *model, const vec3_t transformed_org)
+static void R_DrawFence (msurface_t *surf, model_t *model, const vec3_t transformed_org, int alpha)
 {
 	int			i, e, nump, cur;
 	float		distinv, nearzi, scale, area;
@@ -201,7 +215,43 @@ static void R_DrawFence (msurface_t *surf, model_t *model, const vec3_t transfor
 	d_zistepv = -p_normal[1] * yscaleinv * distinv;
 	d_ziorigin = p_normal[2] * distinv - xcenter * d_zistepu - ycenter * d_zistepv;
 
-	D_DrawFence (surf, transformed_org, r_fencepoints, nump, nearzi);
+	if (alpha < 256)
+		D_DrawTranslucentFace (surf, transformed_org, r_fencepoints, nump, nearzi, alpha);
+	else
+		D_DrawFence (surf, transformed_org, r_fencepoints, nump, nearzi);
+}
+
+/*
+================
+R_DrawSurfaceAfter
+
+A fence or translucent surface of an entity: in its model's space, as
+D_DrawSurfaces sets it up, then back in the world's
+================
+*/
+static void R_DrawSurfaceAfter (msurface_t *surf, entity_t *entity, int alpha)
+{
+	vec3_t	transformed_org;
+
+	currententity = entity;
+	if (entity == &r_worldentity)
+	{
+		VectorCopy (r_origin, modelorg);
+		TransformVector (modelorg, transformed_org);
+		R_DrawFence (surf, r_scene.worldmodel, transformed_org, alpha);
+		return;
+	}
+
+	VectorSubtract (r_origin, entity->origin, modelorg);
+	TransformVector (modelorg, transformed_org);
+	R_RotateBmodel ();
+	R_DrawFence (surf, entity->model, transformed_org, alpha);
+
+	VectorCopy (base_vpn, vpn);
+	VectorCopy (base_vup, vup);
+	VectorCopy (base_vright, vright);
+	VectorCopy (base_modelorg, modelorg);
+	R_TransformFrustum ();
 }
 
 /*
@@ -213,31 +263,146 @@ After the world's surfaces, before the models: every fence surface of the pass
 */
 void R_DrawFences (void)
 {
-	fence_t	*f;
-	vec3_t	transformed_org;
 	int		i;
 
-	for (i = 0, f = r_fences ; i < r_numfences ; i++, f++)
+	for (i = 0 ; i < r_numfences ; i++)
+		R_DrawSurfaceAfter (r_fences[i].surf, r_fences[i].entity, 256);
+	currententity = &r_worldentity;
+}
+
+/*
+================
+R_NewTranslucent
+================
+*/
+static translucent_t *R_NewTranslucent (entity_t *entity, int alpha, const vec3_t center)
+{
+	translucent_t	*t;
+	vec3_t			d;
+
+	if (r_numtranslucent == r_maxtranslucent)
 	{
-		currententity = f->entity;
-		if (f->entity == &r_worldentity)
+		r_maxtranslucent = r_maxtranslucent ? r_maxtranslucent * 2 : 64;
+		r_translucent = Mem_Realloc (r_translucent, (size_t)r_maxtranslucent * sizeof(*r_translucent));
+	}
+	t = &r_translucent[r_numtranslucent++];
+	t->surf = NULL;
+	t->entity = entity;
+	t->alpha = alpha;
+	VectorSubtract (center, r_origin, d);
+	t->dist = DotProduct (d, d);
+	return t;
+}
+
+/*
+================
+R_AddTranslucent
+
+A translucent surface of currententity, instead of its edges; sorted by the
+distance to its middle. The pieces a clipped brush model face comes in are
+added once.
+================
+*/
+void R_AddTranslucent (msurface_t *surf, int alpha)
+{
+	model_t		*model = currententity->model;
+	mvertex_t	*v;
+	vec3_t		center;
+	int			i, e;
+
+	if (surf->fencepass == r_fencepass && surf->fenceentity == currententity)
+		return;
+	surf->fencepass = r_fencepass;
+	surf->fenceentity = currententity;
+	if (surf->numedges < 3)
+		return;
+
+	center[0] = center[1] = center[2] = 0;
+	for (i = 0 ; i < surf->numedges ; i++)
+	{
+		e = model->surfedges[surf->firstedge + i];
+		v = &model->vertexes[e >= 0 ? model->edges[e].v[0] : model->edges[-e].v[1]];
+		VectorAdd (center, v->position, center);
+	}
+	VectorScale (center, 1.0f / surf->numedges, center);
+	VectorAdd (center, currententity->origin, center);
+	R_NewTranslucent (currententity, alpha, center)->surf = surf;
+}
+
+/*
+================
+R_AddTranslucentModel
+
+The faces of currententity, a translucent brush model, that face the view;
+modelorg is in the model's space
+================
+*/
+void R_AddTranslucentModel (model_t *model)
+{
+	msurface_t	*psurf;
+	float		dot;
+	int			i, alpha;
+
+	psurf = &model->surfaces[model->firstmodelsurface];
+	for (i = 0 ; i < model->nummodelsurfaces ; i++, psurf++)
+	{
+		dot = DotProduct (modelorg, psurf->plane->normal) - psurf->plane->dist;
+		if (((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
+			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)))
 		{
-			TransformVector (modelorg, transformed_org);
-			R_DrawFence (f->surf, r_scene.worldmodel, transformed_org);
+			alpha = R_SurfaceAlpha (psurf);
+			if (alpha < 256)
+				R_AddTranslucent (psurf, alpha);
+		}
+	}
+}
+
+/*
+================
+R_AddTranslucentEntity
+
+A translucent alias model
+================
+*/
+void R_AddTranslucentEntity (entity_t *ent)
+{
+	R_NewTranslucent (ent, R_EntityAlpha (ent), ent->origin);
+}
+
+/*
+================
+R_DrawTranslucent
+
+After the models: the translucent surfaces and models, the farthest first
+================
+*/
+static int R_TranslucentOrder (const void *a, const void *b)
+{
+	float	da = ((const translucent_t *)a)->dist, db = ((const translucent_t *)b)->dist;
+
+	return da < db ? 1 : da > db ? -1 : 0;
+}
+
+void R_DrawTranslucent (void)
+{
+	translucent_t	*t;
+	int				i;
+
+	if (!r_numtranslucent)
+		return;
+	qsort (r_translucent, (size_t)r_numtranslucent, sizeof(*r_translucent), R_TranslucentOrder);
+	for (i = 0, t = r_translucent ; i < r_numtranslucent ; i++, t++)
+	{
+		if (t->surf)
+		{
+			R_DrawSurfaceAfter (t->surf, t->entity, t->alpha);
 			continue;
 		}
-
-		// a brush model: its own space, as D_DrawSurfaces sets it up
-		VectorSubtract (r_origin, f->entity->origin, modelorg);
-		TransformVector (modelorg, transformed_org);
-		R_RotateBmodel ();
-		R_DrawFence (f->surf, f->entity->model, transformed_org);
-
-		VectorCopy (base_vpn, vpn);
-		VectorCopy (base_vup, vup);
-		VectorCopy (base_vright, vright);
-		VectorCopy (base_modelorg, modelorg);
-		R_TransformFrustum ();
+		currententity = t->entity;
+		d_alpha = t->alpha;
+		R_DrawAliasEntity ();
+		d_alpha = 256;
 	}
 	currententity = &r_worldentity;
+	VectorCopy (r_origin, modelorg);
 }
