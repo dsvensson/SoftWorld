@@ -21,7 +21,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma once
 // args.h -- the command line
 
-#define MAX_NUM_ARGVS	50
+// words of the command line kept; id's 50 dropped the end of a line of +cvar settings
+#define MAX_NUM_ARGVS	1024
 
 extern	int		com_argc;
 extern	char	**com_argv;
