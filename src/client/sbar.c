@@ -766,7 +766,11 @@ void Sbar_Draw (void)
 					Sbar_DrawNormal ();
 
 //					Sbar_DrawString (160-14*8+4,4, "SPECTATOR MODE - TRACK CAMERA");
-				snprintf(st, sizeof(st), "Tracking %-.13s, [JUMP] for next",
+				if (CL_MVDFlying ())
+					snprintf (st, sizeof(st), "Flying, [ATTACK] back to %-.13s",
+						cl.players[Cam_TrackNum ()].name);
+				else
+					snprintf(st, sizeof(st), "Tracking %-.13s, [JUMP] for next",
 						cl.players[Cam_TrackNum ()].name);
 				Sbar_DrawString(0, -8, st);
 			}

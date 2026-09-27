@@ -97,6 +97,8 @@ static struct
 
 	int			track;			// the player the view follows, -1 none
 	bool		picked;			// the user picked it: the server's hints are ignored
+	bool		flying;			// the viewer flies the camera instead (qualia's free look)
+	vec3_t		flyorg;			// where it is
 	int			hint;			// the userid the server's last hint named, 0 none
 	bool		paused;
 
@@ -144,6 +146,7 @@ void CL_MVDStart (byte *data, size_t size)
 	mvd.logical = mvd.old = mvd.next = 0;
 	mvd.track = -1;
 	mvd.picked = false;
+	mvd.flying = false;
 	mvd.hint = 0;
 	mvd.paused = false;
 	mvd.quiet = mvd.scanning = false;
@@ -557,12 +560,44 @@ static int MVD_NextPlayer (int slot)
 	return -1;
 }
 
+bool CL_MVDFlying (void)
+{
+	return cls.mvdplayback && mvd.flying;
+}
+
+/*
+==================
+MVD_Fly
+
+The camera the viewer flies: the mouse turns it, the movement keys move it
+along the view, up and down straight up and down, in real time
+==================
+*/
+static void MVD_Fly (void)
+{
+	vec3_t	forward, right, up;
+	float	move[3];
+	int		i;
+
+	CL_FlyMove (move);
+	AngleVectors (cl.viewangles, forward, right, up);
+	for (i=0 ; i<3 ; i++)
+		mvd.flyorg[i] += (forward[i] * move[0] + right[i] * move[1]) * (float)cls.frametime;
+	mvd.flyorg[2] += move[2] * (float)cls.frametime;
+
+	VectorCopy (mvd.flyorg, cl.simorg);
+	VectorCopy (cl.viewangles, cl.simangles);
+	VectorCopy (vec3_origin, cl.simvel);
+	cl.onground = false;
+	cl.crouch = 0;
+}
+
 /*
 ==================
 CL_MVDView
 
 The view is the tracked player's: picked when there is none, or the one
-followed left or went to watch (qualia)
+followed left or went to watch (qualia); or the camera the viewer flies
 ==================
 */
 void CL_MVDView (void)
@@ -571,6 +606,12 @@ void CL_MVDView (void)
 	int		next;
 
 	CL_LerpMVDPlayers ();
+
+	if (mvd.flying)
+	{
+		MVD_Fly ();
+		return;
+	}
 
 	if (mvd.track < 0 || !MVD_IsPlayer (mvd.track))
 	{
@@ -640,26 +681,34 @@ void CL_MVDHint (const char *s)
 ==================
 CL_MVDButtons
 
-The buttons pressed since the last frame: jump for the next player, attack
-for the one before; either stops following the server's hints
+The buttons pressed since the last frame, as qualia has them: jump rides
+with the next player, stopping the server's hints; attack takes the camera
+from the player followed to fly it, from where the view is, or gives it back
 ==================
 */
 void CL_MVDButtons (bool attack, bool jump)
 {
-	int		i, slot;
+	int		next;
 
-	if (!attack && !jump)
+	if (cls.state != ca_active)
 		return;
-	slot = mvd.track;
-	for (i=0 ; i<MAX_CLIENTS ; i++)
+	if (jump)
 	{
-		slot = (slot + (jump ? 1 : -1) + MAX_CLIENTS) % MAX_CLIENTS;
-		if (MVD_IsPlayer (slot))
+		mvd.flying = false;
+		next = MVD_NextPlayer (mvd.track);
+		if (next >= 0)
 		{
-			MVD_Track (slot);
+			MVD_Track (next);
 			mvd.picked = true;
-			return;
 		}
+	}
+	else if (attack && mvd.flying)
+		mvd.flying = false;		// back to the player followed, or the next if they left
+	else if (attack)
+	{
+		mvd.flying = true;
+		VectorCopy (cl.simorg, mvd.flyorg);
+		VectorCopy (cl.simangles, cl.viewangles);
 	}
 }
 

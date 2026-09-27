@@ -470,11 +470,13 @@ double CL_MVDTime (void);			// the moment drawn, in demo seconds
 bool CL_MVDSkipMessage (void);		// for another player than the one followed
 int CL_MVDStatTarget (void);		// whose stats a stat message sets, -1 nobody's
 int CL_MVDTracking (void);			// the player followed, -1 none
+bool CL_MVDFlying (void);			// the viewer flies the camera instead
 void CL_MVDView (void);				// the view from the player followed
 double CL_MVDFrameTime (void);		// the frame last read, in demo seconds
 void CL_MVDTogglePause (void);
 void CL_MVDHint (const char *s);	// a "//at" stufftext
 void CL_MVDButtons (bool attack, bool jump);	// pressed since the last frame
+void CL_FlyMove (float move[3]);	// cl_input.c: the movement keys, for a flown camera
 void CL_LerpMVDPlayers (void);		// cl_ents.c: aims the players' trails, once a frame
 bool CL_PlayerPlace (int slot, vec3_t origin, vec3_t angles);	// an MVD's player at the moment played
 void CL_MVDFixAngle (int slot);		// the player's view was set: no turn to it

@@ -1261,8 +1261,9 @@ static void CL_LinkPlayers (void)
 		else if (state->effects & EF_DIMLIGHT)
 			CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2], (float)(200 + (rand()&31)), 0.1f, 0);
 
-		// the player object never gets added; in an MVD the one followed
-		if (j == cl.viewplayer)
+		// the player object never gets added; in an MVD the one followed,
+		// unless the camera flies
+		if (j == cl.viewplayer && !CL_MVDFlying ())
 			continue;
 
 		if (!state->modelindex || !CL_Model (state->modelindex))

@@ -82,7 +82,7 @@ Worth knowing:
 | `cl_maxfps` | frame rate cap; 0 is none but the display's |
 | `demo_speed`, `pause` | MVD playback speed, and pause |
 | `demo_jump [+\|-][m:]s` | seek in an MVD |
-| `track [name]`, jump/attack | follow a player in an MVD or QTV |
+| `track [name]`, jump, attack | in an MVD or QTV: follow a player, the next one; attack flies the camera and gives it back |
 | `demo_itemtimers`, `demo_itemrings` | KTX's item announcements, as a list and as rings on the floor |
 | `memstats` | memory by use |
 

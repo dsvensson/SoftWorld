@@ -104,7 +104,7 @@ bool Cam_DrawViewModel(void)
 	if (!cl.spectator)
 		return true;
 	if (cls.mvdplayback)		// through the eyes of the player followed
-		return CL_MVDTracking () >= 0;
+		return CL_MVDTracking () >= 0 && !CL_MVDFlying ();
 
 	if (autocam && locked && cl_chasecam.value)
 		return true;

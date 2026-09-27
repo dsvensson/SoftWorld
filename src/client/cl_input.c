@@ -290,6 +290,23 @@ static void CL_AdjustAngles (void)
 
 /*
 ================
+CL_FlyMove
+
+The movement keys as speeds forward, right and up, for a camera flown
+through a demo: a player's, faster with the speed key
+================
+*/
+void CL_FlyMove (float move[3])
+{
+	float	speed = (in_speed.state & 1) ? cl_movespeedkey.value : 1;
+
+	move[0] = (cl_forwardspeed.value * CL_KeyState (&in_forward) - cl_backspeed.value * CL_KeyState (&in_back)) * speed;
+	move[1] = cl_sidespeed.value * (CL_KeyState (&in_moveright) - CL_KeyState (&in_moveleft)) * speed;
+	move[2] = cl_upspeed.value * (CL_KeyState (&in_up) - CL_KeyState (&in_down)) * speed;
+}
+
+/*
+================
 CL_BaseMove
 
 Send the intended movement message to the server
