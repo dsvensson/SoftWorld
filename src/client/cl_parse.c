@@ -1300,6 +1300,8 @@ void CL_ParseServerMessage (void)
 		case svc_stufftext:
 			s = MSG_ReadString ();
 			Con_DPrintf ("stufftext: %s\n", s);
+			if (cls.mvdplayback)
+				CL_MVDAnnouncements (s);
 			if (!strncmp (s, "//vwep ", 7))
 				CL_ParseVWepPrecache (s);
 			else if (cls.mvdplayback && !strncmp (s, "//at ", 5))

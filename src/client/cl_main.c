@@ -1249,6 +1249,7 @@ static void CL_InitLocal (void)
 	Cmd_AddCommand ("timedemo", CL_TimeDemo_f);
 	CL_InitDemo ();
 	CL_InitMVD ();
+	CL_InitItems ();
 	CL_InitQTV ();
 
 	Cmd_AddCommand ("skins", Skin_Skins_f);

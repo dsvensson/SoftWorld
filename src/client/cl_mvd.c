@@ -147,6 +147,7 @@ void CL_MVDStart (byte *data, size_t size)
 	mvd.hint = 0;
 	mvd.paused = false;
 	mvd.quiet = mvd.scanning = false;
+	CL_ItemsClear ();
 	cls.mvdplayback = true;
 }
 
@@ -1056,7 +1057,22 @@ bool CL_MVDNewLevel (void)
 		return true;
 	}
 	MVD_FreeKeys ();
+	CL_ItemsClear ();
 	return false;
+}
+
+/*
+==================
+CL_MVDAnnouncements
+
+A stufftext: KTX's lines about items. A file's are all collected by the scan
+of the level, a stream's (and a timedemo's) as they come.
+==================
+*/
+void CL_MVDAnnouncements (const char *s)
+{
+	if (mvd.scanning || (!mvd.quiet && !mvd.numkeys))
+		CL_ItemsMarker (s, CL_MVDFrameTime ());
 }
 
 /*

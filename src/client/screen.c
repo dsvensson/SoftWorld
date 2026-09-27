@@ -1090,6 +1090,7 @@ void SCR_UpdateScreen (void)
 		SCR_DrawPause ();
 		SCR_DrawFPS ();
 		SCR_CheckDrawCenterString ();
+		CL_DrawItemTimers ();
 		Sbar_Draw ();
 		SCR_DrawConsole ();	
 		M_Draw ();

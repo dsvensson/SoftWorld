@@ -491,6 +491,15 @@ void CL_MVDStreamClosed (void);
 void CL_MVDActive (void);			// the level went active: a file's is scanned for seeking
 bool CL_MVDNewLevel (void);			// a serverdata; true: a scan ends before it
 bool CL_MVDQuiet (void);			// a scan or a seek: nothing is shown or heard
+void CL_MVDAnnouncements (const char *s);	// a stufftext: KTX's lines about items
+
+//
+// cl_items.c
+//
+void CL_InitItems (void);
+void CL_ItemsClear (void);
+void CL_ItemsMarker (const char *text, double time);	// "//ktx" lines said at time
+void CL_DrawItemTimers (void);
 
 //
 // cl_qtv.c
