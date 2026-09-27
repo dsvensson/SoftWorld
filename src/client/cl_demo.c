@@ -544,10 +544,15 @@ void CL_Record_f (void)
 		Con_Printf ("You must be connected to record.\n");
 		return;
 	}
+	// an MVD's messages aren't a client's, and seeking reads them twice
+	if (cls.mvdplayback) {
+		Con_Printf ("Can't record while playing an MVD.\n");
+		return;
+	}
 
 	if (cls.demorecording)
 		CL_Stop_f();
-  
+
 	snprintf (demopath, sizeof(demopath), "%s/%s", com_gamedir, Cmd_Argv(1));
 
 //

@@ -998,7 +998,7 @@ void Sbar_DeathmatchOverlay (int start)
 		if (cl.intermission)
 			total = (int)(cl.completed_time - s->entertime);
 		else
-			total = (int)(host.realtime - s->entertime);
+			total = (int)(CL_ScoreClock () - s->entertime);
 		minutes = (int)total/60;
 		snprintf (num, sizeof(num), "%4i", minutes);
 		Draw_String ( x+64 , y, num);

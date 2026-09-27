@@ -509,6 +509,13 @@ void S_StopAllSoundsC (void)
 	S_StopAllSounds (true);
 }
 
+void S_StopDynamicSounds (void)
+{
+	if (!snd.started)
+		return;
+	memset (snd.channels + NUM_AMBIENTS, 0, MAX_DYNAMIC_CHANNELS * sizeof(channel_t));
+}
+
 void S_ClearBuffer (void)
 {
 	int		clear;

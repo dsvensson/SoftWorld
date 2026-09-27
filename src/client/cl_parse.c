@@ -847,6 +847,31 @@ ACTION MESSAGES
 
 /*
 ==================
+CL_Unseen
+
+A message that shows or sounds something the watcher doesn't get: an MVD's
+for another player than the one followed, or any a scan or a seek reads
+==================
+*/
+static bool CL_Unseen (void)
+{
+	return CL_MVDSkipMessage () || CL_MVDQuiet ();
+}
+
+/*
+==================
+CL_ScoreClock
+
+The clock the scoreboard's times are on: an MVD's own, else real time
+==================
+*/
+double CL_ScoreClock (void)
+{
+	return cls.mvdplayback ? cl.time : host.realtime;
+}
+
+/*
+==================
 CL_ParseStartSoundPacket
 ==================
 */
@@ -881,8 +906,8 @@ void CL_ParseStartSoundPacket(void)
 
 	if (ent > MAX_EDICTS)
 		Host_EndGame ("CL_ParseStartSoundPacket: ent = %i", ent);
-	if (CL_MVDSkipMessage ())
-		return;		// an MVD's, to another player
+	if (CL_Unseen ())
+		return;
 	
     S_StartSound (ent, channel, cl.sound_precache[sound_num], pos, packetvolume/255.0f, attenuation);
 }       
@@ -1120,7 +1145,7 @@ void CL_MuzzleFlash (void)
 
 	i = MSG_ReadShort ();
 
-	if ((unsigned)(i-1) >= MAX_CLIENTS)
+	if ((unsigned)(i-1) >= MAX_CLIENTS || CL_MVDQuiet ())
 		return;
 
 
@@ -1255,8 +1280,8 @@ void CL_ParseServerMessage (void)
 		case svc_print:
 			i = MSG_ReadByte ();
 			s = MSG_ReadString ();
-			if (CL_MVDSkipMessage ())
-				break;		// an MVD's, to other players
+			if (CL_Unseen ())
+				break;
 			if (i == PRINT_CHAT)
 			{
 				S_LocalSound ("misc/talk.wav");
@@ -1268,7 +1293,7 @@ void CL_ParseServerMessage (void)
 
 		case svc_centerprint:
 			s = MSG_ReadString ();
-			if (!CL_MVDSkipMessage ())
+			if (!CL_Unseen ())
 				SCR_CenterPrint (s);
 			break;
 			
@@ -1279,12 +1304,12 @@ void CL_ParseServerMessage (void)
 				CL_ParseVWepPrecache (s);
 			else if (cls.mvdplayback && !strncmp (s, "//at ", 5))
 				CL_MVDHint (s);
-			else if (cls.state < ca_active || !CL_MVDSkipMessage ())
+			else if (cls.state < ca_active || !CL_Unseen ())
 				Cbuf_AddText (s);
 			break;
-			
+
 		case svc_damage:
-			if (!CL_MVDSkipMessage ())
+			if (!CL_Unseen ())
 				V_ParseDamage ();
 			else
 			{
@@ -1296,6 +1321,8 @@ void CL_ParseServerMessage (void)
 			break;
 			
 		case svc_serverdata:
+			if (CL_MVDNewLevel ())
+				return;				// a scan ends at the next level
 			Cbuf_Execute ();		// make sure any stuffed commands are done
 			CL_ParseServerData ();
 			vid.recalc_refdef = true;	// leave full screen intermission
@@ -1328,17 +1355,18 @@ void CL_ParseServerMessage (void)
 			i = MSG_ReadByte ();
 			if (i >= MAX_LIGHTSTYLES)
 				Sys_Error ("svc_lightstyle > MAX_LIGHTSTYLES");
-			Q_strcpy (cl.lightstyles[i].map,  MSG_ReadString());
+			Q_strncpyz (cl.lightstyles[i].map, MSG_ReadString(), sizeof(cl.lightstyles[i].map));
 			cl.lightstyles[i].length = Q_strlen(cl.lightstyles[i].map);
 			break;
-			
+
 		case svc_sound:
 			CL_ParseStartSoundPacket();
 			break;
-			
+
 		case svc_stopsound:
 			i = MSG_ReadShort();
-			S_StopSound(i>>3, i&7);
+			if (!CL_Unseen ())
+				S_StopSound(i>>3, i&7);
 			break;
 		
 		case svc_updatefrags:
@@ -1367,7 +1395,7 @@ void CL_ParseServerMessage (void)
 			i = MSG_ReadByte ();
 			if (i >= MAX_CLIENTS)
 				Host_EndGame ("CL_ParseServerMessage: svc_updateentertime > MAX_SCOREBOARD");
-			cl.players[i].entertime = (float)(host.realtime - MSG_ReadFloat ());
+			cl.players[i].entertime = (float)(CL_ScoreClock () - MSG_ReadFloat ());
 			break;
 			
 		case svc_spawnbaseline:
@@ -1418,7 +1446,7 @@ void CL_ParseServerMessage (void)
 
 		case svc_intermission:
 			cl.intermission = 1;
-			cl.completed_time = (int)host.realtime;
+			cl.completed_time = (int)CL_ScoreClock ();
 			vid.recalc_refdef = true;	// go to full screen
 			for (i=0 ; i<3 ; i++)
 				cl.simorg[i] = MSG_ReadCoord ();			
@@ -1429,9 +1457,11 @@ void CL_ParseServerMessage (void)
 
 		case svc_finale:
 			cl.intermission = 2;
-			cl.completed_time = (int)host.realtime;
+			cl.completed_time = (int)CL_ScoreClock ();
 			vid.recalc_refdef = true;	// go to full screen
-			SCR_CenterPrint (MSG_ReadString ());			
+			s = MSG_ReadString ();
+			if (!CL_MVDQuiet ())
+				SCR_CenterPrint (s);
 			break;
 			
 		case svc_sellscreen:
@@ -1439,11 +1469,11 @@ void CL_ParseServerMessage (void)
 			break;
 
 		case svc_smallkick:
-			if (!CL_MVDSkipMessage ())
+			if (!CL_Unseen ())
 				cl.punchangle = -2;
 			break;
 		case svc_bigkick:
-			if (!CL_MVDSkipMessage ())
+			if (!CL_Unseen ())
 				cl.punchangle = -4;
 			break;
 

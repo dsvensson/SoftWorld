@@ -95,6 +95,7 @@ void S_StartSound (int entnum, int entchannel, sfx_t *sfx, vec3_t origin, float 
 void S_StaticSound (sfx_t *sfx, vec3_t origin, float vol, float attenuation);
 void S_StopSound (int entnum, int entchannel);
 void S_StopAllSounds(bool clear);
+void S_StopDynamicSounds (void);	// the entities' sounds; the ambient and static ones go on
 void S_ClearBuffer (void);
 // where the listener is, filled in by the client every frame
 typedef struct

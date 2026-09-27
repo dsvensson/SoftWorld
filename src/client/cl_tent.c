@@ -167,6 +167,47 @@ void CL_ParseBeam (model_t *m)
 
 /*
 =================
+CL_SkipTEnt
+
+Reads past a temporary entity nothing is to show
+=================
+*/
+static void CL_SkipTEnt (int type)
+{
+	int		coords, i;
+
+	coords = 3;
+	switch (type)
+	{
+	case TE_LIGHTNING1:
+	case TE_LIGHTNING2:
+	case TE_LIGHTNING3:
+		MSG_ReadShort ();	// the entity
+		coords = 6;			// start and end
+		break;
+	case TE_GUNSHOT:
+	case TE_BLOOD:
+		MSG_ReadByte ();	// the count
+		break;
+	case TE_WIZSPIKE:
+	case TE_KNIGHTSPIKE:
+	case TE_SPIKE:
+	case TE_SUPERSPIKE:
+	case TE_EXPLOSION:
+	case TE_TAREXPLOSION:
+	case TE_LAVASPLASH:
+	case TE_TELEPORT:
+	case TE_LIGHTNINGBLOOD:
+		break;
+	default:
+		Sys_Error ("CL_ParseTEnt: bad type");
+	}
+	for (i=0 ; i<coords ; i++)
+		MSG_ReadCoord ();
+}
+
+/*
+=================
 CL_ParseTEnt
 =================
 */
@@ -180,6 +221,11 @@ void CL_ParseTEnt (void)
 	int		cnt;
 
 	type = MSG_ReadByte ();
+	if (CL_MVDQuiet ())
+	{	// a scan's or a seek's: long over
+		CL_SkipTEnt (type);
+		return;
+	}
 	switch (type)
 	{
 	case TE_WIZSPIKE:			// spike hitting wall

@@ -234,6 +234,7 @@ void CL_ResetSmoothing (void)
 	lerp_lastat = 0;
 	lerp_interval = 0;
 	playerlerp_frame = -1;
+	playerlerp_fixangle = 0;
 	memset (cl_playerlerp, 0, sizeof(cl_playerlerp));
 }
 
@@ -1354,7 +1355,7 @@ void CL_SetSolidEntities (void)
 	frame = &cl.frames[cl.parsecountmod];
 	pak = &frame->packet_entities;
 
-	for (i=0 ; i<pak->num_entities ; i++)
+	for (i=0 ; i<pak->num_entities && cl.pmove.numphysent < MAX_PHYSENTS ; i++)
 	{
 		state = &pak->entities[i];
 
@@ -1464,7 +1465,7 @@ void CL_SetSolidPlayers (int playernum)
 
 	pent = cl.pmove.physents + cl.pmove.numphysent;
 
-	for (j=0, pplayer = predicted_players; j < MAX_CLIENTS;	j++, pplayer++) {
+	for (j=0, pplayer = predicted_players; j < MAX_CLIENTS && cl.pmove.numphysent < MAX_PHYSENTS; j++, pplayer++) {
 
 		if (!pplayer->active)
 			continue;	// not present this frame

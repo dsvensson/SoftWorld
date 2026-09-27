@@ -23,7 +23,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cmodel.h"
 #include "protocol.h"
 
-#define	MAX_PHYSENTS	32
+// the world, every entity of a packet and every player: all the client can
+// add (id's 32 overflowed into what followed with the larger packets)
+#define	MAX_PHYSENTS	(1 + MAX_MVD_PACKET_ENTITIES + MAX_CLIENTS)
 typedef struct
 {
 	vec3_t	origin;

@@ -31,6 +31,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // one before it, so the two frames around the moment drawn are always in
 // hand, and all blocks of a frame are read together. Each frame is one
 // netchan sequence, so the parser's frame ring works as it does live.
+//
+// Seeking, as qualia does it: when a level of a file goes active, the rest of
+// it is read at once, quietly, and every MVD_SPACING a keyframe is kept: what
+// the parser holds between two frames, as little of it as a replay needs. A
+// seek goes back to the keyframe before the moment asked for and reads on,
+// quietly, to it. A stream can't be read ahead, so it can't seek.
 
 #include "cl_local.h"
 
@@ -44,6 +50,33 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define	MVD_MAXBLOCK	8192	// the writer's blocks are at most 8092 bytes
 #define	MVD_MAXLAG		1.0		// seconds: a recorded stall longer than this is skipped
+#define	MVD_SPACING		10000	// msec between keyframes
+
+// a keyframe: the frame at `at` is the next one read
+typedef struct
+{
+	uint32_t	at;
+	size_t		size;
+	byte		data[];		// an mvdkeyhead_t, then what it counts (MVD_Keyframe)
+} mvdkey_t;
+
+typedef struct
+{
+	// the reader
+	size_t		pos;
+	uint32_t	time, frame;
+	bool		started;
+	int			sequence;
+	int			hint;
+	// the client
+	int			parsecount, validsequence;
+	int			entityframe;			// whose entities the next frame's are deltas from
+	bool		paused;
+	int			intermission, completed_time;
+	vec3_t		simorg, simangles;		// the intermission's view
+	movevars_t	movevars;
+	int			numentities, numplayers, numcarried, numstyles;
+} mvdkeyhead_t;
 
 static struct
 {
@@ -64,12 +97,21 @@ static struct
 
 	int			track;			// the player the view follows, -1 none
 	bool		picked;			// the user picked it: the server's hints are ignored
+	int			hint;			// the userid the server's last hint named, 0 none
 	bool		paused;
 
 	// the clock, in demo seconds
 	double		logical;		// the moment played
 	double		old, next;		// the frames around it
-	float		speed;			// 1 is real time
+
+	// seeking: the level's keyframes, from its scan
+	mvdkey_t	**keys;
+	int			numkeys, maxkeys;
+	uint32_t	level_end;		// msec: the level's last frame
+	bool		quiet;			// a scan or a seek: read, not shown or heard
+	bool		scanning;		// reading the whole level, keeping keyframes
+	bool		level_over;		// the scan met the level's end
+	uint32_t	until;			// a seek reads the frames up to this
 } mvd = {.track = -1};
 
 static cvar_t	demo_speed = {.name = "demo_speed", .string = "1"};	// MVD playback speed, 1 is real time
@@ -102,7 +144,9 @@ void CL_MVDStart (byte *data, size_t size)
 	mvd.logical = mvd.old = mvd.next = 0;
 	mvd.track = -1;
 	mvd.picked = false;
+	mvd.hint = 0;
 	mvd.paused = false;
+	mvd.quiet = mvd.scanning = false;
 	cls.mvdplayback = true;
 }
 
@@ -146,6 +190,15 @@ void CL_MVDStreamClosed (void)
 	mvd.closed = true;
 }
 
+static void MVD_FreeKeys (void)
+{
+	int		i;
+
+	for (i=0 ; i<mvd.numkeys ; i++)
+		Mem_Free (mvd.keys[i]);
+	mvd.numkeys = 0;
+}
+
 /*
 ==================
 CL_MVDStop
@@ -155,6 +208,8 @@ void CL_MVDStop (void)
 {
 	Mem_Free (mvd.data);
 	mvd.data = NULL;
+	MVD_FreeKeys ();
+	mvd.quiet = mvd.scanning = false;
 	cls.mvdplayback = false;
 
 	// the parser reads blocks where they are; give it its buffer back
@@ -207,12 +262,13 @@ void CL_MVDAdvance (void)
 		}
 		if (host.realtime < mvd.hold_until)
 			return;
-		if (!cl.paused && !mvd.paused)
+		if (!mvd.paused)
 			mvd.logical += cls.frametime;
 		return;
 	}
 
-	if (!cl.paused && !mvd.paused)
+	// a pause the recording holds is played through: its frames say how long
+	if (!mvd.paused)
 		mvd.logical += cls.frametime * (demo_speed.value > 0 ? demo_speed.value : 0);
 }
 
@@ -243,12 +299,27 @@ void CL_MVDTogglePause (void)
 ==================
 MVD_Gate
 
-Whether the block stamped t is read now: before the level's serverdata
-everything is, afterwards a frame once playback has passed the one before it
+Whether the block stamped ms is read now: before the level's serverdata
+everything is, afterwards a frame once playback has passed the one before it.
+A scan reads all of the level, keeping a keyframe before a frame when one is
+due; a seek reads the frames up to where it goes.
 ==================
 */
-static bool MVD_Gate (double t)
+static void MVD_Keyframe (uint32_t at);
+
+static bool MVD_Gate (uint32_t ms)
 {
+	double	t = ms * 0.001;
+
+	if (mvd.scanning)
+	{
+		if (ms != mvd.frame && ms - mvd.keys[mvd.numkeys-1]->at >= MVD_SPACING)
+			MVD_Keyframe (ms);
+		return true;
+	}
+	if (mvd.quiet)
+		return ms <= mvd.until;
+
 	if (cls.state < ca_onserver)
 	{
 		mvd.logical = mvd.old = mvd.next = t;
@@ -266,8 +337,15 @@ static bool MVD_Gate (double t)
 	return true;
 }
 
+// the recording ends here; for a scan, the level does, and playback will
+// find out for itself
 static void MVD_End (const char *why)
 {
+	if (mvd.scanning)
+	{
+		mvd.level_over = true;
+		return;
+	}
 	if (why)
 		Con_Printf ("%s\n", why);
 	CL_StopPlayback ();
@@ -355,7 +433,7 @@ bool CL_GetMVDMessage (void)
 		}
 
 		t = mvd.time + mvd.data[mvd.pos];
-		if (!MVD_Gate (t * 0.001))
+		if (!MVD_Gate (t))
 			return false;
 		mvd.time = t;
 		mvd.pos = payload + len;
@@ -378,6 +456,8 @@ bool CL_GetMVDMessage (void)
 			cls.netchan.outgoing_sequence = cls.netchan.incoming_sequence + 1;
 			mvd.frame = t;
 			mvd.started = true;
+			if (mvd.quiet)
+				cl.time = t * 0.001;	// what the parser stamps things with
 		}
 		cls.netchan.last_received = (float)host.realtime;
 
@@ -518,6 +598,29 @@ void CL_MVDView (void)
 
 /*
 ==================
+MVD_FollowHint
+
+Follows the player the server's last hint named, unless one was picked by
+hand
+==================
+*/
+static void MVD_FollowHint (void)
+{
+	int		i;
+
+	if (!demo_autotrack.value || mvd.picked || !mvd.hint)
+		return;
+	for (i=0 ; i<MAX_CLIENTS ; i++)
+		if (MVD_IsPlayer (i) && cl.players[i].userid == mvd.hint)
+		{
+			if (i != mvd.track)
+				MVD_Track (i);
+			return;
+		}
+}
+
+/*
+==================
 CL_MVDHint
 
 "//at <userid>": the server's pick of who to watch (mvdsv)
@@ -525,18 +628,11 @@ CL_MVDHint
 */
 void CL_MVDHint (const char *s)
 {
-	int		i, userid;
-
-	if (strncmp (s, "//at ", 5) || !demo_autotrack.value || mvd.picked)
+	if (strncmp (s, "//at ", 5))
 		return;
-	userid = atoi (s + 5);
-	for (i=0 ; i<MAX_CLIENTS ; i++)
-		if (MVD_IsPlayer (i) && cl.players[i].userid == userid)
-		{
-			if (i != mvd.track)
-				MVD_Track (i);
-			return;
-		}
+	mvd.hint = atoi (s + 5);
+	if (!mvd.quiet)		// a seek follows the last one before where it goes
+		MVD_FollowHint ();
 }
 
 /*
@@ -607,9 +703,433 @@ static void CL_MVDTrack_f (void)
 	Con_Printf ("No player %s\n", arg);
 }
 
+/*
+===============================================================================
+
+KEYFRAMES AND SEEKING
+
+===============================================================================
+*/
+
+// what a keyframe keeps of a player: all but what follows from it
+#define	PLAYER_KEPT		offsetof(player_info_t, translate)
+
+static byte			*key_buf;		// the keyframe being written
+static size_t		key_len, key_max;
+static const byte	*key_read;		// the one being read
+
+static void Key_Put (const void *data, size_t len)
+{
+	if (key_len + len > key_max)
+	{
+		key_max = (key_len + len) * 2;
+		key_buf = Mem_Realloc (key_buf, key_max);
+	}
+	memcpy (key_buf + key_len, data, len);
+	key_len += len;
+}
+
+static void Key_PutByte (int c)
+{
+	byte	b = (byte)c;
+
+	Key_Put (&b, 1);
+}
+
+static void Key_Get (void *data, size_t len)
+{
+	memcpy (data, key_read, len);
+	key_read += len;
+}
+
+static bool MVD_KeepPlayer (int slot)
+{
+	return cl.players[slot].userid || cl.players[slot].userinfo[0];
+}
+
+// a carried state, even one from the gamestate, before the first frame
+static bool MVD_KeepCarried (int slot)
+{
+	static const player_state_t	none = {0};
+
+	return memcmp (&cl.mvd_prev[slot], &none, sizeof(none)) != 0;
+}
+
+/*
+==================
+MVD_Keyframe
+
+Keeps what the parser holds between two frames, as the keyframe before the
+one stamped at: the reader, the latest entities, the players and their
+carried states, the lightstyles, the serverinfo. Only what is in use.
+==================
+*/
+static void MVD_Keyframe (uint32_t at)
+{
+	mvdkeyhead_t			head = {0};
+	const packet_entities_t	*pack;
+	mvdkey_t				*key;
+	int						i;
+
+	head.pos = mvd.pos;
+	head.time = mvd.time;
+	head.frame = mvd.frame;
+	head.started = mvd.started;
+	head.sequence = cls.netchan.incoming_sequence;
+	head.hint = mvd.hint;
+	head.parsecount = cl.parsecount;
+	head.validsequence = cl.validsequence;
+	head.paused = cl.paused;
+	head.intermission = cl.intermission;
+	head.completed_time = cl.completed_time;
+	VectorCopy (cl.simorg, head.simorg);
+	VectorCopy (cl.simangles, head.simangles);
+	head.movevars = cl.movevars;
+
+	// the next frame's entities are deltas from the last that had them, or
+	// with none yet, from the frame before (CL_ParsePacketEntities)
+	head.entityframe = cl.validsequence ? cl.validsequence : cls.netchan.incoming_sequence;
+	pack = &cl.frames[head.entityframe & UPDATE_MASK].packet_entities;
+	head.numentities = pack->num_entities;
+	for (i=0 ; i<MAX_CLIENTS ; i++)
+	{
+		head.numplayers += MVD_KeepPlayer (i);
+		head.numcarried += MVD_KeepCarried (i);
+	}
+	for (i=0 ; i<MAX_LIGHTSTYLES ; i++)
+		head.numstyles += cl.lightstyles[i].length != 0;
+
+	key_len = 0;
+	Key_Put (&head, sizeof(head));
+	Key_Put (cl.serverinfo, strlen (cl.serverinfo) + 1);
+	Key_Put (pack->entities, head.numentities * sizeof(entity_state_t));
+	for (i=0 ; i<MAX_CLIENTS ; i++)
+		if (MVD_KeepPlayer (i))
+		{
+			Key_PutByte (i);
+			Key_Put (&cl.players[i], PLAYER_KEPT);
+		}
+	for (i=0 ; i<MAX_CLIENTS ; i++)
+		if (MVD_KeepCarried (i))
+		{
+			Key_PutByte (i);
+			Key_Put (&cl.mvd_prev[i], sizeof(player_state_t));
+		}
+	for (i=0 ; i<MAX_LIGHTSTYLES ; i++)
+		if (cl.lightstyles[i].length)
+		{
+			Key_PutByte (i);
+			Key_PutByte (cl.lightstyles[i].length);
+			Key_Put (cl.lightstyles[i].map, cl.lightstyles[i].length);
+		}
+
+	key = Mem_Alloc (sizeof(*key) + key_len);
+	key->at = at;
+	key->size = key_len;
+	memcpy (key->data, key_buf, key_len);
+	if (mvd.numkeys == mvd.maxkeys)
+	{
+		mvd.maxkeys = mvd.maxkeys ? mvd.maxkeys * 2 : 64;
+		mvd.keys = Mem_Realloc (mvd.keys, (size_t)mvd.maxkeys * sizeof(*mvd.keys));
+	}
+	mvd.keys[mvd.numkeys++] = key;
+}
+
+/*
+==================
+MVD_Restore
+
+The parser as it was at the keyframe. Players, carried states and
+lightstyles it doesn't have were nobody's then; what follows from the rest
+(skins, colors, what the serverinfo tells, the stats shown) is worked out
+again.
+==================
+*/
+static void MVD_Restore (const mvdkey_t *key)
+{
+	mvdkeyhead_t		head;
+	packet_entities_t	*pack;
+	lightstyle_t		*style;
+	int					i, slot;
+
+	key_read = key->data;
+	Key_Get (&head, sizeof(head));
+
+	mvd.pos = head.pos;
+	mvd.time = head.time;
+	mvd.frame = head.frame;
+	mvd.started = head.started;
+	mvd.hint = head.hint;
+	cls.netchan.incoming_sequence = cls.netchan.incoming_acknowledged = head.sequence;
+	cls.netchan.outgoing_sequence = head.sequence + 1;
+
+	cl.parsecount = head.parsecount;
+	cl.parsecountmod = head.parsecount & UPDATE_MASK;
+	cl.validsequence = head.validsequence;
+	cl.paused = head.paused;
+	if (cl.intermission != head.intermission)
+		vid.recalc_refdef = true;
+	cl.intermission = head.intermission;
+	cl.completed_time = head.completed_time;
+	VectorCopy (head.simorg, cl.simorg);
+	VectorCopy (head.simangles, cl.simangles);
+	cl.movevars = head.movevars;
+
+	Key_Get (cl.serverinfo, strlen ((const char *)key_read) + 1);
+	CL_ProcessServerInfo ();
+
+	pack = &cl.frames[head.entityframe & UPDATE_MASK].packet_entities;
+	pack->num_entities = head.numentities;
+	Key_Get (pack->entities, head.numentities * sizeof(entity_state_t));
+	cl.frames[head.entityframe & UPDATE_MASK].invalid = false;
+
+	for (i=0 ; i<MAX_CLIENTS ; i++)
+	{
+		memset (&cl.players[i], 0, PLAYER_KEPT);
+		cl.players[i].skin = NULL;
+	}
+	for (i=0 ; i<head.numplayers ; i++)
+	{
+		slot = *key_read++;
+		Key_Get (&cl.players[slot], PLAYER_KEPT);
+		CL_ProcessUserInfo (slot, &cl.players[slot]);
+	}
+
+	memset (cl.mvd_prev, 0, sizeof(cl.mvd_prev));
+	for (i=0 ; i<head.numcarried ; i++)
+	{
+		slot = *key_read++;
+		Key_Get (&cl.mvd_prev[slot], sizeof(player_state_t));
+	}
+	memcpy (cl.frames[cl.parsecountmod].playerstate, cl.mvd_prev, sizeof(cl.mvd_prev));
+
+	memset (cl.lightstyles, 0, sizeof(cl.lightstyles));
+	for (i=0 ; i<head.numstyles ; i++)
+	{
+		style = &cl.lightstyles[*key_read++];
+		style->length = *key_read++;
+		Key_Get (style->map, style->length);
+	}
+
+	memset (cl.item_gettime, 0, sizeof(cl.item_gettime));
+	if (mvd.track >= 0)
+		MVD_Track (mvd.track);
+}
+
+/*
+==================
+MVD_ClearTransients
+
+What was under way when the moment played jumps: effects, sounds, and the
+places things were drawn moving from
+==================
+*/
+static void MVD_ClearTransients (void)
+{
+	CL_ResetSmoothing ();
+	CL_ClearTEnts ();
+	CL_ClearProjectiles ();
+	memset (cl.dlights, 0, sizeof(cl.dlights));
+	R_ClearParticles ();
+	S_StopDynamicSounds ();
+	SCR_CenterPrint ("");
+	cl.punchangle = 0;
+	cl.faceanimtime = 0;
+	cl.cshifts[CSHIFT_DAMAGE].percent = 0;
+	cl.cshifts[CSHIFT_BONUS].percent = 0;
+}
+
+// the stamp of the next block, or of the last when there are no more
+static uint32_t MVD_NextStamp (void)
+{
+	return mvd.pos < mvd.size ? mvd.time + mvd.data[mvd.pos] : mvd.time;
+}
+
+/*
+==================
+MVD_Scan
+
+A level of a file just went active: the rest of it is read now, quietly,
+keeping a keyframe at its start and every MVD_SPACING, and play goes on
+from the start
+==================
+*/
+static void MVD_Scan (void)
+{
+	double	logical = mvd.logical, old = mvd.old, next = mvd.next;
+	double	started = Sys_DoubleTime ();
+	size_t	bytes;
+	int		i;
+
+	MVD_FreeKeys ();
+	MVD_Keyframe (MVD_NextStamp ());
+	mvd.quiet = mvd.scanning = true;
+	mvd.level_over = false;
+	mvd.level_end = mvd.frame;
+	while (!mvd.level_over && CL_GetMVDMessage ())
+	{
+		MSG_BeginReading (&cls.net_message);
+		CL_ParseServerMessage ();
+		if (!mvd.level_over)
+			mvd.level_end = mvd.frame;		// not the next level's first
+	}
+	mvd.quiet = mvd.scanning = false;
+
+	MVD_Restore (mvd.keys[0]);
+	MVD_ClearTransients ();
+	mvd.logical = logical;
+	mvd.old = old;
+	mvd.next = next;
+
+	for (bytes = 0, i=0 ; i<mvd.numkeys ; i++)
+		bytes += mvd.keys[i]->size;
+	Con_DPrintf ("MVD: level read in %.0f ms, %i keyframes of %zu KB\n",
+		(Sys_DoubleTime () - started) * 1000, mvd.numkeys, bytes / 1024);
+}
+
+/*
+==================
+MVD_Seek
+
+Plays on from ms, within the level: reading on from where the reader is when
+that is on the way, else from the keyframe before it
+==================
+*/
+static void MVD_Seek (uint32_t ms)
+{
+	int		i;
+
+	if (ms < mvd.keys[0]->at)
+		ms = mvd.keys[0]->at;
+	if (ms > mvd.level_end)
+		ms = mvd.level_end;
+	for (i=mvd.numkeys-1 ; i>0 && mvd.keys[i]->at > ms ; i--)
+		;
+	if (mvd.time > ms || mvd.keys[i]->at > mvd.time)
+		MVD_Restore (mvd.keys[i]);
+
+	// what the frames on the way leave behind is where things now move from
+	MVD_ClearTransients ();
+	mvd.quiet = true;
+	mvd.until = ms;
+	while (CL_GetMVDMessage ())
+	{
+		MSG_BeginReading (&cls.net_message);
+		CL_ParseServerMessage ();
+	}
+	mvd.quiet = false;
+	if (!cls.mvdplayback)
+		return;		// that was the end of the recording
+
+	mvd.logical = mvd.old = mvd.next = ms * 0.001;
+	MVD_FollowHint ();
+}
+
+/*
+==================
+CL_MVDActive
+
+A level went active; a file's is scanned for seeking, but not a timedemo's
+==================
+*/
+void CL_MVDActive (void)
+{
+	if (!mvd.stream && !cls.timedemo)
+		MVD_Scan ();
+}
+
+/*
+==================
+CL_MVDNewLevel
+
+A serverdata: a scan ends at the next level, which it doesn't read (true);
+in play, the last level's keyframes go
+==================
+*/
+bool CL_MVDNewLevel (void)
+{
+	if (!cls.mvdplayback)
+		return false;
+	if (mvd.scanning)
+	{
+		mvd.level_over = true;
+		return true;
+	}
+	MVD_FreeKeys ();
+	return false;
+}
+
+/*
+==================
+CL_MVDQuiet
+
+A scan or a seek is reading: the messages change what is kept, but nothing is
+shown or heard
+==================
+*/
+bool CL_MVDQuiet (void)
+{
+	return cls.mvdplayback && mvd.quiet;
+}
+
+static const char *MVD_Clock (double seconds, char *buf, size_t size)
+{
+	int		s = (int)seconds;
+
+	snprintf (buf, size, "%i:%02i", s / 60, s % 60);
+	return buf;
+}
+
+/*
+==================
+CL_MVDJump_f
+
+demo_jump [+|-][m:]s: to that moment of the recording, or that far on or
+back; without one, where playback is (ezQuake's command)
+==================
+*/
+static void CL_MVDJump_f (void)
+{
+	const char	*arg, *colon;
+	char		now_s[16], end_s[16];
+	double		now, to;
+	int			sign;
+
+	if (!cls.mvdplayback || cls.state != ca_active)
+	{
+		Con_Printf ("Not playing an MVD\n");
+		return;
+	}
+	now = CL_MVDTime ();
+	if (Cmd_Argc () != 2)
+	{
+		Con_Printf ("demo_jump [+|-][m:]s\n");
+		if (mvd.numkeys)
+			Con_Printf ("At %s of %s\n", MVD_Clock (now, now_s, sizeof(now_s)),
+				MVD_Clock (mvd.level_end * 0.001, end_s, sizeof(end_s)));
+		return;
+	}
+	if (!mvd.numkeys)
+	{
+		Con_Printf ("Can't seek in a stream or a timedemo\n");
+		return;
+	}
+
+	arg = Cmd_Argv (1);
+	sign = *arg == '+' ? 1 : *arg == '-' ? -1 : 0;
+	if (sign)
+		arg++;
+	colon = strchr (arg, ':');
+	to = colon ? atoi (arg) * 60 + atof (colon + 1) : atof (arg);
+	if (sign)
+		to = now + sign * to;
+	MVD_Seek (to > 0 ? (uint32_t)(to * 1000 + 0.5) : 0);
+}
+
 void CL_InitMVD (void)
 {
 	Cvar_RegisterVariable (&demo_speed);
 	Cvar_RegisterVariable (&demo_autotrack);
 	Cmd_AddCommand ("track", CL_MVDTrack_f);
+	Cmd_AddCommand ("demo_jump", CL_MVDJump_f);
 }

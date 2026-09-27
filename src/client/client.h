@@ -488,6 +488,9 @@ void CL_MVDFixAngle (int slot);		// the player's view was set: no turn to it
 void CL_MVDStartStream (void);		// QTV: played as it arrives
 void CL_MVDFeed (const byte *bytes, int len);
 void CL_MVDStreamClosed (void);
+void CL_MVDActive (void);			// the level went active: a file's is scanned for seeking
+bool CL_MVDNewLevel (void);			// a serverdata; true: a scan ends before it
+bool CL_MVDQuiet (void);			// a scan or a seek: nothing is shown or heard
 
 //
 // cl_qtv.c
@@ -502,6 +505,8 @@ void CL_DumpTimedemoFrame (void);	// when timedemo_dump asks for it
 //
 int CL_CalcNet (void);
 void CL_ParseServerMessage (void);
+void CL_ProcessUserInfo (int slot, player_info_t *player);	// name, colors, skin from the userinfo
+double CL_ScoreClock (void);		// what the scoreboard's times count on
 void CL_NewTranslation (int slot);
 void CL_RequestNextDownload (void);
 bool CL_IsUploading(void);
