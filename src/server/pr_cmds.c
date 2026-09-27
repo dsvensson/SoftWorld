@@ -72,8 +72,9 @@ void PF_error (void)
 =================
 PF_objerror
 
-Dumps out self, then an error message.  The program is aborted and self is
-removed, but the level can continue.
+Dumps out self, then an error message.  Self is removed and the level
+goes on: as in FitzQuake and the engines after it, an entity the progs
+can't set up (a map made for other progs) doesn't stop the server.
 
 objerror(value)
 =================
@@ -82,14 +83,12 @@ void PF_objerror (void)
 {
 	char	*s;
 	edict_t	*ed;
-	
+
 	s = PF_VarString(0);
 	Con_Printf ("======OBJECT ERROR in %s:\n%s\n", PR_GetString(pr.xfunction->s_name),s);
 	ed = PROG_TO_EDICT(pr.global_struct->self);
 	ED_Print (ed);
 	ED_Free (ed);
-	
-	SV_Error ("Program error");
 }
 
 

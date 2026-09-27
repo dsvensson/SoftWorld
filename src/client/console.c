@@ -331,6 +331,7 @@ Handles cursor positioning, line wrapping, etc
 static void Con_PrintSink (const char *msg)
 {
 	static bool	inupdate;
+	static double	lastupdate;
 
 // log all messages to file
 	if (con.debuglog)
@@ -342,8 +343,10 @@ static void Con_PrintSink (const char *msg)
 // write it to the scrollable buffer
 	Con_Print ((char *)msg);
 	
-// update the screen immediately if the console is displayed
-	if (cls.state != ca_active)
+// update the screen if the console is displayed, at most 20 times a second:
+// a map whose entities print hundreds of warnings while loading drew a frame
+// for each line
+	if (cls.state != ca_active && Sys_DoubleTime () - lastupdate >= 0.05)
 	{
 	// protect against infinite loop if something in SCR_UpdateScreen calls
 	// Con_Printd
@@ -351,6 +354,7 @@ static void Con_PrintSink (const char *msg)
 		{
 			inupdate = true;
 			SCR_UpdateScreen ();
+			lastupdate = Sys_DoubleTime ();
 			inupdate = false;
 		}
 	}

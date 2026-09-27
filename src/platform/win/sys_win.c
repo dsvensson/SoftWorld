@@ -18,18 +18,27 @@ void Sys_mkdir (char *path)
 	_mkdir (path);
 }
 
+// the file stays open, flushed after each write: opened for every print, a
+// map whose entities print thousands of lines took seconds to load
 void Sys_DebugLog (char *file, char *fmt, ...)
 {
+	static FILE	*f;
+	static char	name[1024];		// the file f is open on
 	va_list	argptr;
-	FILE	*f;
 
-	f = fopen (file, "a");
-	if (!f)
-		return;
+	if (!f || strcmp (name, file))
+	{
+		if (f)
+			fclose (f);
+		f = fopen (file, "a");
+		if (!f)
+			return;
+		snprintf (name, sizeof(name), "%s", file);
+	}
 	va_start (argptr, fmt);
 	vfprintf (f, fmt, argptr);
 	va_end (argptr);
-	fclose (f);
+	fflush (f);
 }
 
 /*
