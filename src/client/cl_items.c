@@ -25,8 +25,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // held item's clock starts ("//ktx timer <entity> <seconds>"), and when the
 // match starts and every item is put back ("//ktx matchstart"). They are kept
 // as a list of what was said when; what is away at a moment follows from the
-// list up to it, so a seek has nothing to put back (qualia's item board, as a
-// list beside the view).
+// list up to it, so a seek has nothing to put back (qualia's item board). It
+// is shown as a list beside the view, and as qualia shows it in the world: a
+// ring on the floor where an item is missing, lit as its return comes nearer,
+// and a faint ghost of the item. Whether an item is missing is the server's
+// word, not the clock's: a ring and a ghost stand while the item's entity
+// isn't sent.
 
 #include "cl_local.h"
 
@@ -45,14 +49,39 @@ typedef enum { ITEM_NONE, ITEM_QUAD, ITEM_PENT, ITEM_RING, ITEM_SUIT, ITEM_MEGA,
 
 static const char *const	item_names[] = {"", "quad", "pent", "ring", "suit", "mega", "ra", "ya", "ga", "rl", "lg"};
 
+// a ring's color: the powerups their own, the armors and weapons the colors
+// qualia outlines them in; 1.0 is white
+static const float	item_colors[][3] = {
+	{0, 0, 0}, {0.2f, 0.4f, 1.5f}, {1.5f, 0.1f, 0.1f}, {1.2f, 1.0f, 0.3f}, {0.2f, 1.2f, 0.4f}, {1.5f, 1.2f, 1.2f},
+	{1.5f, 0, 0}, {1.5f, 1.5f, 0}, {0, 1.5f, 0}, {1.5f, 0, 0}, {1.5f, 0, 1.5f}
+};
+
+#define	MAX_AWAY		64
+#define	RING_RADIUS		22			// just clear of an item's 32 wide box
+#define	RING_SPIN		100			// degrees a second, as the items turn
+#define	FLOOR_REACH		256			// how far below an item its floor is looked for
+#define	GHOST_ALPHA		64			// a quarter: an annotation, fainter than anything a server makes
+
+typedef struct
+{
+	int		entity;
+	item_t	item;
+	double	taken;		// when its clock started
+	double	due;		// when it is back; -1 not counting yet
+} away_t;
+
 static mark_t	*marks;
 static int		nummarks, maxmarks;
 
+static r_ring_t	rings[MAX_AWAY];
+
 static cvar_t	demo_itemtimers = {.name = "demo_itemtimers", .string = "1", .archive = true};
+static cvar_t	demo_itemrings = {.name = "demo_itemrings", .string = "1", .archive = true};
 
 void CL_ItemsClear (void)
 {
 	nummarks = 0;
+	r_scene.numrings = 0;
 }
 
 static void Items_Add (double time, markkind_t kind, int entity, float delay)
@@ -141,26 +170,19 @@ static double Items_Order (double due)
 
 /*
 ==================
-CL_DrawItemTimers
+Items_Away
 
-Beside the view, the items away at the moment played, the soonest back
-first; one still held (a megahealth) last
+The newest word about each timed item up to now, the soonest back first and
+one still held (a megahealth) last; whether each is back yet is the caller's
+to decide
 ==================
 */
-void CL_DrawItemTimers (void)
+static int Items_Away (away_t *away, double now)
 {
-	struct { int entity; item_t item; double due; }	away[64], t;
-	char		num[16];
-	double		now, left;
-	int			i, j, n, x, y;
+	away_t	t;
+	int		i, j, n;
 
-	if (!cls.mvdplayback || !demo_itemtimers.value || cls.state != ca_active || cl.intermission)
-		return;
-
-	// the newest word about each item, up to now
-	now = cl.time;
-	n = 0;
-	for (i=0 ; i<nummarks && marks[i].time <= now ; i++)
+	for (i=n=0 ; i<nummarks && marks[i].time <= now ; i++)
 	{
 		if (marks[i].kind == MARK_MATCHSTART)
 		{
@@ -171,18 +193,18 @@ void CL_DrawItemTimers (void)
 			;
 		if (j == n)
 		{
-			if (n == (int)(sizeof(away)/sizeof(away[0])))
+			if (n == MAX_AWAY)
 				continue;
 			away[n].entity = marks[i].entity;
 			away[n].item = Items_Kind (marks[i].entity);
 			n++;
 		}
+		away[j].taken = marks[i].time;		// a timer starts the clock over
 		away[j].due = marks[i].delay > 0 ? marks[i].time + marks[i].delay : -1;
 	}
 
-	// the ones not back yet, soonest first
 	for (i=j=0 ; i<n ; i++)
-		if (away[i].item != ITEM_NONE && (away[i].due < 0 || away[i].due > now))
+		if (away[i].item != ITEM_NONE)
 			away[j++] = away[i];
 	n = j;
 	for (i=1 ; i<n ; i++)
@@ -192,6 +214,142 @@ void CL_DrawItemTimers (void)
 			away[j] = away[j-1];
 			away[j-1] = t;
 		}
+	return n;
+}
+
+// whether the server sends the entity: a taken item isn't, until it is back
+static bool Items_Present (int entity)
+{
+	const packet_entities_t	*pack = &cl.frames[cl.validsequence & UPDATE_MASK].packet_entities;
+	int						i;
+
+	for (i=0 ; i<pack->num_entities ; i++)
+		if (pack->entities[i].number == entity)
+			return true;
+	return false;
+}
+
+/*
+==================
+Items_RingCentre
+
+Where an item's ring lies: under the middle of it, on the floor. A brush
+model's origin (the megahealth's box) is a corner of it, so its middle is
+the middle of its bounds. The floor is traced for, not too far down; an item
+hung in the air keeps its ring.
+==================
+*/
+static void Items_RingCentre (const entity_state_t *base, vec3_t centre)
+{
+	const model_t	*model = CL_Model (base->modelindex);
+	const hull_t	*hull;
+	trace_t			trace;
+	vec3_t			down;
+
+	VectorCopy (base->origin, centre);
+	if (model && model->type == mod_brush)
+	{
+		centre[0] += (model->mins[0] + model->maxs[0]) * 0.5f;
+		centre[1] += (model->mins[1] + model->maxs[1]) * 0.5f;
+	}
+	if (!cl.clipmodels[1])
+		return;
+
+	hull = &cl.clipmodels[1]->hulls[0];
+	VectorCopy (centre, down);
+	down[2] -= FLOOR_REACH;
+	memset (&trace, 0, sizeof(trace));
+	trace.fraction = 1;
+	trace.allsolid = true;
+	VectorCopy (down, trace.endpos);
+	CM_RecursiveHullCheck (hull, hull->firstclipnode, 0, 1, centre, down, &trace);
+	if (!trace.startsolid && trace.fraction < 1)
+		VectorCopy (trace.endpos, centre);
+}
+
+/*
+==================
+CL_LinkItems
+
+Where an item is missing at the moment played: a ring on the floor, lit as
+its return comes nearer and turning as the items do, and a ghost of the item
+==================
+*/
+void CL_LinkItems (void)
+{
+	const entity_state_t	*base;
+	away_t		away[MAX_AWAY];
+	entity_t	*ent;
+	r_ring_t	*ring;
+	model_t		*model;
+	double		now = cl.time;
+	int			i, n;
+
+	r_scene.rings = rings;
+	r_scene.numrings = 0;
+	if (!cls.mvdplayback || !demo_itemrings.value || cl.intermission)
+		return;
+
+	n = Items_Away (away, now);
+	for (i=0 ; i<n ; i++)
+	{
+		if (Items_Present (away[i].entity))
+			continue;
+		base = &cl.baselines[away[i].entity];
+		model = CL_Model (base->modelindex);
+		if (!model)
+			continue;
+
+		ring = &rings[r_scene.numrings++];
+		Items_RingCentre (base, ring->centre);
+		ring->radius = RING_RADIUS;
+		ring->fill = away[i].due < 0 ? 0 : away[i].due <= away[i].taken ? 1
+			: (float)((now - away[i].taken) / (away[i].due - away[i].taken));
+		ring->phase = (float)(fmod (RING_SPIN * now, 360.0) * Q_PI / 180);
+		VectorCopy (item_colors[away[i].item], ring->color);
+
+		if (cl.numvisedicts == MAX_VISEDICTS)
+			continue;
+		ent = &cl.visedicts[cl.numvisedicts++];
+		memset (ent, 0, sizeof(*ent));
+		ent->keynum = away[i].entity;
+		ent->model = model;
+		ent->alpha = GHOST_ALPHA;
+		ent->skinnum = base->skinnum;
+		ent->frame = base->frame;
+		VectorCopy (base->origin, ent->origin);
+		if (model->flags & EF_ROTATE)
+			ent->angles[1] = anglemod ((float)(RING_SPIN * now));
+		else
+			VectorCopy (base->angles, ent->angles);
+	}
+}
+
+/*
+==================
+CL_DrawItemTimers
+
+Beside the view, the items away at the moment played, the soonest back
+first; one still held (a megahealth) last
+==================
+*/
+void CL_DrawItemTimers (void)
+{
+	away_t		away[MAX_AWAY];
+	char		num[16];
+	double		now, left;
+	int			i, j, n, x, y;
+
+	if (!cls.mvdplayback || !demo_itemtimers.value || cls.state != ca_active || cl.intermission)
+		return;
+
+	// the ones not back yet
+	now = cl.time;
+	n = Items_Away (away, now);
+	for (i=j=0 ; i<n ; i++)
+		if (away[i].due < 0 || away[i].due > now)
+			away[j++] = away[i];
+	n = j;
 
 	x = scr.vrect.x + 8;
 	y = scr.vrect.y + scr.vrect.height / 3;
@@ -215,4 +373,5 @@ void CL_DrawItemTimers (void)
 void CL_InitItems (void)
 {
 	Cvar_RegisterVariable (&demo_itemtimers);
+	Cvar_RegisterVariable (&demo_itemrings);
 }

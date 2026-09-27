@@ -90,6 +90,8 @@ void D_DrawTranslucentFace (msurface_t *surf, const vec3_t transformed_org, emit
 // the spans of a convex polygon on the screen, clockwise; false if it covers no scan line
 void D_DrawFencePolygon (emitpoint_t *pverts, int nump);
 void D_DrawBlendedPolygon (emitpoint_t *pverts, int nump, int alpha, bool turb);
+// one color over what is there, depth tested and not written
+void D_DrawFlatPolygon (emitpoint_t *pverts, int nump, pixel_t color, int alpha);
 void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb);
 
 // translucency: how opaque the alias model being drawn is, of 256; a scratch

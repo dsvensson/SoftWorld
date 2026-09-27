@@ -572,3 +572,75 @@ void D_DrawBlendedPolygon (emitpoint_t *pverts, int nump, int alpha, bool turb)
 		D_DrawBlendedSpans (sprite_spans, alpha, turb);
 }
 
+/*
+=====================
+D_DrawFlatPolygon
+
+A projected polygon of one color over what is there, alpha of 256: depth
+tested, not depth written. 1/z across it is the plane through its corners;
+pverts has room for one more, and is turned clockwise if it isn't.
+=====================
+*/
+void D_DrawFlatPolygon (emitpoint_t *pverts, int nump, pixel_t color, int alpha)
+{
+	sspan_t		*pspan;
+	emitpoint_t	swap;
+	pixel_t		*pdest;
+	float		*pz;
+	float		zi, zistepu, zistepv, ziorigin, area, det, best;
+	float		du1, dv1, du2, dv2;
+	int			i, j, count;
+
+	// clockwise on the screen, as the edge scanning takes it
+	area = 0;
+	for (i=0 ; i<nump ; i++)
+	{
+		j = (i + 1) % nump;
+		area += pverts[i].u * pverts[j].v - pverts[j].u * pverts[i].v;
+	}
+	if (area < 0)
+		for (i=0, j=nump-1 ; i<j ; i++, j--)
+		{
+			swap = pverts[i];
+			pverts[i] = pverts[j];
+			pverts[j] = swap;
+		}
+
+	// 1/z through the first corner and the two that span most with it
+	best = 0;
+	zistepu = zistepv = 0;
+	for (i=1 ; i<nump ; i++)
+		for (j=i+1 ; j<nump ; j++)
+		{
+			du1 = pverts[i].u - pverts[0].u;
+			dv1 = pverts[i].v - pverts[0].v;
+			du2 = pverts[j].u - pverts[0].u;
+			dv2 = pverts[j].v - pverts[0].v;
+			det = du1 * dv2 - du2 * dv1;
+			if (fabsf (det) > best)
+			{
+				best = fabsf (det);
+				zistepu = ((pverts[i].zi - pverts[0].zi) * dv2 - (pverts[j].zi - pverts[0].zi) * dv1) / det;
+				zistepv = (du1 * (pverts[j].zi - pverts[0].zi) - du2 * (pverts[i].zi - pverts[0].zi)) / det;
+			}
+		}
+	if (best < 0.01f)
+		return;		// seen edge on
+	ziorigin = pverts[0].zi - zistepu * pverts[0].u - zistepv * pverts[0].v;
+
+	if (!D_PolygonSpans (pverts, nump, sprite_spans))
+		return;
+	for (pspan = sprite_spans ; pspan->count != DS_SPAN_LIST_END ; pspan++)
+	{
+		count = pspan->count;
+		if (count <= 0)
+			continue;
+		pdest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
+		pz = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
+		zi = ziorigin + pspan->v * zistepv + pspan->u * zistepu;
+		for ( ; count ; count--, pdest++, pz++, zi += zistepu)
+			if (*pz <= zi)
+				*pdest = D_BlendPixel (color, *pdest, alpha);
+	}
+}
+

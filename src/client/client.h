@@ -493,6 +493,7 @@ void CL_InitItems (void);
 void CL_ItemsClear (void);
 void CL_ItemsMarker (const char *text, double time);	// "//ktx" lines said at time
 void CL_DrawItemTimers (void);
+void CL_LinkItems (void);			// rings and ghosts where items are missing
 
 //
 // cl_qtv.c

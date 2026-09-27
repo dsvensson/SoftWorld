@@ -130,6 +130,7 @@ void R_AddTranslucent (msurface_t *surf, int alpha);
 void R_AddTranslucentModel (model_t *model);
 void R_AddTranslucentEntity (entity_t *ent);
 void R_DrawTranslucent (void);
+void R_DrawRings (void);		// r_scene's, r_ring.c
 void R_DrawAliasEntity (void);
 void R_RotateBmodel (void);
 void R_TransformFrustum (void);

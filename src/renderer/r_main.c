@@ -1181,6 +1181,7 @@ void R_RenderView (void)
 	prof = R_ProfStart ();
 	R_DrawEntitiesOnList ();
 	R_DrawTranslucent ();
+	R_DrawRings ();
 	R_ProfEnd (PROF_MODELS, prof);
 
 	if (r_dspeeds.value)

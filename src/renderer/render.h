@@ -197,6 +197,17 @@ void D_InitCaches (void *buffer, int size);
 // render pixels per pixel of the 320x200 layout
 void R_SetRenderSize (int width, int height, int scale);
 
+// a ring lying flat on the floor, part of it lit, turning: where an item is
+// missing and how soon it is back (qualia's spawn rings, cl_items.c)
+typedef struct
+{
+	vec3_t	centre;
+	float	radius;
+	float	fill;			// how much of it is lit, 0 .. 1
+	float	phase;			// radians round from +x where the lit part starts
+	float	color[3];		// 1.0 is white; more is brighter
+} r_ring_t;
+
 //
 // what the client hands the renderer: set up once, updated as the game runs
 //
@@ -213,6 +224,8 @@ typedef struct
 	lightstyle_t	*lightstyles;	// MAX_LIGHTSTYLES
 	entity_t	*viewent;		// the weapon model
 	bool		drawviewmodel;	// false when the player is invisible, dead or observing
+	const r_ring_t	*rings;		// this frame's
+	int			numrings;
 
 	int			viewcontents;	// output: contents at the view origin after R_RenderView
 } r_scene_t;
