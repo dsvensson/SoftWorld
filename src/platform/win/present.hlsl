@@ -1,9 +1,10 @@
 // present.hlsl -- draws the software-rendered frame into the letterboxed viewport.
 //
 // The 3D view is R10G10B10A2 with SDR white at 255 of 1023, which leaves headroom for
-// overbright light. The shader applies the view blend, gamma and contrast to it, then lays
-// the 2D over it (RGBA8, premultiplied, SDR), and writes either SDR (display gamma,
-// clipped) or scRGB (linear, 1.0 = 80 nits) for HDR displays, the 2D at paper white.
+// overbright light. The shader applies the view blend and gamma to its display values, then
+// in linear light (display values to the power 2.2) the contrast, and takes it to the
+// display: SDR clipped, or scRGB (linear, 1.0 = 80 nits) for HDR displays with SDR white at
+// paper white. The 2D is laid over it as it is (RGBA8, premultiplied, SDR).
 
 Texture2D<float4> g_frame : register(t0);
 Texture2D<float4> g_hud : register(t1);
@@ -14,8 +15,8 @@ cbuffer Present : register(b0)
 	float4	g_blend;		// rgb, and how much of it covers the view
 	float2	g_texsize;		// frame size in texels
 	float2	g_scale;		// screen pixels per texel
-	float	g_gamma;		// exponent applied to the view; 1 keeps it
-	float	g_contrast;		// multiplier; 1 keeps it
+	float	g_gamma;		// exponent applied to the view's display values; 1 keeps it
+	float	g_contrast;		// the light as mid gray times (light / mid gray) to this; 1 keeps it
 	float	g_sharp;		// 0: integer scale, nearest texel; 1: sharp bilinear
 	float	g_hdr;			// 0: SDR output; 1: scRGB output
 	float	g_paperwhite;	// scRGB value of SDR white
@@ -62,6 +63,8 @@ float4 SampleLayer (Texture2D<float4> layer, float2 uv)
 	return c;
 }
 
+static const float MIDGRAY = 0.18;		// linear light that contrast keeps
+
 // compresses what is brighter than knee toward peak instead of clipping it
 float3 RollOff (float3 c, float knee, float peak)
 {
@@ -76,14 +79,14 @@ float4 PSMain (VSOut i) : SV_Target
 	float4 hud = SampleLayer(g_hud, i.uv);
 
 	c = lerp(c, g_blend.rgb, g_blend.a);
-	c = pow(max(c, 0), g_gamma) * max(g_contrast, 0);
+	c = pow(max(c, 0), g_gamma);
+	float3 lin = MIDGRAY * pow(pow(max(c, 0), 2.2) / MIDGRAY, g_contrast);
 
 	if (g_hdr == 0)
-		return float4(saturate(c) * (1 - hud.a) + hud.rgb, 1);
+		return float4(pow(saturate(lin), 1 / 2.2) * (1 - hud.a) + hud.rgb, 1);
 
-	// display gamma to linear light, SDR white at paper white, highlights up to the peak;
-	// the 2D over it in linear light
-	float3 lin = RollOff(pow(max(c, 0), 2.2) * g_paperwhite, g_paperwhite, g_peak);
+	// SDR white at paper white, highlights up to the peak; the 2D over it in linear light
+	lin = RollOff(lin * g_paperwhite, g_paperwhite, g_peak);
 	float3 hudlin = pow(max(hud.rgb / max(hud.a, 1.0 / 255.0), 0), 2.2) * g_paperwhite * hud.a;
 	return float4(hudlin + lin * (1 - hud.a), 1);
 }

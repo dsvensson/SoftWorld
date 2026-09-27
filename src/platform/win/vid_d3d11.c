@@ -45,6 +45,7 @@ static cvar_t	vid_widescreen = {.name = "vid_widescreen", .string = "0", .archiv
 #define VID_CRT_STRETCH	1.2f	// 320x200 shown as 320x240
 // 0: whole multiples of the render size, letterboxed; 1: fill the window, sharp bilinear
 static cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true};
+// how far the 3D view's light spreads from mid gray: over 1 darker darks and brighter lights
 static cvar_t	vid_contrast = {.name = "vid_contrast", .string = "1", .archive = true};
 // use HDR output when the display is in HDR mode
 static cvar_t	vid_hdr = {.name = "vid_hdr", .string = "1", .archive = true};
@@ -103,7 +104,7 @@ static bool		vid_outputknown;		// the output mode has been reported
 static float	vid_hdrwanted = -1;		// vid_hdr when the display was last checked
 static float	vid_peaknits = 1000;	// the display's brightest white
 static float	vid_sdrwhitenits = 200;	// Windows' SDR content brightness on that display
-static vid_present_t	vid_present = {.gamma = 1, .contrast = 1};
+static vid_present_t	vid_present = {.gamma = 1};
 
 static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 static int VID_WantedScale (void);
@@ -743,6 +744,16 @@ static void VID_SetScale (int scale)
 	Con_DPrintf ("Render size %dx%d\n", base * scale, VID_BASE_HEIGHT * scale);
 }
 
+#define VID_MIDGRAY		0.18f	// linear light that contrast keeps
+
+// the contrast of linear light, as present.hlsl makes it
+static float VID_Contrast (float lin)
+{
+	float	contrast = vid_contrast.value > 0 ? vid_contrast.value : 1;
+
+	return lin > 0 ? VID_MIDGRAY * powf (lin / VID_MIDGRAY, contrast) : 0;
+}
+
 /*
 ================
 VID_FrameToRGB
@@ -755,11 +766,10 @@ clip and the 2D
 void VID_FrameToRGB (byte *rgb, bool shown)
 {
 	static byte	lut[3][1024];
-	float		c, contrast;
+	float		c;
 	unsigned	x, y, a, i;
 	int			ch, v;
 
-	contrast = fmaxf (vid_present.contrast * vid_contrast.value, 0);
 	for (ch = 0 ; ch < 3 ; ch++)
 		for (v = 0 ; v < 1024 ; v++)
 		{
@@ -770,8 +780,9 @@ void VID_FrameToRGB (byte *rgb, bool shown)
 			}
 			c = v / 255.0f;
 			c += (vid_present.blend[ch] - c) * vid_present.blend[3];
-			c = powf (fmaxf (c, 0), vid_present.gamma) * contrast;
-			lut[ch][v] = (byte)(fminf (c, 1) * 255 + 0.5f);
+			c = powf (fmaxf (c, 0), vid_present.gamma);
+			c = VID_Contrast (powf (c, 2.2f));
+			lut[ch][v] = (byte)(powf (fminf (c, 1), 1 / 2.2f) * 255 + 0.5f);
 		}
 
 	for (y = 0 ; y < vid.height ; y++)
@@ -865,7 +876,7 @@ void VID_Update (void)
 	constants.scale[0] = scale > 1.0f ? scale : 1.0f;
 	constants.scale[1] = scale * stretch > 1.0f ? scale * stretch : 1.0f;
 	constants.gamma = vid_present.gamma;
-	constants.contrast = vid_present.contrast * vid_contrast.value;
+	constants.contrast = vid_contrast.value > 0 ? vid_contrast.value : 1;
 	constants.sharp = scale == floorf (scale) && stretch == 1.0f ? 0.0f : 1.0f;
 	constants.hdr = vid_hdroutput ? 1.0f : 0.0f;
 	constants.paperwhite = VID_PaperWhiteNits () / 80.0f;		// scRGB 1.0 is 80 nits

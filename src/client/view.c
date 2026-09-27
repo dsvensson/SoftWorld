@@ -416,13 +416,13 @@ V_CalcBlend
 =============
 V_UpdateBlend
 
-The color shifts and gamma go to the presenter, which applies them to the
-whole frame
+The color shifts and gamma go to the presenter, which applies them to the 3D
+view
 =============
 */
 void V_UpdateBlend (void)
 {
-	vid_present_t	present = {.contrast = 1};
+	vid_present_t	present = {0};
 	float			p, keep, rgb[3] = {0, 0, 0};
 	int				i, j;
 
