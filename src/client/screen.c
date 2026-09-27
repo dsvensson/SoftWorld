@@ -720,7 +720,7 @@ static void SCR_ScreenShot_f (void)
 // save what the screen shows
 //
 	rgb = Mem_Alloc ((size_t)vid.width * vid.height * 3);
-	VID_FrameToRGB (rgb);
+	VID_FrameToRGB (rgb, true);
 	if (PNG_WriteRGB (path, (int)vid.width, (int)vid.height, rgb, (int)vid.width * 3))
 		Con_Printf ("Wrote %s\n", filename);
 	else
@@ -813,7 +813,7 @@ SCR_RSShot_f
 static void SCR_RSShot_f (void) 
 { 
 	int     x, y;
-	pixel_t		*src;
+	byte		*frame, *src;
 	unsigned char		*dest;
 	char		pcxname[80] = "snap.pcx";
 	unsigned char		*newbuf;
@@ -852,6 +852,8 @@ static void SCR_RSShot_f (void)
 	frach = (float)vid.height / (float)h;
 
 	newbuf = malloc(w*h);
+	frame = Mem_Alloc ((size_t)vid.width * vid.height * 3);
+	VID_FrameToRGB (frame, false);
 
 	for (y = 0; y < h; y++) {
 		dest = newbuf + (w * y);
@@ -868,12 +870,12 @@ static void SCR_RSShot_f (void)
 
 			count = 0;
 			for (/* */; dy < dey; dy++) {
-				src = vid.buffer + (vid.rowpixels * dy) + dx;
+				src = frame + (vid.width * dy + dx) * 3;
 				for (nx = dx; nx < dex; nx++) {
-					r += RGB30_R (*src) > 255 ? 255 : RGB30_R (*src);
-					g += RGB30_G (*src) > 255 ? 255 : RGB30_G (*src);
-					b += RGB30_B (*src) > 255 ? 255 : RGB30_B (*src);
-					src++;
+					r += src[0];
+					g += src[1];
+					b += src[2];
+					src += 3;
 					count++;
 				}
 			}
@@ -883,6 +885,7 @@ static void SCR_RSShot_f (void)
 			*dest++  = (unsigned char)MipColor(r, g, b);
 		}
 	}
+	Mem_Free (frame);
 
 	time(&now);
 	Q_strncpyz(st, ctime(&now), sizeof(st));
@@ -1100,10 +1103,10 @@ void SCR_UpdateScreen (void)
 		SCR_CheckDrawCenterString ();
 		CL_DrawItemTimers ();
 		Sbar_Draw ();
-		SCR_DrawConsole ();	
+		SCR_DrawConsole ();
 		M_Draw ();
 	}
-
+	Draw_Flush ();
 
 	R_ProfEnd (PROF_2D, prof);
 	V_UpdateBlend ();

@@ -80,6 +80,8 @@ static UINT						d3d_latency;		// frames queued at most
 static ID3D11RenderTargetView	*d3d_rtv;
 static ID3D11Texture2D			*d3d_frame;
 static ID3D11ShaderResourceView	*d3d_frame_srv;
+static ID3D11Texture2D			*d3d_hud;			// vid.hud, uploaded when it changes
+static ID3D11ShaderResourceView	*d3d_hud_srv;
 static ID3D11VertexShader		*d3d_vs;
 static ID3D11PixelShader		*d3d_ps;
 static ID3D11SamplerState		*d3d_sampler;
@@ -429,13 +431,16 @@ static void VID_CreateDevice (void)
 ================
 VID_CreateFrameTexture
 
-The texture the software framebuffer is uploaded into every frame.
+The texture the software framebuffer is uploaded into every frame, and the
+one its 2D layer is uploaded into when it changes.
 ================
 */
 static void VID_CreateFrameTexture (int width, int height)
 {
 	VID_RELEASE (d3d_frame_srv);
 	VID_RELEASE (d3d_frame);
+	VID_RELEASE (d3d_hud_srv);
+	VID_RELEASE (d3d_hud);
 
 	D3D11_TEXTURE2D_DESC desc = {
 		.Width = (UINT)width,
@@ -452,6 +457,15 @@ static void VID_CreateFrameTexture (int width, int height)
 		"ID3D11Device::CreateTexture2D");
 	VID_CheckHR (ID3D11Device_CreateShaderResourceView (d3d_device, (ID3D11Resource *)d3d_frame, NULL,
 		&d3d_frame_srv), "ID3D11Device::CreateShaderResourceView");
+
+	// kept on the GPU between uploads
+	desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.CPUAccessFlags = 0;
+	VID_CheckHR (ID3D11Device_CreateTexture2D (d3d_device, &desc, NULL, &d3d_hud),
+		"ID3D11Device::CreateTexture2D");
+	VID_CheckHR (ID3D11Device_CreateShaderResourceView (d3d_device, (ID3D11Resource *)d3d_hud, NULL,
+		&d3d_hud_srv), "ID3D11Device::CreateShaderResourceView");
 }
 
 /*
@@ -473,6 +487,9 @@ static void VID_AllocBuffers (int width, int height, int scale)
 {
 	Mem_Free (vid.buffer);
 	vid.buffer = Mem_Alloc ((size_t)width * height * sizeof(pixel_t));
+	Mem_Free (vid.hud);
+	vid.hud = Mem_Calloc ((size_t)width * height, sizeof(hudpixel_t));
+	vid.huddirty = true;
 
 	vid.rowpixels = width;
 	vid.width = width;
@@ -637,6 +654,8 @@ void VID_Shutdown (void)
 	VID_RELEASE (d3d_vs);
 	VID_RELEASE (d3d_frame_srv);
 	VID_RELEASE (d3d_frame);
+	VID_RELEASE (d3d_hud_srv);
+	VID_RELEASE (d3d_hud);
 	VID_RELEASE (d3d_rtv);
 	VID_RELEASE (d3d_swapchain2);
 	VID_RELEASE (d3d_swapchain);
@@ -728,21 +747,27 @@ static void VID_SetScale (int scale)
 ================
 VID_FrameToRGB
 
-What present.hlsl does for SDR (blend, gamma, contrast, clip), through a
-table per channel
+What present.hlsl does for SDR (the view's blend, gamma, contrast and clip,
+through a table per channel, then the 2D over it), or if not shown only the
+clip and the 2D
 ================
 */
-void VID_FrameToRGB (byte *rgb)
+void VID_FrameToRGB (byte *rgb, bool shown)
 {
 	static byte	lut[3][1024];
 	float		c, contrast;
-	unsigned	x, y;
+	unsigned	x, y, a, i;
 	int			ch, v;
 
 	contrast = fmaxf (vid_present.contrast * vid_contrast.value, 0);
 	for (ch = 0 ; ch < 3 ; ch++)
 		for (v = 0 ; v < 1024 ; v++)
 		{
+			if (!shown)
+			{
+				lut[ch][v] = (byte)(v > 255 ? 255 : v);
+				continue;
+			}
 			c = v / 255.0f;
 			c += (vid_present.blend[ch] - c) * vid_present.blend[3];
 			c = powf (fmaxf (c, 0), vid_present.gamma) * contrast;
@@ -752,11 +777,18 @@ void VID_FrameToRGB (byte *rgb)
 	for (y = 0 ; y < vid.height ; y++)
 		for (x = 0 ; x < vid.width ; x++, rgb += 3)
 		{
-			pixel_t	p = vid.buffer[y * vid.rowpixels + x];
+			pixel_t		p = vid.buffer[y * vid.rowpixels + x];
+			hudpixel_t	h = vid.hud[y * vid.rowpixels + x];
 
 			rgb[0] = lut[0][RGB30_R (p)];
 			rgb[1] = lut[1][RGB30_G (p)];
 			rgb[2] = lut[2][RGB30_B (p)];
+			a = HUD_A (h);
+			if (!a)
+				continue;
+			// premultiplied: the 2D's color, and the view's through the rest
+			for (i = 0 ; i < 3 ; i++)
+				rgb[i] = (byte)(((h >> (i * 8)) & 255) + (rgb[i] * (255 - a) + 127) / 255);
 		}
 }
 
@@ -803,6 +835,12 @@ void VID_Update (void)
 	simd_copy_stream (mapped.pData, mapped.RowPitch, vid.buffer, vid.rowpixels * sizeof(pixel_t),
 		vid.width * sizeof(pixel_t), (int)vid.height);
 	ID3D11DeviceContext_Unmap (d3d_context, (ID3D11Resource *)d3d_frame, 0);
+	if (vid.huddirty)
+	{
+		ID3D11DeviceContext_UpdateSubresource (d3d_context, (ID3D11Resource *)d3d_hud, 0, NULL, vid.hud,
+			vid.rowpixels * sizeof(hudpixel_t), 0);
+		vid.huddirty = false;
+	}
 
 	// aspect-preserving fit; whole multiples of the render size unless filling the window
 	stretch = vid_crt.value ? VID_CRT_STRETCH : 1.0f;
@@ -843,7 +881,8 @@ void VID_Update (void)
 	ID3D11DeviceContext_IASetInputLayout (d3d_context, NULL);
 	ID3D11DeviceContext_VSSetShader (d3d_context, d3d_vs, NULL, 0);
 	ID3D11DeviceContext_PSSetShader (d3d_context, d3d_ps, NULL, 0);
-	ID3D11DeviceContext_PSSetShaderResources (d3d_context, 0, 1, &d3d_frame_srv);
+	ID3D11ShaderResourceView	*layers[2] = {d3d_frame_srv, d3d_hud_srv};
+	ID3D11DeviceContext_PSSetShaderResources (d3d_context, 0, 2, layers);
 	ID3D11DeviceContext_PSSetSamplers (d3d_context, 0, 1, &d3d_sampler);
 	ID3D11DeviceContext_PSSetConstantBuffers (d3d_context, 0, 1, &d3d_constants);
 	ID3D11DeviceContext_Draw (d3d_context, 3, 0);

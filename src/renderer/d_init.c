@@ -130,6 +130,7 @@ void R_SetRenderSize (int width, int height, int scale)
 	D_SetWarpSize (width, height, scale);
 	D_SetPolysetSize (height);
 	D_SetSpriteSize (height);
+	Draw_Invalidate ();		// vid.hud is new too
 
 	vid.recalc_refdef = 1;
 }

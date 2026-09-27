@@ -359,6 +359,8 @@ static void R_Profile_f (void)
 	Con_Printf ("  %-10s %8.1f a frame (%.1f for dynamic lights), %.0f texels; cache ran out in %.1f%% of frames\n",
 		"surfaces", (double)r_profn[PROFN_SURFACES] / r_profframes, (double)r_profn[PROFN_DLIT] / r_profframes,
 		(double)r_profn[PROFN_TEXELS] / r_profframes, 100.0 * r_profthrash / r_profframes);
+	Con_Printf ("  %-10s %8.1f%% of frames drew the 2D layer again\n", "hud",
+		100.0 * (double)r_profn[PROFN_HUD] / r_profframes);
 	memset (r_prof, 0, sizeof(r_prof));
 	memset (r_profn, 0, sizeof(r_profn));
 	r_profframes = 0;

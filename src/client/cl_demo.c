@@ -40,14 +40,13 @@ void CL_InitDemo (void)
 ==============
 CL_DumpTimedemoFrame
 
-The frame as the renderer drew it, before blends and gamma, SDR white clipped
+The frame and its 2D as drawn, before blends and gamma, SDR white clipped
 ==============
 */
 void CL_DumpTimedemoFrame (void)
 {
 	char		path[MAX_OSPATH];
 	byte		*rgb;
-	unsigned	x, y;
 	int			frame;
 
 	if (!cls.timedemo || timedemo_dump.value < 1 || cls.state != ca_active)
@@ -57,16 +56,7 @@ void CL_DumpTimedemoFrame (void)
 		return;
 
 	rgb = Mem_Alloc ((size_t)vid.width * vid.height * 3);
-	for (y = 0 ; y < vid.height ; y++)
-		for (x = 0 ; x < vid.width ; x++)
-		{
-			pixel_t	p = vid.buffer[y * vid.rowpixels + x];
-			byte	*out = rgb + (y * vid.width + x) * 3;
-
-			out[0] = (byte)(RGB30_R (p) > 255 ? 255 : RGB30_R (p));
-			out[1] = (byte)(RGB30_G (p) > 255 ? 255 : RGB30_G (p));
-			out[2] = (byte)(RGB30_B (p) > 255 ? 255 : RGB30_B (p));
-		}
+	VID_FrameToRGB (rgb, false);
 	snprintf (path, sizeof(path), "%s/frames/%06d.png", FS_BaseDir (), frame);
 	COM_CreatePath (path);
 	if (!PNG_WriteRGB (path, (int)vid.width, (int)vid.height, rgb, (int)vid.width * 3))

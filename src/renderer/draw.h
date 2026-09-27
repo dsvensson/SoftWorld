@@ -23,8 +23,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "q_types.h"
 #include "wad.h"
 
-// draw.h -- these are the only functions outside the refresh allowed
-// to touch the vid buffer
+// draw.h -- the 2D: the only functions outside the refresh allowed to draw
+// on the screen, into its 2D layer
 
 extern	qpic_t		*draw_disc;	// also used on sbar
 
@@ -44,3 +44,8 @@ void Draw_String (int x, int y, char *str);
 void Draw_Alt_String (int x, int y, char *str);
 qpic_t *Draw_PicFromWad (char *name);
 qpic_t *Draw_CachePic (char *path);
+
+// The calls above are recorded; at the end of the frame Draw_Flush draws them
+// into vid.hud if they aren't the last frame's (and sets vid.huddirty)
+void Draw_Flush (void);
+void Draw_Invalidate (void);		// the next Draw_Flush draws whatever the calls

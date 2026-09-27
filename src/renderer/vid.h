@@ -41,6 +41,17 @@ static inline unsigned RGB30_R (pixel_t p) { return p & 1023; }
 static inline unsigned RGB30_G (pixel_t p) { return (p >> 10) & 1023; }
 static inline unsigned RGB30_B (pixel_t p) { return (p >> 20) & 1023; }
 
+// A pixel of the 2D layer: 8 bit RGBA, red lowest, the color premultiplied by
+// the alpha; SDR white is 255, and 2D is never brighter
+typedef uint32_t hudpixel_t;
+
+static inline hudpixel_t HUD_RGBA (unsigned r, unsigned g, unsigned b, unsigned a)
+{
+	return r | (g << 8) | (b << 16) | (a << 24);
+}
+
+static inline unsigned HUD_A (hudpixel_t p) { return p >> 24; }
+
 #define MAX_CONWIDTH	1024		// widest 2D layout
 
 typedef struct vrect_s
@@ -51,8 +62,11 @@ typedef struct vrect_s
 
 typedef struct
 {
-	pixel_t			*buffer;		// the frame being drawn
-	unsigned		rowpixels;		// pixels from one row to the next
+	pixel_t			*buffer;		// the frame being drawn: the 3D view
+	hudpixel_t		*hud;			// the 2D over it, as big, laid over it after the view's
+									// blends and gamma
+	bool			huddirty;		// hud changed since it was last presented
+	unsigned		rowpixels;		// pixels from one row to the next, of both
 	unsigned		width;
 	unsigned		height;
 	float			aspect;			// width / height -- < 0 is taller than wide
@@ -84,15 +98,17 @@ bool	VID_IsFullscreen (void);
 bool	VID_IsActive (void);		// the window has the focus
 bool	VID_IsMinimized (void);
 
-// how the presenter turns the frame into screen colors
+// how the presenter turns the 3D view into screen colors; the 2D layer is laid
+// over it as it is
 typedef struct
 {
 	float	blend[4];		// rgb and how much of it covers the whole view (0: none)
-	float	gamma;			// exponent applied to the frame; 1 keeps it
+	float	gamma;			// exponent applied to the view; 1 keeps it
 	float	contrast;		// multiplier; 1 keeps it
 } vid_present_t;
 
 void	VID_SetPresent (const vid_present_t *present);
 
-// the frame as the screen shows it in SDR, 8 bit RGB rows vid.width wide
-void	VID_FrameToRGB (byte *rgb);
+// the frame with its 2D, 8 bit RGB rows vid.width wide: as the screen shows it
+// in SDR, or if not shown as drawn (no blend or gamma, SDR white clipped)
+void	VID_FrameToRGB (byte *rgb, bool shown);
