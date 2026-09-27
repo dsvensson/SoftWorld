@@ -92,15 +92,6 @@ void *Arena_Alloc (arena_t *arena, size_t size)
 	return p;
 }
 
-char *Arena_StrDup (arena_t *arena, const char *s)
-{
-	size_t	len = strlen (s) + 1;
-	char	*copy = Arena_Alloc (arena, len);
-
-	memcpy (copy, s, len);
-	return copy;
-}
-
 void Arena_Reset (arena_t *arena)
 {
 	arena_chunk_t	*chunk, *next, *keep = NULL;

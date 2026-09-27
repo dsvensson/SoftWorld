@@ -42,15 +42,6 @@ void Mem_Free (void *ptr)
 	free (ptr);
 }
 
-char *Mem_StrDup (const char *s)
-{
-	size_t	len = strlen (s) + 1;
-	char	*copy = Mem_Alloc (len);
-
-	memcpy (copy, s, len);
-	return copy;
-}
-
 // The block returned by Mem_AllocAligned is preceded by the pointer malloc returned.
 void *Mem_AllocAligned (size_t size, size_t alignment)
 {

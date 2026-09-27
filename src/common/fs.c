@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // fs.c -- the file system: search paths, pack files and game directories
 
 #include "fs.h"
+#include "arena.h"
 #include "args.h"
 #include "cmd.h"
 #include "crc.h"
@@ -180,6 +181,7 @@ void COM_Init (const char *basedir)
 	Con_PrintInit ();
 	Cvar_RegisterVariable (&registered);
 	Cmd_AddCommand ("path", COM_Path_f);
+	Cmd_AddCommand ("memstats", Arena_PrintStats);
 
 	COM_InitFilesystem (basedir);
 	COM_CheckRegistered ();
@@ -546,10 +548,6 @@ pack_t *COM_LoadPackFile (char *packfile)
 
 // crc the directory to check for modifications
 	crc = CRC_Block((byte *)info, header.dirlen);
-
-//	CRC_Init (&crc);
-//	for (i=0 ; i<header.dirlen ; i++)
-//		CRC_ProcessByte (&crc, ((byte *)info)[i]);
 	if (crc != PAK0_CRC)
 		com_modified = true;
 

@@ -41,9 +41,6 @@ void	*Sys_ReserveMemory (size_t size);
 // commits (zero-filled) memory for the first size bytes of a reservation
 void	Sys_CommitMemory (void *base, size_t size);
 
-// releases a whole reservation
-void	Sys_ReleaseMemory (void *base, size_t size);
-
 //
 // system IO
 //

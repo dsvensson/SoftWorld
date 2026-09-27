@@ -71,7 +71,6 @@ const char *Sys_ExecutableDir (void) { return "."; }
 double Sys_DoubleTime (void) { return 0; }
 void *Sys_ReserveMemory (size_t size) { return calloc (1, size); }
 void Sys_CommitMemory (void *base, size_t size) { (void)base; (void)size; }
-void Sys_ReleaseMemory (void *base, size_t size) { (void)size; free (base); }
 viddef_t vid;
 void VID_Update (void) { }
 

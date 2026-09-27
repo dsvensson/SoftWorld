@@ -18,8 +18,6 @@ void	*Mem_Realloc (void *ptr, size_t size);
 // ptr may be NULL
 void	Mem_Free (void *ptr);
 
-char	*Mem_StrDup (const char *s);
-
 // zero-initialized memory aligned to alignment (a power of two); release with Mem_FreeAligned
 void	*Mem_AllocAligned (size_t size, size_t alignment);
 void	Mem_FreeAligned (void *ptr);

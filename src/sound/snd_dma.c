@@ -473,7 +473,9 @@ void S_StopSound(int entnum, int entchannel)
 {
 	int i;
 
-	for (i=0 ; i<MAX_DYNAMIC_CHANNELS ; i++)
+	// the entities' channels, after the ambient ones (id's looked at the first
+	// eight, the ambients among them)
+	for (i=NUM_AMBIENTS ; i<NUM_AMBIENTS + MAX_DYNAMIC_CHANNELS ; i++)
 	{
 		if (snd.channels[i].entnum == entnum
 			&& snd.channels[i].entchannel == entchannel)

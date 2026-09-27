@@ -13,7 +13,6 @@ void	Con_Printf (char *fmt, ...);
 void	Con_DPrintf (char *fmt, ...);
 
 void	Con_AddPrintSink (print_sink_t sink);
-void	Con_RemovePrintSink (print_sink_t sink);
 
 // routes all output to redirect until called again with NULL
 void	Con_SetPrintRedirect (print_sink_t redirect);

@@ -28,20 +28,6 @@ void Con_AddPrintSink (print_sink_t sink)
 	print_sinks[num_print_sinks++] = sink;
 }
 
-void Con_RemovePrintSink (print_sink_t sink)
-{
-	int		i;
-
-	for (i = 0 ; i < num_print_sinks ; i++)
-	{
-		if (print_sinks[i] == sink)
-		{
-			print_sinks[i] = print_sinks[--num_print_sinks];
-			return;
-		}
-	}
-}
-
 void Con_SetPrintRedirect (print_sink_t redirect)
 {
 	print_redirect = redirect;

@@ -2,7 +2,6 @@
 
 #include "sys.h"
 #include "vmarray.h"
-#include "sys.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -35,17 +34,4 @@ void *VMArray_Reserve (vmarray_t *array, size_t used, size_t n)
 		Sys_Error ("%s: size overflow", array->name);
 	VMArray_Resize (array, used + n);
 	return array->base + used * array->elemsize;
-}
-
-void VMArray_Clear (vmarray_t *array)
-{
-	if (array->count)
-		memset (array->base, 0, array->count * array->elemsize);
-}
-
-void VMArray_Free (vmarray_t *array)
-{
-	if (array->base)
-		Sys_ReleaseMemory (array->base, array->maxcount * array->elemsize);
-	memset (array, 0, sizeof (*array));
 }

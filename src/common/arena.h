@@ -26,7 +26,6 @@ void	Arena_Init (arena_t *arena, const char *name);
 
 // zeroed, ARENA_ALIGN aligned
 void	*Arena_Alloc (arena_t *arena, size_t size);
-char	*Arena_StrDup (arena_t *arena, const char *s);
 
 // releases every block; the largest chunk is kept for reuse
 void	Arena_Reset (arena_t *arena);
@@ -34,5 +33,5 @@ void	Arena_Reset (arena_t *arena);
 // releases every block and chunk; the arena must be re-initialized before reuse
 void	Arena_Free (arena_t *arena);
 
-// prints usage of every live arena through Con_Printf
+// prints usage of every live arena through Con_Printf: the memstats command
 void	Arena_PrintStats (void);

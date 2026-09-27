@@ -24,8 +24,3 @@ void	VMArray_Resize (vmarray_t *array, size_t count);
 
 // commits room for n more elements after `used` and returns a pointer to the first
 void	*VMArray_Reserve (vmarray_t *array, size_t used, size_t n);
-
-// zeroes all committed elements (keeps them committed)
-void	VMArray_Clear (vmarray_t *array);
-
-void	VMArray_Free (vmarray_t *array);

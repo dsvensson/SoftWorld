@@ -139,11 +139,6 @@ void Sys_CommitMemory (void *base, size_t size)
 		Sys_Error ("Sys_CommitMemory: out of memory (%zu bytes)", size);
 }
 
-void Sys_ReleaseMemory (void *base, [[maybe_unused]] size_t size)
-{
-	VirtualFree (base, 0, MEM_RELEASE);
-}
-
 /*
 ===============================================================================
 
