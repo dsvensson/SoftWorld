@@ -42,3 +42,15 @@ void	UDP_Send (udpsocket_t *s, const void *data, int length, const netadr_t *to)
 
 // resolves a host name or dotted address, without a port
 bool	UDP_Resolve (const char *host, netadr_t *a);
+
+// TCP streams (QTV): non-blocking, and they wake Sys_WaitUntil when the
+// connection is made, data arrives, or it closes
+typedef struct tcpsocket_s tcpsocket_t;
+
+enum { TCP_CONNECTING, TCP_OPEN, TCP_FAILED };
+
+tcpsocket_t	*TCP_Connect (const netadr_t *to);	// NULL when it can't even start
+void	TCP_Close (tcpsocket_t *s);
+int		TCP_State (tcpsocket_t *s);
+int		TCP_Recv (tcpsocket_t *s, byte *buf, int maxlen);	// 0 nothing yet, -1 closed
+bool	TCP_Send (tcpsocket_t *s, const void *data, int length);

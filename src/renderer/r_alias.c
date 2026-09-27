@@ -739,14 +739,6 @@ void R_AliasDrawModel (alight_t *plighting)
 	r_affinetridesc.drawtype = (currententity->trivial_accept == 3) &&
 			r_recursiveaffinetriangles;
 
-	if (r_affinetridesc.drawtype)
-	{
-		D_PolysetUpdateTables ();		// FIXME: precalc...
-	}
-	else
-	{
-	}
-
 	r_affinetridesc.skinremap = currententity->translate ? currententity->translate : r_identityremap;
 
 	if (currententity != r_scene.viewent)

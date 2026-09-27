@@ -26,7 +26,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cvar.h"
 #include "model.h"
 
-#define MAX_LBM_HEIGHT	200
 
 typedef struct
 {
@@ -163,7 +162,6 @@ void D_WarpScreen (void);
 // currently for internal use only, and should be a do-nothing function in
 // hardware drivers
 // FIXME: this should go away
-void D_PolysetUpdateTables (void);
 
 // these are currently for internal use only, and should not be used by drivers
 extern int				r_skydirect;

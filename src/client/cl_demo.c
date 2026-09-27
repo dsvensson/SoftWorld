@@ -99,8 +99,12 @@ void CL_StopPlayback (void)
 	if (!cls.demoplayback)
 		return;
 
-	fclose (cls.demofile);
+	if (cls.demofile)
+		fclose (cls.demofile);
 	cls.demofile = NULL;
+	if (cls.mvdplayback)
+		CL_MVDStop ();
+	CL_QTVStop ();
 	cls.state = ca_disconnected;
 	cls.demoplayback = 0;
 
@@ -311,7 +315,7 @@ Handles recording and playback of demos, on top of NET_ code
 bool CL_GetMessage (void)
 {
 	if	(cls.demoplayback)
-		return CL_GetDemoMessage ();
+		return cls.mvdplayback ? CL_GetMVDMessage () : CL_GetDemoMessage ();
 
 	if (!NET_GetPacket (NS_CLIENT, &cls.net_from, &cls.net_message))
 		return false;
@@ -786,6 +790,22 @@ void CL_ReRecord_f (void)
 
 /*
 ====================
+CL_Extension
+
+A file name's extension, with its dot; "" for none
+====================
+*/
+static const char *CL_Extension (const char *file)
+{
+	const char	*dot = strrchr (file, '.');
+
+	if (!dot || strchr (dot, '/') || strchr (dot, '\\'))
+		return "";
+	return dot;
+}
+
+/*
+====================
 CL_PlayDemo_f
 
 play [demoname]
@@ -794,6 +814,8 @@ play [demoname]
 void CL_PlayDemo_f (void)
 {
 	char	demoname[256];
+	byte	*data;
+	int		size;
 
 	if (Cmd_Argc() != 2)
 	{
@@ -809,16 +831,40 @@ void CL_PlayDemo_f (void)
 //
 // open the demo file
 //
+	// a name without an extension is a .qwd, else an .mvd
 	Q_strncpyz (demoname, Cmd_Argv(1), sizeof(demoname));
 	COM_DefaultExtension (demoname, ".qwd");
+	size = COM_FOpenFile (demoname, &cls.demofile);
+	if (!cls.demofile && !CL_Extension (Cmd_Argv(1))[0])
+	{
+		Q_strncpyz (demoname, Cmd_Argv(1), sizeof(demoname));
+		COM_DefaultExtension (demoname, ".mvd");
+		size = COM_FOpenFile (demoname, &cls.demofile);
+	}
 
 	Con_Printf ("Playing demo from %s.\n", demoname);
-	COM_FOpenFile (demoname, &cls.demofile);
 	if (!cls.demofile)
 	{
 		Con_Printf ("ERROR: couldn't open.\n");
 		cls.demonum = -1;		// stop demo loop
 		return;
+	}
+
+	// an MVD is played from memory
+	if (!Q_strcasecmp (CL_Extension (demoname), ".mvd"))
+	{
+		data = Mem_Alloc (size > 0 ? size : 1);
+		if ((int)fread (data, 1, size, cls.demofile) != size)
+		{
+			Con_Printf ("ERROR: couldn't read.\n");
+			Mem_Free (data);
+			fclose (cls.demofile);
+			cls.demofile = NULL;
+			return;
+		}
+		fclose (cls.demofile);
+		cls.demofile = NULL;
+		CL_MVDStart (data, (size_t)size);
 	}
 
 	cls.demoplayback = true;

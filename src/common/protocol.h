@@ -164,6 +164,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // what the client reads in recordings as well: FTE's voice chat is skipped
 #define	CL_FTE_READABLE		CL_FTE_EXTENSIONS
 #define	CL_FTE2_READABLE	FTE_PEXT2_VOICECHAT
+#define	CL_MVD1_READABLE	(CL_MVD1_EXTENSIONS | MVD_PEXT1_HIDDEN_MESSAGES)	// hidden blocks are skipped
 
 #define QW_CHECK_HASH 0x5157
 
@@ -320,6 +321,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	PF_ONGROUND		(1<<22)		// ZQuake; bit 14 on the wire without FTE_PEXT_TRANS
 #define	PF_SOLID		(1<<23)		// ZQuake; bit 15 on the wire without FTE_PEXT_TRANS
 
+// an MVD's playerinfo flags: what is sent; the rest is as last sent
+#define	DF_ORIGIN		(1<<0)		// three bits, one per axis
+#define	DF_ANGLES		(1<<3)		// three bits
+#define	DF_EFFECTS		(1<<6)
+#define	DF_SKINNUM		(1<<7)
+#define	DF_DEAD			(1<<8)
+#define	DF_GIB			(1<<9)
+#define	DF_WEAPONFRAME	(1<<10)
+#define	DF_MODEL		(1<<11)
+
 // the PF_PMC codes; 3 and up need Z_EXT_PM_TYPE_NEW
 #define	PMC_NORMAL				0	// or dead, with PF_DEAD
 #define	PMC_NORMAL_JUMP_HELD	1
@@ -442,13 +453,15 @@ typedef struct entity_state_s
 } entity_state_t;
 
 
-// entities in a packet, not counting nails: 256 with FTE_PEXT_256PACKETENTITIES
+// entities in a packet, not counting nails: 256 with FTE_PEXT_256PACKETENTITIES,
+// 300 in an MVD
 #define	MAX_PACKET_ENTITIES	256
 #define	STD_PACKET_ENTITIES	64
+#define	MAX_MVD_PACKET_ENTITIES	300
 typedef struct
 {
 	int		num_entities;
-	entity_state_t	entities[MAX_PACKET_ENTITIES];
+	entity_state_t	entities[MAX_MVD_PACKET_ENTITIES];
 } packet_entities_t;
 
 typedef struct usercmd_s

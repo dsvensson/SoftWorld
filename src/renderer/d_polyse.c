@@ -98,9 +98,17 @@ static adivtab_t	adivtab[32*32] = {
 #include "adivtab.inc"
 };
 
-static byte	*skintable[MAX_LBM_HEIGHT];
-static int		skinwidth;
-static byte	*skinstart;
+/*
+================
+D_SkinTexel
+
+The skin's texel at 16.16 s and t
+================
+*/
+static inline int D_SkinTexel (int s, int t)
+{
+	return ((const byte *)r_affinetridesc.pskin)[(t >> 16) * r_affinetridesc.skinwidth + (s >> 16)];
+}
 
 /*
 ================
@@ -223,7 +231,7 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int nverts)
 				int		pix;
 
 				*zbuf = z;
-				pix = r_affinetridesc.skinremap[skintable[fv->v[3]>>16][fv->v[2]>>16]];
+				pix = r_affinetridesc.skinremap[D_SkinTexel (fv->v[2], fv->v[3])];
 				D_AliasPut (&d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]], D_AliasPixel (pix, fv->v[4]));
 			}
 		}
@@ -430,36 +438,13 @@ split:
 	{
 		*zbuf = zf;
 		D_AliasPut (&d_viewbuffer[d_scantable[new[1]] + new[0]],
-			D_AliasPixel (r_affinetridesc.skinremap[skintable[new[3]>>16][new[2]>>16]], d_tlight));
+			D_AliasPixel (r_affinetridesc.skinremap[D_SkinTexel (new[2], new[3])], d_tlight));
 	}
 
 nodraw:
 // recursively continue
 	D_PolysetRecursiveTriangle (lp3, lp1, new);
 	D_PolysetRecursiveTriangle (lp3, new, lp2);
-}
-
-
-
-/*
-================
-D_PolysetUpdateTables
-================
-*/
-void D_PolysetUpdateTables (void)
-{
-	int		i;
-	byte	*s;
-	
-	if (r_affinetridesc.skinwidth != skinwidth ||
-		r_affinetridesc.pskin != skinstart)
-	{
-		skinwidth = r_affinetridesc.skinwidth;
-		skinstart = r_affinetridesc.pskin;
-		s = skinstart;
-		for (i=0 ; i<MAX_LBM_HEIGHT ; i++, s+=skinwidth)
-			skintable[i] = s;
-	}
 }
 
 

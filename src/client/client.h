@@ -95,6 +95,7 @@ typedef struct player_info_s
 	int		_bottomcolor;
 
 	int		spectator;
+	int		stats[MAX_CL_STATS];	// an MVD's, the player's own
 	byte	translate[256];		// the palette with the player's colors
 	skin_t	*skin;
 } player_info_t;
@@ -193,6 +194,7 @@ typedef struct
 // entering a map (and clearing client_state_t)
 	bool	demorecording;
 	bool	demoplayback;
+	bool	mvdplayback;		// the demo is an MVD (cl_mvd.c)
 	bool	timedemo;
 	FILE		*demofile;
 	float		td_lastframe;		// to meter out one message a frame
@@ -347,6 +349,10 @@ typedef struct
 
 	int			spikeindex, playerindex, flagindex;	// model indices, for effects
 
+	int			viewplayer;		// whose view is drawn: playernum, or who an MVD follows
+	float		mvd_server_time;	// an MVD's serverdata: the server's clock when it began
+	player_state_t	mvd_prev[MAX_CLIENTS];	// an MVD's players as last sent; the next deltas from them
+
 	int			parsecountmod;		// frame the last packet filled
 	double		parsecounttime;		// realtime the packet's command was sent
 	int			packet_latency[NET_TIMINGS];	// for the net graph
@@ -458,6 +464,37 @@ void CL_ReRecord_f (void);
 void CL_PlayDemo_f (void);
 void CL_TimeDemo_f (void);
 void CL_InitDemo (void);
+
+//
+// cl_mvd.c
+//
+void CL_InitMVD (void);
+void CL_MVDStart (byte *data, size_t size);	// takes the data
+void CL_MVDStop (void);
+void CL_MVDAdvance (void);			// once a frame, before reading
+bool CL_GetMVDMessage (void);
+double CL_MVDTime (void);			// the moment drawn, in demo seconds
+bool CL_MVDSkipMessage (void);		// for another player than the one followed
+int CL_MVDStatTarget (void);		// whose stats a stat message sets, -1 nobody's
+int CL_MVDTracking (void);			// the player followed, -1 none
+void CL_MVDView (void);				// the view from the player followed
+double CL_MVDFrameTime (void);		// the frame last read, in demo seconds
+void CL_MVDTogglePause (void);
+void CL_MVDHint (const char *s);	// a "//at" stufftext
+void CL_MVDButtons (bool attack, bool jump);	// pressed since the last frame
+void CL_LerpMVDPlayers (void);		// cl_ents.c: aims the players' trails, once a frame
+bool CL_PlayerPlace (int slot, vec3_t origin, vec3_t angles);	// an MVD's player at the moment played
+void CL_MVDFixAngle (int slot);		// the player's view was set: no turn to it
+void CL_MVDStartStream (void);		// QTV: played as it arrives
+void CL_MVDFeed (const byte *bytes, int len);
+void CL_MVDStreamClosed (void);
+
+//
+// cl_qtv.c
+//
+void CL_InitQTV (void);
+void CL_QTVFrame (void);			// once a frame, before the MVD is read
+void CL_QTVStop (void);
 void CL_DumpTimedemoFrame (void);	// when timedemo_dump asks for it
 
 //

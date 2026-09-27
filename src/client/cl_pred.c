@@ -341,14 +341,30 @@ void CL_PredictMove (bool repredict)
 	if (cl.paused)
 		return;
 
-	cl.time = host.realtime - cls.latency - cl_pushlatency.value*0.001;
-	if (cl.time > host.realtime)
-		cl.time = host.realtime;
+	if (cls.mvdplayback)
+		cl.time = CL_MVDTime ();		// the recording's clock: paused and sped up with it
+	else
+	{
+		cl.time = host.realtime - cls.latency - cl_pushlatency.value*0.001;
+		if (cl.time > host.realtime)
+			cl.time = host.realtime;
+	}
 	r_scene.time = cl.time;
 
 	if (cl.intermission)
 	{
 		cl.crouch = 0;
+		return;
+	}
+
+	// an MVD starts once its level is loaded: some recordings have no
+	// entities at all, only players
+	if (cls.mvdplayback)
+	{
+		if (cls.state == ca_onserver && cl.worldmodel && cl.parsecount)
+			cls.state = ca_active;
+		if (cls.state == ca_active)
+			CL_MVDView ();
 		return;
 	}
 

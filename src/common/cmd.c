@@ -29,6 +29,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "q_string.h"
 #include "sys.h"
 
+#include <ctype.h>
+
 static void (*cmd_forward)(void);	// sends forwarded commands to the server
 
 #define	MAX_ALIAS_NAME	32
@@ -218,11 +220,22 @@ void Cbuf_Execute (void)
 Cmd_StuffCmds_f
 
 Adds command line parameters as script statements
-Commands lead with a +, and continue until a - or another +
+Commands lead with a +, and continue until an argument that starts with a -
+or another +; a - inside a word ("+playdemo dm3-final") or before a number
+("+cl_rollangle -2") doesn't end one
 quake +prog jctest.qp +cmd amlev1
 quake -nosound +cmd amlev1
 ===============
 */
+static bool Cmd_StartsOption (const char *text, int i)
+{
+	if (i > 0 && text[i-1] != ' ')
+		return false;
+	if (text[i] == '+')
+		return true;
+	return text[i] == '-' && !isdigit ((unsigned char)text[i+1]) && text[i+1] != '.';
+}
+
 void Cmd_StuffCmds_f (void)
 {
 	int		i, j;
@@ -257,11 +270,11 @@ void Cmd_StuffCmds_f (void)
 	
 	for (i=0 ; i<s-1 ; i++)
 	{
-		if (text[i] == '+')
+		if (text[i] == '+' && Cmd_StartsOption (text, i))
 		{
 			i++;
 
-			for (j=i ; (text[j] != '+') && (text[j] != '-') && (text[j] != 0) ; j++)
+			for (j=i ; text[j] && !Cmd_StartsOption (text, j) ; j++)
 				;
 
 			c = text[j];

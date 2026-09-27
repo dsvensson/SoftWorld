@@ -413,7 +413,13 @@ void CL_SendCmd (void)
 	frame_t		*f;
 
 	if (cls.demoplayback)
-		return; // sendcmds come from the demo
+	{	// sendcmds come from the demo; an MVD's buttons pick who to watch
+		if (cls.mvdplayback)
+			CL_MVDButtons ((in_attack.state & 2) != 0, (in_jump.state & 2) != 0);
+		in_attack.state &= ~2;
+		in_jump.state &= ~2;
+		return;
+	}
 
 	// save this command off for prediction
 	i = cls.netchan.outgoing_sequence & UPDATE_MASK;

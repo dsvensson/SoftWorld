@@ -224,11 +224,17 @@ static int			lerp_update = 1;	// counts updates; 0 is never
 static double		lerp_lastat;		// when the last update arrived
 static double		lerp_interval;		// the mean gap between updates
 
+static entlerp_t	cl_playerlerp[MAX_CLIENTS];	// an MVD's players
+static int			playerlerp_frame = -1;		// the parse count they were aimed at
+static unsigned		playerlerp_fixangle;		// players whose view the server set
+
 void CL_ResetSmoothing (void)
 {
 	lerp_update += 2;	// nothing tracked carries over
 	lerp_lastat = 0;
 	lerp_interval = 0;
+	playerlerp_frame = -1;
+	memset (cl_playerlerp, 0, sizeof(cl_playerlerp));
 }
 
 static void Trail_Fix (lerptrail_t *t, const vec3_t v, double now)
@@ -303,8 +309,9 @@ static void CL_LerpSnapshot (const packet_entities_t *pack)
 	int			i, j, previous;
 
 	// the mean gap, gently: one late update must not drag everything into
-	// the past and let it snap forward again; a stall is not a gap
-	now = host.realtime;
+	// the past and let it snap forward again; a stall is not a gap. An MVD
+	// stamps with its own clock.
+	now = cls.mvdplayback ? CL_MVDFrameTime () : host.realtime;
 	gap = now - lerp_lastat;
 	if (lerp_lastat && gap >= 0 && gap < 0.5)
 		lerp_interval = lerp_interval ? lerp_interval * 0.95 + gap * 0.05 : gap;
@@ -346,6 +353,101 @@ static void CL_LerpSnapshot (const packet_entities_t *pack)
 
 /*
 ===============
+CL_MVDFixAngle
+===============
+*/
+void CL_MVDFixAngle (int slot)
+{
+	if (slot >= 0 && slot < MAX_CLIENTS)
+		playerlerp_fixangle |= 1u << slot;
+}
+
+/*
+===============
+CL_LerpMVDPlayers
+
+A new frame of an MVD: aim each player's trails at where it has them, once,
+after the whole frame is read. A player not in the frame before, with another
+model, moved over 200 units, or a respawn snaps; a view the server set snaps
+the angles.
+===============
+*/
+void CL_LerpMVDPlayers (void)
+{
+	const player_state_t	*state;
+	entlerp_t	*l;
+	vec3_t		angles, d;
+	double		now;
+	int			j, k, previous;
+	bool		respawn;
+
+	if (cl.parsecount == playerlerp_frame)
+		return;
+	previous = playerlerp_frame;
+	playerlerp_frame = cl.parsecount;
+	now = CL_MVDFrameTime ();
+
+	for (j=0 ; j<MAX_CLIENTS ; j++)
+	{
+		state = &cl.frames[cl.parsecountmod].playerstate[j];
+		if (state->messagenum != cl.parsecount || !state->modelindex)
+			continue;
+		l = &cl_playerlerp[j];
+
+		for (k=0 ; k<3 ; k++)
+		{
+			angles[k] = state->viewangles[k];
+			while (angles[k] - l->angles.val[0][k] > 180)
+				angles[k] -= 360;
+			while (angles[k] - l->angles.val[0][k] < -180)
+				angles[k] += 360;
+		}
+
+		VectorSubtract (state->origin, l->origin.val[0], d);
+		respawn = (l->stamp & 1) && !(state->flags & PF_DEAD);	// the low bit: dead last frame
+		if ((l->stamp >> 1) == previous && l->modelindex == state->modelindex && !respawn
+		 && DotProduct (d, d) <= LERP_SNAP*LERP_SNAP)
+		{
+			if (d[0] || d[1] || d[2])
+				Trail_Push (&l->origin, state->origin, now);
+			if (playerlerp_fixangle & (1u << j))
+				Trail_Fix (&l->angles, angles, now);
+			else if (angles[0] != l->angles.val[0][0] || angles[1] != l->angles.val[0][1]
+			 || angles[2] != l->angles.val[0][2])
+				Trail_Push (&l->angles, angles, now);
+		}
+		else
+		{
+			Trail_Fix (&l->origin, state->origin, now);
+			Trail_Fix (&l->angles, state->viewangles, now);
+			l->modelindex = state->modelindex;
+		}
+		l->stamp = (cl.parsecount << 1) | ((state->flags & PF_DEAD) ? 1 : 0);
+	}
+	playerlerp_fixangle = 0;
+}
+
+/*
+===============
+CL_PlayerPlace
+
+Where an MVD's player is at the moment played; false for one not in the
+latest frame
+===============
+*/
+bool CL_PlayerPlace (int slot, vec3_t origin, vec3_t angles)
+{
+	const entlerp_t	*l = &cl_playerlerp[slot];
+
+	if (slot < 0 || slot >= MAX_CLIENTS || (l->stamp >> 1) != playerlerp_frame)
+		return false;
+	Trail_Sample (&l->origin, CL_MVDTime (), origin);
+	Trail_Sample (&l->angles, CL_MVDTime (), angles);
+	return true;
+}
+
+/*
+===============
 CL_EntityPlace
 
 Where to draw an entity of the newest update
@@ -356,10 +458,18 @@ static void CL_EntityPlace (const entity_state_t *s, vec3_t origin, vec3_t angle
 	const entlerp_t	*l = &cl_entlerp[s->number];
 	double			trail;
 
-	if (cl_nolerp.value || l->stamp != lerp_update)
+	if ((cl_nolerp.value && !cls.mvdplayback) || l->stamp != lerp_update)
 	{
 		VectorCopy (s->origin, origin);
 		VectorCopy (s->angles, angles);
+		return;
+	}
+
+	// an MVD reads a frame ahead: the moment played is between two it has
+	if (cls.mvdplayback)
+	{
+		Trail_Sample (&l->origin, CL_MVDTime (), origin);
+		Trail_Sample (&l->angles, CL_MVDTime (), angles);
 		return;
 	}
 
@@ -394,9 +504,14 @@ void CL_ParsePacketEntities (bool delta)
 	{
 		from = (byte)MSG_ReadByte ();
 
-		oldpacket = cl.frames[newpacket].delta_sequence;
+		// an MVD deltas from its frame before; the last one with entities is
+		// what the client has (qualia)
+		if (cls.mvdplayback)
+			oldpacket = cl.validsequence ? cl.validsequence : cls.netchan.incoming_sequence - 1;
+		else
+			oldpacket = cl.frames[newpacket].delta_sequence;
 
-		if ( (from&UPDATE_MASK) != (oldpacket&UPDATE_MASK) )
+		if (!cls.mvdplayback && (from&UPDATE_MASK) != (oldpacket&UPDATE_MASK))
 			Con_DPrintf ("WARNING: from mismatch\n");
 	}
 	else
@@ -405,7 +520,7 @@ void CL_ParsePacketEntities (bool delta)
 	full = false;
 	if (oldpacket != -1)
 	{
-		if (cls.netchan.outgoing_sequence - oldpacket >= UPDATE_BACKUP-1)
+		if (!cls.mvdplayback && cls.netchan.outgoing_sequence - oldpacket >= UPDATE_BACKUP-1)
 		{	// we can't use this, it is too old
 			FlushEntityPacket ();
 			return;
@@ -439,8 +554,8 @@ void CL_ParsePacketEntities (bool delta)
 			while (oldindex < oldp->num_entities)
 			{	// copy all the rest of the entities from the old packet
 //Con_Printf ("copy %i\n", oldp->entities[oldindex].number);
-				if (newindex >= MAX_PACKET_ENTITIES)
-					Host_EndGame ("CL_ParsePacketEntities: newindex == MAX_PACKET_ENTITIES");
+				if (newindex >= MAX_MVD_PACKET_ENTITIES)
+					Host_EndGame ("CL_ParsePacketEntities: too many entities");
 				newp->entities[newindex] = oldp->entities[oldindex];
 				newindex++;
 				oldindex++;
@@ -461,8 +576,8 @@ void CL_ParsePacketEntities (bool delta)
 
 //Con_Printf ("copy %i\n", oldnum);
 			// copy one of the old entities over to the new packet unchanged
-			if (newindex >= MAX_PACKET_ENTITIES)
-				Host_EndGame ("CL_ParsePacketEntities: newindex == MAX_PACKET_ENTITIES");
+			if (newindex >= MAX_MVD_PACKET_ENTITIES)
+				Host_EndGame ("CL_ParsePacketEntities: too many entities");
 			newp->entities[newindex] = oldp->entities[oldindex];
 			newindex++;
 			oldindex++;
@@ -483,8 +598,8 @@ void CL_ParsePacketEntities (bool delta)
 				}
 				continue;
 			}
-			if (newindex >= MAX_PACKET_ENTITIES)
-				Host_EndGame ("CL_ParsePacketEntities: newindex == MAX_PACKET_ENTITIES");
+			if (newindex >= MAX_MVD_PACKET_ENTITIES)
+				Host_EndGame ("CL_ParsePacketEntities: too many entities");
 			MSG_ReadDeltaEntity (&cl.baselines[newnum], &newp->entities[newindex], newnum, bits, ext, cls.mvdext1);
 			newindex++;
 			continue;
@@ -534,7 +649,8 @@ void CL_LinkPacketEntities (void)
 	int					pnum;
 	dlight_t			*dl;
 
-	pack = &cl.frames[cls.netchan.incoming_sequence&UPDATE_MASK].packet_entities;
+	// an MVD's frame may bring no entities: the last that did has them (qualia)
+	pack = &cl.frames[(cls.mvdplayback ? cl.validsequence : cls.netchan.incoming_sequence) & UPDATE_MASK].packet_entities;
 
 	autorotate = anglemod((float)(100*cl.time));
 
@@ -753,6 +869,96 @@ entity_t *CL_NewTempEntity (void);
 
 /*
 ===================
+CL_MVDWeaponModel
+
+An MVD's visible weapon, from the view model the player's weapon stat names:
+v_axe 1 to v_light 8, as the default list has them (ezQuake)
+===================
+*/
+static int CL_MVDWeaponModel (int modelindex)
+{
+	static const char *const	views[] = {
+		"progs/v_axe.mdl", "progs/v_shot.mdl", "progs/v_shot2.mdl", "progs/v_nail.mdl",
+		"progs/v_nail2.mdl", "progs/v_rock.mdl", "progs/v_rock2.mdl", "progs/v_light.mdl"
+	};
+	int		i;
+
+	if (modelindex <= 0 || modelindex >= MAX_MODELS)
+		return 0;
+	for (i=0 ; i<8 ; i++)
+		if (!strcmp (cl.model_name[modelindex], views[i]))
+			return i + 1;
+	return 0;
+}
+
+/*
+===================
+CL_ParseMVDPlayerinfo
+
+An MVD's player: what the message leaves out is as the last message about the
+player said, however long ago (qualia's per-player bases)
+===================
+*/
+static void CL_ParseMVDPlayerinfo (int num)
+{
+	static const struct { int df, pf; }	flagmap[] = {
+		{DF_EFFECTS, PF_EFFECTS}, {DF_SKINNUM, PF_SKINNUM}, {DF_DEAD, PF_DEAD}, {DF_GIB, PF_GIB},
+		{DF_WEAPONFRAME, PF_WEAPONFRAME}, {DF_MODEL, PF_MODEL}
+	};
+	player_state_t	*state, *prev;
+	int		flags, i;
+
+	state = &cl.frames[cl.parsecountmod].playerstate[num];
+	prev = &cl.mvd_prev[num];
+	*state = *prev;
+
+	flags = MSG_ReadShort () & 0xffff;
+	state->frame = MSG_ReadByte ();
+	for (i=0 ; i<3 ; i++)
+		if (flags & (DF_ORIGIN << i))
+			state->origin[i] = MSG_ReadCoord ();
+	for (i=0 ; i<3 ; i++)
+		if (flags & (DF_ANGLES << i))
+			state->command.angles[i] = MSG_ReadAngle16 ();
+	if (flags & DF_MODEL)
+		state->modelindex = MSG_ReadByte ();
+	if (flags & DF_SKINNUM)
+		state->skinnum = MSG_ReadByte ();
+	if (flags & DF_EFFECTS)
+		state->effects = MSG_ReadByte ();
+	if (flags & DF_WEAPONFRAME)
+		state->weaponframe = MSG_ReadByte ();
+
+	// a model past 255 borrows the skin's top bit
+	if ((flags & DF_MODEL) && (flags & DF_SKINNUM) && (state->skinnum & 128) && (cls.fteext & FTE_PEXT_MODELDBL))
+	{
+		state->modelindex += 256;
+		state->skinnum &= 127;
+	}
+	// an old recording has none for players who joined while it recorded
+	if (!state->modelindex && !cl.players[num].spectator)
+		state->modelindex = cl.playerindex;
+
+	state->flags = 0;
+	for (i=0 ; i<(int)(sizeof(flagmap)/sizeof(flagmap[0])) ; i++)
+		if (flags & flagmap[i].df)
+			state->flags |= flagmap[i].pf;
+	state->messagenum = cl.parsecount;
+	state->state_time = cl.parsecounttime;
+	state->command.msec = 0;
+	VectorCopy (state->command.angles, state->viewangles);
+	VectorCopy (vec3_origin, state->velocity);
+	state->pm_type = cl.players[num].spectator ? PM_OLD_SPECTATOR : (state->flags & PF_DEAD) ? PM_DEAD : PM_NORMAL;
+	state->alpha = 0;
+	memset (state->colormod, 0, sizeof(state->colormod));
+	state->vw_index = !(state->flags & PF_GIB) && state->modelindex == cl.playerindex
+		? CL_MVDWeaponModel (cl.players[num].stats[STAT_WEAPON]) : 0;
+
+	*prev = *state;
+}
+
+/*
+===================
 CL_PlayerMoveType
 
 How the player moves, for prediction: the server says with Z_EXT_PM_TYPE, and
@@ -806,6 +1012,11 @@ void CL_ParsePlayerinfo (void)
 	num = MSG_ReadByte ();
 	if (num >= MAX_CLIENTS)
 		Host_EndGame ("CL_ParsePlayerinfo: bad num %i", num);
+	if (cls.mvdplayback)
+	{
+		CL_ParseMVDPlayerinfo (num);
+		return;
+	}
 
 	state = &cl.frames[cl.parsecountmod].playerstate[num];
 
@@ -1018,6 +1229,7 @@ void CL_LinkPlayers (void)
 	int				msec;
 	frame_t			*frame;
 	int				oldphysent;
+	vec3_t			origin, angles;
 
 	playertime = host.realtime - cls.latency + 0.02;
 	if (playertime > host.realtime)
@@ -1043,8 +1255,8 @@ void CL_LinkPlayers (void)
 		else if (state->effects & EF_DIMLIGHT)
 			CL_NewDlight (j, state->origin[0], state->origin[1], state->origin[2], (float)(200 + (rand()&31)), 0.1f, 0);
 
-		// the player object never gets added
-		if (j == cl.playernum)
+		// the player object never gets added; in an MVD the one followed
+		if (j == cl.viewplayer)
 			continue;
 
 		if (!state->modelindex || !CL_Model (state->modelindex))
@@ -1070,19 +1282,26 @@ void CL_LinkPlayers (void)
 		else
 			ent->skin = NULL;
 
+		// an MVD's players where the recording has them at the moment played
+		VectorCopy (state->origin, origin);
+		VectorCopy (state->viewangles, angles);
+		if (cls.mvdplayback)
+			CL_PlayerPlace (j, origin, angles);
+
 		//
 		// angles
 		//
-		ent->angles[PITCH] = -state->viewangles[PITCH]/3;
-		ent->angles[YAW] = state->viewangles[YAW];
+		ent->angles[PITCH] = -angles[PITCH]/3;
+		ent->angles[YAW] = angles[YAW];
 		ent->angles[ROLL] = 0;
 		ent->angles[ROLL] = PM_CalcRoll (ent->angles, state->velocity)*4;
 
-		// run forward to the present (qualia), where vanilla ran half of it
+		// run forward to the present (qualia), where vanilla ran half of it;
+		// an MVD's players are where the recording has them
 		msec = (int)(1000*(playertime - state->state_time));
-		if (msec <= 0 || (!cl_predict_players.value && !cl_predict_players2.value))
+		if (msec <= 0 || cls.mvdplayback || (!cl_predict_players.value && !cl_predict_players2.value))
 		{
-			VectorCopy (state->origin, ent->origin);
+			VectorCopy (origin, ent->origin);
 //Con_DPrintf ("nopredict\n");
 		}
 		else

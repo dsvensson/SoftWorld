@@ -741,7 +741,8 @@ cl.simangles[ROLL] = 0;	// FIXME @@@
 		return;
 
 	view_frame = &cl.frames[cls.netchan.incoming_sequence & UPDATE_MASK];
-	view_message = &view_frame->playerstate[cl.playernum];
+	// an MVD's player followed, as last sent
+	view_message = cls.mvdplayback ? &cl.mvd_prev[cl.viewplayer] : &view_frame->playerstate[cl.playernum];
 
 	DropPunchAngle ();
 	if (cl.intermission)

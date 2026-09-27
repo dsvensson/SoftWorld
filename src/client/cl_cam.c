@@ -55,9 +55,11 @@ static double cam_lastviewtime;
 static int spec_track = 0; // player# of who we are tracking
 static int autocam = CAM_NONE;
 
-// the player the camera follows, or -1
+// the player the camera follows, or -1; in an MVD the player followed
 int Cam_TrackNum (void)
 {
+	if (cls.mvdplayback)
+		return CL_MVDTracking ();
 	return autocam == CAM_TRACK ? spec_track : -1;
 }
 
@@ -101,6 +103,8 @@ bool Cam_DrawViewModel(void)
 {
 	if (!cl.spectator)
 		return true;
+	if (cls.mvdplayback)		// through the eyes of the player followed
+		return CL_MVDTracking () >= 0;
 
 	if (autocam && locked && cl_chasecam.value)
 		return true;

@@ -230,7 +230,10 @@ static void VWepModel_NextDownload (void)
 {
 	int		i;
 
-	if (!(cl.z_ext & Z_EXT_VWEP) || !cl.vw_model_name[0][0])
+	// an MVD's players show their weapons with the usual models (ezQuake)
+	if (cls.mvdplayback && !cl.vw_model_name[0][0] && !cls.downloadnumber)
+		CL_ParseVWepPrecache ("//vwep vwplayer w_axe w_shot w_shot2 w_nail w_nail2 w_rock w_rock2 w_light");
+	if ((!(cl.z_ext & Z_EXT_VWEP) && !cls.mvdplayback) || !cl.vw_model_name[0][0])
 	{
 		CL_Prespawn ();
 		return;
@@ -302,6 +305,12 @@ void Model_NextDownload (void)
 		else if (!strcmp (cl.model_name[i], "progs/eyes.mdl"))
 			CL_SetModelChecksum (cl.model_name[i], emodel_name);
 
+		// a recording plays without what it can't show, but not without its map
+		if (!cl.model_precache[i] && i != 1 && cls.demoplayback)
+		{
+			Con_Printf ("Can't show %s\n", cl.model_name[i]);
+			continue;
+		}
 		if (!cl.model_precache[i] || (i == 1 && !cl.clipmodels[i]))
 		{
 			Con_Printf ("\nThe required model file '%s' could not be found or downloaded.\n\n"
@@ -517,10 +526,18 @@ void CL_ParseServerData (void)
 	}
 	// a server only uses what the client asked for, but a demo can have been
 	// recorded by a client that knows more
-	if ((cls.fteext & ~CL_FTE_READABLE) || (fteext2 & ~CL_FTE2_READABLE) || (cls.mvdext1 & ~CL_MVD1_EXTENSIONS))
+	// a recording's FTE2 bits other than voice chat are ignored, as ezQuake
+	// ignores them all: recordings from mvdsv have been seen with 0x1, which
+	// no mvdsv defines, and no other bit changes what the messages hold
+	if (cls.demoplayback && (fteext2 & ~CL_FTE2_READABLE))
+	{
+		Con_DPrintf ("Ignoring FTE2 extensions 0x%x in the recording\n", fteext2 & ~CL_FTE2_READABLE);
+		fteext2 &= CL_FTE2_READABLE;
+	}
+	if ((cls.fteext & ~CL_FTE_READABLE) || (fteext2 & ~CL_FTE2_READABLE) || (cls.mvdext1 & ~CL_MVD1_READABLE))
 		Host_EndGame ("The server uses protocol extensions this client lacks:\n"
 			"FTE 0x%x, FTE2 0x%x, MVD1 0x%x\n", cls.fteext & ~CL_FTE_READABLE, fteext2 & ~CL_FTE2_READABLE,
-			cls.mvdext1 & ~CL_MVD1_EXTENSIONS);
+			cls.mvdext1 & ~CL_MVD1_READABLE);
 	// the rest of this message is already in the new encoding
 	cls.net_message.floatcoords = (cls.fteext & FTE_PEXT_FLOATCOORDS) != 0;
 	cls.netchan.message.floatcoords = cls.net_message.floatcoords;
@@ -557,13 +574,23 @@ void CL_ParseServerData (void)
 		}
 	}
 
-	// parse player slot, high bit means spectator
-	cl.playernum = MSG_ReadByte ();
-	if (cl.playernum & 128)
-	{
+	if (cls.mvdplayback)
+	{	// an MVD: the server's clock when it began; the watcher is the last slot
+		cl.mvd_server_time = MSG_ReadFloat ();
+		cl.playernum = MAX_CLIENTS - 1;
 		cl.spectator = true;
-		cl.playernum &= ~128;
 	}
+	else
+	{
+		// parse player slot, high bit means spectator
+		cl.playernum = MSG_ReadByte ();
+		if (cl.playernum & 128)
+		{
+			cl.spectator = true;
+			cl.playernum &= ~128;
+		}
+	}
+	cl.viewplayer = cl.playernum;
 
 	// get the full level name
 	str = MSG_ReadString ();
@@ -854,6 +881,8 @@ void CL_ParseStartSoundPacket(void)
 
 	if (ent > MAX_EDICTS)
 		Host_EndGame ("CL_ParseStartSoundPacket: ent = %i", ent);
+	if (CL_MVDSkipMessage ())
+		return;		// an MVD's, to another player
 	
     S_StartSound (ent, channel, cl.sound_precache[sound_num], pos, packetvolume/255.0f, attenuation);
 }       
@@ -1049,11 +1078,22 @@ CL_SetStat
 */
 void CL_SetStat (int stat, int value)
 {
-	int	j;
+	int	j, target;
 
 	// FTE servers send stats for their own purposes past these
 	if (stat < 0 || stat >= MAX_CL_STATS)
 		return;
+
+	// an MVD's stats are each player's own, shown for the one followed
+	if (cls.mvdplayback)
+	{
+		target = CL_MVDStatTarget ();
+		if (target < 0)
+			return;
+		cl.players[target].stats[stat] = value;
+		if (target != CL_MVDTracking ())
+			return;
+	}
 
 	
 	if (stat == STAT_ITEMS)
@@ -1139,15 +1179,20 @@ CL_ParseServerMessage
 =====================
 */
 static int	received_framecount;
+static int	projectiles_frame;
 void CL_ParseServerMessage (void)
 {
 	int			cmd;
 	char		*s;
 	int			i, j;
+	float		f;
 
 	received_framecount = cls.framecount;
 	cl.last_servermessage = host.realtime;
-	CL_ClearProjectiles ();
+	// an MVD's frame is several messages: its nails are cleared once
+	if (!cls.mvdplayback || cls.netchan.incoming_acknowledged != projectiles_frame)
+		CL_ClearProjectiles ();
+	projectiles_frame = cls.netchan.incoming_acknowledged;
 
 //
 // if recording demos, copy the message out
@@ -1194,6 +1239,12 @@ void CL_ParseServerMessage (void)
 			break;
 			
 		case svc_disconnect:
+			if (cls.mvdplayback)
+			{	// "EndOfDemo", or a level change: the end of the recording ends it
+				if (msg_readcount < cls.net_message.cursize)
+					MSG_ReadString ();
+				break;
+			}
 			if (cls.state == ca_connected)
 				Host_EndGame ("Server disconnected\n"
 					"Server version may not be compatible");
@@ -1203,17 +1254,22 @@ void CL_ParseServerMessage (void)
 
 		case svc_print:
 			i = MSG_ReadByte ();
+			s = MSG_ReadString ();
+			if (CL_MVDSkipMessage ())
+				break;		// an MVD's, to other players
 			if (i == PRINT_CHAT)
 			{
 				S_LocalSound ("misc/talk.wav");
 				con.ormask = 128;
 			}
-			Con_Printf ("%s", MSG_ReadString ());
+			Con_Printf ("%s", s);
 			con.ormask = 0;
 			break;
-			
+
 		case svc_centerprint:
-			SCR_CenterPrint (MSG_ReadString ());
+			s = MSG_ReadString ();
+			if (!CL_MVDSkipMessage ())
+				SCR_CenterPrint (s);
 			break;
 			
 		case svc_stufftext:
@@ -1221,12 +1277,22 @@ void CL_ParseServerMessage (void)
 			Con_DPrintf ("stufftext: %s\n", s);
 			if (!strncmp (s, "//vwep ", 7))
 				CL_ParseVWepPrecache (s);
-			else
+			else if (cls.mvdplayback && !strncmp (s, "//at ", 5))
+				CL_MVDHint (s);
+			else if (cls.state < ca_active || !CL_MVDSkipMessage ())
 				Cbuf_AddText (s);
 			break;
 			
 		case svc_damage:
-			V_ParseDamage ();
+			if (!CL_MVDSkipMessage ())
+				V_ParseDamage ();
+			else
+			{
+				MSG_ReadByte ();
+				MSG_ReadByte ();
+				for (i=0 ; i<3 ; i++)
+					MSG_ReadCoord ();
+			}
 			break;
 			
 		case svc_serverdata:
@@ -1236,6 +1302,14 @@ void CL_ParseServerMessage (void)
 			break;
 			
 		case svc_setangle:
+			if (cls.mvdplayback)
+			{	// an MVD's names the player; the view turns with the player's
+				// state, and doesn't turn to this one
+				CL_MVDFixAngle (MSG_ReadByte ());
+				for (i=0 ; i<3 ; i++)
+					MSG_ReadAngle ();
+				break;
+			}
 			// with MVD1 high-lag teleport first why: 1 a teleport, 2 a
 			// respawn, 0 unknown
 			j = (cls.mvdext1 & MVD_PEXT1_HIGHLAGTELEPORT) ? MSG_ReadByte () : 0;
@@ -1365,10 +1439,12 @@ void CL_ParseServerMessage (void)
 			break;
 
 		case svc_smallkick:
-			cl.punchangle = -2;
+			if (!CL_MVDSkipMessage ())
+				cl.punchangle = -2;
 			break;
 		case svc_bigkick:
-			cl.punchangle = -4;
+			if (!CL_MVDSkipMessage ())
+				cl.punchangle = -4;
 			break;
 
 		case svc_muzzleflash:
@@ -1376,6 +1452,13 @@ void CL_ParseServerMessage (void)
 			break;
 
 		case svc_updateuserinfo:
+			if (CL_MVDSkipMessage ())
+			{	// old recordings send blank userinfo to one watcher, then resend it
+				MSG_ReadByte ();
+				MSG_ReadLong ();
+				MSG_ReadString ();
+				break;
+			}
 			CL_UpdateUserinfo ();
 			break;
 
@@ -1440,11 +1523,15 @@ void CL_ParseServerMessage (void)
 			break;
 
 		case svc_maxspeed :
-			cl.movevars.maxspeed = MSG_ReadFloat();
+			f = MSG_ReadFloat();
+			if (!CL_MVDSkipMessage ())
+				cl.movevars.maxspeed = f;
 			break;
 
 		case svc_entgravity :
-			cl.movevars.entgravity = MSG_ReadFloat();
+			f = MSG_ReadFloat();
+			if (!CL_MVDSkipMessage ())
+				cl.movevars.entgravity = f;
 			break;
 
 		case svc_setpause:

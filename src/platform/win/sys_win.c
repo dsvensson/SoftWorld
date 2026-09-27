@@ -28,9 +28,22 @@ void Sys_DebugLog (char *file, char *fmt, ...)
 
 	if (!f || strcmp (name, file))
 	{
+		char	dir[1024], *slash;
+
 		if (f)
 			fclose (f);
 		f = fopen (file, "a");
+		if (!f)
+		{	// a game directory the recording or server named, not made yet
+			snprintf (dir, sizeof(dir), "%s", file);
+			slash = strrchr (dir, '/');
+			if (slash)
+			{
+				*slash = 0;
+				Sys_mkdir (dir);
+				f = fopen (file, "a");
+			}
+		}
 		if (!f)
 			return;
 		snprintf (name, sizeof(name), "%s", file);

@@ -393,6 +393,7 @@ void CL_Disconnect (void)
 
 	CL_StopDownload ();
 	CL_StopUpload();
+	CL_QTVStop ();
 
 }
 
@@ -808,6 +809,8 @@ void CL_Reconnect_f (void)
 {
 	if (cls.download)  // don't change when downloading
 		return;
+	if (cls.demoplayback)	// a recording goes on to its next level itself
+		return;
 
 	S_StopAllSounds (true);
 
@@ -994,6 +997,14 @@ void CL_ReadPackets (void)
 {
 	while (CL_GetMessage())
 	{
+		// an MVD's block: a server message without a netchan header
+		if (cls.mvdplayback)
+		{
+			MSG_BeginReading (&cls.net_message);
+			CL_ParseServerMessage ();
+			continue;
+		}
+
 		//
 		// remote command packet
 		//
@@ -1040,6 +1051,21 @@ void CL_ReadPackets (void)
 }
 
 //=============================================================================
+
+/*
+===================
+CL_Pause_f
+
+Pauses an MVD played, else asks the server
+===================
+*/
+static void CL_Pause_f (void)
+{
+	if (cls.mvdplayback)
+		CL_MVDTogglePause ();
+	else
+		Cmd_ForwardToServer ();
+}
 
 /*
 ===================
@@ -1222,6 +1248,8 @@ static void CL_InitLocal (void)
 	Cmd_AddCommand ("playdemo", CL_PlayDemo_f);
 	Cmd_AddCommand ("timedemo", CL_TimeDemo_f);
 	CL_InitDemo ();
+	CL_InitMVD ();
+	CL_InitQTV ();
 
 	Cmd_AddCommand ("skins", Skin_Skins_f);
 	Cmd_AddCommand ("allskins", Skin_AllSkins_f);
@@ -1252,7 +1280,7 @@ static void CL_InitLocal (void)
 // forward to server commands
 //
 	Cmd_AddCommand ("kill", NULL);
-	Cmd_AddCommand ("pause", NULL);
+	Cmd_AddCommand ("pause", CL_Pause_f);
 	Cmd_AddCommand ("say", NULL);
 	Cmd_AddCommand ("say_team", NULL);
 	Cmd_AddCommand ("serverinfo", NULL);
@@ -1321,7 +1349,8 @@ CL_MaxFPS
 */
 static float CL_MaxFPS (void)
 {
-	if (CL_IndependentPhysics ())
+	// an MVD has no commands to pace: drawn as a live game is
+	if (CL_IndependentPhysics () || cls.mvdplayback)
 		return cl_maxfps.value > 0 ? fmaxf (cl_maxfps.value, 30.0f) : 0;	// 0: no cap but the display's
 	if (cl_maxfps.value)
 		return fmaxf(30.0f, fminf(cl_maxfps.value, 72.0f));
@@ -1440,6 +1469,9 @@ void CL_Frame (void)
 
 	// fetch results from server
 	oldincoming = cls.netchan.incoming_sequence;
+	CL_QTVFrame ();
+	if (cls.mvdplayback)
+		CL_MVDAdvance ();
 	CL_ReadPackets ();
 
 	// send intentions now

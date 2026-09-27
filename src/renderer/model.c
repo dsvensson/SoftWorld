@@ -1485,9 +1485,8 @@ void Mod_LoadAliasModel (model_t *mod, void *buffer)
 	pmodel->skinwidth = LittleLong (pinmodel->skinwidth);
 	pmodel->skinheight = LittleLong (pinmodel->skinheight);
 
-	if (pmodel->skinheight > MAX_LBM_HEIGHT)
-		Sys_Error ("model %s has a skin taller than %d", mod->name,
-				   MAX_LBM_HEIGHT);
+	if (pmodel->skinwidth <= 0 || pmodel->skinheight <= 0)
+		Sys_Error ("model %s has no skin size", mod->name);
 
 	pmodel->numverts = LittleLong (pinmodel->numverts);
 
