@@ -869,9 +869,9 @@ void CL_ConnectionlessPacket (void)
 				break;
 			Con_DPrintf ("The server offers protocol extensions 0x%x 0x%x\n", magic, mask);
 			if (magic == PROTOCOL_VERSION_FTE)
-				cls.fteext = mask & SW_FTE_EXTENSIONS;
+				cls.fteext = mask & CL_FTE_EXTENSIONS;
 			else if (magic == PROTOCOL_VERSION_MVD1)
-				cls.mvdext1 = mask & SW_MVD1_EXTENSIONS;
+				cls.mvdext1 = mask & CL_MVD1_EXTENSIONS;
 		}
 
 		CL_SendConnectPacket ();
@@ -1032,8 +1032,8 @@ void Cmd_ForwardToServer_f (void)
 	if (Cmd_Argc() == 2 && !Q_strcasecmp (Cmd_Argv(1), "pext"))
 	{
 		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
-		SZ_Print (&cls.netchan.message, va("pext 0x%x 0x%x 0x%x 0x%x", PROTOCOL_VERSION_FTE, SW_FTE_EXTENSIONS,
-			PROTOCOL_VERSION_MVD1, SW_MVD1_EXTENSIONS));
+		SZ_Print (&cls.netchan.message, va("pext 0x%x 0x%x 0x%x 0x%x", PROTOCOL_VERSION_FTE, CL_FTE_EXTENSIONS,
+			PROTOCOL_VERSION_MVD1, CL_MVD1_EXTENSIONS));
 		return;
 	}
 

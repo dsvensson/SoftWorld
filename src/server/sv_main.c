@@ -537,9 +537,9 @@ void SVC_GetChallenge (void)
 	MSG_WriteByte (&msg, S2C_CHALLENGE);
 	MSG_WriteString (&msg, va("%i", svs.challenges[i].challenge));
 	MSG_WriteLong (&msg, PROTOCOL_VERSION_FTE);
-	MSG_WriteLong (&msg, SW_FTE_EXTENSIONS);
+	MSG_WriteLong (&msg, SV_FTE_EXTENSIONS);
 	MSG_WriteLong (&msg, PROTOCOL_VERSION_MVD1);
-	MSG_WriteLong (&msg, SW_MVD1_EXTENSIONS);
+	MSG_WriteLong (&msg, SV_MVD1_EXTENSIONS);
 	Netchan_OutOfBand (NS_SERVER, svs.net_from, msg.cursize, msg.data);
 }
 
@@ -557,7 +557,7 @@ void SVC_DirectConnect (void)
 	netadr_t	adr;
 	int			i;
 	client_t	*cl, *newcl;
-	client_t	temp;
+	char		info[MAX_INFO_STRING];
 	edict_t		*ent;
 	int			edictnum;
 	char		*s;
@@ -592,9 +592,9 @@ void SVC_DirectConnect (void)
 		Cmd_TokenizeString (MSG_ReadStringLine ());
 		magic = (unsigned)strtoul (Cmd_Argv(0), NULL, 0);
 		if (magic == PROTOCOL_VERSION_FTE)
-			fteext = (unsigned)strtoul (Cmd_Argv(1), NULL, 0) & SW_FTE_EXTENSIONS;
+			fteext = (unsigned)strtoul (Cmd_Argv(1), NULL, 0) & SV_FTE_EXTENSIONS;
 		else if (magic == PROTOCOL_VERSION_MVD1)
-			mvdext1 = (unsigned)strtoul (Cmd_Argv(1), NULL, 0) & SW_MVD1_EXTENSIONS;
+			mvdext1 = (unsigned)strtoul (Cmd_Argv(1), NULL, 0) & SV_MVD1_EXTENSIONS;
 	}
 	msg_badread = false;
 	Con_DPrintf ("%s asks for protocol extensions FTE 0x%x, MVD1 0x%x\n", NET_AdrToString (svs.net_from),
@@ -658,23 +658,17 @@ void SVC_DirectConnect (void)
 	adr = svs.net_from;
 	userid++;	// so every client gets a unique id
 
-	newcl = &temp;
-	memset (newcl, 0, sizeof(client_t));
-
-	newcl->userid = userid;
-	newcl->fteext = fteext;
-	newcl->mvdext1 = mvdext1;
-
 	// works properly
+	memset (info, 0, sizeof(info));
 	if (!sv_highchars.value) {
 		byte *p, *q;
 
-		for (p = (byte *)newcl->userinfo, q = (byte *)userinfo; 
-			*q && p < (byte *)newcl->userinfo + sizeof(newcl->userinfo)-1; q++)
+		for (p = (byte *)info, q = (byte *)userinfo;
+			*q && p < (byte *)info + sizeof(info)-1; q++)
 			if (*q > 31 && *q <= 127)
 				*p++ = *q;
 	} else
-		strncpy (newcl->userinfo, userinfo, sizeof(newcl->userinfo)-1);
+		strncpy (info, userinfo, sizeof(info)-1);
 
 	// if there is allready a slot for this ip, drop it
 	for (i=0,cl=svs.clients ; i<MAX_CLIENTS ; i++,cl++)
@@ -745,7 +739,11 @@ void SVC_DirectConnect (void)
 	// build a new connection
 	// accept the new client
 	// this is the only place a client_t is ever initialized
-	*newcl = temp;
+	memset (newcl, 0, sizeof(*newcl));
+	newcl->userid = userid;
+	newcl->fteext = fteext;
+	newcl->mvdext1 = mvdext1;
+	memcpy (newcl->userinfo, info, sizeof(newcl->userinfo));
 
 	Netchan_OutOfBandPrint (NS_SERVER, adr, "%c", S2C_CONNECTION );
 

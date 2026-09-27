@@ -21,85 +21,75 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "cl_local.h"
 
-static char *svc_strings[] =
+static const char *svc_strings[] =
 {
-	"svc_bad",
-	"svc_nop",
-	"svc_disconnect",
-	"svc_updatestat",
-	"svc_version",		// [long] server version
-	"svc_setview",		// [short] entity number
-	"svc_sound",			// <see code>
-	"svc_time",			// [float] server time
-	"svc_print",			// [string] null terminated string
-	"svc_stufftext",		// [string] stuffed into client's console buffer
-						// the string should be \n terminated
-	"svc_setangle",		// [vec3] set the view angle to this absolute value
-	
-	"svc_serverdata",		// [long] version ...
-	"svc_lightstyle",		// [byte] [string]
-	"svc_updatename",		// [byte] [string]
-	"svc_updatefrags",	// [byte] [short]
-	"svc_clientdata",		// <shortbits + data>
-	"svc_stopsound",		// <see code>
-	"svc_updatecolors",	// [byte] [byte]
-	"svc_particle",		// [vec3] <variable>
-	"svc_damage",			// [byte] impact [byte] blood [vec3] from
-	
-	"svc_spawnstatic",
-	"OBSOLETE svc_spawnbinary",
-	"svc_spawnbaseline",
-	
-	"svc_temp_entity",		// <variable>
-	"svc_setpause",
-	"svc_signonnum",
-	"svc_centerprint",
-	"svc_killedmonster",
-	"svc_foundsecret",
-	"svc_spawnstaticsound",
-	"svc_intermission",
-	"svc_finale",
-
-	"svc_cdtrack",
-	"svc_sellscreen",
-
-	"svc_smallkick",
-	"svc_bigkick",
-
-	"svc_updateping",
-	"svc_updateentertime",
-
-	"svc_updatestatlong",
-	"svc_muzzleflash",
-	"svc_updateuserinfo",
-	"svc_download",
-	"svc_playerinfo",
-	"svc_nails",
-	"svc_choke",
-	"svc_modellist",
-	"svc_soundlist",
-	"svc_packetentities",
- 	"svc_deltapacketentities",
-	"svc_maxspeed",
-	"svc_entgravity",
-
-	"svc_setinfo",
-	"svc_serverinfo",
-	"svc_updatepl",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL",
-	"NEW PROTOCOL"
+	[0] = "svc_bad",
+	[1] = "svc_nop",
+	[2] = "svc_disconnect",
+	[3] = "svc_updatestat",
+	[4] = "svc_version",
+	[5] = "svc_setview",
+	[6] = "svc_sound",
+	[7] = "svc_time",
+	[8] = "svc_print",
+	[9] = "svc_stufftext",
+	[10] = "svc_setangle",
+	[11] = "svc_serverdata",
+	[12] = "svc_lightstyle",
+	[13] = "svc_updatename",
+	[14] = "svc_updatefrags",
+	[15] = "svc_clientdata",
+	[16] = "svc_stopsound",
+	[17] = "svc_updatecolors",
+	[18] = "svc_particle",
+	[19] = "svc_damage",
+	[20] = "svc_spawnstatic",
+	[21] = "svc_fte_spawnstatic2",
+	[22] = "svc_spawnbaseline",
+	[23] = "svc_temp_entity",
+	[24] = "svc_setpause",
+	[25] = "svc_signonnum",
+	[26] = "svc_centerprint",
+	[27] = "svc_killedmonster",
+	[28] = "svc_foundsecret",
+	[29] = "svc_spawnstaticsound",
+	[30] = "svc_intermission",
+	[31] = "svc_finale",
+	[32] = "svc_cdtrack",
+	[33] = "svc_sellscreen",
+	[34] = "svc_smallkick",
+	[35] = "svc_bigkick",
+	[36] = "svc_updateping",
+	[37] = "svc_updateentertime",
+	[38] = "svc_updatestatlong",
+	[39] = "svc_muzzleflash",
+	[40] = "svc_updateuserinfo",
+	[41] = "svc_download",
+	[42] = "svc_playerinfo",
+	[43] = "svc_nails",
+	[44] = "svc_chokecount",
+	[45] = "svc_modellist",
+	[46] = "svc_soundlist",
+	[47] = "svc_packetentities",
+	[48] = "svc_deltapacketentities",
+	[49] = "svc_maxspeed",
+	[50] = "svc_entgravity",
+	[51] = "svc_setinfo",
+	[52] = "svc_serverinfo",
+	[53] = "svc_updatepl",
+	[54] = "svc_nails2",
+	[56] = "svc_fte_soundlistshort",
+	[60] = "svc_fte_modellistshort",
+	[66] = "svc_fte_spawnbaseline2",
+	[84] = "svc_fte_voicechat",
 };
+
+static const char *CL_SvcName (int cmd)
+{
+	if (cmd < 0 || cmd >= (int)(sizeof(svc_strings) / sizeof(svc_strings[0])) || !svc_strings[cmd])
+		return "unknown";
+	return svc_strings[cmd];
+}
 
 static int	oldparsecountmod;
 
@@ -237,8 +227,8 @@ void Model_NextDownload (void)
 	}
 
 	cls.downloadtype = dl_model;
-	for ( 
-		; cl.model_name[cls.downloadnumber][0]
+	for (
+		; cls.downloadnumber < MAX_MODELS && cl.model_name[cls.downloadnumber][0]
 		; cls.downloadnumber++)
 	{
 		s = cl.model_name[cls.downloadnumber];
@@ -581,10 +571,10 @@ void CL_ParseServerData (void)
 	}
 	// a server only uses what the client asked for, but a demo can have been
 	// recorded by a client that knows more
-	if ((cls.fteext & ~SW_FTE_EXTENSIONS) || fteext2 || (cls.mvdext1 & ~SW_MVD1_EXTENSIONS))
+	if ((cls.fteext & ~CL_FTE_READABLE) || (fteext2 & ~CL_FTE2_READABLE) || (cls.mvdext1 & ~CL_MVD1_EXTENSIONS))
 		Host_EndGame ("The server uses protocol extensions this client lacks:\n"
-			"FTE 0x%x, FTE2 0x%x, MVD1 0x%x\n", cls.fteext & ~SW_FTE_EXTENSIONS, fteext2,
-			cls.mvdext1 & ~SW_MVD1_EXTENSIONS);
+			"FTE 0x%x, FTE2 0x%x, MVD1 0x%x\n", cls.fteext & ~CL_FTE_READABLE, fteext2 & ~CL_FTE2_READABLE,
+			cls.mvdext1 & ~CL_MVD1_EXTENSIONS);
 	// the rest of this message is already in the new encoding
 	cls.net_message.floatcoords = (cls.fteext & FTE_PEXT_FLOATCOORDS) != 0;
 	cls.netchan.message.floatcoords = cls.net_message.floatcoords;
@@ -661,10 +651,26 @@ void CL_ParseServerData (void)
 
 /*
 ==================
-CL_ParseSoundlist
+CL_Model
 ==================
 */
-void CL_ParseSoundlist (void)
+model_t *CL_Model (int index)
+{
+	if (index < 0 || index >= MAX_MODELS)
+		return NULL;
+	return cl.model_precache[index];
+}
+
+/*
+==================
+CL_ParseSoundlist
+
+A part of the sound list: the number before its first name (a short with
+FTE's svc_fte_soundlistshort), the names, then the low byte of the number to
+ask for the rest from, 0 when there is no more
+==================
+*/
+void CL_ParseSoundlist (bool shortstart)
 {
 	int	numsounds;
 	char	*str;
@@ -673,19 +679,21 @@ void CL_ParseSoundlist (void)
 // precache sounds
 //	memset (cl.sound_precache, 0, sizeof(cl.sound_precache));
 
-	numsounds = MSG_ReadByte();
+	numsounds = shortstart ? MSG_ReadShort () & 0xffff : MSG_ReadByte ();
 
 	for (;;) {
 		str = MSG_ReadString ();
 		if (!str[0])
 			break;
 		numsounds++;
-		if (numsounds == MAX_SOUNDS)
+		if (numsounds >= MAX_SOUNDS)
 			Host_EndGame ("Server sent too many sound_precache");
 		Q_strncpyz (cl.sound_name[numsounds], str, sizeof(cl.sound_name[numsounds]));
 	}
 
 	n = MSG_ReadByte();
+	if (n)
+		n += numsounds & 0xff00;
 
 	if (n) {
 		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
@@ -702,16 +710,18 @@ void CL_ParseSoundlist (void)
 /*
 ==================
 CL_ParseModellist
+
+As CL_ParseSoundlist, with svc_fte_modellistshort
 ==================
 */
-void CL_ParseModellist (void)
+void CL_ParseModellist (bool shortstart)
 {
 	int	nummodels;
 	char	*str;
 	int n;
 
 // precache models and note certain default indexes
-	nummodels = MSG_ReadByte();
+	nummodels = shortstart ? MSG_ReadShort () & 0xffff : MSG_ReadByte ();
 
 	for (;;)
 	{
@@ -719,7 +729,7 @@ void CL_ParseModellist (void)
 		if (!str[0])
 			break;
 		nummodels++;
-		if (nummodels==MAX_MODELS)
+		if (nummodels >= MAX_MODELS)
 			Host_EndGame ("Server sent too many model_precache");
 		Q_strncpyz (cl.model_name[nummodels], str, sizeof(cl.model_name[nummodels]));
 
@@ -732,6 +742,8 @@ void CL_ParseModellist (void)
 	}
 
 	n = MSG_ReadByte();
+	if (n)
+		n += nummodels & 0xff00;
 
 	if (n) {
 		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
@@ -767,20 +779,47 @@ void CL_ParseBaseline (entity_state_t *es)
 
 
 /*
+==================
+CL_ParseBaseline2
+
+FTE's svc_fte_spawnbaseline2: an entity delta from nothing
+==================
+*/
+static void CL_ParseBaseline2 (void)
+{
+	static const entity_state_t	nullstate = {0};
+	int		num, bits, ext;
+
+	num = MSG_ReadEntityHeader (MSG_ReadShort () & 0xffff, &bits, &ext, cls.fteext);
+	MSG_ReadDeltaEntity (&nullstate, &cl.baselines[num], num, bits, ext, cls.mvdext1);
+}
+
+/*
 =====================
 CL_ParseStatic
 
 Static entities are non-interactive world objects
-like torches
+like torches; FTE's svc_fte_spawnstatic2 sends them as deltas from nothing
 =====================
 */
-void CL_ParseStatic (void)
+void CL_ParseStatic (bool delta)
 {
+	static const entity_state_t	nullstate = {0};
 	entity_t *ent;
-	int		i;
+	int		i, num, bits, ext;
 	entity_state_t	es;
+	model_t	*model;
 
-	CL_ParseBaseline (&es);
+	if (delta)
+	{
+		num = MSG_ReadEntityHeader (MSG_ReadShort () & 0xffff, &bits, &ext, cls.fteext);
+		MSG_ReadDeltaEntity (&nullstate, &es, num, bits, ext, cls.mvdext1);
+	}
+	else
+		CL_ParseBaseline (&es);
+	model = CL_Model (es.modelindex);
+	if (!model)
+		return;
 		
 	i = cl.num_statics;
 	if (!(i % STATIC_BLOCK))
@@ -792,7 +831,7 @@ void CL_ParseStatic (void)
 	cl.num_statics++;
 
 // copy it to the current state
-	ent->model = cl.model_precache[es.modelindex];
+	ent->model = model;
 	ent->frame = es.frame;
 	ent->translate = NULL;
 	ent->skinnum = es.skinnum;
@@ -1026,7 +1065,7 @@ void CL_SetInfo (void)
 	strncpy (key, MSG_ReadString(), sizeof(key) - 1);
 	key[sizeof(key) - 1] = 0;
 	strncpy (value, MSG_ReadString(), sizeof(value) - 1);
-	key[sizeof(value) - 1] = 0;
+	value[sizeof(value) - 1] = 0;
 
 	Con_DPrintf("SETINFO %s: %s=%s\n", player->name, key, value);
 
@@ -1048,7 +1087,7 @@ void CL_ServerInfo (void)
 	strncpy (key, MSG_ReadString(), sizeof(key) - 1);
 	key[sizeof(key) - 1] = 0;
 	strncpy (value, MSG_ReadString(), sizeof(value) - 1);
-	key[sizeof(value) - 1] = 0;
+	value[sizeof(value) - 1] = 0;
 
 	Con_DPrintf("SERVERINFO: %s=%s\n", key, value);
 
@@ -1063,8 +1102,10 @@ CL_SetStat
 void CL_SetStat (int stat, int value)
 {
 	int	j;
+
+	// FTE servers send stats for their own purposes past these
 	if (stat < 0 || stat >= MAX_CL_STATS)
-		Sys_Error ("CL_SetStat: %i is invalid", stat);
+		return;
 
 	
 	if (stat == STAT_ITEMS)
@@ -1160,13 +1201,13 @@ void CL_ParseServerMessage (void)
 			break;
 		}
 
-		SHOWNET(svc_strings[cmd]);
+		SHOWNET(CL_SvcName (cmd));
 	
 	// other commands
 		switch (cmd)
 		{
 		default:
-			Host_EndGame ("CL_ParseServerMessage: Illegible server message");
+			Host_EndGame ("CL_ParseServerMessage: Illegible server message %i", cmd);
 			break;
 			
 		case svc_nop:
@@ -1267,11 +1308,19 @@ void CL_ParseServerMessage (void)
 			
 		case svc_spawnbaseline:
 			i = MSG_ReadShort ();
+			if (i < 0 || i >= MAX_EDICTS)
+				Host_EndGame ("CL_ParseServerMessage: svc_spawnbaseline %i", i);
 			CL_ParseBaseline (&cl.baselines[i]);
 			break;
+		case svc_fte_spawnbaseline2:
+			CL_ParseBaseline2 ();
+			break;
 		case svc_spawnstatic:
-			CL_ParseStatic ();
-			break;			
+			CL_ParseStatic (false);
+			break;
+		case svc_fte_spawnstatic2:
+			CL_ParseStatic (true);
+			break;
 		case svc_temp_entity:
 			CL_ParseTEnt ();
 			break;
@@ -1357,7 +1406,19 @@ void CL_ParseServerMessage (void)
 			break;
 
 		case svc_nails:
-			CL_ParseProjectiles ();
+			CL_ParseProjectiles (false);
+			break;
+		case svc_nails2:
+			CL_ParseProjectiles (true);
+			break;
+
+		case svc_fte_voicechat:		// in recordings; not asked for, skipped
+			MSG_ReadByte ();
+			MSG_ReadByte ();
+			MSG_ReadByte ();
+			j = MSG_ReadShort () & 0xffff;
+			for (i=0 ; i<j && !msg_badread ; i++)
+				MSG_ReadByte ();
 			break;
 
 		case svc_chokecount:		// some preceding packets were choked
@@ -1367,11 +1428,17 @@ void CL_ParseServerMessage (void)
 			break;
 
 		case svc_modellist:
-			CL_ParseModellist ();
+			CL_ParseModellist (false);
+			break;
+		case svc_fte_modellistshort:
+			CL_ParseModellist (true);
 			break;
 
 		case svc_soundlist:
-			CL_ParseSoundlist ();
+			CL_ParseSoundlist (false);
+			break;
+		case svc_fte_soundlistshort:
+			CL_ParseSoundlist (true);
 			break;
 
 		case svc_packetentities:

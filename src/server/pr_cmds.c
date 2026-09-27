@@ -906,7 +906,7 @@ void PF_precache_model (void)
 	G_INT(OFS_RETURN) = G_INT(OFS_PARM0);
 	PR_CheckEmptyString (s);
 
-	for (i=0 ; i<MAX_MODELS ; i++)
+	for (i=0 ; i<MAX_MODELS-1 ; i++)		// the last stays NULL, ending the list
 	{
 		if (!sv.model_precache[i])
 		{
@@ -1403,25 +1403,22 @@ void PF_WriteEntity (void)
 
 int SV_ModelIndex (char *name);
 
+// kept with the level's static entities, which each client gets at prespawn
 void PF_makestatic (void)
 {
 	edict_t	*ent;
-	int		i;
-	
+	entity_state_t	*s;
+
 	ent = G_EDICT(OFS_PARM0);
 
-	MSG_WriteByte (&sv.signon,svc_spawnstatic);
-
-	MSG_WriteByte (&sv.signon, SV_ModelIndex(PR_GetString(ent->v.model)));
-
-	MSG_WriteByte (&sv.signon, (int)ent->v.frame);
-	MSG_WriteByte (&sv.signon, (int)ent->v.colormap);
-	MSG_WriteByte (&sv.signon, (int)ent->v.skin);
-	for (i=0 ; i<3 ; i++)
-	{
-		MSG_WriteCoord(&sv.signon, ent->v.origin[i]);
-		MSG_WriteAngle(&sv.signon, ent->v.angles[i]);
-	}
+	s = SV_NewStatic ();
+	s->modelindex = SV_ModelIndex(PR_GetString(ent->v.model));
+	s->frame = (int)ent->v.frame;
+	s->colormap = (int)ent->v.colormap;
+	s->skinnum = (int)ent->v.skin;
+	VectorCopy (ent->v.origin, s->origin);
+	VectorCopy (ent->v.angles, s->angles);
+	SV_EntityLook (ent, s);
 
 // throw the entity away now
 	ED_Free (ent);

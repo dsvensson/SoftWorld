@@ -68,6 +68,13 @@ void SV_New_f (void)
 		return;
 	}
 
+	// what the client's protocol has no room for, it won't see
+	if ((sv.num_edicts > 512 && !(host_client->fteext & FTE_PEXT_ENTITYDBL)) ||
+		(sv.num_edicts > 1024 && !(host_client->fteext & FTE_PEXT_ENTITYDBL2)) ||
+		(sv.model_precache[256] && !(host_client->fteext & FTE_PEXT_MODELDBL)))
+		SV_ClientPrintf (host_client, PRINT_HIGH, "This map has more entities or models than your client's\n"
+			"protocol has room for: some will be invisible to you.\n");
+
 	// send the info about the new client to all connected clients
 //	SV_FullClientUpdate (host_client, &sv.reliable_datagram);
 //	host_client->sendinfo = true;
@@ -194,7 +201,7 @@ SV_Modellist_f
 void SV_Modellist_f (void)
 {
 	char		**s;
-	int			n;
+	int			n, i, max;
 
 	if (host_client->state != cs_connected)
 	{
@@ -220,37 +227,123 @@ void SV_Modellist_f (void)
 		SZ_Clear(&host_client->netchan.message);
 	}
 
-	MSG_WriteByte (&host_client->netchan.message, svc_modellist);
-	MSG_WriteByte (&host_client->netchan.message, n);
-	for (s = sv.model_precache+1+n ; 
-		*s && host_client->netchan.message.cursize < (MAX_MSGLEN/2); 
-		s++, n++)
+	// past 255 models the list goes on with FTE's short start, to clients
+	// that can take the model numbers; the next number goes back as a byte,
+	// so a message only ends where that byte isn't 0
+	max = (host_client->fteext & FTE_PEXT_MODELDBL) ? MAX_MODELS : 256;
+	if (n < 0 || n >= max - 1)
+		n = 0;
+	if (n > 255)
+	{
+		MSG_WriteByte (&host_client->netchan.message, svc_fte_modellistshort);
+		MSG_WriteShort (&host_client->netchan.message, n);
+	}
+	else
+	{
+		MSG_WriteByte (&host_client->netchan.message, svc_modellist);
+		MSG_WriteByte (&host_client->netchan.message, n);
+	}
+	for (s = sv.model_precache+1+n, i = n+1 ;
+		i < max && *s && (!((i-1) & 255) || host_client->netchan.message.cursize < (MAX_MSGLEN/2));
+		s++, i++)
 		MSG_WriteString (&host_client->netchan.message, *s);
 	MSG_WriteByte (&host_client->netchan.message, 0);
 
 	// next msg
-	if (*s)
-		MSG_WriteByte (&host_client->netchan.message, n);
+	if (i < max && *s)
+		MSG_WriteByte (&host_client->netchan.message, (i-1) & 255);
 	else
 		MSG_WriteByte (&host_client->netchan.message, 0);
 }
 
 /*
 ==================
+SV_WriteStatic
+==================
+*/
+static void SV_WriteStatic (client_t *client, const entity_state_t *s)
+{
+	static const entity_state_t	nullstate = {0};
+	sizebuf_t	*msg = &client->netchan.message;
+	int			i;
+
+	if (!SV_EntityFits (client, s->number, s->modelindex))
+		return;
+	if (client->fteext & FTE_PEXT_SPAWNSTATIC2)
+	{
+		MSG_WriteByte (msg, svc_fte_spawnstatic2);
+		SV_WriteDelta (client, &nullstate, s, msg, true);
+		return;
+	}
+	MSG_WriteByte (msg, svc_spawnstatic);
+	MSG_WriteByte (msg, s->modelindex);
+	MSG_WriteByte (msg, s->frame);
+	MSG_WriteByte (msg, s->colormap);
+	MSG_WriteByte (msg, s->skinnum);
+	for (i=0 ; i<3 ; i++)
+	{
+		MSG_WriteCoord (msg, s->origin[i]);
+		MSG_WriteAngle (msg, s->angles[i]);
+	}
+}
+
+/*
+==================
+SV_WriteBaseline
+==================
+*/
+static void SV_WriteBaseline (client_t *client, int entnum)
+{
+	static const entity_state_t	nullstate = {0};
+	sizebuf_t		*msg = &client->netchan.message;
+	edict_t			*ent;
+	entity_state_t	base;
+	int				i;
+
+	ent = EDICT_NUM(entnum);
+	if (!entnum || !ent->baseline.modelindex || !SV_EntityFits (client, entnum, 0))
+		return;
+	SV_ClientBaseline (client, ent, &base);
+	if (client->fteext & FTE_PEXT_SPAWNSTATIC2)
+	{
+		MSG_WriteByte (msg, svc_fte_spawnbaseline2);
+		SV_WriteDelta (client, &nullstate, &base, msg, true);
+		return;
+	}
+	MSG_WriteByte (msg, svc_spawnbaseline);
+	MSG_WriteShort (msg, entnum);
+	MSG_WriteByte (msg, base.modelindex);
+	MSG_WriteByte (msg, base.frame);
+	MSG_WriteByte (msg, base.colormap);
+	MSG_WriteByte (msg, base.skinnum);
+	for (i=0 ; i<3 ; i++)
+	{
+		MSG_WriteCoord (msg, base.origin[i]);
+		MSG_WriteAngle (msg, base.angles[i]);
+	}
+}
+
+/*
+==================
 SV_PreSpawn_f
+
+The level's static entities, then its entity baselines, then its signon
+buffers, as many as fit in half a message at a time; the client asks for
+the rest from the number it gets back
 ==================
 */
 void SV_PreSpawn_f (void)
 {
-	unsigned	buf;
+	unsigned	buf, total, size;
 	unsigned	check;
+	sizebuf_t	*msg;
 
 	if (host_client->state != cs_connected)
 	{
 		Con_Printf ("prespawn not valid -- allready spawned\n");
 		return;
 	}
-	
+
 	// handle the case of a level changing while a client was connecting
 	if ( atoi(Cmd_Argv(1)) != svs.spawncount )
 	{
@@ -258,9 +351,10 @@ void SV_PreSpawn_f (void)
 		SV_New_f ();
 		return;
 	}
-	
+
+	total = (unsigned)(sv.num_static_entities + sv.num_baselines + sv.num_signon_buffers);
 	buf = atoi(Cmd_Argv(2));
-	if (buf >= (unsigned)sv.num_signon_buffers)
+	if (buf >= total)
 		buf = 0;
 
 	if (!buf) {
@@ -271,11 +365,11 @@ void SV_PreSpawn_f (void)
 
 		if (sv_mapcheck.value && check != sv.map_checksum &&
 			check != sv.map_checksum2) {
-			SV_ClientPrintf (host_client, PRINT_HIGH, 
+			SV_ClientPrintf (host_client, PRINT_HIGH,
 				"Map model file does not match (%s), %i != %i/%i.\n"
 				"You may need a new version of the map, or the proper install files.\n",
 				sv.modelname, check, sv.map_checksum, sv.map_checksum2);
-			SV_DropClient (host_client); 
+			SV_DropClient (host_client);
 			return;
 		}
 		host_client->checksum = check;
@@ -284,26 +378,38 @@ void SV_PreSpawn_f (void)
 //NOTE:  This doesn't go through ClientReliableWrite since it's before the user
 //spawns.  These functions are written to not overflow
 	if (host_client->num_backbuf) {
-		Con_Printf("WARNING %s: [SV_PreSpawn] Back buffered (%d0, clearing", host_client->name, host_client->netchan.message.cursize); 
+		Con_Printf("WARNING %s: [SV_PreSpawn] Back buffered (%d0, clearing", host_client->name, host_client->netchan.message.cursize);
 		host_client->num_backbuf = 0;
 		SZ_Clear(&host_client->netchan.message);
 	}
 
-	SZ_Write (&host_client->netchan.message, 
-		sv.signon_buffers[buf],
-		sv.signon_buffer_size[buf]);
+	msg = &host_client->netchan.message;
+	for ( ; buf < total && msg->cursize < msg->maxsize / 2 ; buf++)
+	{
+		if (buf < (unsigned)sv.num_static_entities)
+			SV_WriteStatic (host_client, &sv.static_entities[buf]);
+		else if (buf < (unsigned)(sv.num_static_entities + sv.num_baselines))
+			SV_WriteBaseline (host_client, (int)buf - sv.num_static_entities);
+		else
+		{
+			// a signon buffer whole, into a message with room for it
+			check = buf - sv.num_static_entities - sv.num_baselines;
+			size = (unsigned)sv.signon_buffer_size[check];
+			if (msg->cursize && msg->cursize + size > (unsigned)msg->maxsize - 64)
+				break;
+			SZ_Write (msg, sv.signon_buffers[check], size);
+		}
+	}
 
-	buf++;
-	if (buf == (unsigned)sv.num_signon_buffers)
+	if (buf == total)
 	{	// all done prespawning
-		MSG_WriteByte (&host_client->netchan.message, svc_stufftext);
-		MSG_WriteString (&host_client->netchan.message, va("cmd spawn %i 0\n",svs.spawncount) );
+		MSG_WriteByte (msg, svc_stufftext);
+		MSG_WriteString (msg, va("cmd spawn %i 0\n",svs.spawncount) );
 	}
 	else
 	{	// need to prespawn more
-		MSG_WriteByte (&host_client->netchan.message, svc_stufftext);
-		MSG_WriteString (&host_client->netchan.message, 
-			va("cmd prespawn %i %i\n", svs.spawncount, buf) );
+		MSG_WriteByte (msg, svc_stufftext);
+		MSG_WriteString (msg, va("cmd prespawn %i %i\n", svs.spawncount, buf) );
 	}
 }
 

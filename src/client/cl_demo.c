@@ -420,6 +420,97 @@ void CL_WriteSetDemoMessage (void)
 
 /*
 ====================
+CL_RecordNameList
+
+The sound or model list as a server sends it: each message has the number
+before its first name, a short past 255 with FTE's short form, and ends with
+the low byte of the number to go on from, 0 when done. A message ends only
+where that byte isn't 0.
+====================
+*/
+static void CL_RecordNameList (sizebuf_t *buf, int *seq, int svc, int shortsvc, char (*names)[MAX_QPATH], int count)
+{
+	int		i, start;
+
+	start = 0;
+	for (i = 1 ; ; i++)
+	{
+		if (i == start + 1)
+		{
+			if (start > 255)
+			{
+				MSG_WriteByte (buf, shortsvc);
+				MSG_WriteShort (buf, start);
+			}
+			else
+			{
+				MSG_WriteByte (buf, svc);
+				MSG_WriteByte (buf, start);
+			}
+		}
+		if (i == count || !names[i][0])
+			break;
+		MSG_WriteString (buf, names[i]);
+		if (buf->cursize > MAX_MSGLEN/2 && (i & 255) && i + 1 < count && names[i+1][0])
+		{
+			MSG_WriteByte (buf, 0);
+			MSG_WriteByte (buf, i & 255);
+			CL_WriteRecordDemoMessage (buf, (*seq)++);
+			SZ_Clear (buf);
+			start = i;
+		}
+	}
+	MSG_WriteByte (buf, 0);
+	MSG_WriteByte (buf, 0);
+	CL_WriteRecordDemoMessage (buf, (*seq)++);
+	SZ_Clear (buf);
+}
+
+/*
+====================
+CL_RecordEntity
+
+A static entity or a baseline, in the form the recording's protocol
+extensions allow: FTE's deltas from nothing with SPAWNSTATIC2, else the
+original form, which has no room for model numbers past 255
+====================
+*/
+static void CL_RecordEntity (sizebuf_t *buf, bool isstatic, int number, const entity_state_t *es)
+{
+	static const entity_state_t	nullstate = {0};
+	entity_state_t	s;
+	int		i;
+
+	if (cls.fteext & FTE_PEXT_SPAWNSTATIC2)
+	{
+		s = *es;
+		s.number = number;
+		MSG_WriteByte (buf, isstatic ? svc_fte_spawnstatic2 : svc_fte_spawnbaseline2);
+		MSG_WriteDeltaEntity (buf, &nullstate, &s, true, cls.fteext, cls.mvdext1);
+		return;
+	}
+	if (es->modelindex > 255)
+		return;
+	if (isstatic)
+		MSG_WriteByte (buf, svc_spawnstatic);
+	else
+	{
+		MSG_WriteByte (buf, svc_spawnbaseline);
+		MSG_WriteShort (buf, number);
+	}
+	MSG_WriteByte (buf, es->modelindex);
+	MSG_WriteByte (buf, es->frame);
+	MSG_WriteByte (buf, es->colormap);
+	MSG_WriteByte (buf, es->skinnum);
+	for (i=0 ; i<3 ; i++)
+	{
+		MSG_WriteCoord (buf, es->origin[i]);
+		MSG_WriteAngle (buf, es->angles[i]);
+	}
+}
+
+/*
+====================
 CL_Record_f
 
 record <demoname> <server>
@@ -431,10 +522,9 @@ void CL_Record_f (void)
 	char	demopath[MAX_OSPATH];
 	sizebuf_t	buf;
 	byte	buf_data[MAX_MSGLEN];
-	int n, i, j;
-	char *s;
+	int i, j;
 	entity_t *ent;
-	entity_state_t *es, blankes;
+	entity_state_t *es, blankes, state;
 	player_info_t *player;
 	extern	char gamedirfile[];
 	int seq = 1;
@@ -528,114 +618,47 @@ void CL_Record_f (void)
 	CL_WriteRecordDemoMessage (&buf, seq++);
 	SZ_Clear (&buf); 
 
-// soundlist
-	MSG_WriteByte (&buf, svc_soundlist);
-	MSG_WriteByte (&buf, 0);
-
-	n = 0;
-	s = cl.sound_name[n+1];
-	while (*s) {
-		MSG_WriteString (&buf, s);
-		if (buf.cursize > MAX_MSGLEN/2) {
-			MSG_WriteByte (&buf, 0);
-			MSG_WriteByte (&buf, n);
-			CL_WriteRecordDemoMessage (&buf, seq++);
-			SZ_Clear (&buf); 
-			MSG_WriteByte (&buf, svc_soundlist);
-			MSG_WriteByte (&buf, n + 1);
-		}
-		n++;
-		s = cl.sound_name[n+1];
-	}
-	if (buf.cursize) {
-		MSG_WriteByte (&buf, 0);
-		MSG_WriteByte (&buf, 0);
-		CL_WriteRecordDemoMessage (&buf, seq++);
-		SZ_Clear (&buf); 
-	}
-
-// modellist
-	MSG_WriteByte (&buf, svc_modellist);
-	MSG_WriteByte (&buf, 0);
-
-	n = 0;
-	s = cl.model_name[n+1];
-	while (*s) {
-		MSG_WriteString (&buf, s);
-		if (buf.cursize > MAX_MSGLEN/2) {
-			MSG_WriteByte (&buf, 0);
-			MSG_WriteByte (&buf, n);
-			CL_WriteRecordDemoMessage (&buf, seq++);
-			SZ_Clear (&buf); 
-			MSG_WriteByte (&buf, svc_modellist);
-			MSG_WriteByte (&buf, n + 1);
-		}
-		n++;
-		s = cl.model_name[n+1];
-	}
-	if (buf.cursize) {
-		MSG_WriteByte (&buf, 0);
-		MSG_WriteByte (&buf, 0);
-		CL_WriteRecordDemoMessage (&buf, seq++);
-		SZ_Clear (&buf); 
-	}
+// soundlist and modellist
+	CL_RecordNameList (&buf, &seq, svc_soundlist, svc_fte_soundlistshort, cl.sound_name, MAX_SOUNDS);
+	CL_RecordNameList (&buf, &seq, svc_modellist, svc_fte_modellistshort, cl.model_name, MAX_MODELS);
 
 // spawnstatic
 
 	for (i = 0; i < cl.num_statics; i++) {
 		ent = CL_StaticEntity (i);
 
-		MSG_WriteByte (&buf, svc_spawnstatic);
-
 		for (j = 1; j < MAX_MODELS; j++)
 			if (ent->model == cl.model_precache[j])
 				break;
-		if (j == MAX_MODELS)
-			MSG_WriteByte (&buf, 0);
-		else
-			MSG_WriteByte (&buf, j);
-
-		MSG_WriteByte (&buf, ent->frame);
-		MSG_WriteByte (&buf, 0);
-		MSG_WriteByte (&buf, ent->skinnum);
-		for (j=0 ; j<3 ; j++)
-		{
-			MSG_WriteCoord (&buf, ent->origin[j]);
-			MSG_WriteAngle (&buf, ent->angles[j]);
-		}
+		memset (&state, 0, sizeof(state));
+		state.modelindex = j == MAX_MODELS ? 0 : j;
+		state.frame = ent->frame;
+		state.skinnum = ent->skinnum;
+		VectorCopy (ent->origin, state.origin);
+		VectorCopy (ent->angles, state.angles);
+		CL_RecordEntity (&buf, true, 1, &state);
 
 		if (buf.cursize > MAX_MSGLEN/2) {
 			CL_WriteRecordDemoMessage (&buf, seq++);
-			SZ_Clear (&buf); 
+			SZ_Clear (&buf);
 		}
 	}
 
 // spawnstaticsound
 	// static sounds are skipped in demos, life is hard
 
-// baselines
+// baselines; the world's is never used
 
 	memset(&blankes, 0, sizeof(blankes));
-	for (i = 0; i < MAX_EDICTS; i++) {
+	for (i = 1; i < MAX_EDICTS; i++) {
 		es = cl.baselines + i;
 
 		if (memcmp(es, &blankes, sizeof(blankes))) {
-			MSG_WriteByte (&buf,svc_spawnbaseline);		
-			MSG_WriteShort (&buf, i);
-
-			MSG_WriteByte (&buf, es->modelindex);
-			MSG_WriteByte (&buf, es->frame);
-			MSG_WriteByte (&buf, es->colormap);
-			MSG_WriteByte (&buf, es->skinnum);
-			for (j=0 ; j<3 ; j++)
-			{
-				MSG_WriteCoord(&buf, es->origin[j]);
-				MSG_WriteAngle(&buf, es->angles[j]);
-			}
+			CL_RecordEntity (&buf, false, i, es);
 
 			if (buf.cursize > MAX_MSGLEN/2) {
 				CL_WriteRecordDemoMessage (&buf, seq++);
-				SZ_Clear (&buf); 
+				SZ_Clear (&buf);
 			}
 		}
 	}

@@ -47,6 +47,8 @@ typedef struct edict_s
 	int			leafnums[MAX_ENT_LEAFS];	// visibility bit numbers
 
 	entity_state_t	baseline;
+	float		alpha;				// FTE's alpha and colormod map keys, for progs
+	vec3_t		colormod;			// without such fields
 	
 	float		freetime;			// sv.time when the object was freed
 	entvars_t	v;					// C exported fields from progs
@@ -71,6 +73,10 @@ typedef struct
 	dfunction_t		*xfunction;			// the function running
 	int				argc;				// arguments of the builtin being called
 	int				num_prstr;			// C strings QuakeC can reach
+
+	// optional QuakeC fields, as offsets into an edict's fields; 0 without
+	int				fofs_alpha;			// float
+	int				fofs_colormod;		// vector
 
 	// optional QuakeC functions
 	func_t			SpectatorConnect;

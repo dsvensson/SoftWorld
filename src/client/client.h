@@ -61,6 +61,8 @@ typedef struct
 	int			effects;
 
 	int			flags;			// dead, gib, etc
+	byte		alpha;			// FTE_PEXT_TRANS: 0 is opaque, else alpha * 254
+	byte		colormod[3];	// FTE_PEXT_COLOURMOD: 32 is 1.0; 0 0 0 is unset
 
 	float		waterjumptime;
 	int			onground;		// -1 = in air, else pmove entity number
@@ -220,7 +222,7 @@ typedef struct
 extern client_static_t	cls;
 
 #define	STATIC_BLOCK	64				// static entities (torches, etc) come in blocks that never move
-#define	MAX_VISEDICTS		256
+#define	MAX_VISEDICTS		1024
 #define NET_TIMINGS			256
 #define NET_TIMINGSMASK		255
 
@@ -482,7 +484,10 @@ void CL_SetSolidPlayers (int playernum);
 void CL_SetUpPlayerPrediction(bool dopred);
 void CL_EmitEntities (void);
 void CL_ClearProjectiles (void);
-void CL_ParseProjectiles (void);
+void CL_ParseProjectiles (bool numbered);
+
+// the model with that number, NULL if there is none
+struct model_s *CL_Model (int index);
 void CL_ParsePacketEntities (bool delta);
 void CL_SetSolidEntities (void);
 void CL_ParsePlayerinfo (void);

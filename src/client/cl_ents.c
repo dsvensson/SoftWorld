@@ -150,99 +150,13 @@ PACKET ENTITY PARSING / LINKING
 */
 
 /*
-==================
-CL_ReadOrigin
-
-An entity or player origin: a float with MVD_PEXT1_FLOATCOORDS, else in the
-message's encoding
-==================
-*/
-static float CL_ReadOrigin (void)
-{
-	if (cls.mvdext1 & MVD_PEXT1_FLOATCOORDS)
-		return MSG_ReadFloat ();
-	return MSG_ReadCoord ();
-}
-
-/*
-==================
-CL_ParseDelta
-
-Can go from either a baseline or a previous packet_entity
-==================
-*/
-static int	bitcounts[32];	/// just for protocol profiling
-void CL_ParseDelta (entity_state_t *from, entity_state_t *to, int bits)
-{
-	int			i;
-
-	// set everything to the state we are delta'ing from
-	*to = *from;
-
-	to->number = bits & 511;
-	bits &= ~511;
-
-	if (bits & U_MOREBITS)
-	{	// read in the low order bits
-		i = MSG_ReadByte ();
-		bits |= i;
-	}
-
-	// count the bits for net profiling
-	for (i=0 ; i<16 ; i++)
-		if (bits&(1<<i))
-			bitcounts[i]++;
-
-	to->flags = bits;
-	
-	if (bits & U_MODEL)
-		to->modelindex = MSG_ReadByte ();
-		
-	if (bits & U_FRAME)
-		to->frame = MSG_ReadByte ();
-
-	if (bits & U_COLORMAP)
-		to->colormap = MSG_ReadByte();
-
-	if (bits & U_SKIN)
-		to->skinnum = MSG_ReadByte();
-
-	if (bits & U_EFFECTS)
-		to->effects = MSG_ReadByte();
-
-	if (bits & U_ORIGIN1)
-		to->origin[0] = CL_ReadOrigin ();
-		
-	if (bits & U_ANGLE1)
-		to->angles[0] = MSG_ReadAngle();
-
-	if (bits & U_ORIGIN2)
-		to->origin[1] = CL_ReadOrigin ();
-		
-	if (bits & U_ANGLE2)
-		to->angles[1] = MSG_ReadAngle();
-
-	if (bits & U_ORIGIN3)
-		to->origin[2] = CL_ReadOrigin ();
-		
-	if (bits & U_ANGLE3)
-		to->angles[2] = MSG_ReadAngle();
-
-	if (bits & U_SOLID)
-	{
-		// FIXME
-	}
-}
-
-
-/*
 =================
 FlushEntityPacket
 =================
 */
 void FlushEntityPacket (void)
 {
-	int			word;
+	int			word, num, bits, ext;
 	entity_state_t	olde, newe;
 
 	Con_DPrintf ("FlushEntityPacket\n");
@@ -265,7 +179,9 @@ void FlushEntityPacket (void)
 		if (!word)
 			break;	// done
 
-		CL_ParseDelta (&olde, &newe, word);
+		num = MSG_ReadEntityHeader (word, &bits, &ext, cls.fteext);
+		if (!(word & U_REMOVE))
+			MSG_ReadDeltaEntity (&olde, &newe, num, bits, ext, cls.mvdext1);
 	}
 }
 
@@ -282,7 +198,7 @@ void CL_ParsePacketEntities (bool delta)
 	int			oldpacket, newpacket;
 	packet_entities_t	*oldp, *newp, dummy;
 	int			oldindex, newindex;
-	int			word, newnum, oldnum;
+	int			word, newnum, oldnum, bits, ext;
 	bool	full;
 	byte		from;
 
@@ -347,7 +263,7 @@ void CL_ParsePacketEntities (bool delta)
 			}
 			break;
 		}
-		newnum = word&511;
+		newnum = MSG_ReadEntityHeader (word, &bits, &ext, cls.fteext);
 		oldnum = oldindex >= oldp->num_entities ? 9999 : oldp->entities[oldindex].number;
 
 		while (newnum > oldnum)
@@ -385,7 +301,7 @@ void CL_ParsePacketEntities (bool delta)
 			}
 			if (newindex >= MAX_PACKET_ENTITIES)
 				Host_EndGame ("CL_ParsePacketEntities: newindex == MAX_PACKET_ENTITIES");
-			CL_ParseDelta (&cl.baselines[newnum], &newp->entities[newindex], word);
+			MSG_ReadDeltaEntity (&cl.baselines[newnum], &newp->entities[newindex], newnum, bits, ext, cls.mvdext1);
 			newindex++;
 			continue;
 		}
@@ -403,7 +319,8 @@ void CL_ParsePacketEntities (bool delta)
 				continue;
 			}
 //Con_Printf ("delta %i\n",newnum);
-			CL_ParseDelta (&oldp->entities[oldindex], &newp->entities[newindex], word);
+			MSG_ReadDeltaEntity (&oldp->entities[oldindex], &newp->entities[newindex], newnum, bits, ext,
+				cls.mvdext1);
 			newindex++;
 			oldindex++;
 		}
@@ -459,6 +376,9 @@ void CL_LinkPacketEntities (void)
 		// if set to invisible, skip
 		if (!s1->modelindex)
 			continue;
+		model = CL_Model (s1->modelindex);
+		if (!model)
+			continue;
 
 		// create a new entity
 		if (cl.numvisedicts == MAX_VISEDICTS)
@@ -468,7 +388,7 @@ void CL_LinkPacketEntities (void)
 		cl.numvisedicts++;
 
 		ent->keynum = s1->number;
-		ent->model = model = cl.model_precache[s1->modelindex];
+		ent->model = model;
 	
 		// set colormap
 		if (s1->colormap && (s1->colormap < MAX_CLIENTS) 
@@ -592,10 +512,11 @@ void CL_ClearProjectiles (void)
 =====================
 CL_ParseProjectiles
 
-Nails are passed as efficient temporary entities
+Nails are passed as efficient temporary entities; svc_nails2 gives each its
+entity number too
 =====================
 */
-void CL_ParseProjectiles (void)
+void CL_ParseProjectiles (bool numbered)
 {
 	int		i, c, j;
 	byte	bits[6];
@@ -604,6 +525,8 @@ void CL_ParseProjectiles (void)
 	c = MSG_ReadByte ();
 	for (i=0 ; i<c ; i++)
 	{
+		if (numbered)
+			MSG_ReadByte ();
 		for (j=0 ; j<6 ; j++)
 			bits[j] = (byte)MSG_ReadByte ();
 
@@ -674,17 +597,27 @@ void CL_ParsePlayerinfo (void)
 	int			i;
 
 	num = MSG_ReadByte ();
-	if (num > MAX_CLIENTS)
-		Sys_Error ("CL_ParsePlayerinfo: bad num");
+	if (num >= MAX_CLIENTS)
+		Host_EndGame ("CL_ParsePlayerinfo: bad num %i", num);
 
 	state = &cl.frames[cl.parsecountmod].playerstate[num];
 
-	flags = state->flags = MSG_ReadShort ();
+	// with FTE_PEXT_TRANS a third byte of flags can follow; without it
+	// ZQuake's two flags of that byte sit at the top of the word
+	flags = MSG_ReadShort () & 0xffff;
+	if (cls.fteext & FTE_PEXT_TRANS)
+	{
+		if (flags & PF_EXTRA_PFS)
+			flags |= (MSG_ReadByte () & 255) << 16;
+	}
+	else
+		flags = (flags & 0x3fff) | ((flags & 0xc000) << 8);
+	state->flags = flags;
 
 	state->messagenum = cl.parsecount;
-	state->origin[0] = CL_ReadOrigin ();
-	state->origin[1] = CL_ReadOrigin ();
-	state->origin[2] = CL_ReadOrigin ();
+	state->origin[0] = MSG_ReadOrigin (cls.mvdext1);
+	state->origin[1] = MSG_ReadOrigin (cls.mvdext1);
+	state->origin[2] = MSG_ReadOrigin (cls.mvdext1);
 
 	state->frame = MSG_ReadByte ();
 
@@ -715,7 +648,15 @@ void CL_ParsePlayerinfo (void)
 		state->modelindex = cl.playerindex;
 
 	if (flags & PF_SKINNUM)
+	{
 		state->skinnum = MSG_ReadByte ();
+		// with a model, the skin's top bit is the model number's ninth
+		if ((state->skinnum & 128) && (flags & PF_MODEL))
+		{
+			state->modelindex += 256;
+			state->skinnum &= 127;
+		}
+	}
 	else
 		state->skinnum = 0;
 
@@ -728,6 +669,18 @@ void CL_ParsePlayerinfo (void)
 		state->weaponframe = MSG_ReadByte ();
 	else
 		state->weaponframe = 0;
+
+	if ((flags & PF_TRANS) && (cls.fteext & FTE_PEXT_TRANS))
+		state->alpha = (byte)MSG_ReadByte ();
+	else
+		state->alpha = 0;
+
+	memset (state->colormod, 0, sizeof(state->colormod));
+	if ((flags & PF_COLOURMOD) && (cls.fteext & FTE_PEXT_COLOURMOD))
+	{
+		for (i=0 ; i<3 ; i++)
+			state->colormod[i] = (byte)MSG_ReadByte ();
+	}
 
 	VectorCopy (state->command.angles, state->viewangles);
 }
@@ -836,7 +789,7 @@ void CL_LinkPlayers (void)
 		if (j == cl.playernum)
 			continue;
 
-		if (!state->modelindex)
+		if (!state->modelindex || !CL_Model (state->modelindex))
 			continue;
 
 		if (!Cam_DrawPlayer(j))
@@ -849,7 +802,7 @@ void CL_LinkPlayers (void)
 		cl.numvisedicts++;
 		ent->keynum = 0;
 
-		ent->model = cl.model_precache[state->modelindex];
+		ent->model = CL_Model (state->modelindex);
 		ent->skinnum = state->skinnum;
 		ent->frame = state->frame;
 		ent->translate = info->translate;
@@ -926,7 +879,7 @@ void CL_SetSolidEntities (void)
 
 		if (!state->modelindex)
 			continue;
-		if (!cl.clipmodels[state->modelindex])
+		if (!cl.clipmodels[state->modelindex])		// below MAX_MODELS, see MSG_ReadDeltaEntity
 			continue;
 		if (cl.clipmodels[state->modelindex]->hulls[1].firstclipnode)
 		{

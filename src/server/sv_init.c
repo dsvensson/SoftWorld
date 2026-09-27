@@ -82,6 +82,35 @@ static void SV_NewSignonBuffer (void)
 
 /*
 ================
+SV_NewStatic
+
+Another static entity of the level, cleared. Its number only makes it a
+valid delta; it stays below 512, so every client can read it.
+================
+*/
+entity_state_t *SV_NewStatic (void)
+{
+	entity_state_t	*s;
+	int		max;
+
+	if (sv.num_static_entities == sv.max_static_entities)
+	{
+		max = sv.max_static_entities ? sv.max_static_entities * 2 : 64;
+		s = Arena_Alloc (&sv_level_arena, (size_t)max * sizeof(*s));
+		if (sv.num_static_entities)
+			memcpy (s, sv.static_entities, (size_t)sv.num_static_entities * sizeof(*s));
+		sv.static_entities = s;
+		sv.max_static_entities = max;
+	}
+	s = &sv.static_entities[sv.num_static_entities];
+	memset (s, 0, sizeof(*s));
+	s->number = 1 + sv.num_static_entities % 511;
+	sv.num_static_entities++;
+	return s;
+}
+
+/*
+================
 SV_FlushSignon
 
 Moves to the next signon buffer if needed
@@ -131,10 +160,9 @@ baseline will be transmitted
 */
 void SV_CreateBaseline (void)
 {
-	int			i;
 	edict_t			*svent;
-	int				entnum;	
-		
+	int				entnum;
+
 	for (entnum = 0; entnum < sv.num_edicts ; entnum++)
 	{
 		svent = EDICT_NUM(entnum);
@@ -148,6 +176,7 @@ void SV_CreateBaseline (void)
 	//
 	// create entity baseline
 	//
+		svent->baseline.number = entnum;
 		VectorCopy (svent->v.origin, svent->baseline.origin);
 		VectorCopy (svent->v.angles, svent->baseline.angles);
 		svent->baseline.frame = (int)svent->v.frame;
@@ -163,29 +192,11 @@ void SV_CreateBaseline (void)
 			svent->baseline.modelindex =
 				SV_ModelIndex(PR_GetString(svent->v.model));
 		}
-
-		//
-		// flush the signon message out to a seperate buffer if
-		// nearly full
-		//
-		SV_FlushSignon ();
-
-		//
-		// add to the message
-		//
-		MSG_WriteByte (&sv.signon,svc_spawnbaseline);		
-		MSG_WriteShort (&sv.signon,entnum);
-
-		MSG_WriteByte (&sv.signon, svent->baseline.modelindex);
-		MSG_WriteByte (&sv.signon, svent->baseline.frame);
-		MSG_WriteByte (&sv.signon, svent->baseline.colormap);
-		MSG_WriteByte (&sv.signon, svent->baseline.skinnum);
-		for (i=0 ; i<3 ; i++)
-		{
-			MSG_WriteCoord(&sv.signon, svent->baseline.origin[i]);
-			MSG_WriteAngle(&sv.signon, svent->baseline.angles[i]);
-		}
+		SV_EntityLook (svent, &svent->baseline);
 	}
+
+	// sent to each client at prespawn
+	sv.num_baselines = sv.num_edicts;
 }
 
 

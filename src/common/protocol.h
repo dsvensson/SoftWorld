@@ -29,10 +29,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //
 // per-level limits
 //
-#define	MAX_EDICTS		768			// FIXME: ouch! ouch! ouch!
+#define	MAX_EDICTS		2048		// entity numbers on the wire, with FTE_PEXT_ENTITYDBL2
 #define	MAX_LIGHTSTYLES	64
-#define	MAX_MODELS		256			// these are sent over the net as bytes
-#define	MAX_SOUNDS		256			// so they cannot be blindly increased
+#define	MAX_MODELS		4096		// model numbers: bytes, with FTE_PEXT_MODELDBL shorts
+#define	MAX_SOUNDS		256			// sound numbers are sent as bytes
 
 #define	MAX_STYLESTRING	64
 
@@ -130,9 +130,20 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	MVD_PEXT1_WEAPON_PREDICTION	0x00000080
 #define	MVD_PEXT1_SIMPLE_PROJECTILE	0x00000100
 
-// the extensions this program speaks, as a client and as a server
-#define	SW_FTE_EXTENSIONS	(FTE_PEXT_FLOATCOORDS)
-#define	SW_MVD1_EXTENSIONS	(MVD_PEXT1_FLOATCOORDS)
+#define	FTE_PEXT2_VOICECHAT			0x00000002	// svc_fte_voicechat
+
+// the extensions this program speaks: CL_ as a client, SV_ as a server. The
+// server doesn't send STAT_TIME yet (ACCURATETIMINGS).
+#define	SV_FTE_EXTENSIONS	(FTE_PEXT_TRANS | FTE_PEXT_MODELDBL | FTE_PEXT_ENTITYDBL | FTE_PEXT_ENTITYDBL2 | \
+	FTE_PEXT_FLOATCOORDS | FTE_PEXT_COLOURMOD | FTE_PEXT_SPAWNSTATIC2 | FTE_PEXT_256PACKETENTITIES)
+#define	CL_FTE_EXTENSIONS	(SV_FTE_EXTENSIONS | FTE_PEXT_ACCURATETIMINGS)
+#define	SV_MVD1_EXTENSIONS	(MVD_PEXT1_FLOATCOORDS)
+#define	CL_MVD1_EXTENSIONS	(MVD_PEXT1_FLOATCOORDS)
+
+// what the client reads in recordings as well: no download comes up there,
+// and FTE's voice chat is skipped
+#define	CL_FTE_READABLE		(CL_FTE_EXTENSIONS | FTE_PEXT_CHUNKEDDOWNLOADS)
+#define	CL_FTE2_READABLE	FTE_PEXT2_VOICECHAT
 
 #define QW_CHECK_HASH 0x5157
 
@@ -242,6 +253,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define svc_serverinfo		52		// serverinfo
 #define svc_updatepl		53		// [byte] [byte]
 
+// protocol extensions
+#define	svc_fte_spawnstatic2	21	// an entity delta from nothing
+#define	svc_nails2			54		// [byte] num, each [byte] entity [48 bits] xyzpy (MVD)
+#define	svc_fte_soundlistshort	56	// svc_soundlist with a [short] start
+#define	svc_fte_modellistshort	60	// svc_modellist with a [short] start
+#define	svc_fte_spawnbaseline2	66	// an entity delta from nothing
+#define	svc_fte_voicechat	84		// [byte] [byte] [byte] [short] n [n bytes]
+
 
 //==============================================
 
@@ -275,6 +294,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	PF_DEAD			(1<<9)		// don't block movement any more
 #define	PF_GIB			(1<<10)		// offset the view height differently
 #define	PF_NOGRAV		(1<<11)		// don't apply gravity for prediction
+#define	PF_EXTRA_PFS	(1<<15)		// FTE_PEXT_TRANS: a byte of flags 16-23 follows
+#define	PF_TRANS		(1<<17)		// FTE_PEXT_TRANS: a byte of alpha, after the weapon frame
+#define	PF_COLOURMOD	(1<<19)		// FTE_PEXT_COLOURMOD: three bytes of color, after the alpha
+#define	PF_ONGROUND		(1<<22)		// ZQuake; bit 14 on the wire without FTE_PEXT_TRANS
+#define	PF_SOLID		(1<<23)		// ZQuake; bit 15 on the wire without FTE_PEXT_TRANS
 
 //==============================================
 
@@ -310,6 +334,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	U_SKIN		(1<<4)
 #define	U_EFFECTS	(1<<5)
 #define	U_SOLID		(1<<6)		// the entity should be solid for prediction
+#define	U_EVENMORE	(1<<7)		// with FTE extensions: a byte of FTE's bits follows
+
+// FTE's bits, in the byte after the MOREBITS byte and, with U_FTE_YETMORE, the
+// one after that
+#define	U_FTE_TRANS			(1<<1)		// a byte of alpha, after the angles
+#define	U_FTE_MODELDBL		(1<<3)		// the model number + 256, or a short without U_MODEL
+#define	U_FTE_ENTITYDBL		(1<<5)		// the entity number + 512
+#define	U_FTE_ENTITYDBL2	(1<<6)		// the entity number + 1024
+#define	U_FTE_YETMORE		(1<<7)		// bits 8-15 follow
+#define	U_FTE_COLOURMOD		(1<<10)		// three bytes of color, after the alpha
 
 //==============================================
 
@@ -362,7 +396,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 // entity_state_t is the information conveyed from the server
 // in an update message
-typedef struct
+typedef struct entity_state_s
 {
 	int		number;			// edict index
 
@@ -374,10 +408,14 @@ typedef struct
 	int		colormap;
 	int		skinnum;
 	int		effects;
+	byte	alpha;			// FTE_PEXT_TRANS: 0 and 255 are opaque, else alpha * 254
+	byte	colormod[3];	// FTE_PEXT_COLOURMOD: 32 is 1.0; 0 0 0 is unset
 } entity_state_t;
 
 
-#define	MAX_PACKET_ENTITIES	64	// doesn't count nails
+// entities in a packet, not counting nails: 256 with FTE_PEXT_256PACKETENTITIES
+#define	MAX_PACKET_ENTITIES	256
+#define	STD_PACKET_ENTITIES	64
 typedef struct
 {
 	int		num_entities;

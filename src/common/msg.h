@@ -40,6 +40,7 @@ void	SZ_Write (sizebuf_t *buf, void *data, int length);
 void	SZ_Print (sizebuf_t *buf, char *data);	// strcats onto the sizebuf
 
 struct usercmd_s;
+struct entity_state_s;
 
 extern struct usercmd_s nullcmd;
 
@@ -49,11 +50,20 @@ void	MSG_WriteShort (sizebuf_t *sb, int c);
 void	MSG_WriteLong (sizebuf_t *sb, int c);
 void	MSG_WriteFloat (sizebuf_t *sb, float f);
 void	MSG_WriteString (sizebuf_t *sb, char *s);
-// coordinates and angles in the buffer's encoding
+// coordinates and angles in the buffer's encoding; entity and player origins
+// as floats with MVD_PEXT1_FLOATCOORDS
 void	MSG_WriteCoord (sizebuf_t *sb, float f);
 void	MSG_WriteAngle (sizebuf_t *sb, float f);
+void	MSG_WriteOrigin (sizebuf_t *sb, float f, unsigned mvdext1);
 void	MSG_WriteAngle16 (sizebuf_t *sb, float f);
 void	MSG_WriteDeltaUsercmd (sizebuf_t *sb, struct usercmd_s *from, struct usercmd_s *cmd);
+
+// entity deltas (svc_packetentities, FTE's statics and baselines), for the
+// FTE and MVD1 protocol extensions in use; the writer's caller makes sure the
+// client can take the entity's number and model at all
+void	MSG_WriteDeltaEntity (sizebuf_t *sb, const struct entity_state_s *from, const struct entity_state_s *to,
+			bool force, unsigned fteext, unsigned mvdext1);
+void	MSG_WriteEntityRemove (sizebuf_t *sb, int number);
 
 // reading happens from the buffer given to MSG_BeginReading
 extern	int		msg_readcount;
@@ -71,5 +81,12 @@ char	*MSG_ReadStringLine (void);
 
 float	MSG_ReadCoord (void);
 float	MSG_ReadAngle (void);
+float	MSG_ReadOrigin (unsigned mvdext1);
 float	MSG_ReadAngle16 (void);
 void	MSG_ReadDeltaUsercmd (struct usercmd_s *from, struct usercmd_s *cmd);
+
+// after an entity delta's first word, which isn't 0: the rest of its header,
+// with its bits in *bits and FTE's in *ext; returns the entity number
+int		MSG_ReadEntityHeader (int word, int *bits, int *ext, unsigned fteext);
+void	MSG_ReadDeltaEntity (const struct entity_state_s *from, struct entity_state_s *to, int number,
+			int bits, int ext, unsigned mvdext1);

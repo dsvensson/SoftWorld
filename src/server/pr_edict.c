@@ -57,6 +57,8 @@ Sets everything to NULL
 void ED_ClearEdict (edict_t *e)
 {
 	memset (&e->v, 0, pr.progs->entityfields * 4);
+	e->alpha = 0;
+	memset (e->colormod, 0, sizeof(e->colormod));
 	e->free = false;
 }
 
@@ -609,6 +611,8 @@ char *ED_ParseEdict (char *data, edict_t *ent)
 // clear it
 	if (ent != sv.edicts)	// hack
 		memset (&ent->v, 0, pr.progs->entityfields * 4);
+	ent->alpha = 0;
+	memset (ent->colormod, 0, sizeof(ent->colormod));
 
 // go through all the dictionary pairs
 	while (1)
@@ -654,7 +658,14 @@ if (!strcmp(com_token, "light"))
 		key = ED_FindField (keyname);
 		if (!key)
 		{
-			Con_Printf ("%s is not a field\n", keyname);
+			// FTE's entity alpha and color, kept by the server when the
+			// progs have no such fields
+			if (!strcmp (keyname, "alpha"))
+				ent->alpha = Q_atof (com_token);
+			else if (!strcmp (keyname, "colormod"))
+				sscanf (com_token, "%f %f %f", &ent->colormod[0], &ent->colormod[1], &ent->colormod[2]);
+			else
+				Con_Printf ("%s is not a field\n", keyname);
 			continue;
 		}
 
@@ -766,6 +777,7 @@ void PR_LoadProgs (void)
 	int		i;
 	char	num[32];
 	dfunction_t *f;
+	ddef_t	*def;
 
 // flush the non-C variable lookup cache
 	for (i=0 ; i<GEFV_CACHESIZE ; i++)
@@ -851,6 +863,11 @@ void PR_LoadProgs (void)
 
 	// Zoid, find the spectator functions
 	pr.SpectatorConnect = pr.SpectatorThink = pr.SpectatorDisconnect = 0;
+
+	def = ED_FindField ("alpha");
+	pr.fofs_alpha = def && (def->type & ~DEF_SAVEGLOBAL) == ev_float ? def->ofs : 0;
+	def = ED_FindField ("colormod");
+	pr.fofs_colormod = def && (def->type & ~DEF_SAVEGLOBAL) == ev_vector ? def->ofs : 0;
 
 	if ((f = ED_FindFunction ("SpectatorConnect")) != NULL)
 		pr.SpectatorConnect = (func_t)(f - pr.functions);

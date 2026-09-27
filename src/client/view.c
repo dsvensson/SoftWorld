@@ -673,7 +673,7 @@ void V_CalcRefdef (void)
 	if (view_message->flags & (PF_GIB|PF_DEAD) )
  		view->model = NULL;
  	else
-		view->model = cl.model_precache[cl.stats[STAT_WEAPON]];
+		view->model = CL_Model (cl.stats[STAT_WEAPON]);
 	view->frame = view_message->weaponframe;
 	view->translate = NULL;
 

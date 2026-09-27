@@ -84,111 +84,84 @@ void SV_EmitNailUpdate (sizebuf_t *msg)
 ==================
 SV_WriteDelta
 
-Writes part of a packetentities message.
-Can delta from either a baseline or a previous packet_entity
+Writes part of a packetentities message, or a static entity or baseline:
+the fields that differ from a state the client has, in the form its
+protocol extensions allow
 ==================
 */
-/*
-==================
-SV_WriteOrigin
-
-An entity or player origin: a float for clients with MVD_PEXT1_FLOATCOORDS,
-else in the buffer's encoding
-==================
-*/
-static void SV_WriteOrigin (const client_t *client, sizebuf_t *msg, float f)
+void SV_WriteDelta (const client_t *client, const entity_state_t *from, const entity_state_t *to, sizebuf_t *msg,
+	bool force)
 {
-	if (client->mvdext1 & MVD_PEXT1_FLOATCOORDS)
-		MSG_WriteFloat (msg, f);
-	else
-		MSG_WriteCoord (msg, f);
+	MSG_WriteDeltaEntity (msg, from, to, force, client->fteext, client->mvdext1);
 }
 
-void SV_WriteDelta (const client_t *client, entity_state_t *from, entity_state_t *to, sizebuf_t *msg, bool force)
+/*
+==================
+SV_EntityFits
+
+Whether the client's protocol has room for the entity's number and model
+==================
+*/
+bool SV_EntityFits (const client_t *client, int number, int modelindex)
 {
-	int		bits;
-	int		i;
-	float	miss;
+	if ((number & 512) && !(client->fteext & FTE_PEXT_ENTITYDBL))
+		return false;
+	if ((number & 1024) && !(client->fteext & FTE_PEXT_ENTITYDBL2))
+		return false;
+	return modelindex < 256 || (client->fteext & FTE_PEXT_MODELDBL);
+}
 
-// send an update
-	bits = 0;
-	
-	for (i=0 ; i<3 ; i++)
+/*
+==================
+SV_EntityLook
+
+FTE's alpha and color of an entity: from the progs' fields when they have
+them, else from the map's keys
+==================
+*/
+void SV_EntityLook (const edict_t *ent, entity_state_t *s)
+{
+	const float	*fields = (const float *)&ent->v;
+	const float	*colormod;
+	float		alpha;
+	int			i, c;
+
+	alpha = pr.fofs_alpha ? fields[pr.fofs_alpha] : ent->alpha;
+	s->alpha = 0;
+	if (alpha > 0 && alpha < 1)
+		s->alpha = (byte)(alpha * 254 < 1 ? 1 : alpha * 254);
+
+	colormod = pr.fofs_colormod ? &fields[pr.fofs_colormod] : ent->colormod;
+	memset (s->colormod, 0, sizeof(s->colormod));
+	if ((colormod[0] || colormod[1] || colormod[2]) &&
+		(colormod[0] != 1 || colormod[1] != 1 || colormod[2] != 1))
 	{
-		miss = to->origin[i] - from->origin[i];
-		if ( miss < -0.1 || miss > 0.1 )
-			bits |= U_ORIGIN1<<i;
+		for (i=0 ; i<3 ; i++)
+		{
+			c = (int)(colormod[i] * 32);
+			s->colormod[i] = (byte)(c < 0 ? 0 : c > 255 ? 255 : c);
+		}
 	}
+}
 
-	if ( to->angles[0] != from->angles[0] )
-		bits |= U_ANGLE1;
-		
-	if ( to->angles[1] != from->angles[1] )
-		bits |= U_ANGLE2;
-		
-	if ( to->angles[2] != from->angles[2] )
-		bits |= U_ANGLE3;
-		
-	if ( to->colormap != from->colormap )
-		bits |= U_COLORMAP;
-		
-	if ( to->skinnum != from->skinnum )
-		bits |= U_SKIN;
-		
-	if ( to->frame != from->frame )
-		bits |= U_FRAME;
-	
-	if ( to->effects != from->effects )
-		bits |= U_EFFECTS;
-	
-	if ( to->modelindex != from->modelindex )
-		bits |= U_MODEL;
+/*
+==================
+SV_ClientBaseline
 
-	if (bits & 511)
-		bits |= U_MOREBITS;
-
-	if (to->flags & U_SOLID)
-		bits |= U_SOLID;
-
-	//
-	// write the message
-	//
-	if (!to->number)
-		SV_Error ("Unset entity number");
-	if (to->number >= 512)
-		SV_Error ("Entity number >= 512");
-
-	if (!bits && !force)
-		return;		// nothing to send!
-	i = to->number | (bits&~511);
-	if (i & U_REMOVE)
-		Sys_Error ("U_REMOVE");
-	MSG_WriteShort (msg, i);
-	
-	if (bits & U_MOREBITS)
-		MSG_WriteByte (msg, bits&255);
-	if (bits & U_MODEL)
-		MSG_WriteByte (msg,	to->modelindex);
-	if (bits & U_FRAME)
-		MSG_WriteByte (msg, to->frame);
-	if (bits & U_COLORMAP)
-		MSG_WriteByte (msg, to->colormap);
-	if (bits & U_SKIN)
-		MSG_WriteByte (msg, to->skinnum);
-	if (bits & U_EFFECTS)
-		MSG_WriteByte (msg, to->effects);
-	if (bits & U_ORIGIN1)
-		SV_WriteOrigin (client, msg, to->origin[0]);
-	if (bits & U_ANGLE1)
-		MSG_WriteAngle(msg, to->angles[0]);
-	if (bits & U_ORIGIN2)
-		SV_WriteOrigin (client, msg, to->origin[1]);
-	if (bits & U_ANGLE2)
-		MSG_WriteAngle(msg, to->angles[1]);
-	if (bits & U_ORIGIN3)
-		SV_WriteOrigin (client, msg, to->origin[2]);
-	if (bits & U_ANGLE3)
-		MSG_WriteAngle(msg, to->angles[2]);
+An entity's baseline as the client got it at prespawn, without what its
+protocol extensions have no room for; new entities are sent as deltas from it
+==================
+*/
+void SV_ClientBaseline (const client_t *client, const edict_t *ent, entity_state_t *base)
+{
+	*base = ent->baseline;
+	if (base->modelindex > 255 && !(client->fteext & FTE_PEXT_MODELDBL))
+		base->modelindex = 0;
+	if (!(client->fteext & FTE_PEXT_SPAWNSTATIC2))
+	{
+		base->alpha = 0;
+		memset (base->colormod, 0, sizeof(base->colormod));
+	}
 }
 
 /*
@@ -207,6 +180,7 @@ void SV_EmitPacketEntities (client_t *client, packet_entities_t *to, sizebuf_t *
 	int		oldindex, newindex;
 	int		oldnum, newnum;
 	int		oldmax;
+	entity_state_t	base;
 
 	// this is the frame that we are going to delta update from
 	if (client->delta_sequence != -1)
@@ -248,7 +222,8 @@ void SV_EmitPacketEntities (client_t *client, packet_entities_t *to, sizebuf_t *
 		{	// this is a new entity, send it from the baseline
 			ent = EDICT_NUM(newnum);
 //Con_Printf ("baseline %i\n", newnum);
-			SV_WriteDelta (client, &ent->baseline, &to->entities[newindex], msg, true);
+			SV_ClientBaseline (client, ent, &base);
+			SV_WriteDelta (client, &base, &to->entities[newindex], msg, true);
 			newindex++;
 			continue;
 		}
@@ -256,7 +231,7 @@ void SV_EmitPacketEntities (client_t *client, packet_entities_t *to, sizebuf_t *
 		if (newnum > oldnum)
 		{	// the old entity isn't present in the new message
 //Con_Printf ("remove %i\n", oldnum);
-			MSG_WriteShort (msg, oldnum | U_REMOVE);
+			MSG_WriteEntityRemove (msg, oldnum);
 			oldindex++;
 			continue;
 		}
@@ -279,6 +254,7 @@ void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizeb
 	int			msec;
 	usercmd_t	cmd;
 	int			pflags;
+	entity_state_t	look;
 
 	for (j=0,cl=svs.clients ; j<MAX_CLIENTS ; j++,cl++)
 	{
@@ -311,8 +287,16 @@ void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizeb
 				pflags |= PF_VELOCITY1<<i;
 		if (ent->v.effects)
 			pflags |= PF_EFFECTS;
-		if (ent->v.skin)
+		// a model past 255 borrows the skin's top bit
+		if (ent->v.skin || ((pflags & PF_MODEL) && ent->v.modelindex > 255))
 			pflags |= PF_SKINNUM;
+		SV_EntityLook (ent, &look);
+		if (look.alpha && (client->fteext & FTE_PEXT_TRANS))
+			pflags |= PF_TRANS;
+		// the flag rides in the byte that comes with FTE_PEXT_TRANS
+		if ((look.colormod[0] | look.colormod[1] | look.colormod[2]) &&
+			(client->fteext & FTE_PEXT_TRANS) && (client->fteext & FTE_PEXT_COLOURMOD))
+			pflags |= PF_COLOURMOD;
 		if (ent->v.health <= 0)
 			pflags |= PF_DEAD;
 		if (ent->v.mins[2] != -24)
@@ -335,10 +319,21 @@ void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizeb
 
 		MSG_WriteByte (msg, svc_playerinfo);
 		MSG_WriteByte (msg, j);
-		MSG_WriteShort (msg, pflags);
+		// with FTE_PEXT_TRANS, flags 16-23 go in a byte of their own; without
+		// it, the two ZQuake flags there go at the top of the word
+		if (client->fteext & FTE_PEXT_TRANS)
+		{
+			if (pflags & 0xff0000)
+				pflags |= PF_EXTRA_PFS;
+			MSG_WriteShort (msg, pflags & 0xffff);
+			if (pflags & PF_EXTRA_PFS)
+				MSG_WriteByte (msg, pflags >> 16);
+		}
+		else
+			MSG_WriteShort (msg, (pflags & 0x3fff) | ((pflags & 0xc00000) >> 8));
 
 		for (i=0 ; i<3 ; i++)
-			SV_WriteOrigin (client, msg, ent->v.origin[i]);
+			MSG_WriteOrigin (msg, ent->v.origin[i], client->mvdext1);
 
 		MSG_WriteByte (msg, (int)ent->v.frame);
 
@@ -372,16 +367,25 @@ void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs, sizeb
 				MSG_WriteShort (msg, (int)ent->v.velocity[i]);
 
 		if (pflags & PF_MODEL)
-			MSG_WriteByte (msg, (int)ent->v.modelindex);
+			MSG_WriteByte (msg, (int)ent->v.modelindex & 255);
 
 		if (pflags & PF_SKINNUM)
-			MSG_WriteByte (msg, (int)ent->v.skin);
+			MSG_WriteByte (msg, (int)ent->v.skin | ((pflags & PF_MODEL) && ent->v.modelindex > 255 ? 128 : 0));
 
 		if (pflags & PF_EFFECTS)
 			MSG_WriteByte (msg, (int)ent->v.effects);
 
 		if (pflags & PF_WEAPONFRAME)
 			MSG_WriteByte (msg, (int)ent->v.weaponframe);
+
+		if (pflags & PF_TRANS)
+			MSG_WriteByte (msg, look.alpha);
+
+		if (pflags & PF_COLOURMOD)
+		{
+			for (i=0 ; i<3 ; i++)
+				MSG_WriteByte (msg, look.colormod[i]);
+		}
 	}
 }
 
@@ -406,6 +410,7 @@ void SV_WriteEntitiesToClient (client_t *client, sizebuf_t *msg)
 	edict_t	*clent;
 	client_frame_t	*frame;
 	entity_state_t	*state;
+	int		maxentities;
 
 	// this is the frame we are creating
 	frame = &client->frames[client->netchan.incoming_sequence & UPDATE_MASK];
@@ -423,6 +428,7 @@ void SV_WriteEntitiesToClient (client_t *client, sizebuf_t *msg)
 	pack->num_entities = 0;
 
 	numnails = 0;
+	maxentities = (client->fteext & FTE_PEXT_256PACKETENTITIES) ? MAX_PACKET_ENTITIES : STD_PACKET_ENTITIES;
 
 	for (e=MAX_CLIENTS+1, ent=EDICT_NUM(e) ; e<sv.num_edicts ; e++, ent = NEXT_EDICT(ent))
 	{
@@ -441,9 +447,11 @@ void SV_WriteEntitiesToClient (client_t *client, sizebuf_t *msg)
 		if (SV_AddNailUpdate (ent))
 			continue;	// added to the special update list
 
-		// add to the packetentities
-		if (pack->num_entities == MAX_PACKET_ENTITIES)
+		// add to the packetentities, if the client's protocol has room for it
+		if (pack->num_entities == maxentities)
 			continue;	// all full
+		if (!SV_EntityFits (client, e, (int)ent->v.modelindex))
+			continue;
 
 		state = &pack->entities[pack->num_entities];
 		pack->num_entities++;
@@ -457,6 +465,7 @@ void SV_WriteEntitiesToClient (client_t *client, sizebuf_t *msg)
 		state->colormap = (int)ent->v.colormap;
 		state->skinnum = (int)ent->v.skin;
 		state->effects = (int)ent->v.effects;
+		SV_EntityLook (ent, state);
 	}
 
 	// encode the packet entities as a delta from the

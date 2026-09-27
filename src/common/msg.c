@@ -166,6 +166,154 @@ void MSG_WriteDeltaUsercmd (sizebuf_t *buf, usercmd_t *from, usercmd_t *cmd)
 	MSG_WriteByte (buf, cmd->msec);
 }
 
+void MSG_WriteOrigin (sizebuf_t *sb, float f, unsigned mvdext1)
+{
+	if (mvdext1 & MVD_PEXT1_FLOATCOORDS)
+		MSG_WriteFloat (sb, f);
+	else
+		MSG_WriteCoord (sb, f);
+}
+
+/*
+==================
+MSG_WriteDeltaEntity
+
+The fields of an entity that differ from a state the client has: its
+baseline, the state it last acknowledged, or nothing. FTE's extensions widen
+the entity and model numbers and add alpha and color; MVD_PEXT1_FLOATCOORDS
+sends the origin as floats.
+==================
+*/
+void MSG_WriteDeltaEntity (sizebuf_t *sb, const entity_state_t *from, const entity_state_t *to,
+	bool force, unsigned fteext, unsigned mvdext1)
+{
+	int		bits, ext, i;
+	float	miss;
+
+	bits = ext = 0;
+	for (i=0 ; i<3 ; i++)
+	{
+		miss = to->origin[i] - from->origin[i];
+		if (miss < -0.1f || miss > 0.1f)
+			bits |= U_ORIGIN1<<i;
+	}
+	if (to->angles[0] != from->angles[0])
+		bits |= U_ANGLE1;
+	if (to->angles[1] != from->angles[1])
+		bits |= U_ANGLE2;
+	if (to->angles[2] != from->angles[2])
+		bits |= U_ANGLE3;
+	if (to->colormap != from->colormap)
+		bits |= U_COLORMAP;
+	if (to->skinnum != from->skinnum)
+		bits |= U_SKIN;
+	if (to->frame != from->frame)
+		bits |= U_FRAME;
+	if (to->effects != from->effects)
+		bits |= U_EFFECTS;
+	if (to->modelindex != from->modelindex)
+	{
+		bits |= U_MODEL;
+		if (to->modelindex > 255)
+		{
+			ext |= U_FTE_MODELDBL;
+			if (to->modelindex > 511)
+				bits &= ~U_MODEL;		// the whole number as a short instead
+		}
+	}
+	if (to->alpha != from->alpha && (fteext & FTE_PEXT_TRANS))
+		ext |= U_FTE_TRANS;
+	if (memcmp (to->colormod, from->colormod, sizeof(to->colormod)) && (fteext & FTE_PEXT_COLOURMOD))
+		ext |= U_FTE_COLOURMOD;
+
+	if (bits & 511)
+		bits |= U_MOREBITS;
+	if (to->flags & U_SOLID)
+		bits |= U_SOLID;
+	if (!bits && !ext && !force)
+		return;		// nothing to send
+
+	if (!to->number || to->number >= MAX_EDICTS)
+		Sys_Error ("MSG_WriteDeltaEntity: entity number %i", to->number);
+	if (to->number & 512)
+		ext |= U_FTE_ENTITYDBL;
+	if (to->number & 1024)
+		ext |= U_FTE_ENTITYDBL2;
+	if (ext & 0xff00)
+		ext |= U_FTE_YETMORE;
+	if (ext & 0xff)
+		bits |= U_EVENMORE | U_MOREBITS;
+
+	MSG_WriteShort (sb, (to->number & 511) | (bits & ~511));
+	if (bits & U_MOREBITS)
+		MSG_WriteByte (sb, bits & 255);
+	if (bits & U_EVENMORE)
+		MSG_WriteByte (sb, ext & 255);
+	if (ext & U_FTE_YETMORE)
+		MSG_WriteByte (sb, ext >> 8);
+
+	if (bits & U_MODEL)
+		MSG_WriteByte (sb, to->modelindex & 255);
+	else if (ext & U_FTE_MODELDBL)
+		MSG_WriteShort (sb, to->modelindex);
+	if (bits & U_FRAME)
+		MSG_WriteByte (sb, to->frame);
+	if (bits & U_COLORMAP)
+		MSG_WriteByte (sb, to->colormap);
+	if (bits & U_SKIN)
+		MSG_WriteByte (sb, to->skinnum);
+	if (bits & U_EFFECTS)
+		MSG_WriteByte (sb, to->effects);
+	if (bits & U_ORIGIN1)
+		MSG_WriteOrigin (sb, to->origin[0], mvdext1);
+	if (bits & U_ANGLE1)
+		MSG_WriteAngle (sb, to->angles[0]);
+	if (bits & U_ORIGIN2)
+		MSG_WriteOrigin (sb, to->origin[1], mvdext1);
+	if (bits & U_ANGLE2)
+		MSG_WriteAngle (sb, to->angles[1]);
+	if (bits & U_ORIGIN3)
+		MSG_WriteOrigin (sb, to->origin[2], mvdext1);
+	if (bits & U_ANGLE3)
+		MSG_WriteAngle (sb, to->angles[2]);
+
+	// opaque goes out as 255, which every reader takes as opaque; FTE reads 0
+	// as invisible
+	if (ext & U_FTE_TRANS)
+		MSG_WriteByte (sb, to->alpha ? to->alpha : 255);
+	if (ext & U_FTE_COLOURMOD)
+	{
+		for (i=0 ; i<3 ; i++)
+			MSG_WriteByte (sb, to->colormod[0] | to->colormod[1] | to->colormod[2] ? to->colormod[i] : 32);
+	}
+}
+
+/*
+==================
+MSG_WriteEntityRemove
+
+An entity that left the client's view
+==================
+*/
+void MSG_WriteEntityRemove (sizebuf_t *sb, int number)
+{
+	int		ext;
+
+	ext = 0;
+	if (number & 512)
+		ext |= U_FTE_ENTITYDBL;
+	if (number & 1024)
+		ext |= U_FTE_ENTITYDBL2;
+	if (!ext)
+	{
+		MSG_WriteShort (sb, number | U_REMOVE);
+		return;
+	}
+	MSG_WriteShort (sb, (number & 511) | U_REMOVE | U_MOREBITS);
+	MSG_WriteByte (sb, U_EVENMORE);
+	MSG_WriteByte (sb, ext);
+}
+
 void MSG_BeginReading (sizebuf_t *buf)
 {
 	msg_readbuf = buf;
@@ -325,6 +473,97 @@ float MSG_ReadAngle (void)
 float MSG_ReadAngle16 (void)
 {
 	return (float)(MSG_ReadShort() * (360.0/65536));
+}
+
+/*
+==================
+MSG_ReadEntityHeader
+
+The entity number needs FTE's bits, which follow the flags
+==================
+*/
+int MSG_ReadEntityHeader (int word, int *bits, int *ext, unsigned fteext)
+{
+	int		number;
+
+	number = word & 511;
+	*bits = word & ~511;
+	*ext = 0;
+	if (*bits & U_MOREBITS)
+	{
+		*bits |= MSG_ReadByte () & 255;
+		if ((*bits & U_EVENMORE) && fteext)
+		{
+			*ext = MSG_ReadByte () & 255;
+			if (*ext & U_FTE_YETMORE)
+				*ext |= (MSG_ReadByte () & 255) << 8;
+			if (*ext & U_FTE_ENTITYDBL)
+				number += 512;
+			if (*ext & U_FTE_ENTITYDBL2)
+				number += 1024;
+		}
+	}
+	return number;
+}
+
+float MSG_ReadOrigin (unsigned mvdext1)
+{
+	if (mvdext1 & MVD_PEXT1_FLOATCOORDS)
+		return MSG_ReadFloat ();
+	return MSG_ReadCoord ();
+}
+
+/*
+==================
+MSG_ReadDeltaEntity
+==================
+*/
+void MSG_ReadDeltaEntity (const entity_state_t *from, entity_state_t *to, int number, int bits, int ext,
+	unsigned mvdext1)
+{
+	int		i;
+
+	*to = *from;
+	to->number = number;
+	to->flags = bits;
+
+	if (bits & U_MODEL)
+	{
+		to->modelindex = MSG_ReadByte ();
+		if (ext & U_FTE_MODELDBL)
+			to->modelindex += 256;
+	}
+	else if (ext & U_FTE_MODELDBL)
+		to->modelindex = MSG_ReadShort () & 0xffff;
+	if (to->modelindex >= MAX_MODELS)
+		to->modelindex = 0;		// past anything a server can precache
+	if (bits & U_FRAME)
+		to->frame = MSG_ReadByte ();
+	if (bits & U_COLORMAP)
+		to->colormap = MSG_ReadByte ();
+	if (bits & U_SKIN)
+		to->skinnum = MSG_ReadByte ();
+	if (bits & U_EFFECTS)
+		to->effects = MSG_ReadByte ();
+	if (bits & U_ORIGIN1)
+		to->origin[0] = MSG_ReadOrigin (mvdext1);
+	if (bits & U_ANGLE1)
+		to->angles[0] = MSG_ReadAngle ();
+	if (bits & U_ORIGIN2)
+		to->origin[1] = MSG_ReadOrigin (mvdext1);
+	if (bits & U_ANGLE2)
+		to->angles[1] = MSG_ReadAngle ();
+	if (bits & U_ORIGIN3)
+		to->origin[2] = MSG_ReadOrigin (mvdext1);
+	if (bits & U_ANGLE3)
+		to->angles[2] = MSG_ReadAngle ();
+	if (ext & U_FTE_TRANS)
+		to->alpha = (byte)MSG_ReadByte ();
+	if (ext & U_FTE_COLOURMOD)
+	{
+		for (i=0 ; i<3 ; i++)
+			to->colormod[i] = (byte)MSG_ReadByte ();
+	}
 }
 
 void MSG_ReadDeltaUsercmd (usercmd_t *from, usercmd_t *move)

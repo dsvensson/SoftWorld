@@ -114,6 +114,12 @@ typedef struct
 	int			*signon_buffer_size;
 	byte		**signon_buffers;		// MAX_DATAGRAM bytes each
 
+	// the level's static entities and the baselines SV_CreateBaseline made,
+	// sent to each client at prespawn in the form its extensions allow
+	entity_state_t	*static_entities;
+	int			num_static_entities, max_static_entities;
+	int			num_baselines;		// edicts 0 .. num_baselines - 1
+
 	areanode_t	areanodes[AREA_NODES];	// entities sorted by position
 	int			numareanodes;
 
@@ -281,7 +287,7 @@ typedef struct
 	challenge_t	challenges[MAX_CHALLENGES];	// to prevent invalid IPs from connecting
 
 	netadr_t	master_adr[MAX_MASTERS];	// heartbeats go here
-	char		localmodels[MAX_MODELS][5];	// inline model names for precache
+	char		localmodels[MAX_MODELS][6];	// inline model names for precache
 	char		localinfo[MAX_LOCALINFO_STRING+1];	// info for QuakeC only
 	FILE		*logfile;
 	FILE		*fraglogfile;
@@ -430,6 +436,7 @@ void Master_Heartbeat (void);
 //
 void SV_SpawnServer (char *server);
 void SV_FlushSignon (void);
+entity_state_t *SV_NewStatic (void);
 byte *SV_LeafPVS (int leafnum);
 byte *SV_LeafPHS (int leafnum);
 
@@ -484,6 +491,11 @@ void SV_Status_f (void);
 // sv_ents.c
 //
 void SV_WriteEntitiesToClient (client_t *client, sizebuf_t *msg);
+void SV_WriteDelta (const client_t *client, const entity_state_t *from, const entity_state_t *to, sizebuf_t *msg,
+	bool force);
+bool SV_EntityFits (const client_t *client, int number, int modelindex);
+void SV_EntityLook (const edict_t *ent, entity_state_t *s);
+void SV_ClientBaseline (const client_t *client, const edict_t *ent, entity_state_t *base);
 
 //
 // sv_nchan.c
