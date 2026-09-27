@@ -809,6 +809,7 @@ void CL_ParseStatic (bool delta)
 	ent->alpha = es.alpha;
 	ent->frame = es.frame;
 	ent->translate = NULL;
+	ent->palette = NULL;
 	ent->skinnum = es.skinnum;
 
 	VectorCopy (es.origin, ent->origin);
@@ -963,9 +964,6 @@ CL_NewTranslation
 */
 void CL_NewTranslation (int slot)
 {
-
-	int		i, j;
-	int		top, bottom;
 	player_info_t	*player;
 	char s[512];
 
@@ -983,24 +981,7 @@ void CL_NewTranslation (int slot)
 		player->_bottomcolor != player->bottomcolor || !player->skin) {
 		player->_topcolor = player->topcolor;
 		player->_bottomcolor = player->bottomcolor;
-
-		for (i=0 ; i<256 ; i++)
-			player->translate[i] = (byte)i;
-		top = player->topcolor;
-		if (top > 13 || top < 0)
-			top = 13;
-		top *= 16;
-		bottom = player->bottomcolor;
-		if (bottom > 13 || bottom < 0)
-			bottom = 13;
-		bottom *= 16;
-
-		// the artists made some backwards ranges.  sigh.
-		for (j=0 ; j<16 ; j++)
-		{
-			player->translate[TOP_RANGE+j] = (byte)(top < 128 ? top + j : top + 15 - j);
-			player->translate[BOTTOM_RANGE+j] = (byte)(bottom < 128 ? bottom + j : bottom + 15 - j);
-		}
+		Skin_Colors (player);
 	}
 }
 

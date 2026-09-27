@@ -445,12 +445,10 @@ addpinginfo:
 			}
 }
 
+// 14 to 16, orange, dark red and black, as players have them now (skin.c)
 int	Sbar_ColorForMap (int m)
 {
-	m = (m < 0) ? 0 : ((m > 13) ? 13 : m);
-
-	m *= 16;
-	return m < 128 ? m + 8 : m + 8;
+	return Skin_ColorIndex (m);
 }
 
 

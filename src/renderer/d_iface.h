@@ -85,6 +85,7 @@ typedef struct
 	int					drawtype;
 	int					seamfixupX16;
 	const byte			*skinremap;		// player colors, or r_identityremap
+	const pixel_t		*palette;		// RGB lighting: the player's colors, or d_pal30
 	bool				rgblight;		// r_lightmode 1
 	unsigned			tint[3];		// the light's color, 8.8 with the brightest 1.0
 } affinetridesc_t;

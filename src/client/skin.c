@@ -292,3 +292,153 @@ byte *Skin_ForPlayer (player_info_t *info)
 		Skin_Find (info);
 	return Skin_Cache (info->skin);
 }
+
+/*
+=============================================================================
+
+PLAYER COLORS
+
+A skin's shirt and pants are the palette's rows 1 and 6, and a player's
+colors put other rows there. 0 to 13, the rows players dress in, go there as
+painted, those past the middle of the palette backwards as they were
+painted. 14 (the fire row's orange), 15 (the last row's dark red) and 16
+(black, which old clients gave by running off the end of the palette) are
+ramps worked out from the one color, as qualia does: shaded as the painted
+rows are around the color at the ninth step, the upper steps kept from
+clipping, and black lifted to grey so its folds still show. Under RGB
+lighting a ramp is drawn as it is, through the colormap as the nearest
+colors the palette has.
+
+=============================================================================
+*/
+
+#define	BLACK_COLOR			16			// one past the palette's rows
+#define	CLOTHING_COLORS		14			// the rows players dress in
+#define	SWATCH				8			// the step that stands for a row
+#define	MIN_HIGHLIGHT		72.0f		// how bright a ramp's brightest step at least gets
+#define	FIRST_FULLBRIGHT	224			// the colormap leaves the rest unshaded
+
+// the color a number stands for: its row's ninth step, or black
+static void Skin_Swatch (int color, byte rgb[3])
+{
+	if (color >= BLACK_COLOR)
+		memset (rgb, 0, 3);
+	else
+		memcpy (rgb, cls.basepal + (color * 16 + SWATCH) * 3, 3);
+}
+
+/*
+================
+Skin_Ramp
+
+Sixteen steps from dark to bright with home at the ninth: the painted rows
+are about their brightest step times (i + 1) / 16, so the steps up to home
+are too; above it the steps go on to what fits under white, so that no
+channel clips before the others and moves the hue. A color too dark for
+that to show anything is lifted with grey.
+================
+*/
+static void Skin_Ramp (const byte home[3], byte shades[16][3])
+{
+	float	full = 16.0f / (SWATCH + 1);
+	float	reach, lift, scale, v;
+	int		brightest, i, k;
+
+	brightest = home[0] > home[1] ? home[0] : home[1];
+	brightest = brightest > home[2] ? brightest : home[2];
+	reach = brightest && 255.0f / brightest < full ? 255.0f / brightest : full;
+	lift = MIN_HIGHLIGHT - brightest * reach;
+	if (lift < 0)
+		lift = 0;
+
+	for (i=0 ; i<16 ; i++)
+	{
+		scale = i <= SWATCH ? (i + 1.0f) / (SWATCH + 1) : 1 + (reach - 1) * (i - SWATCH) / (15.0f - SWATCH);
+		for (k=0 ; k<3 ; k++)
+		{
+			v = home[k] * scale + lift * (i + 1) / 16 + 0.5f;
+			shades[i][k] = v > 255 ? 255 : (byte)v;
+		}
+	}
+}
+
+// the palette's nearest color the colormap shades
+static byte Skin_Nearest (const byte rgb[3])
+{
+	const byte	*p;
+	int			i, d, best, bestd;
+
+	best = 0;
+	bestd = 0x7fffffff;
+	for (i=0 ; i<FIRST_FULLBRIGHT ; i++)
+	{
+		p = cls.basepal + i * 3;
+		d = (p[0] - rgb[0]) * (p[0] - rgb[0]) + (p[1] - rgb[1]) * (p[1] - rgb[1]) + (p[2] - rgb[2]) * (p[2] - rgb[2]);
+		if (d < bestd)
+		{
+			bestd = d;
+			best = i;
+		}
+	}
+	return (byte)best;
+}
+
+/*
+================
+Skin_Colors
+
+The player's translation and palette from the player's colors; numbers past
+16 are black, below 0 the first row (qualia)
+================
+*/
+void Skin_Colors (player_info_t *player)
+{
+	const int	ranges[2] = {TOP_RANGE, BOTTOM_RANGE};
+	const int	colors[2] = {player->topcolor, player->bottomcolor};
+	const byte	*pal = cls.basepal;
+	byte		home[3], shades[16][3];
+	int			r, i, color, start, index;
+
+	for (i=0 ; i<256 ; i++)
+	{
+		player->translate[i] = (byte)i;
+		player->palette[i] = RGB30 (pal[i*3], pal[i*3+1], pal[i*3+2]);
+	}
+
+	for (r=0 ; r<2 ; r++)
+	{
+		color = colors[r] < 0 ? 0 : colors[r] > BLACK_COLOR ? BLACK_COLOR : colors[r];
+		if (color < CLOTHING_COLORS)
+		{
+			start = color * 16;
+			for (i=0 ; i<16 ; i++)
+			{
+				index = start < 128 ? start + i : start + 15 - i;
+				player->translate[ranges[r] + i] = (byte)index;
+				player->palette[ranges[r] + i] = RGB30 (pal[index*3], pal[index*3+1], pal[index*3+2]);
+			}
+			continue;
+		}
+		Skin_Swatch (color, home);
+		Skin_Ramp (home, shades);
+		for (i=0 ; i<16 ; i++)
+		{
+			player->translate[ranges[r] + i] = Skin_Nearest (shades[i]);
+			player->palette[ranges[r] + i] = RGB30 (shades[i][0], shades[i][1], shades[i][2]);
+		}
+	}
+}
+
+/*
+================
+Skin_ColorIndex
+
+The palette index a player's color is shown as on the scoreboard: the ninth
+step of its row, or black
+================
+*/
+int Skin_ColorIndex (int color)
+{
+	color = color < 0 ? 0 : color > BLACK_COLOR ? BLACK_COLOR : color;
+	return color == BLACK_COLOR ? 0 : color * 16 + SWATCH;
+}

@@ -695,11 +695,13 @@ void CL_LinkPacketEntities (void)
 			&& !strcmp(ent->model->name,"progs/player.mdl") )
 		{
 			ent->translate = cl.players[s1->colormap-1].translate;
+			ent->palette = cl.players[s1->colormap-1].palette;
 			ent->skin = Skin_ForPlayer (&cl.players[s1->colormap-1]);
 		}
 		else
 		{
 			ent->translate = NULL;
+			ent->palette = NULL;
 			ent->skin = NULL;
 		}
 
@@ -857,6 +859,7 @@ void CL_LinkProjectiles (void)
 		ent->skinnum = 0;
 		ent->frame = 0;
 		ent->translate = NULL;
+		ent->palette = NULL;
 		ent->skin = NULL;
 		VectorCopy (pr->origin, ent->origin);
 		VectorCopy (pr->angles, ent->angles);
@@ -1195,6 +1198,7 @@ static void CL_AddVWep (entity_t *ent, int vw_index)
 			ent->model = weapon;
 			ent->skinnum = 0;
 			ent->translate = NULL;
+			ent->palette = NULL;
 			ent->skin = NULL;
 		}
 		return;
@@ -1208,6 +1212,7 @@ static void CL_AddVWep (entity_t *ent, int vw_index)
 	e->model = weapon;
 	e->skinnum = 0;
 	e->translate = NULL;
+	e->palette = NULL;
 	e->skin = NULL;
 }
 
@@ -1278,6 +1283,7 @@ void CL_LinkPlayers (void)
 		ent->skinnum = state->skinnum;
 		ent->frame = state->frame;
 		ent->translate = info->translate;
+		ent->palette = info->palette;
 		if (state->modelindex == cl.playerindex)
 			ent->skin = Skin_ForPlayer (info);		// use custom skin
 		else

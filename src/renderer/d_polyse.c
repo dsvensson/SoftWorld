@@ -189,7 +189,7 @@ static inline pixel_t D_AliasPixel (int index, int light)
 	if (!r_affinetridesc.rgblight)
 		return d_cm30[index + (light & 0xFF00)];
 	level = light < (255 << 6) ? (unsigned)((255 << 6) - light) : 0;	// 8192 is 1.0
-	return R_LitPixel (index, (level * r_affinetridesc.tint[0]) >> 6,
+	return R_LitColor (r_affinetridesc.palette[index], d_pal30_floor[index], (level * r_affinetridesc.tint[0]) >> 6,
 		(level * r_affinetridesc.tint[1]) >> 6, (level * r_affinetridesc.tint[2]) >> 6);
 }
 
@@ -630,7 +630,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 		.skinwidth = r_affinetridesc.skinwidth,
 		.remap = r_affinetridesc.skinremap,
 		.colormap = r_affinetridesc.rgblight ? NULL : d_cm30,
-		.palette = d_pal30, .floor = d_pal30_floor,
+		.palette = r_affinetridesc.palette, .floor = d_pal30_floor,
 		.tint = {r_affinetridesc.tint[0], r_affinetridesc.tint[1], r_affinetridesc.tint[2]},
 	};
 

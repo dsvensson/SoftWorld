@@ -393,6 +393,7 @@ entity_t *CL_NewTempEntity (void)
 	memset (ent, 0, sizeof(*ent));
 
 	ent->translate = NULL;
+	ent->palette = NULL;
 	return ent;
 }
 

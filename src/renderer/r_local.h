@@ -147,16 +147,14 @@ void R_SetFaceLightmap (model_t *mod, msurface_t *surf, const bspface_t *face, c
 extern cvar_t	r_lightmode;
 void R_DlightColor (const dlight_t *dl, float color[3]);
 
-// lit texel color: palette color times light, with 15 fraction bits. A
-// fullbright color is never darker than itself, but brighter light still
-// brightens it. The same as simd_litrow_rgb.
-static inline pixel_t R_LitPixel (int index, unsigned r, unsigned g, unsigned b)
+// lit texel color: a color times light, with 15 fraction bits. A fullbright
+// color is never darker than its floor, but brighter light still brightens
+// it. The same as simd_litrow_rgb.
+static inline pixel_t R_LitColor (pixel_t color, pixel_t floor, unsigned r, unsigned g, unsigned b)
 {
-	pixel_t	floor = d_pal30_floor[index];
-
-	r = (d_palrgb[index][0] * r) >> 15;
-	g = (d_palrgb[index][1] * g) >> 15;
-	b = (d_palrgb[index][2] * b) >> 15;
+	r = (RGB30_R (color) * r) >> 15;
+	g = (RGB30_G (color) * g) >> 15;
+	b = (RGB30_B (color) * b) >> 15;
 	if (r < RGB30_R (floor))
 		r = RGB30_R (floor);
 	if (g < RGB30_G (floor))
@@ -164,6 +162,12 @@ static inline pixel_t R_LitPixel (int index, unsigned r, unsigned g, unsigned b)
 	if (b < RGB30_B (floor))
 		b = RGB30_B (floor);
 	return RGB30 (r > 1023 ? 1023 : r, g > 1023 ? 1023 : g, b > 1023 ? 1023 : b);
+}
+
+// the palette color's
+static inline pixel_t R_LitPixel (int index, unsigned r, unsigned g, unsigned b)
+{
+	return R_LitColor (d_pal30[index], d_pal30_floor[index], r, g, b);
 }
 extern cvar_t	r_drawflat;
 extern cvar_t	r_ambient;

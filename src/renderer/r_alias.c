@@ -739,7 +739,18 @@ void R_AliasDrawModel (alight_t *plighting)
 	r_affinetridesc.drawtype = (currententity->trivial_accept == 3) &&
 			r_recursiveaffinetriangles;
 
-	r_affinetridesc.skinremap = currententity->translate ? currententity->translate : r_identityremap;
+	// a player's colors: through the colormap a remap of the skin's colors,
+	// in RGB the palette in them, which has colors the palette hasn't (skin.c)
+	if (r_affinetridesc.rgblight && currententity->palette)
+	{
+		r_affinetridesc.skinremap = r_identityremap;
+		r_affinetridesc.palette = currententity->palette;
+	}
+	else
+	{
+		r_affinetridesc.skinremap = currententity->translate ? currententity->translate : r_identityremap;
+		r_affinetridesc.palette = d_pal30;
+	}
 
 	if (currententity != r_scene.viewent)
 		r_aliaszmul = 1;

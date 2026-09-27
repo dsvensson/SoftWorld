@@ -96,7 +96,8 @@ typedef struct player_info_s
 
 	int		spectator;
 	int		stats[MAX_CL_STATS];	// an MVD's, the player's own
-	byte	translate[256];		// the palette with the player's colors
+	byte	translate[256];		// the palette with the player's colors, for the colormap
+	pixel_t	palette[256];		// and as the colors themselves, for RGB lighting (skin.c)
 	skin_t	*skin;
 } player_info_t;
 
@@ -628,6 +629,8 @@ byte	*Skin_ForPlayer (player_info_t *info);	// NULL if the skin can't be loaded
 void	Skin_Skins_f (void);
 void	Skin_AllSkins_f (void);
 void	Skin_NextDownload (void);
+void	Skin_Colors (player_info_t *player);	// translate and palette from the player's colors
+int		Skin_ColorIndex (int color);			// a player's color on the scoreboard: a palette index
 
 #define RSSHOT_WIDTH 320
 #define RSSHOT_HEIGHT 200

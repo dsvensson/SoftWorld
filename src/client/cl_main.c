@@ -477,7 +477,7 @@ void CL_Color_f (void)
 		Con_Printf ("\"color\" is \"%s %s\"\n",
 			Info_ValueForKey (cls.userinfo, "topcolor"),
 			Info_ValueForKey (cls.userinfo, "bottomcolor") );
-		Con_Printf ("color <0-13> [0-13]\n");
+		Con_Printf ("color <0-16> [0-16]\n");
 		return;
 	}
 
@@ -488,13 +488,10 @@ void CL_Color_f (void)
 		top = atoi(Cmd_Argv(1));
 		bottom = atoi(Cmd_Argv(2));
 	}
-	
-	top &= 15;
-	if (top > 13)
-		top = 13;
-	bottom &= 15;
-	if (bottom > 13)
-		bottom = 13;
+
+	// 14 orange, 15 dark red, 16 black (skin.c)
+	top = top < 0 ? 0 : top > 16 ? 16 : top;
+	bottom = bottom < 0 ? 0 : bottom > 16 ? 16 : bottom;
 	
 	snprintf (num, sizeof(num), "%i", top);
 	Cvar_Set ("topcolor", num);

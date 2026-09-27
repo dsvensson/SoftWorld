@@ -678,6 +678,7 @@ void V_CalcRefdef (void)
 		view->model = CL_Model (cl.stats[STAT_WEAPON]);
 	view->frame = view_message->weaponframe;
 	view->translate = NULL;
+	view->palette = NULL;
 
 // set up the refresh position
 	r_refdef.viewangles[PITCH] += cl.punchangle;

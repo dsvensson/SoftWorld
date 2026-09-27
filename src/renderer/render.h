@@ -68,6 +68,7 @@ typedef struct entity_s
 	struct model_s			*model;			// NULL = no model
 	int						frame;
 	const byte				*translate;		// player colors: a palette index remap, NULL for none
+	const pixel_t			*palette;		// and as the palette in them, for RGB lighting
 	int						skinnum;		// for Alias models
 	byte					alpha;			// FTE: 0 and 255 are opaque, else alpha * 254
 
