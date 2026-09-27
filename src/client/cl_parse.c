@@ -160,6 +160,101 @@ static void CL_SetModelChecksum (const char *modelname, const char *key)
 
 /*
 =================
+CL_ParseVWepPrecache
+
+"//vwep vwplayer w_axe w_shot ...": the models for visible weapons, the first
+the player without one; names without a path are in progs/, without an
+extension .mdl (ezQuake)
+=================
+*/
+static void CL_ParseVWepPrecache (const char *s)
+{
+	const char	*p;
+	char		*vw;
+	int			i, num;
+
+	Cmd_TokenizeString ((char *)s + 2);
+	if (Cmd_Argc () < 2)
+	{
+		cl.vwep_enabled = false;
+		return;
+	}
+	if (cls.state == ca_active)
+		return;		// they can be turned off in the game, not on
+
+	num = Cmd_Argc () - 1;
+	if (num > MAX_VWEP_MODELS)
+		num = MAX_VWEP_MODELS;
+	for (i=0 ; i<num ; i++)
+	{
+		p = Cmd_Argv (i+1);
+		vw = cl.vw_model_name[i];
+		if (!strcmp (p, "-"))
+		{
+			Q_strncpyz (vw, "-", MAX_QPATH);
+			continue;
+		}
+		if (strstr (p, "..") || p[0] == '/' || p[0] == '\\' || strchr (p, ':'))
+		{
+			Con_Printf ("Ignoring the visible weapon model %s\n", p);
+			vw[0] = 0;
+			continue;
+		}
+		snprintf (vw, MAX_QPATH, "%s%s%s", strchr (p, '/') ? "" : "progs/", p, strchr (p, '.') ? "" : ".mdl");
+	}
+}
+
+/*
+=================
+CL_Prespawn
+
+Done with the models: the first of the static signon messages
+=================
+*/
+static void CL_Prespawn (void)
+{
+	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
+//	MSG_WriteString (&cls.netchan.message, va("prespawn %i 0 %i", cl.servercount, cl.worldmodel->checksum2));
+	MSG_WriteString (&cls.netchan.message, va(prespawn_name, cl.servercount, cl.map_checksum2));
+}
+
+/*
+=================
+VWepModel_NextDownload
+
+The visible weapons' models, when the server named them; a missing weapon is
+drawn as the plain player, a missing player model turns them off (ezQuake)
+=================
+*/
+static void VWepModel_NextDownload (void)
+{
+	int		i;
+
+	if (!(cl.z_ext & Z_EXT_VWEP) || !cl.vw_model_name[0][0])
+	{
+		CL_Prespawn ();
+		return;
+	}
+
+	cls.downloadtype = dl_vwep_model;
+	for ( ; cls.downloadnumber < MAX_VWEP_MODELS ; cls.downloadnumber++)
+	{
+		if (!cl.vw_model_name[cls.downloadnumber][0] || cl.vw_model_name[cls.downloadnumber][0] == '-')
+			continue;
+		if (!CL_CheckOrDownloadFile (cl.vw_model_name[cls.downloadnumber]))
+			return;		// started a download
+	}
+
+	for (i=0 ; i<MAX_VWEP_MODELS ; i++)
+		if (cl.vw_model_name[i][0] && strcmp (cl.vw_model_name[i], "-"))
+			cl.vw_model_precache[i] = Mod_ForName (cl.vw_model_name[i], false);
+	cl.vwep_enabled = !strcmp (cl.vw_model_name[0], "-") || cl.vw_model_precache[0];
+
+	CL_Prespawn ();
+}
+
+/*
+=================
 Model_NextDownload
 =================
 */
@@ -223,10 +318,9 @@ void Model_NextDownload (void)
 	r_scene.worldmodel = cl.worldmodel;
 	R_NewMap ();
 
-	// done with modellist, request first of static signon messages
-	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
-//	MSG_WriteString (&cls.netchan.message, va("prespawn %i 0 %i", cl.servercount, cl.worldmodel->checksum2));
-	MSG_WriteString (&cls.netchan.message, va(prespawn_name, cl.servercount, cl.map_checksum2));
+	// done with the model list: the visible weapons', then the static signon
+	cls.downloadnumber = 0;
+	VWepModel_NextDownload ();
 }
 
 /*
@@ -292,6 +386,9 @@ void CL_RequestNextDownload (void)
 		break;
 	case dl_sound:
 		Sound_NextDownload ();
+		break;
+	case dl_vwep_model:
+		VWepModel_NextDownload ();
 		break;
 	case dl_none:
 	default:
@@ -1122,7 +1219,10 @@ void CL_ParseServerMessage (void)
 		case svc_stufftext:
 			s = MSG_ReadString ();
 			Con_DPrintf ("stufftext: %s\n", s);
-			Cbuf_AddText (s);
+			if (!strncmp (s, "//vwep ", 7))
+				CL_ParseVWepPrecache (s);
+			else
+				Cbuf_AddText (s);
 			break;
 			
 		case svc_damage:

@@ -156,8 +156,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	Z_EXT_VWEP			(1<<7)	// players carry visible weapons
 #define	Z_EXT_PF_SOLID		(1<<8)	// PF_SOLID is set in every playerinfo
 
-#define	SW_Z_EXTENSIONS		(Z_EXT_PM_TYPE | Z_EXT_PM_TYPE_NEW | Z_EXT_VIEWHEIGHT | Z_EXT_SERVERTIME | \
+#define	SV_Z_EXTENSIONS		(Z_EXT_PM_TYPE | Z_EXT_PM_TYPE_NEW | Z_EXT_VIEWHEIGHT | Z_EXT_SERVERTIME | \
 	Z_EXT_PITCHLIMITS | Z_EXT_JOIN_OBSERVE | Z_EXT_PF_ONGROUND | Z_EXT_PF_SOLID)
+// visible weapons need progs that choose the models: the client only
+#define	CL_Z_EXTENSIONS		(SV_Z_EXTENSIONS | Z_EXT_VWEP)
 
 // what the client reads in recordings as well: FTE's voice chat is skipped
 #define	CL_FTE_READABLE		CL_FTE_EXTENSIONS
@@ -167,7 +169,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 //=========================================
 
-#define	PORT_CLIENT	27001
 #define	PORT_MASTER	27000
 #define	PORT_SERVER	27500
 

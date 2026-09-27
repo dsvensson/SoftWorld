@@ -62,6 +62,9 @@ void	Sys_Printf (char *fmt, ...);
 // seconds since startup, from a monotonic high-resolution clock
 double	Sys_DoubleTime (void);
 
+// a number that differs between processes and between runs; not for secrets
+unsigned	Sys_Seed (void);
+
 // sleeps until Sys_DoubleTime () reaches time, or until input or a network packet
 // arrives; may return early, so callers recheck what they wait for
 void	Sys_WaitUntil (double time);

@@ -762,7 +762,7 @@ void SVC_DirectConnect (void)
 	newcl->fteext = fteext;
 	newcl->mvdext1 = mvdext1;
 	memcpy (newcl->userinfo, info, sizeof(newcl->userinfo));
-	newcl->z_ext = atoi (Info_ValueForKey (newcl->userinfo, "*z_ext")) & SW_Z_EXTENSIONS;
+	newcl->z_ext = atoi (Info_ValueForKey (newcl->userinfo, "*z_ext")) & SV_Z_EXTENSIONS;
 
 	Netchan_OutOfBandPrint (NS_SERVER, adr, "%c", S2C_CONNECTION );
 
@@ -1514,7 +1514,7 @@ void SV_InitLocal (void)
 		snprintf (svs.localmodels[i], sizeof(svs.localmodels[i]), "*%i", i);
 
 	Info_SetValueForStarKey (svs.info, "*version", va("%4.2f", VERSION), MAX_SERVERINFO_STRING, SV_InfoCharset ());
-	Info_SetValueForStarKey (svs.info, "*z_ext", va("%i", SW_Z_EXTENSIONS), MAX_SERVERINFO_STRING, SV_InfoCharset ());
+	Info_SetValueForStarKey (svs.info, "*z_ext", va("%i", SV_Z_EXTENSIONS), MAX_SERVERINFO_STRING, SV_InfoCharset ());
 
 	// init fraglog stuff
 	svs.logsequence = 1;

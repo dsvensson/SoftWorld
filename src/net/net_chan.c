@@ -29,7 +29,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
 
 #define	PACKET_HEADER	8
 
@@ -96,8 +95,10 @@ void Netchan_Init (void)
 {
 	int		port;
 
-	// pick a port value that should be nice and random
-	port = ((int)(Sys_DoubleTime()*1000) * (int)time(NULL)) & 0xffff;
+	// a value of its own for each client process: the server tells clients at
+	// one address apart by it (Sys_DoubleTime counts from the first call, and
+	// was near 0 here for every client)
+	port = Sys_Seed () & 0xffff;
 
 	Cvar_RegisterVariable (&showpackets);
 	Cvar_RegisterVariable (&showdrop);

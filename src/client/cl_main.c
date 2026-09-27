@@ -48,6 +48,8 @@ cvar_t	m_side = {.name = "m_side", .string = "0.8"};
 cvar_t	cl_predict_players = {.name = "cl_predict_players", .string = "1"};
 cvar_t	cl_predict_players2 = {.name = "cl_predict_players2", .string = "1"};
 cvar_t	cl_solid_players = {.name = "cl_solid_players", .string = "1"};
+// players hold visible weapons where the server says (Z_EXT_VWEP; ezQuake's name)
+cvar_t	r_drawvweps = {.name = "r_drawvweps", .string = "1", .archive = true};
 
 static cvar_t  localid = {.name = "localid", .string = ""};
 
@@ -508,7 +510,7 @@ void CL_ProcessServerInfo (void)
 {
 	char	*s;
 
-	cl.z_ext = atoi (Info_ValueForKey (cl.serverinfo, "*z_ext")) & SW_Z_EXTENSIONS;
+	cl.z_ext = atoi (Info_ValueForKey (cl.serverinfo, "*z_ext")) & CL_Z_EXTENSIONS;
 
 	cl.maxpitch = 80;
 	cl.minpitch = -70;
@@ -1131,7 +1133,7 @@ static void CL_InitLocal (void)
 
 	cls.state = ca_disconnected;
 	Cvar_SetUserinfoHook (CL_UserinfoCvarChanged);
-	Info_SetValueForStarKey (cls.userinfo, "*z_ext", va("%i", SW_Z_EXTENSIONS), MAX_INFO_STRING, INFO_CHARSET_USERINFO);
+	Info_SetValueForStarKey (cls.userinfo, "*z_ext", va("%i", CL_Z_EXTENSIONS), MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 
 	r_scene.numvisedicts = &cl.numvisedicts;
 	r_scene.maxvisedicts = MAX_VISEDICTS;
@@ -1185,6 +1187,7 @@ static void CL_InitLocal (void)
 	Cvar_RegisterVariable (&rcon_address);
 
 	Cvar_RegisterVariable (&cl_predict_players2);
+	Cvar_RegisterVariable (&r_drawvweps);
 	Cvar_RegisterVariable (&cl_predict_players);
 	Cvar_RegisterVariable (&cl_solid_players);
 
@@ -1528,7 +1531,8 @@ void CL_Init (void)
 	Key_Init ();
 	Con_Init ();
 
-	if (!NET_OpenSocket (NS_CLIENT, PORT_CLIENT) && !NET_OpenSocket (NS_CLIENT, PORT_ANY))
+	// a port the system picks, so that clients on one machine never meet
+	if (!NET_OpenSocket (NS_CLIENT, PORT_ANY))
 		Con_Printf ("No UDP socket, only local games\n");
 	M_Init ();
 	Mod_Init ();

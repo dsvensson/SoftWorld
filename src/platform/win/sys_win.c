@@ -43,6 +43,29 @@ void Sys_DebugLog (char *file, char *fmt, ...)
 
 /*
 ================
+Sys_Seed
+
+The performance counter, the process id and the tick count, mixed
+(splitmix64's finalizer)
+================
+*/
+unsigned Sys_Seed (void)
+{
+	LARGE_INTEGER	counter;
+	uint64_t		x;
+
+	QueryPerformanceCounter (&counter);
+	x = (uint64_t)counter.QuadPart ^ ((uint64_t)GetCurrentProcessId () << 32) ^ GetTickCount64 ();
+	x ^= x >> 30;
+	x *= 0xbf58476d1ce4e5b9ull;
+	x ^= x >> 27;
+	x *= 0x94d049bb133111ebull;
+	x ^= x >> 31;
+	return (unsigned)x;
+}
+
+/*
+================
 Sys_DoubleTime
 
 Seconds since the first call, from the performance counter.

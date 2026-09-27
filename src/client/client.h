@@ -69,6 +69,7 @@ typedef struct
 	bool		jump_held;		// the server's with Z_EXT_PM_TYPE, else predicted
 	int			jump_msec;
 	int			pm_type;		// pmtype_t: the server's with Z_EXT_PM_TYPE, else a guess
+	int			vw_index;		// Z_EXT_VWEP: the weapon model, 0 none
 } player_state_t;
 
 
@@ -151,6 +152,7 @@ typedef enum {
 	dl_model,
 	dl_sound,
 	dl_skin,
+	dl_vwep_model,
 	dl_single
 } dltype_t;		// download type
 
@@ -299,6 +301,13 @@ typedef struct
 	char		sound_name[MAX_SOUNDS][MAX_QPATH];
 
 	struct model_s		*model_precache[MAX_MODELS];
+
+	// Z_EXT_VWEP: a player model without a weapon, then the weapons, from the
+	// server's //vwep list ("-" none)
+#define	MAX_VWEP_MODELS	32
+	char		vw_model_name[MAX_VWEP_MODELS][MAX_QPATH];
+	struct model_s		*vw_model_precache[MAX_VWEP_MODELS];
+	bool		vwep_enabled;
 	struct cmodel_s	*clipmodels[MAX_MODELS];	// the world and its inline models, for prediction
 	unsigned	map_checksum2;		// the server checks it on prespawn
 	struct cmap_s	*map;			// a reference the client holds

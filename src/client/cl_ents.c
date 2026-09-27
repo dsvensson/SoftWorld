@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 extern	cvar_t	cl_predict_players;
 extern	cvar_t	cl_predict_players2;
+extern	cvar_t	r_drawvweps;
 extern	cvar_t	cl_solid_players;
 
 static struct predicted_player {
@@ -842,6 +843,9 @@ void CL_ParsePlayerinfo (void)
 	if (flags & PF_COMMAND)
 		MSG_ReadDeltaUsercmd (&nullcmd, &state->command);
 
+	// Z_EXT_VWEP: the command's impulse is the weapon's model
+	state->vw_index = (cl.z_ext & Z_EXT_VWEP) && !(flags & PF_GIB) ? state->command.impulse : 0;
+
 	for (i=0 ; i<3 ; i++)
 	{
 		if (flags & (PF_VELOCITY1<<i) )
@@ -950,6 +954,53 @@ void CL_AddFlagModels (entity_t *ent, int team)
 
 /*
 =============
+CL_AddVWep
+
+A player holding a visible weapon: the player model without one, and the
+weapon's model beside it, in the same frame. A weapon whose model is missing
+leaves the plain player; a "-" player model is the weapon alone (ezQuake).
+=============
+*/
+static void CL_AddVWep (entity_t *ent, int vw_index)
+{
+	struct model_s	*weapon;
+	entity_t		*e;
+
+	if (vw_index >= MAX_VWEP_MODELS)
+		return;
+	weapon = NULL;
+	if (strcmp (cl.vw_model_name[vw_index], "-"))
+	{
+		weapon = cl.vw_model_precache[vw_index];
+		if (!weapon)
+			return;
+	}
+
+	if (!strcmp (cl.vw_model_name[0], "-"))
+	{	// no body
+		if (weapon)
+		{
+			ent->model = weapon;
+			ent->skinnum = 0;
+			ent->translate = NULL;
+			ent->skin = NULL;
+		}
+		return;
+	}
+
+	ent->model = cl.vw_model_precache[0];
+	if (!weapon || cl.numvisedicts == MAX_VISEDICTS)
+		return;
+	e = &cl.visedicts[cl.numvisedicts++];
+	*e = *ent;
+	e->model = weapon;
+	e->skinnum = 0;
+	e->translate = NULL;
+	e->skin = NULL;
+}
+
+/*
+=============
 CL_LinkPlayers
 
 Create visible entities in the correct position
@@ -1053,6 +1104,9 @@ void CL_LinkPlayers (void)
 			CL_AddFlagModels (ent, 0);
 		else if (state->effects & EF_FLAG2)
 			CL_AddFlagModels (ent, 1);
+
+		if (cl.vwep_enabled && r_drawvweps.value && state->vw_index && state->modelindex == cl.playerindex)
+			CL_AddVWep (ent, state->vw_index);
 
 	}
 }
