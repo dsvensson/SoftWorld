@@ -1,17 +1,20 @@
 # SoftWorld
 
 QuakeWorld with a software renderer, grown from id Software's 1999 source release into a
-current Windows program: a client that hosts its own server, a dedicated server, and the
-protocol extensions today's servers and clients speak.
+current Windows and macOS program: a client that hosts its own server, a dedicated server, and
+the protocol extensions today's servers and clients speak.
 
 - **Renderer:** software only, drawing 32-bit HDR pixels. The render size is 320×200 times a
-  whole number, presented through Direct3D 11 (HDR output on HDR displays). Colored lighting
-  (`.lit`, BSPX), BSP2 maps, translucency, and AVX-512 kernels.
+  whole number, presented through Direct3D 11 on Windows and Metal 4 on macOS, where the
+  renderer draws straight into the GPU's memory (HDR output on HDR displays, both). Colored
+  lighting (`.lit`, BSPX), BSP2 maps, translucency, and AVX-512 kernels.
 - **Network:** the FTE, MVD1 and ZQuake extensions (float coordinates, 2048 entities, 4096
   models, chunked downloads, …), mvdsv's player movement and its `pm_` keys.
 - **Demos:** QWD and MVD playback, MVD seeking (`demo_jump`), QTV (`qtvplay`), item timers.
 
 ## Building
+
+### Windows
 
 You need Windows 10 or 11 on x64, and:
 
@@ -43,9 +46,31 @@ refuse to start on a CPU without it. Builds treat warnings as errors
 `clangcl-v4-debug` build Debug. The `msvc-v4-maps` test preset loads every map under the
 directory the `SW_BASEDIR` environment variable names, and is skipped without it.
 
+### macOS
+
+You need a Mac with Apple silicon on macOS 26 or later (Metal 4), and:
+
+- Xcode 26 or later, with its Metal Toolchain component, which compiles the shader:
+  `xcodebuild -downloadComponent MetalToolchain`. The Command Line Tools alone don't have it;
+  the build finds Xcode's at `/Applications/Xcode.app` (`SW_XCODE_DEVELOPER_DIR` if elsewhere).
+- CMake 3.28 or later and Ninja (Homebrew's, for example).
+- Optionally fteqcc, as on Windows.
+
+```
+cmake --preset macos-generic
+cmake --build --preset macos-generic
+ctest --preset macos-generic
+```
+
+`macos-generic` builds the scalar kernels for any Apple silicon. `macos-generic-debug` builds
+Debug, and `macos-generic-maps` is the maps test preset. The tests include `test_present`,
+which draws the Metal shader on the GPU and compares it with what screenshots make.
+
 ## Programs
 
-The executables land in `build/<preset>/<config>/`.
+The executables land in `build/<preset>/<config>/`; on macOS the two with a client are
+applications (`softworld.app`), whose programs run from a terminal too
+(`softworld.app/Contents/MacOS/softworld`).
 
 - **`softworld`:** the client, and a server of its own for `map`.
 - **`softworld-client`:** the client without a server.
@@ -67,6 +92,16 @@ softworld -basedir C:\quake +qtvplay 1@qtv.example.com:27599
 softworld-server -basedir C:\quake -port 27500 +map dm4
 ```
 
+On macOS the same, with the application's program:
+
+```
+softworld.app/Contents/MacOS/softworld -basedir ~/Games/Quake +map dm4
+softworld-server -basedir ~/Games/Quake -port 27500 +map dm4
+```
+
+Without `-basedir` the directory is the working one, as on Windows; opened from the Finder,
+the application looks next to itself.
+
 Worth knowing:
 
 | | |
@@ -77,7 +112,9 @@ Worth knowing:
 | `r_fullbright_scale`, `r_dlight_scale` | fullbrights' light, and dynamic lights' on surfaces, times these |
 | `r_threads` | threads drawing the view; 0 (the default) one a core, at most 8 |
 | `gamma`, `vid_contrast` | the view's gamma and contrast; the HUD keeps its own |
-| `vid_hdr`, `vid_hdr_paperwhite` | HDR output on an HDR display; SDR white's brightness in nits |
+| `vid_hdr`, `vid_hdr_paperwhite` | HDR output on an HDR display; SDR white's brightness in nits (on macOS 0, the default, is the system's white, and nits are over a white of 100) |
+| `vid_vsync` | 1 a frame at each refresh (the default); 0 doesn't wait for the display |
+| `vid_fullscreen`, `-fullscreen`, Alt+Enter | fullscreen: a borderless window on Windows, macOS's own (Option+Enter) on a Mac |
 | `r_profile 1`, `r_profile_show` | time a frame takes, by stage |
 | `cl_maxfps` | frame rate cap; 0 is none but the display's |
 | `demo_speed`, `pause` | MVD playback speed, and pause |
