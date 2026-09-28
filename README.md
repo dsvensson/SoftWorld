@@ -7,7 +7,7 @@ the protocol extensions today's servers and clients speak.
 - **Renderer:** software only, drawing 32-bit HDR pixels. The render size is 320×200 times a
   whole number, presented through Direct3D 11 on Windows and Metal 4 on macOS, where the
   renderer draws straight into the GPU's memory (HDR output on HDR displays, both). Colored
-  lighting (`.lit`, BSPX), BSP2 maps, translucency, and AVX-512 kernels.
+  lighting (`.lit`, BSPX), BSP2 maps, translucency, and AVX-512 and NEON kernels.
 - **Network:** the FTE, MVD1 and ZQuake extensions (float coordinates, 2048 entities, 4096
   models, chunked downloads, …), mvdsv's player movement and its `pm_` keys.
 - **Demos:** QWD and MVD playback, MVD seeking (`demo_jump`), QTV (`qtvplay`), item timers.
@@ -57,14 +57,20 @@ You need a Mac with Apple silicon on macOS 26 or later (Metal 4), and:
 - Optionally fteqcc, as on Windows.
 
 ```
-cmake --preset macos-generic
-cmake --build --preset macos-generic
-ctest --preset macos-generic
+cmake --preset macos-m3
+cmake --build --preset macos-m3
+ctest --preset macos-m3
 ```
 
-`macos-generic` builds the scalar kernels for any Apple silicon. `macos-generic-debug` builds
-Debug, and `macos-generic-maps` is the maps test preset. The tests include `test_present`,
-which draws the Metal shader on the GPU and compares it with what screenshots make.
+| Preset | Instructions |
+|---|---|
+| `macos-m3` | Apple M3's (the M2 and later run it), NEON kernels |
+| `macos-generic` | any Apple silicon, scalar kernels |
+
+`SW_ARCH` is `apple-m3` or `generic`; the m3 build refuses to start on an M1. `-debug` build
+presets build Debug, and `-maps` test presets load the maps as on Windows. The tests include
+`test_present`, which draws the Metal shader on the GPU and compares it with what screenshots
+make.
 
 ## Programs
 

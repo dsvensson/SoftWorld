@@ -17,10 +17,17 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// test_simd.c -- each x86-64-v4 kernel against the scalar reference, on
-// random input; the results must be the same bit for bit
+// test_simd.c -- each kernel of the build's SIMD backend (x86-64-v4 or
+// apple-m3) against the scalar reference, on random input; the results must be
+// the same bit for bit
 
 #include "simd_backends.h"
+
+#ifdef SW_SIMD_APPLE_M3
+#define TESTED(kernel)	Simd_M3_##kernel
+#else
+#define TESTED(kernel)	Simd_V4_##kernel
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,7 +77,7 @@ static void TestZSpan (void)
 		memset (a, 0, sizeof(a));
 		memset (b, 0, sizeof(b));
 		Simd_Scalar_ZSpan (a, count, zi, step);
-		Simd_V4_ZSpan (b, count, zi, step);
+		TESTED (ZSpan) (b, count, zi, step);
 		Check ("ZSpan", r, !memcmp (a, b, sizeof(a)));
 	}
 }
@@ -98,7 +105,7 @@ static void TestBlendSpan (void)
 		memcpy (a, dest, sizeof(a));
 		memcpy (b, dest, sizeof(b));
 		Simd_Scalar_BlendSpan (a, src, (r & 1) ? zbuf : NULL, zi, step, alpha, count);
-		Simd_V4_BlendSpan (b, src, (r & 1) ? zbuf : NULL, zi, step, alpha, count);
+		TESTED (BlendSpan) (b, src, (r & 1) ? zbuf : NULL, zi, step, alpha, count);
 		Check ("BlendSpan", r, !memcmp (a, b, sizeof(a)));
 	}
 }
@@ -144,7 +151,7 @@ static void TestTexSpan (void)
 		memset (a, 0, sizeof(a));
 		memset (b, 0, sizeof(b));
 		Simd_Scalar_TexSpan (a, &map, tex, width, u, v, count);
-		Simd_V4_TexSpan (b, &map, tex, width, u, v, count);
+		TESTED (TexSpan) (b, &map, tex, width, u, v, count);
 		Check ("TexSpan", r, !memcmp (a, b, sizeof(a)));
 	}
 }
@@ -173,7 +180,7 @@ static void TestTurbSpan (void)
 		memset (a, 0, sizeof(a));
 		memset (b, 0, sizeof(b));
 		Simd_Scalar_TurbSpan (a, &map, tex, palette, turb + (r & 127), u, v, count);
-		Simd_V4_TurbSpan (b, &map, tex, palette, turb + (r & 127), u, v, count);
+		TESTED (TurbSpan) (b, &map, tex, palette, turb + (r & 127), u, v, count);
 		Check ("TurbSpan", r, !memcmp (a, b, sizeof(a)));
 	}
 }
@@ -197,7 +204,7 @@ static void TestLitRowColormap (void)
 		memset (a, 0, sizeof(a));
 		memset (b, 0, sizeof(b));
 		Simd_Scalar_LitRowColormap (a, src, colormap, l0, (l1 - l0) / count, count);
-		Simd_V4_LitRowColormap (b, src, colormap, l0, (l1 - l0) / count, count);
+		TESTED (LitRowColormap) (b, src, colormap, l0, (l1 - l0) / count, count);
 		Check ("LitRowColormap", r, !memcmp (a, b, sizeof(a)));
 	}
 }
@@ -226,7 +233,7 @@ static void TestLitRowRGB (void)
 		memset (a, 0, sizeof(a));
 		memset (b, 0, sizeof(b));
 		Simd_Scalar_LitRowRGB (a, src, palette, floor, light, step, count);
-		Simd_V4_LitRowRGB (b, src, palette, floor, light, step, count);
+		TESTED (LitRowRGB) (b, src, palette, floor, light, step, count);
 		Check ("LitRowRGB", r, !memcmp (a, b, sizeof(a)));
 	}
 }
@@ -288,7 +295,7 @@ static void TestAliasSpan (void)
 		memcpy (za, zinit, sizeof(za));
 		memcpy (zb, zinit, sizeof(zb));
 		Simd_Scalar_AliasSpan (a, za, tex, s0 & 0xFFFF, t0 & 0xFFFF, light0, zi, count, &map);
-		Simd_V4_AliasSpan (b, zb, tex, s0 & 0xFFFF, t0 & 0xFFFF, light0, zi, count, &map);
+		TESTED (AliasSpan) (b, zb, tex, s0 & 0xFFFF, t0 & 0xFFFF, light0, zi, count, &map);
 		Check ("AliasSpan", r, !memcmp (a, b, sizeof(a)) && !memcmp (za, zb, sizeof(za)));
 	}
 }
@@ -311,7 +318,7 @@ static void TestExpand8 (void)
 		for (i = 0 ; i < 100 * 16 ; i++)
 			a[i] = b[i] = 0xDEADBEEF;
 		Simd_Scalar_Expand8 (a, src, palette, count, scale, transparent);
-		Simd_V4_Expand8 (b, src, palette, count, scale, transparent);
+		TESTED (Expand8) (b, src, palette, count, scale, transparent);
 		Check ("Expand8", r, !memcmp (a, b, sizeof(a)));
 	}
 }
@@ -334,7 +341,7 @@ static void TestCopyStream (void)
 		memset (a, 0, sizeof(a));
 		memset (b, 0, sizeof(b));
 		Simd_Scalar_CopyStream (a + to, (size_t)destpitch, src + from, (size_t)srcpitch, (size_t)bytes, rows);
-		Simd_V4_CopyStream (b + to, (size_t)destpitch, src + from, (size_t)srcpitch, (size_t)bytes, rows);
+		TESTED (CopyStream) (b + to, (size_t)destpitch, src + from, (size_t)srcpitch, (size_t)bytes, rows);
 		Check ("CopyStream", r, !memcmp (a, b, sizeof(a)));
 	}
 }

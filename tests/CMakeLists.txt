@@ -1,8 +1,11 @@
-# test_simd runs every AVX-512 kernel against the scalar reference, so it
-# needs the x86-64-v4 build.
-if(SW_ARCH STREQUAL "x86-64-v4")
+# test_simd runs every kernel of the build's SIMD backend (AVX-512 or NEON)
+# against the scalar reference, so it needs a build that has one.
+if(SW_ARCH STREQUAL "x86-64-v4" OR SW_ARCH STREQUAL "apple-m3")
 	sw_add_program(test_simd test_simd.c)
 	target_link_libraries(test_simd PRIVATE sw_simd)
+	if(SW_ARCH STREQUAL "apple-m3")
+		target_compile_definitions(test_simd PRIVATE SW_SIMD_APPLE_M3)
+	endif()
 	add_test(NAME simd COMMAND test_simd)
 endif()
 

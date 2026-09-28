@@ -54,6 +54,12 @@
 			}
 		},
 		{
+			"name": "macos-m3",
+			"displayName": "Apple clang, Apple M3 and later (NEON)",
+			"inherits": "macos",
+			"cacheVariables": { "SW_ARCH": "apple-m3" }
+		},
+		{
 			"name": "macos-generic",
 			"displayName": "Apple clang, arm64, scalar kernels",
 			"inherits": "macos",
@@ -67,6 +73,8 @@
 		{ "name": "msvc-asan", "configurePreset": "msvc-asan", "configuration": "Debug" },
 		{ "name": "clangcl-v4", "configurePreset": "clangcl-v4", "configuration": "Release" },
 		{ "name": "clangcl-v4-debug", "configurePreset": "clangcl-v4", "configuration": "Debug" },
+		{ "name": "macos-m3", "configurePreset": "macos-m3", "configuration": "Release" },
+		{ "name": "macos-m3-debug", "configurePreset": "macos-m3", "configuration": "Debug" },
 		{ "name": "macos-generic", "configurePreset": "macos-generic", "configuration": "Release" },
 		{ "name": "macos-generic-debug", "configurePreset": "macos-generic", "configuration": "Debug" }
 	],
@@ -76,6 +84,10 @@
 		{ "name": "clangcl-v4", "configurePreset": "clangcl-v4", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "msvc-v4-maps", "configurePreset": "msvc-v4", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "include": { "label": "maps" } } },
+		{ "name": "macos-m3", "configurePreset": "macos-m3", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "exclude": { "label": "maps" } } },
+		{ "name": "macos-m3-maps", "configurePreset": "macos-m3", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "include": { "label": "maps" } } },
 		{ "name": "macos-generic", "configurePreset": "macos-generic", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },
