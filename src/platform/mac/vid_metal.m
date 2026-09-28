@@ -30,6 +30,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // view is drawn into them in turn, and the 2D goes to the one not shown when it is
 // drawn again (Draw_Flush redraws all of it). Each remembers the last frame that
 // read it, and goes to the renderer only once the GPU has finished that frame.
+//
+// The drawables are SDR (10-bit, sRGB) or, on a display with EDR headroom,
+// extended linear sRGB half floats, 1.0 being SDR white as the system shows it.
+// Which one is decided again when the window moves to another display or the
+// displays change.
 
 #import <AppKit/AppKit.h>
 #import <Metal/Metal.h>
@@ -78,6 +83,7 @@ static id<MTL4CommandAllocator>		mtl_allocators[VID_SLOTS];
 static id<MTL4CommandBuffer>		mtl_commands[VID_SLOTS];
 static id<MTL4ArgumentTable>		mtl_arguments;
 static id<MTLRenderPipelineState>	mtl_sdrpipeline;
+static id<MTLRenderPipelineState>	mtl_hdrpipeline;
 static id<MTLResidencySet>			mtl_residency;
 static id<MTLSharedEvent>			mtl_event;		// signaled with each frame's serial when it is done
 static uint64_t						mtl_serial;		// the last frame committed
@@ -100,6 +106,11 @@ static double	vid_gatedtime;				// when waiting for a drawable last took long
 static int		vid_safex, vid_safey;		// where the picture may go: the view but a notch
 static id<NSObject>			vid_activity;	// what the system is told the program is doing
 static NSActivityOptions	vid_activityoptions;
+
+static bool		vid_outputdirty = true;		// recheck the display: moved, or displays changed
+static bool		vid_hdroutput;				// the drawables are extended linear
+static bool		vid_outputknown;			// the output mode has been reported
+static float	vid_hdrwanted = -1;			// vid_hdr when the display was last checked
 static int		client_width, client_height;	// the view, in pixels
 
 static void VID_SetScale (void);
@@ -276,6 +287,13 @@ static void VID_CheckMinimized (void)
 	vid_metal.contentsScale = vid_window.backingScaleFactor;
 }
 
+- (void)windowDidChangeScreen:(NSNotification *)notification
+{
+	(void)notification;
+	vid_outputdirty = true;		// maybe one with another range
+	IN_WindowChanged ();
+}
+
 - (void)windowDidEnterFullScreen:(NSNotification *)notification
 {
 	(void)notification;
@@ -370,6 +388,86 @@ static void VID_UpdateClientSize (void)
 /*
 ===============================================================================
 
+SDR AND HDR
+
+===============================================================================
+*/
+
+// SDR white on an HDR display: the system's (EDR's 1.0), or vid_hdr_paperwhite
+// nits over a reference white of 100, as macOS gives no nits for its own
+static float VID_PaperWhite (void)
+{
+	return vid_hdr_paperwhite.value > 0 ? vid_hdr_paperwhite.value / 100.0f : 1.0f;
+}
+
+/*
+================
+VID_CheckOutput
+
+Switches the drawables between SDR and extended linear to match the display
+the window is on
+================
+*/
+static void VID_CheckOutput (void)
+{
+	NSScreen	*screen = vid_window.screen;
+	CGFloat		potential = screen ? screen.maximumPotentialExtendedDynamicRangeColorComponentValue : 1;
+	bool		displayhdr = potential > 1, hdr, wasknown;
+	const char	*why = NULL;
+	CGColorSpaceRef	space;
+
+	vid_outputdirty = false;
+	vid_hdrwanted = vid_hdr.value;
+
+	hdr = displayhdr && vid_hdr.value;
+	if (!screen)
+		why = "the display wasn't found";
+	else if (displayhdr && !vid_hdr.value)
+		why = "vid_hdr is 0";
+
+	// the layer's range and format change together; frames already queued
+	// keep theirs (VID_Update draws each by its drawable's format)
+	if (vid_outputknown && hdr == vid_hdroutput && (!hdr || vid_metal.contentsHeadroom == potential))
+		return;
+	[CATransaction begin];
+	[CATransaction setDisableActions:YES];
+	space = CGColorSpaceCreateWithName (hdr ? kCGColorSpaceExtendedLinearSRGB : kCGColorSpaceSRGB);
+	vid_metal.colorspace = space;
+	CGColorSpaceRelease (space);
+	vid_metal.pixelFormat = hdr ? MTLPixelFormatRGBA16Float : MTLPixelFormatBGR10A2Unorm;
+	vid_metal.wantsExtendedDynamicRangeContent = hdr;
+	vid_metal.preferredDynamicRange = hdr ? CADynamicRangeHigh : CADynamicRangeStandard;
+	vid_metal.contentsHeadroom = hdr ? potential : 0;
+	// the shader rolls off what the display can't show; the system is not to again
+	vid_metal.toneMapMode = hdr ? CAToneMapModeNever : CAToneMapModeAutomatic;
+	[CATransaction commit];
+
+	wasknown = vid_outputknown;
+	vid_outputknown = true;
+	if (wasknown && hdr == vid_hdroutput)
+		return;
+	vid_hdroutput = hdr;
+	if (hdr && vid_hdr_paperwhite.value > 0)
+		Con_Printf ("HDR output: SDR white at %.0f nits, up to %.1f times as bright\n", vid_hdr_paperwhite.value,
+			potential);
+	else if (hdr)
+		Con_Printf ("HDR output: SDR white as the system has it, up to %.1f times as bright\n", potential);
+	else if (why)
+		Con_Printf ("SDR output: %s\n", why);
+	else
+		Con_Printf ("SDR output\n");
+}
+
+// the displays changed, or how bright they may go
+static void VID_ScreensChanged (NSNotification *notification)
+{
+	(void)notification;
+	vid_outputdirty = true;
+}
+
+/*
+===============================================================================
+
 METAL
 
 ===============================================================================
@@ -435,6 +533,7 @@ static void VID_CreateDevice (void)
 	compiler = [mtl_device newCompilerWithDescriptor:[MTL4CompilerDescriptor new] error:&error];
 	VID_Check (compiler, error, "newCompilerWithDescriptor");
 	mtl_sdrpipeline = VID_CreatePipeline (compiler, library, MTLPixelFormatBGR10A2Unorm);
+	mtl_hdrpipeline = VID_CreatePipeline (compiler, library, MTLPixelFormatRGBA16Float);
 
 	table.maxBufferBindCount = 1;
 	table.maxTextureBindCount = 2;
@@ -609,6 +708,8 @@ void VID_Update (void)
 	vid_present_constants_t			*constants;
 	vid_fit_t						fit;
 	int								slot = vid_slot, hud;
+	bool							hdr;
+	float							paperwhite, peak;
 
 	if (!vid_initialized || Minimized)
 		return;
@@ -623,6 +724,8 @@ void VID_Update (void)
 		VID_UpdateClientSize ();
 		if (client_width <= 0 || client_height <= 0)
 			return;
+		if (vid_outputdirty || vid_hdr.value != vid_hdrwanted)
+			VID_CheckOutput ();
 		VID_SetLatency ();
 		if (!VID_Presentable ())
 			return;
@@ -636,9 +739,15 @@ void VID_Update (void)
 		if (!drawable)
 			return;
 
+		// the drawable's own format: the layer's may have changed since it was queued
+		hdr = drawable.texture.pixelFormat == MTLPixelFormatRGBA16Float;
+		paperwhite = hdr ? VID_PaperWhite () : 1;
+		peak = 1;
+		if (hdr && vid_window.screen)
+			peak = (float)vid_window.screen.maximumExtendedDynamicRangeColorComponentValue;
 		fit = VID_Fit (client_width, client_height);
 		constants = (vid_present_constants_t *)((byte *)mtl_constants.contents + VID_CONSTANTS * slot);
-		VID_FillConstants (constants, &fit, false, 1, 1);
+		VID_FillConstants (constants, &fit, hdr, paperwhite, fmaxf (peak, paperwhite));
 
 		// the slot's last frame is done: its buffer wasn't handed out before
 		commands = mtl_commands[slot];
@@ -651,7 +760,7 @@ void VID_Update (void)
 		pass.colorAttachments[0].storeAction = MTLStoreActionStore;
 		pass.colorAttachments[0].clearColor = MTLClearColorMake (0, 0, 0, 1);
 		encoder = [commands renderCommandEncoderWithDescriptor:pass];
-		[encoder setRenderPipelineState:mtl_sdrpipeline];
+		[encoder setRenderPipelineState:hdr ? mtl_hdrpipeline : mtl_sdrpipeline];
 		[encoder setViewport:(MTLViewport){vid_safex + fit.x, vid_safey + fit.y, fit.width, fit.height, 0, 1}];
 		[mtl_arguments setTexture:vid_views[slot].texture.gpuResourceID atIndex:0];
 		[mtl_arguments setTexture:vid_huds[hud].texture.gpuResourceID atIndex:1];
@@ -722,8 +831,13 @@ void VID_Init (void)
 		VID_CreateDevice ();
 		VID_CreateWindow (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
 		VID_UpdateClientSize ();
+		VID_CheckOutput ();
 		VID_SetLatency ();
 		VID_SetScale ();
+		[NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidChangeScreenParametersNotification
+			object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+				VID_ScreensChanged (note);
+			}];
 
 		[vid_window makeKeyAndOrderFront:nil];
 		[NSApp activate];
