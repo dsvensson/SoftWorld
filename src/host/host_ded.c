@@ -117,7 +117,10 @@ void Host_Frame (double time)
 
 	// commands typed on the console run as if they came from server.cfg
 	while ((cmd = Sys_ConsoleInput ()) != NULL)
+	{
 		Cbuf_AddText (cmd);
+		Cbuf_AddText ("\n");	// two lines read in a frame stay two commands
+	}
 	Cbuf_Execute ();
 
 	SV_Frame (time);

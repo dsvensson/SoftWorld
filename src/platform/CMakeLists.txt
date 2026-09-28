@@ -63,4 +63,32 @@ if(WIN32)
 	foreach(target softworld softworld-server)
 		sw_copy_sanitizer_runtime(${target})
 	endforeach()
+elseif(APPLE)
+	# the process entry points and the CPU check, built as on Windows
+	add_library(sw_entry_con OBJECT
+		entry_con.c
+		cpu/cpu_check_${SW_ARCH_SUFFIX}.c)
+	target_include_directories(sw_entry_con PRIVATE .)
+	set_target_properties(sw_entry_con PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
+	sw_set_warnings(sw_entry_con)
+
+	# macOS services shared by every program
+	sw_add_module(sw_platform_mac
+		mac/sys_mac.c mac/sys_mac_workers.c mac/net_udp_mac.c mac/net_tcp_mac.c)
+	target_include_directories(sw_platform_mac PRIVATE mac)
+	target_link_libraries(sw_platform_mac PUBLIC sw_net sw_common)
+
+	# the console of the dedicated server
+	sw_add_module(sw_platform_con
+		mac/sys_mac_con.c)
+	target_include_directories(sw_platform_con PRIVATE . mac)
+	target_link_libraries(sw_platform_con PUBLIC sw_platform_mac)
+
+	set(SW_HOST_DIR "${PROJECT_SOURCE_DIR}/src/host")
+
+	# dedicated server
+	sw_add_program(softworld-server
+		"${SW_HOST_DIR}/host_ded.c"
+		$<TARGET_OBJECTS:sw_entry_con>)
+	target_link_libraries(softworld-server PRIVATE sw_server sw_platform_con)
 endif()

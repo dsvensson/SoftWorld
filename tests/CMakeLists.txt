@@ -28,3 +28,12 @@ sw_add_program(test_bspload test_bspload.c)
 target_link_libraries(test_bspload PRIVATE sw_game sw_render sw_common)
 add_test(NAME bspload COMMAND test_bspload)
 set_tests_properties(bspload PROPERTIES LABELS maps SKIP_RETURN_CODE 77)
+
+# test_workers runs Sys_Parallel over the platform's worker threads.
+sw_add_program(test_workers test_workers.c)
+if(WIN32)
+	target_link_libraries(test_workers PRIVATE sw_platform_win)
+else()
+	target_link_libraries(test_workers PRIVATE sw_platform_mac)
+endif()
+add_test(NAME workers COMMAND test_workers)
