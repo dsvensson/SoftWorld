@@ -69,6 +69,6 @@ static_assert (sizeof(vid_present_constants_t) == 64, "the shaders' constants ar
 void	VID_FillConstants (vid_present_constants_t *constants, const vid_fit_t *fit, bool hdr,
 			float paperwhite, float peak);
 
-// the layers of the frame the screen shows now: the last presented, which
-// VID_FrameToRGB reads (the backend's)
+// the layers of the frame last drawn, which VID_FrameToRGB reads (the
+// backend's: it may have handed the renderer other buffers since)
 void	VID_ShownLayers (const pixel_t **frame, const hudpixel_t **hud);

@@ -37,7 +37,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdarg.h>
 #include <stdio.h>
 
-host_t	host;
+hoststate_t	host;
 
 // a fixed frame time, for timedemos that must draw the same frames every run
 static cvar_t	host_framerate = {.name = "host_framerate", .string = "0"};

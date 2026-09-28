@@ -3,3 +3,4 @@
 #pragma once
 
 int Sys_ConsoleMain (int argc, char **argv);
+int Sys_MacMain (int argc, char **argv);		// the windowed programs on macOS

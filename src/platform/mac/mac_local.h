@@ -45,3 +45,27 @@ int		Sys_ReadWaitQueue (bool block);
 // each program's own: sleeps until Sys_DoubleTime () reaches until, or until
 // input or a packet arrives; true if woken early
 bool	Sys_WaitEvents (double until);
+
+//
+// the programs with a client
+//
+
+// sys_mac_gui.m: the window has the focus; the window is minimized or hidden
+extern	bool	ActiveApp, Minimized;
+
+// in_mac.m: the window's keyboard and mouse
+void	IN_WindowChanged (void);			// moved or resized
+void	IN_WindowActivated (bool active);
+
+// in_gamepad_mac.m
+void	IN_InitGamepad (void);
+void	IN_PollGamepad (void);
+
+#ifdef __OBJC__
+@class NSEvent, NSWindow;
+
+extern	NSWindow	*vid_window;		// vid_metal.m: the main window
+
+// an event from the queue, before AppKit gets it; true if it was input taken here
+bool	IN_HandleEvent (NSEvent *event);
+#endif

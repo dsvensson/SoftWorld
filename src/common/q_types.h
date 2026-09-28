@@ -28,4 +28,4 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 typedef unsigned char	byte;
 
 #define	MAX_QPATH		64			// max length of a quake game pathname
-#define	MAX_OSPATH		128			// max length of a filesystem pathname
+#define	MAX_OSPATH		1024		// max length of a filesystem pathname (macOS paths often pass 128)

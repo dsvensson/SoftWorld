@@ -65,12 +65,16 @@ if(WIN32)
 	endforeach()
 elseif(APPLE)
 	# the process entry points and the CPU check, built as on Windows
-	add_library(sw_entry_con OBJECT
-		entry_con.c
-		cpu/cpu_check_${SW_ARCH_SUFFIX}.c)
-	target_include_directories(sw_entry_con PRIVATE .)
-	set_target_properties(sw_entry_con PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
-	sw_set_warnings(sw_entry_con)
+	set(SW_ENTRY_gui mac/entry_gui.c)
+	set(SW_ENTRY_con entry_con.c)
+	foreach(kind gui con)
+		add_library(sw_entry_${kind} OBJECT
+			${SW_ENTRY_${kind}}
+			cpu/cpu_check_${SW_ARCH_SUFFIX}.c)
+		target_include_directories(sw_entry_${kind} PRIVATE .)
+		set_target_properties(sw_entry_${kind} PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
+		sw_set_warnings(sw_entry_${kind})
+	endforeach()
 
 	# macOS services shared by every program
 	sw_add_module(sw_platform_mac
@@ -84,7 +88,56 @@ elseif(APPLE)
 	target_include_directories(sw_platform_con PRIVATE . mac)
 	target_link_libraries(sw_platform_con PUBLIC sw_platform_mac)
 
+	# the shaders, compiled at build time and carried inside the programs
+	include(metal)
+	set(SW_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
+	file(MAKE_DIRECTORY "${SW_SHADER_DIR}")
+	sw_compile_metal("${SW_SHADER_DIR}/present.metallib" "${CMAKE_CURRENT_SOURCE_DIR}/mac/present.metal")
+	add_library(sw_present_metallib OBJECT mac/present_metallib.c "${SW_SHADER_DIR}/present.metallib")
+	set_source_files_properties(mac/present_metallib.c PROPERTIES
+		OBJECT_DEPENDS "${SW_SHADER_DIR}/present.metallib"
+		COMPILE_OPTIONS "--embed-dir=${SW_SHADER_DIR}")
+	sw_set_warnings(sw_present_metallib)
+
+	# the window, drawing, input and sound of the programs with a client
+	sw_add_module(sw_platform_gui
+		vid_common.c
+		mac/sys_mac_gui.m mac/vid_metal.m mac/in_mac.m mac/snd_coreaudio.c
+		$<TARGET_OBJECTS:sw_present_metallib>)
+	target_include_directories(sw_platform_gui PRIVATE . mac)
+	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_mac
+		"-framework AppKit" "-framework Metal" "-framework QuartzCore" "-framework AudioToolbox"
+		"-framework Carbon")
+
+	# the application's icon, from the Windows one
+	set(SW_ICON "${CMAKE_CURRENT_BINARY_DIR}/softworld.icns")
+	add_custom_command(OUTPUT "${SW_ICON}"
+		COMMAND sips -s format icns "${CMAKE_CURRENT_SOURCE_DIR}/win/softworld.ico" --out "${SW_ICON}"
+		MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/win/softworld.ico"
+		COMMENT "Converting the icon"
+		VERBATIM)
+	set_source_files_properties("${SW_ICON}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
 	set(SW_HOST_DIR "${PROJECT_SOURCE_DIR}/src/host")
+
+	# client with a local server, and the client alone: applications, which run
+	# from a terminal too (softworld.app/Contents/MacOS/softworld)
+	foreach(target softworld softworld-client)
+		sw_add_program(${target} MACOSX_BUNDLE
+			"${SW_HOST_DIR}/host.c"
+			"${SW_ICON}"
+			$<TARGET_OBJECTS:sw_entry_gui>)
+		set_target_properties(${target} PROPERTIES
+			MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/mac/Info.plist.in"
+			MACOSX_BUNDLE_BUNDLE_NAME "SoftWorld"
+			MACOSX_BUNDLE_GUI_IDENTIFIER "org.softworld.${target}"
+			MACOSX_BUNDLE_ICON_FILE "softworld.icns"
+			MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+			MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
+		target_link_libraries(${target} PRIVATE sw_platform_gui)
+	endforeach()
+	target_link_libraries(softworld PRIVATE sw_server)
+	target_link_libraries(softworld-client PRIVATE sw_server_null)
 
 	# dedicated server
 	sw_add_program(softworld-server

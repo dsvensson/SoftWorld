@@ -37,3 +37,15 @@ else()
 	target_link_libraries(test_workers PRIVATE sw_platform_mac)
 endif()
 add_test(NAME workers COMMAND test_workers)
+
+# test_present draws present.metal with Metal 4 as vid_metal.m does, and compares
+# what it shows with VID_FrameToRGB. It needs the GPU.
+if(APPLE)
+	sw_add_program(test_present test_present.m
+		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c"
+		$<TARGET_OBJECTS:sw_present_metallib>)
+	target_include_directories(test_present PRIVATE
+		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/renderer")
+	target_link_libraries(test_present PRIVATE sw_common "-framework Metal" "-framework Foundation")
+	add_test(NAME present COMMAND test_present)
+endif()

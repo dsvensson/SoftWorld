@@ -39,9 +39,9 @@ typedef struct
 	bool			initialized;	// true once commands are executed
 	bool			dedicated;		// a server without a client
 	double			realtime;		// seconds since startup; advanced once a host frame, never paused
-} host_t;
+} hoststate_t;
 
-extern	host_t	host;
+extern	hoststate_t	host;
 
 void	Host_Init (quakeparms_t *parms);
 void	Host_Shutdown (void);
