@@ -2,8 +2,8 @@
 // architecture flags and outside link-time code generation, so the CPU check runs
 // before any code that may use instructions the CPU lacks.
 
-#include "../cpu_check.h"
-#include "entry_win.h"
+#include "cpu_check.h"
+#include "entry.h"
 
 #include <stdio.h>
 

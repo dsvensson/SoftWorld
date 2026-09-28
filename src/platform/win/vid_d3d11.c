@@ -1,25 +1,22 @@
 // vid_d3d11.c -- Windows video backend: the main window and a DXGI flip-model swapchain
 // that presents the software renderer's framebuffer through Direct3D 11.
 //
-// The frame is uploaded as R10G10B10A2, with SDR white at 255, and drawn by
-// present.hlsl into the letterboxed viewport. The swapchain is SDR (B8G8R8A8) or, when
-// the display the window is on runs in HDR mode, scRGB (linear R16G16B16A16_FLOAT).
-// Which one is decided again when the window moves or the display settings change.
+// The frame is uploaded as R10G10B10A2 (vid.h: SDR white at 512) and drawn by
+// present.hlsl into the letterboxed viewport (vid_common.c has the fit and the
+// constants). The swapchain is SDR (B8G8R8A8) or, when the display the window is
+// on runs in HDR mode, scRGB (linear R16G16B16A16_FLOAT). Which one is decided
+// again when the window moves or the display settings change.
 
 #include "args.h"
 #include "cmd.h"
-#include "cvar.h"
 #include "mem.h"
 #include "print.h"
-#include "q_endian.h"
-#include "q_string.h"
 #include "sys.h"
 #include "client.h"
 #include "keys.h"
-#include "render.h"
 #include "simd.h"
 #include "sound.h"
-#include "vid.h"
+#include "vid_common.h"
 #include "win_local.h"
 
 #define COBJMACROS
@@ -30,47 +27,7 @@
 #include "present_vs.h"
 #include "present_ps.h"
 
-viddef_t	vid;				// global video state
-
 HWND		mainwindow;
-
-static cvar_t	vid_vsync = {.name = "vid_vsync", .string = "1", .archive = true};
-// render pixels per pixel of the 320x200 layout; 0 is the most the window holds
-static cvar_t	vid_scale = {.name = "vid_scale", .string = "0", .archive = true};
-// pixels 1.2 times as tall as wide, as 320x200 was shown on 4:3 screens
-static cvar_t	vid_crt = {.name = "vid_crt", .string = "0", .archive = true};
-// the layout is as wide as the window instead of 320, and sees more to the sides
-static cvar_t	vid_widescreen = {.name = "vid_widescreen", .string = "0", .archive = true};
-
-#define VID_CRT_STRETCH	1.2f	// 320x200 shown as 320x240
-// 0: whole multiples of the render size, letterboxed; 1: fill the window, sharp bilinear
-static cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true};
-// how far the 3D view's light spreads from mid gray: over 1 darker darks and brighter lights
-static cvar_t	vid_contrast = {.name = "vid_contrast", .string = "1", .archive = true};
-// use HDR output when the display is in HDR mode
-static cvar_t	vid_hdr = {.name = "vid_hdr", .string = "1", .archive = true};
-// brightness of SDR white on an HDR display, in nits; 0 uses Windows' SDR content brightness
-static cvar_t	vid_hdr_paperwhite = {.name = "vid_hdr_paperwhite", .string = "0", .archive = true};
-
-#define VID_BASE_WIDTH	320
-#define VID_BASE_HEIGHT	200
-#define VID_MAX_SCALE	16
-
-// the constant buffer of present.hlsl
-typedef struct
-{
-	float	blend[4];
-	float	texsize[2];
-	float	scale[2];
-	float	gamma;
-	float	contrast;
-	float	sharp;
-	float	hdr;
-	float	paperwhite;
-	float	peak;
-	float	pad[2];
-} present_constants_t;
-static_assert (sizeof(present_constants_t) % 16 == 0, "constant buffers are whole float4s");
 
 static IDXGIFactory2			*d3d_factory;
 static ID3D11Device				*d3d_device;
@@ -92,8 +49,6 @@ static bool						d3d_allow_tearing;
 static UINT						d3d_swapflags;
 
 static bool		vid_initialized;
-static bool		vid_crtshown;		// vid_crt when the frame was allocated
-static int		vid_forcedscale;	// -scale, which the configuration can't change
 static bool		vid_fullscreen;
 static WINDOWPLACEMENT	vid_windowed_placement = {.length = sizeof (WINDOWPLACEMENT)};
 static int		client_width, client_height;
@@ -104,11 +59,9 @@ static bool		vid_outputknown;		// the output mode has been reported
 static float	vid_hdrwanted = -1;		// vid_hdr when the display was last checked
 static float	vid_peaknits = 1000;	// the display's brightest white
 static float	vid_sdrwhitenits = 200;	// Windows' SDR content brightness on that display
-static vid_present_t	vid_present = {.gamma = 1};
 
 static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-static int VID_WantedScale (void);
-static void VID_SetScale (int scale);
+static void VID_SetScale (void);
 
 // SDR white on an HDR display: vid_hdr_paperwhite, or else what Windows uses
 static float VID_PaperWhiteNits (void)
@@ -420,7 +373,7 @@ static void VID_CreateDevice (void)
 		"ID3D11Device::CreateSamplerState");
 
 	D3D11_BUFFER_DESC constants = {
-		.ByteWidth = sizeof (present_constants_t),
+		.ByteWidth = sizeof (vid_present_constants_t),
 		.Usage = D3D11_USAGE_DEFAULT,
 		.BindFlags = D3D11_BIND_CONSTANT_BUFFER,
 	};
@@ -481,28 +434,15 @@ WINDOW
 ================
 VID_AllocBuffers
 
-The framebuffer, z-buffer and surface cache for the current render size.
+The framebuffer and its 2D layer for a frame size
 ================
 */
-static void VID_AllocBuffers (int width, int height, int scale)
+static void VID_AllocBuffers (const vid_frame_t *frame)
 {
 	Mem_Free (vid.buffer);
-	vid.buffer = Mem_Alloc ((size_t)width * height * sizeof(pixel_t));
+	vid.buffer = Mem_Alloc ((size_t)frame->width * frame->height * sizeof(pixel_t));
 	Mem_Free (vid.hud);
-	vid.hud = Mem_Calloc ((size_t)width * height, sizeof(hudpixel_t));
-	vid.huddirty = true;
-
-	vid.rowpixels = width;
-	vid.width = width;
-	vid.height = height;
-	vid.conwidth = width / scale;
-	vid.conheight = height / scale;
-	// the renderer's pixel aspect: width over height of a pixel as shown
-	vid.aspect = vid_crt.value ? ((float)VID_BASE_HEIGHT / (float)VID_BASE_WIDTH) * (320.0f / 240.0f) : 1.0f;
-	vid.recalc_refdef = 1;
-
-	vid.scale = (unsigned)scale;
-	R_SetRenderSize (width, height, scale);
+	vid.hud = Mem_Calloc ((size_t)frame->width * frame->height, sizeof(hudpixel_t));
 }
 
 /*
@@ -597,34 +537,14 @@ VIDEO CONTRACT
 
 void VID_Init (void)
 {
-	int		scale = 2;
-	int		i;
+	int		scale;
 
-	Cvar_RegisterVariable (&vid_vsync);
-	Cvar_RegisterVariable (&vid_scale);
-	Cvar_RegisterVariable (&vid_crt);
-	Cvar_RegisterVariable (&vid_widescreen);
-	Cvar_RegisterVariable (&vid_scalemode);
-	Cvar_RegisterVariable (&vid_contrast);
-	Cvar_RegisterVariable (&vid_hdr);
-	Cvar_RegisterVariable (&vid_hdr_paperwhite);
+	scale = VID_RegisterCommon ();
 	Cmd_AddCommand ("vid_fullscreen", VID_Fullscreen_f);
-
-	// -scale forces the render scale; the window starts that size either way
-	i = COM_CheckParm ("-scale");
-	if (i && i + 1 < com_argc)
-	{
-		scale = Q_atoi (com_argv[i + 1]);
-		if (scale < 1)
-			scale = 1;
-		if (scale > VID_MAX_SCALE)
-			scale = VID_MAX_SCALE;
-		vid_forcedscale = scale;
-	}
 
 	VID_CreateWindow (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
 	VID_CreateDevice ();
-	VID_SetScale (VID_WantedScale ());
+	VID_SetScale ();
 
 	ShowWindow (mainwindow, SW_SHOWDEFAULT);
 	UpdateWindow (mainwindow);
@@ -669,157 +589,26 @@ void VID_Shutdown (void)
 	mainwindow = NULL;
 }
 
-void VID_SetPresent (const vid_present_t *present)
+void VID_ShownLayers (const pixel_t **frame, const hudpixel_t **hud)
 {
-	vid_present = *present;
-}
-
-/*
-================
-VID_WantedScale
-
-vid_scale, or the largest whole multiple of 320x200 the window holds
-================
-*/
-static int VID_WantedScale (void)
-{
-	int		scale;
-	float	stretch = vid_crt.value ? VID_CRT_STRETCH : 1.0f;
-
-	if (vid_forcedscale)
-		scale = vid_forcedscale;
-	else if (vid_scale.value >= 1)
-		scale = (int)vid_scale.value;
-	else
-	{
-		scale = client_width / VID_BASE_WIDTH;
-		if ((int)(client_height / (VID_BASE_HEIGHT * stretch)) < scale)
-			scale = (int)(client_height / (VID_BASE_HEIGHT * stretch));
-	}
-	if (scale < 1)
-		scale = 1;
-	if (scale > VID_MAX_SCALE)
-		scale = VID_MAX_SCALE;
-	return scale;
-}
-
-/*
-================
-VID_WantedWidth
-
-The width of the layout: 320, or with vid_widescreen what the window holds
-at the scale, in steps of 8
-================
-*/
-static int VID_WantedWidth (int scale)
-{
-	float	stretch = vid_crt.value ? VID_CRT_STRETCH : 1.0f;
-	int		width;
-
-	if (!vid_widescreen.value || client_height <= 0)
-		return VID_BASE_WIDTH;
-	// as wide as the window is at the height the layout is shown at
-	width = (int)(client_width * (VID_BASE_HEIGHT * stretch * scale) / client_height / scale) & ~7;
-	if (width < VID_BASE_WIDTH)
-		width = VID_BASE_WIDTH;
-	if (width > MAX_CONWIDTH)
-		width = MAX_CONWIDTH;
-	return width;
+	*frame = vid.buffer;
+	*hud = vid.hud;
 }
 
 /*
 ================
 VID_SetScale
 
-A new frame size; the next frame is drawn at it
+A new frame for the window; the next frame is drawn at its size
 ================
 */
-static void VID_SetScale (int scale)
+static void VID_SetScale (void)
 {
-	int		base = VID_WantedWidth (scale);
+	vid_frame_t	frame = VID_WantedFrame (client_width, client_height);
 
-	vid_crtshown = vid_crt.value != 0;
-	VID_CreateFrameTexture (base * scale, VID_BASE_HEIGHT * scale);
-	VID_AllocBuffers (base * scale, VID_BASE_HEIGHT * scale, scale);
-	Con_DPrintf ("Render size %dx%d\n", base * scale, VID_BASE_HEIGHT * scale);
-}
-
-#define VID_MIDGRAY		0.18f	// linear light that contrast keeps
-
-static double VID_LinearToSrgb (double l)
-{
-	return l <= 0.0031308 ? l * 12.92 : 1.055 * pow (l, 1 / 2.4) - 0.055;
-}
-
-// a channel of the view as linear light (vid.h)
-static float VID_ChannelLight (unsigned code)
-{
-	float	c = code / 512.0f;
-
-	c *= c;
-	return c * c;
-}
-
-/*
-================
-VID_FrameToRGB
-
-What present.hlsl does for SDR (in light the view's gamma and contrast, what
-is brighter than white toward white, then sRGB, the view's blend and the 2D
-over it), or if not shown only white clipped, sRGB and the 2D
-================
-*/
-void VID_FrameToRGB (byte *rgb, bool shown)
-{
-	static byte	raw[1024];
-	pixel_t		p;
-	hudpixel_t	h;
-	float		light[3], c, m, contrast;
-	unsigned	x, y, a, i;
-	int			v;
-
-	for (v = 0 ; v < 1024 ; v++)
-		raw[v] = (byte)(255 * VID_LinearToSrgb (fmin (pow (v / 512.0, 4), 1)) + 0.5);
-	contrast = vid_contrast.value > 0 ? vid_contrast.value : 1;
-
-	for (y = 0 ; y < vid.height ; y++)
-		for (x = 0 ; x < vid.width ; x++, rgb += 3)
-		{
-			p = vid.buffer[y * vid.rowpixels + x];
-			h = vid.hud[y * vid.rowpixels + x];
-			if (!shown)
-			{
-				rgb[0] = raw[RGB30_R (p)];
-				rgb[1] = raw[RGB30_G (p)];
-				rgb[2] = raw[RGB30_B (p)];
-			}
-			else
-			{
-				light[0] = VID_ChannelLight (RGB30_R (p));
-				light[1] = VID_ChannelLight (RGB30_G (p));
-				light[2] = VID_ChannelLight (RGB30_B (p));
-				for (i = 0 ; i < 3 ; i++)
-				{
-					light[i] = powf (fmaxf (light[i], 0), vid_present.gamma);
-					light[i] = VID_MIDGRAY * powf (light[i] / VID_MIDGRAY, contrast);
-				}
-				m = fmaxf (light[0], fmaxf (light[1], light[2]));
-				for (i = 0 ; i < 3 ; i++)
-				{
-					if (m > 1)
-						light[i] = light[i] / m + (1 - light[i] / m) * (1 - 1 / m);
-					c = (float)VID_LinearToSrgb (fminf (light[i], 1));
-					c += (vid_present.blend[i] - c) * vid_present.blend[3];
-					rgb[i] = (byte)(255 * c + 0.5f);
-				}
-			}
-			a = HUD_A (h);
-			if (!a)
-				continue;
-			// premultiplied: the 2D's color, and the view's through the rest
-			for (i = 0 ; i < 3 ; i++)
-				rgb[i] = (byte)(((h >> (i * 8)) & 255) + (rgb[i] * (255 - a) + 127) / 255);
-		}
+	VID_CreateFrameTexture (frame.width, frame.height);
+	VID_AllocBuffers (&frame);
+	VID_SetFrame (&frame, (unsigned)frame.width);
 }
 
 /*
@@ -833,10 +622,9 @@ presents it letterboxed into the window.
 void VID_Update (void)
 {
 	D3D11_MAPPED_SUBRESOURCE	mapped;
-	present_constants_t			constants;
-	float						scale, sx, sy, stretch;
+	vid_present_constants_t		constants;
+	vid_fit_t					fit;
 	UINT						flags = 0, interval, latency;
-	int							i;
 
 	if (!vid_initialized || Minimized)
 		return;
@@ -872,35 +660,18 @@ void VID_Update (void)
 		vid.huddirty = false;
 	}
 
-	// aspect-preserving fit; whole multiples of the render size unless filling the window
-	stretch = vid_crt.value ? VID_CRT_STRETCH : 1.0f;
-	sx = (float)client_width / (float)vid.width;
-	sy = (float)client_height / ((float)vid.height * stretch);
-	scale = sx < sy ? sx : sy;
-	if (scale >= 1.0f && !vid_scalemode.value)
-		scale = floorf (scale);
-
+	fit = VID_Fit (client_width, client_height);
 	D3D11_VIEWPORT viewport = {
-		.Width = floorf (vid.width * scale),
-		.Height = floorf (vid.height * scale * stretch),
+		.TopLeftX = fit.x,
+		.TopLeftY = fit.y,
+		.Width = fit.width,
+		.Height = fit.height,
 		.MaxDepth = 1.0f,
 	};
-	viewport.TopLeftX = floorf ((client_width - viewport.Width) * 0.5f);
-	viewport.TopLeftY = floorf ((client_height - viewport.Height) * 0.5f);
 
-	for (i = 0 ; i < 4 ; i++)
-		constants.blend[i] = vid_present.blend[i];
-	constants.texsize[0] = (float)vid.width;
-	constants.texsize[1] = (float)vid.height;
-	constants.scale[0] = scale > 1.0f ? scale : 1.0f;
-	constants.scale[1] = scale * stretch > 1.0f ? scale * stretch : 1.0f;
-	constants.gamma = vid_present.gamma;
-	constants.contrast = vid_contrast.value > 0 ? vid_contrast.value : 1;
-	constants.sharp = scale == floorf (scale) && stretch == 1.0f ? 0.0f : 1.0f;
-	constants.hdr = vid_hdroutput ? 1.0f : 0.0f;
-	constants.paperwhite = VID_PaperWhiteNits () / 80.0f;		// scRGB 1.0 is 80 nits
-	constants.peak = fmaxf (vid_peaknits, VID_PaperWhiteNits ()) / 80.0f;
-	constants.pad[0] = constants.pad[1] = 0;
+	// scRGB 1.0 is 80 nits
+	VID_FillConstants (&constants, &fit, vid_hdroutput, VID_PaperWhiteNits () / 80.0f,
+		fmaxf (vid_peaknits, VID_PaperWhiteNits ()) / 80.0f);
 	ID3D11DeviceContext_UpdateSubresource (d3d_context, (ID3D11Resource *)d3d_constants, 0, NULL, &constants, 0, 0);
 
 	static const float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -922,9 +693,8 @@ void VID_Update (void)
 	IDXGISwapChain1_Present (d3d_swapchain, interval, flags);
 
 	// the window was resized, or the video settings changed
-	if (client_width > 0 && client_height > 0 && (VID_WantedScale () != (int)vid.scale
-		|| VID_WantedWidth (VID_WantedScale ()) != (int)vid.conwidth || (vid_crt.value != 0) != vid_crtshown))
-		VID_SetScale (VID_WantedScale ());
+	if (VID_NeedsResize (client_width, client_height))
+		VID_SetScale ();
 }
 
 /*

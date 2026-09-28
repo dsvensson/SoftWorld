@@ -2,7 +2,8 @@
 // flags) to the engine's main functions (built with them).
 #pragma once
 
+#include "../entry.h"
+
 #include <windows.h>
 
 int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, int nCmdShow);
-int Sys_ConsoleMain (int argc, char **argv);

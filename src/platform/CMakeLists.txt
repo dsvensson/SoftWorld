@@ -5,9 +5,11 @@ if(WIN32)
 	# Process entry points and the CPU check: built without architecture flags and
 	# outside link-time optimization so the check runs before any code that may use
 	# instructions the CPU lacks.
+	set(SW_ENTRY_gui win/entry_gui.c)
+	set(SW_ENTRY_con entry_con.c)
 	foreach(kind gui con)
 		add_library(sw_entry_${kind} OBJECT
-			win/entry_${kind}.c
+			${SW_ENTRY_${kind}}
 			cpu/cpu_check_${SW_ARCH_SUFFIX}.c)
 		target_include_directories(sw_entry_${kind} PRIVATE .)
 		set_target_properties(sw_entry_${kind} PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
@@ -26,9 +28,10 @@ if(WIN32)
 
 	# the window, drawing, input and sound of the programs with a client
 	sw_add_module(sw_platform_gui
+		vid_common.c
 		win/sys_win_gui.c win/vid_d3d11.c win/in_rawinput.c win/in_xinput.c win/snd_wasapi.c
 		"${SW_SHADER_DIR}/present_vs.h" "${SW_SHADER_DIR}/present_ps.h")
-	target_include_directories(sw_platform_gui PRIVATE "${SW_SHADER_DIR}" win)
+	target_include_directories(sw_platform_gui PRIVATE "${SW_SHADER_DIR}" . win)
 	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_win d3d11 dxgi dxguid ole32 avrt xinput)
 
 	# the console of the dedicated server
