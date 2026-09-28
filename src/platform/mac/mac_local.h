@@ -53,6 +53,9 @@ bool	Sys_WaitEvents (double until);
 // sys_mac_gui.m: the window has the focus; the window is minimized or hidden
 extern	bool	ActiveApp, Minimized;
 
+// vid_metal.m: Option+Enter
+void	VID_ToggleFullscreen (void);
+
 // in_mac.m: the window's keyboard and mouse
 void	IN_WindowChanged (void);			// moved or resized
 void	IN_WindowActivated (bool active);

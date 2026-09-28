@@ -35,6 +35,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
 
+#include "args.h"
 #include "cmd.h"
 #include "print.h"
 #include "sys.h"
@@ -96,6 +97,9 @@ static _Atomic uint64_t	vid_onscreen;		// the last frame the display has shown
 static double	vid_presenttime;			// when the last frame was presented
 static double	vid_acquiretime;			// when the last drawable was had
 static double	vid_gatedtime;				// when waiting for a drawable last took long
+static int		vid_safex, vid_safey;		// where the picture may go: the view but a notch
+static id<NSObject>			vid_activity;	// what the system is told the program is doing
+static NSActivityOptions	vid_activityoptions;
 static int		client_width, client_height;	// the view, in pixels
 
 static void VID_SetScale (void);
@@ -107,6 +111,47 @@ THE WINDOW
 
 ===============================================================================
 */
+
+/*
+================
+VID_UpdateActivity
+
+Played: no App Nap and no idle sleep, and in fullscreen the display stays on.
+In the background it only keeps its time (a server may be in the loop).
+================
+*/
+static void VID_UpdateActivity (void)
+{
+	NSActivityOptions	options = NSActivityUserInitiatedAllowingIdleSystemSleep;
+
+	if (ActiveApp && !Minimized)
+		options = NSActivityUserInteractive | (vid_fullscreen ? NSActivityIdleDisplaySleepDisabled : 0);
+	if (options == vid_activityoptions)
+		return;
+	if (vid_activity)
+		[NSProcessInfo.processInfo endActivity:vid_activity];
+	vid_activity = [NSProcessInfo.processInfo beginActivityWithOptions:options reason:@"Playing SoftWorld"];
+	vid_activityoptions = options;
+}
+
+// fullscreen is macOS's own, a space of the window's own
+static void VID_SetFullscreen (bool fullscreen)
+{
+	bool	now = (vid_window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+
+	if (fullscreen != now)
+		[vid_window toggleFullScreen:nil];
+}
+
+static void VID_Fullscreen_f (void)
+{
+	VID_SetFullscreen (!vid_fullscreen);
+}
+
+void VID_ToggleFullscreen (void)
+{
+	VID_Fullscreen_f ();
+}
 
 static void VID_AppActivate (bool active)
 {
@@ -131,6 +176,7 @@ static void VID_AppActivate (bool active)
 	}
 
 	IN_WindowActivated (ActiveApp);
+	VID_UpdateActivity ();
 }
 
 // minimized, or wholly covered or on another space: nothing to draw into, and
@@ -138,6 +184,7 @@ static void VID_AppActivate (bool active)
 static void VID_CheckMinimized (void)
 {
 	Minimized = vid_window.miniaturized || !(vid_window.occlusionState & NSWindowOcclusionStateVisible);
+	VID_UpdateActivity ();
 }
 
 @implementation SWView
@@ -229,6 +276,22 @@ static void VID_CheckMinimized (void)
 	vid_metal.contentsScale = vid_window.backingScaleFactor;
 }
 
+- (void)windowDidEnterFullScreen:(NSNotification *)notification
+{
+	(void)notification;
+	vid_fullscreen = true;
+	IN_WindowChanged ();
+	VID_UpdateActivity ();
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification
+{
+	(void)notification;
+	vid_fullscreen = false;
+	IN_WindowChanged ();
+	VID_UpdateActivity ();
+}
+
 @end
 
 /*
@@ -286,16 +349,22 @@ static void VID_CreateWindow (int width, int height)
 	[mtl_queue addResidencySet:vid_metal.residencySet];
 }
 
-// the view's size in pixels; the drawables are made that size
+// the drawables are the view's size in pixels; the picture goes where the
+// view is safe, below the notch of a MacBook's display in fullscreen
 static void VID_UpdateClientSize (void)
 {
-	NSSize	size = [vid_view convertSizeToBacking:vid_view.bounds.size];
+	NSRect	view = [vid_view convertRectToBacking:vid_view.bounds];
+	NSRect	safe = [vid_view convertRectToBacking:vid_view.safeAreaRect];
+	int		width = (int)lround (view.size.width), height = (int)lround (view.size.height);
 
-	client_width = (int)lround (size.width);
-	client_height = (int)lround (size.height);
-	if (client_width > 0 && client_height > 0
-		&& (vid_metal.drawableSize.width != client_width || vid_metal.drawableSize.height != client_height))
-		vid_metal.drawableSize = CGSizeMake (client_width, client_height);
+	if (width > 0 && height > 0 && (vid_metal.drawableSize.width != width || vid_metal.drawableSize.height != height))
+		vid_metal.drawableSize = CGSizeMake (width, height);
+
+	// the view's y is up, the drawable's down
+	client_width = (int)lround (safe.size.width);
+	client_height = (int)lround (safe.size.height);
+	vid_safex = (int)lround (safe.origin.x - view.origin.x);
+	vid_safey = (int)lround (NSMaxY (view) - NSMaxY (safe));
 }
 
 /*
@@ -583,7 +652,7 @@ void VID_Update (void)
 		pass.colorAttachments[0].clearColor = MTLClearColorMake (0, 0, 0, 1);
 		encoder = [commands renderCommandEncoderWithDescriptor:pass];
 		[encoder setRenderPipelineState:mtl_sdrpipeline];
-		[encoder setViewport:(MTLViewport){fit.x, fit.y, fit.width, fit.height, 0, 1}];
+		[encoder setViewport:(MTLViewport){vid_safex + fit.x, vid_safey + fit.y, fit.width, fit.height, 0, 1}];
 		[mtl_arguments setTexture:vid_views[slot].texture.gpuResourceID atIndex:0];
 		[mtl_arguments setTexture:vid_huds[hud].texture.gpuResourceID atIndex:1];
 		[mtl_arguments setAddress:mtl_constants.gpuAddress + VID_CONSTANTS * slot atIndex:0];
@@ -648,6 +717,7 @@ void VID_Init (void)
 	@autoreleasepool
 	{
 		scale = VID_RegisterCommon ();
+		Cmd_AddCommand ("vid_fullscreen", VID_Fullscreen_f);
 
 		VID_CreateDevice ();
 		VID_CreateWindow (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
@@ -658,6 +728,10 @@ void VID_Init (void)
 		[vid_window makeKeyAndOrderFront:nil];
 		[NSApp activate];
 		IN_WindowChanged ();
+		VID_UpdateActivity ();
+
+		if (COM_CheckParm ("-fullscreen"))
+			VID_SetFullscreen (true);
 	}
 
 	vid_initialized = true;
@@ -679,6 +753,10 @@ void VID_Shutdown (void)
 	vid.buffer = NULL;
 	vid.hud = NULL;
 
+	if (vid_activity)
+		[NSProcessInfo.processInfo endActivity:vid_activity];
+	vid_activity = nil;
+	vid_activityoptions = 0;
 	[vid_window orderOut:nil];
 	vid_window.delegate = nil;
 	vid_window = nil;

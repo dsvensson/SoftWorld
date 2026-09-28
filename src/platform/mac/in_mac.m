@@ -153,6 +153,15 @@ static void IN_KeyDown (NSEvent *event)
 	NSUInteger	i;
 	unichar		c;
 
+	// Option+Enter toggles fullscreen, as Alt+Enter does on Windows
+	if ((event.keyCode == kVK_Return || event.keyCode == kVK_ANSI_KeypadEnter)
+		&& (event.modifierFlags & NSEventModifierFlagOption))
+	{
+		if (!event.isARepeat)
+			VID_ToggleFullscreen ();
+		return;
+	}
+
 	IN_Key (event.keyCode, true);
 
 	// then the text it typed, as WM_CHAR follows WM_KEYDOWN
