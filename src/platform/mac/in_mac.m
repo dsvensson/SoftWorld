@@ -423,6 +423,7 @@ void IN_Init (void)
 {
 	Cvar_RegisterVariable (&_windowed_mouse);
 	in_iso = KBGetLayoutType ((SInt16)LMGetKbdType ()) == KEYBOARD_ISO;
+	IN_InitGamepad ();
 
 	// mice come and go; the handlers are given each as it is connected
 	in_mousequeue = dispatch_queue_create ("softworld.mouse", DISPATCH_QUEUE_SERIAL);
@@ -448,4 +449,6 @@ void IN_Commands (void)
 	IN_SetCapture (want);
 	if (in_captured)
 		IN_MouseMove ();
+
+	IN_PollGamepad ();
 }

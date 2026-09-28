@@ -102,7 +102,7 @@ elseif(APPLE)
 	# the window, drawing, input and sound of the programs with a client
 	sw_add_module(sw_platform_gui
 		vid_common.c
-		mac/sys_mac_gui.m mac/vid_metal.m mac/in_mac.m mac/snd_coreaudio.c
+		mac/sys_mac_gui.m mac/vid_metal.m mac/in_mac.m mac/in_gamepad_mac.m mac/snd_coreaudio.c
 		$<TARGET_OBJECTS:sw_present_metallib>)
 	target_include_directories(sw_platform_gui PRIVATE . mac)
 	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_mac
