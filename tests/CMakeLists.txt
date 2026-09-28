@@ -11,6 +11,11 @@ sw_add_program(test_msg test_msg.c)
 target_link_libraries(test_msg PRIVATE sw_common)
 add_test(NAME msg COMMAND test_msg)
 
+# test_md4 checks the map checksum's MD4 against RFC 1320's digests.
+sw_add_program(test_md4 test_md4.c)
+target_link_libraries(test_md4 PRIVATE sw_common)
+add_test(NAME md4 COMMAND test_md4)
+
 # test_markup reads ezQuake's and FTE's colors out of text.
 sw_add_program(test_markup test_markup.c)
 target_link_libraries(test_markup PRIVATE sw_common)

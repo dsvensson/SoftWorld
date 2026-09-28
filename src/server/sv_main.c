@@ -546,7 +546,7 @@ static void SVC_GetChallenge (void)
 	if (i == MAX_CHALLENGES)
 	{
 		// overwrite the oldest
-		svs.challenges[oldest].challenge = (rand() << 16) ^ rand();
+		svs.challenges[oldest].challenge = ((rand() & 0x7fff) << 16) | (rand() & 0xffff);
 		svs.challenges[oldest].adr = svs.net_from;
 		svs.challenges[oldest].time = (int)host.realtime;
 		i = oldest;

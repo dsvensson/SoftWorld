@@ -1,15 +1,27 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(SoftWorld VERSION 0.1.0 LANGUAGES C RC)
+if(CMAKE_HOST_APPLE)
+	# Metal 4, which the macOS presenter draws with, is macOS 26 on Apple silicon
+	set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "Oldest macOS the programs run on")
+	set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "Architectures of the macOS programs")
+endif()
 
-if(NOT MSVC)
-	message(FATAL_ERROR "SoftWorld currently builds with MSVC or clang-cl on Windows")
+project(SoftWorld VERSION 0.1.0 LANGUAGES C)
+
+if(WIN32 AND MSVC)
+	enable_language(RC)
+elseif(APPLE)
+	enable_language(OBJC)
+else()
+	message(FATAL_ERROR "SoftWorld builds with MSVC or clang-cl on Windows, or Apple clang on macOS")
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(warnings)
 include(arch)
-include(hlsl)
+if(WIN32)
+	include(hlsl)
+endif()
 include(modules)
 include(sanitize)
 
@@ -30,15 +42,29 @@ else()
 	message(WARNING "Link-time optimization is not available: ${sw_ipo_output}")
 endif()
 
-# Release keeps a program database too, for profilers and crash dumps; the code is the same
-set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo,Release>:ProgramDatabase>")
-add_link_options("$<$<CONFIG:Release>:/DEBUG;/OPT:REF;/OPT:ICF>")
+if(MSVC)
+	# Release keeps a program database too, for profilers and crash dumps; the code is the same
+	set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo,Release>:ProgramDatabase>")
+	add_link_options("$<$<CONFIG:Release>:/DEBUG;/OPT:REF;/OPT:ICF>")
 
-add_compile_definitions(_CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN NOMINMAX)
-add_compile_options(/utf-8 /permissive- /diagnostics:column)
-if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-	# keep scalar and SIMD floating-point results identical
-	add_compile_options(/clang:-ffp-contract=off)
+	add_compile_definitions(_CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN NOMINMAX)
+	add_compile_options(/utf-8 /permissive- /diagnostics:column)
+	if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+		# keep scalar and SIMD floating-point results identical
+		add_compile_options(/clang:-ffp-contract=off)
+	endif()
+else()
+	# keep scalar and SIMD floating-point results identical, and the same as the
+	# Windows builds' (arm64 fuses multiplies and adds unless told not to); and no
+	# type-based aliasing, which MSVC never did and the progs' fields rely on
+	add_compile_options(-ffp-contract=off -fno-strict-aliasing)
+	add_compile_options("$<$<COMPILE_LANGUAGE:OBJC>:-fobjc-arc>")
+	add_link_options("$<$<CONFIG:Release,RelWithDebInfo>:-Wl,-dead_strip>")
+	# static libraries are listed again for the ones after them that need them
+	add_link_options(-Wl,-no_warn_duplicate_libraries)
+	set(CMAKE_OBJC_STANDARD 23)
+	set(CMAKE_OBJC_STANDARD_REQUIRED ON)
+	set(CMAKE_OBJC_EXTENSIONS OFF)
 endif()
 
 # all executables land in <build dir>/<config>, whichever directory defines them

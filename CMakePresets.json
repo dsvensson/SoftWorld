@@ -14,32 +14,50 @@
 			}
 		},
 		{
+			"name": "windows",
+			"hidden": true,
+			"inherits": "base",
+			"condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+		},
+		{
+			"name": "macos",
+			"hidden": true,
+			"inherits": "base",
+			"condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+		},
+		{
 			"name": "msvc-v4",
 			"displayName": "MSVC, x86-64-v4 (AVX-512)",
-			"inherits": "base",
+			"inherits": "windows",
 			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "x86-64-v4" }
 		},
 		{
 			"name": "msvc-generic",
 			"displayName": "MSVC, baseline x86-64",
-			"inherits": "base",
+			"inherits": "windows",
 			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "generic" }
 		},
 		{
 			"name": "msvc-asan",
 			"displayName": "MSVC, x86-64-v4, AddressSanitizer (Debug only)",
-			"inherits": "base",
+			"inherits": "windows",
 			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "x86-64-v4", "SW_ASAN": "ON" }
 		},
 		{
 			"name": "clangcl-v4",
 			"displayName": "clang-cl + lld-link, x86-64-v4 (AVX-512)",
-			"inherits": "base",
+			"inherits": "windows",
 			"cacheVariables": {
 				"CMAKE_C_COMPILER": "clang-cl",
 				"CMAKE_LINKER_TYPE": "LLD",
 				"SW_ARCH": "x86-64-v4"
 			}
+		},
+		{
+			"name": "macos-generic",
+			"displayName": "Apple clang, arm64, scalar kernels",
+			"inherits": "macos",
+			"cacheVariables": { "SW_ARCH": "generic" }
 		}
 	],
 	"buildPresets": [
@@ -48,7 +66,9 @@
 		{ "name": "msvc-generic", "configurePreset": "msvc-generic", "configuration": "Release" },
 		{ "name": "msvc-asan", "configurePreset": "msvc-asan", "configuration": "Debug" },
 		{ "name": "clangcl-v4", "configurePreset": "clangcl-v4", "configuration": "Release" },
-		{ "name": "clangcl-v4-debug", "configurePreset": "clangcl-v4", "configuration": "Debug" }
+		{ "name": "clangcl-v4-debug", "configurePreset": "clangcl-v4", "configuration": "Debug" },
+		{ "name": "macos-generic", "configurePreset": "macos-generic", "configuration": "Release" },
+		{ "name": "macos-generic-debug", "configurePreset": "macos-generic", "configuration": "Debug" }
 	],
 	"testPresets": [
 		{ "name": "msvc-v4", "configurePreset": "msvc-v4", "configuration": "Release", "output": { "outputOnFailure": true },
@@ -56,6 +76,10 @@
 		{ "name": "clangcl-v4", "configurePreset": "clangcl-v4", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "msvc-v4-maps", "configurePreset": "msvc-v4", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "include": { "label": "maps" } } },
+		{ "name": "macos-generic", "configurePreset": "macos-generic", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "exclude": { "label": "maps" } } },
+		{ "name": "macos-generic-maps", "configurePreset": "macos-generic", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "include": { "label": "maps" } } }
 	]
 }

@@ -27,15 +27,22 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mem.h"
 #include "model.h"
 #include "q_endian.h"
+#include "q_string.h"
 #include "render.h"
 #include "sys.h"
 #include "vid.h"
 
-#include <io.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <dirent.h>
+#include <sys/stat.h>
+#endif
 
 static int	loaded, refused, failures;
 
@@ -180,7 +187,7 @@ static void TestPak (const char *path)
 		memcpy (&len, entry + 60, 4);
 		ofs = LittleLong (ofs);
 		len = LittleLong (len);
-		if (_strnicmp (name, "maps/", 5) || strlen (name) < 4 || _stricmp (name + strlen (name) - 4, ".bsp"))
+		if (Q_strncasecmp (name, "maps/", 5) || strlen (name) < 4 || Q_strcasecmp (name + strlen (name) - 4, ".bsp"))
 			continue;
 		if (ofs < 0 || len < 0 || len > size - ofs)
 			continue;
@@ -194,14 +201,36 @@ static void TestPak (const char *path)
 	Mem_Free (pak);
 }
 
+static void TestDirectory (const char *dir);
+
+// an entry of a directory: a directory to go into, or a map or pak to load
+static void TestEntry (const char *path, const char *name, bool isdir)
+{
+	size_t	n = strlen (name);
+	byte	*buf;
+	int		size;
+
+	if (isdir)
+		TestDirectory (path);
+	else if (n > 4 && !Q_strcasecmp (name + n - 4, ".bsp"))
+	{
+		buf = ReadFile (path, &size);
+		if (buf)
+		{
+			TestMap (path, buf, size);
+			Mem_Free (buf);
+		}
+	}
+	else if (n > 4 && !Q_strcasecmp (name + n - 4, ".pak"))
+		TestPak (path);
+}
+
+#ifdef _WIN32
 static void TestDirectory (const char *dir)
 {
 	struct _finddata64i32_t	fd;
 	intptr_t				h;
 	char					pattern[512], path[512];
-	size_t					n;
-	byte					*buf;
-	int						size;
 
 	snprintf (pattern, sizeof(pattern), "%s/*", dir);
 	h = _findfirst64i32 (pattern, &fd);
@@ -212,26 +241,32 @@ static void TestDirectory (const char *dir)
 		if (!strcmp (fd.name, ".") || !strcmp (fd.name, ".."))
 			continue;
 		snprintf (path, sizeof(path), "%s/%s", dir, fd.name);
-		if (fd.attrib & _A_SUBDIR)
-		{
-			TestDirectory (path);
-			continue;
-		}
-		n = strlen (fd.name);
-		if (n > 4 && !_stricmp (fd.name + n - 4, ".bsp"))
-		{
-			buf = ReadFile (path, &size);
-			if (buf)
-			{
-				TestMap (path, buf, size);
-				Mem_Free (buf);
-			}
-		}
-		else if (n > 4 && !_stricmp (fd.name + n - 4, ".pak"))
-			TestPak (path);
+		TestEntry (path, fd.name, (fd.attrib & _A_SUBDIR) != 0);
 	} while (_findnext64i32 (h, &fd) == 0);
 	_findclose (h);
 }
+#else
+static void TestDirectory (const char *dir)
+{
+	DIR				*d;
+	struct dirent	*e;
+	struct stat		st;
+	char			path[512];
+
+	d = opendir (dir);
+	if (!d)
+		return;
+	while ((e = readdir (d)))
+	{
+		if (!strcmp (e->d_name, ".") || !strcmp (e->d_name, ".."))
+			continue;
+		snprintf (path, sizeof(path), "%s/%s", dir, e->d_name);
+		if (!stat (path, &st))
+			TestEntry (path, e->d_name, S_ISDIR (st.st_mode));
+	}
+	closedir (d);
+}
+#endif
 
 #define	SKIPPED		77		// ctest's SKIP_RETURN_CODE
 

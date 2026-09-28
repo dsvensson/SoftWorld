@@ -1,11 +1,21 @@
 # Instruction-set target. Selects compiler flags, the SIMD kernel backend and the
 # startup CPU check implementation.
-set(SW_ARCH "x86-64-v4" CACHE STRING "Target instruction set (x86-64-v4 or generic)")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$" OR CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+	set(SW_ARCH_ARM64 ON)
+	set(SW_ARCH_DEFAULT "generic")
+else()
+	set(SW_ARCH_ARM64 OFF)
+	set(SW_ARCH_DEFAULT "x86-64-v4")
+endif()
+set(SW_ARCH "${SW_ARCH_DEFAULT}" CACHE STRING "Target instruction set (x86-64-v4 or generic)")
 set_property(CACHE SW_ARCH PROPERTY STRINGS x86-64-v4 generic)
 
 if(SW_ARCH STREQUAL "x86-64-v4")
+	if(SW_ARCH_ARM64)
+		message(FATAL_ERROR "SW_ARCH x86-64-v4 needs an x86-64 target")
+	endif()
 	set(SW_ARCH_SUFFIX x86_64_v4)
-	if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+	if(CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC" AND CMAKE_C_COMPILER_ID STREQUAL "Clang")
 		set(SW_ARCH_FLAGS "/clang:-march=x86-64-v4")
 	else()
 		set(SW_ARCH_FLAGS "/arch:AVX512")

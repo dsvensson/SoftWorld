@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 /* GLOBAL.H - RSAREF types and constants */
 
+#include <stdint.h>
 #include <string.h>
 
 /* POINTER defines a generic pointer type */
@@ -27,8 +28,8 @@ typedef unsigned char *POINTER;
 /* UINT2 defines a two byte word */
 typedef unsigned short int UINT2;
 
-/* UINT4 defines a four byte word */
-typedef unsigned long int UINT4;
+/* UINT4 defines a four byte word; unsigned long is eight on LP64 systems */
+typedef uint32_t UINT4;
 
   
 /* MD4.H - header file for MD4C.C */
