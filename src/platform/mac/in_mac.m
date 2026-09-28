@@ -21,11 +21,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //
 // Keys are read by their virtual key code, the key's place on the keyboard, so
 // bindings don't depend on the layout; typed text comes from the event's
-// characters, which do. The mouse's buttons and wheel go to the game while it
-// points (in menus).
+// characters, which do. While the game wants the mouse, it is captured: the
+// cursor is hidden and held still in the window, and motion comes from
+// GameController's GCMouse, raw counts the mouse speed setting doesn't change
+// (from the events' deltas, which it does, for pointers GameController doesn't
+// see, such as trackpads). Otherwise the mouse is left alone, its buttons and
+// wheel going to the game while it points (in menus).
 
 #import <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
+#import <GameController/GameController.h>
 
 #include "cvar.h"
 #include "in_events.h"
@@ -34,6 +39,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mac_local.h"
 
 #include <IOKit/hidsystem/IOLLEvent.h>
+#include <stdatomic.h>
 
 cvar_t	_windowed_mouse = {.name = "_windowed_mouse", .string = "1", .archive = true};
 
@@ -80,6 +86,14 @@ extern OSType KBGetLayoutType (SInt16 keyboardType);
 static bool		in_iso;				// ISO keyboard: two key codes are swapped
 static bool		in_keydown[128];	// the key codes whose downs were sent
 static float	in_scroll;			// precise (trackpad) scrolling not yet a wheel step
+
+static bool		in_captured;
+static atomic_bool		in_gccapture;	// in_captured, for the GCMouse handlers
+static atomic_llong		in_gcdx, in_gcdy;	// GCMouse motion since the last frame, 1/256 counts
+static _Atomic double	in_gctime;		// when a GCMouse last moved
+static dispatch_queue_t	in_mousequeue;	// the GCMouse handlers'
+static double	in_nsdx, in_nsdy;		// the events' motion since the last frame
+static double	in_restx, in_resty;		// motion not yet a whole count
 
 #define SCROLL_STEP		12.0f		// points of precise scrolling for a wheel step
 
@@ -207,6 +221,94 @@ static void IN_Wheel (NSEvent *event)
 }
 
 /*
+===============================================================================
+
+MOUSE CAPTURE
+
+===============================================================================
+*/
+
+// the cursor to the middle of the picture, where clicks land in the window
+static void IN_CenterCursor (void)
+{
+	NSRect	rect = [vid_window convertRectToScreen:[vid_window.contentView convertRect:
+		vid_window.contentView.bounds toView:nil]];
+	CGFloat	top = NSMaxY (NSScreen.screens.firstObject.frame);
+
+	CGWarpMouseCursorPosition (CGPointMake (NSMidX (rect), top - NSMidY (rect)));
+	// a warp holds back the mouse's events for a while, unless it is joined again
+	CGAssociateMouseAndMouseCursorPosition (true);
+}
+
+static void IN_SetCapture (bool capture)
+{
+	if (capture == in_captured)
+		return;
+	in_captured = capture;
+
+	if (capture)
+	{
+		IN_CenterCursor ();
+		CGAssociateMouseAndMouseCursorPosition (false);
+		[NSCursor hide];
+		vid_window.acceptsMouseMovedEvents = YES;
+	}
+	else
+	{
+		CGAssociateMouseAndMouseCursorPosition (true);
+		[NSCursor unhide];
+		vid_window.acceptsMouseMovedEvents = NO;
+	}
+
+	// nothing moved while it wasn't captured
+	atomic_store (&in_gccapture, capture);
+	atomic_store (&in_gcdx, 0);
+	atomic_store (&in_gcdy, 0);
+	in_nsdx = in_nsdy = in_restx = in_resty = 0;
+}
+
+static void IN_WatchMouse (GCMouse *mouse)
+{
+	mouse.handlerQueue = in_mousequeue;
+	mouse.mouseInput.mouseMovedHandler = ^(GCMouseInput *input, float deltax, float deltay) {
+		(void)input;
+		if (!atomic_load (&in_gccapture))
+			return;
+		// GameController's y is up, the game's down
+		atomic_fetch_add (&in_gcdx, llroundf (deltax * 256));
+		atomic_fetch_add (&in_gcdy, llroundf (-deltay * 256));
+		atomic_store (&in_gctime, CFAbsoluteTimeGetCurrent ());
+	};
+}
+
+// the motion since the last frame: GameController's while a GCMouse is moving,
+// the events' otherwise (they count every pointer, a GCMouse too)
+static void IN_MouseMove (void)
+{
+	long long	gx = atomic_exchange (&in_gcdx, 0), gy = atomic_exchange (&in_gcdy, 0);
+	int			dx, dy;
+
+	if (gx || gy || CFAbsoluteTimeGetCurrent () - atomic_load (&in_gctime) < 1.0)
+	{
+		in_restx += gx / 256.0;
+		in_resty += gy / 256.0;
+	}
+	else
+	{
+		in_restx += in_nsdx;
+		in_resty += in_nsdy;
+	}
+	in_nsdx = in_nsdy = 0;
+
+	dx = (int)in_restx;
+	dy = (int)in_resty;
+	in_restx -= dx;
+	in_resty -= dy;
+	if (dx || dy)
+		IN_MouseMotion (dx, dy);
+}
+
+/*
 ===============
 IN_WindowChanged
 
@@ -215,6 +317,11 @@ The window moved or changed size
 */
 void IN_WindowChanged (void)
 {
+	if (in_captured)
+	{
+		IN_CenterCursor ();
+		CGAssociateMouseAndMouseCursorPosition (false);
+	}
 }
 
 /*
@@ -224,7 +331,8 @@ IN_WindowActivated
 */
 void IN_WindowActivated (bool active)
 {
-	(void)active;
+	if (!active)
+		IN_SetCapture (false);
 	memset (in_keydown, 0, sizeof(in_keydown));
 	in_scroll = 0;
 	Key_ClearStates ();
@@ -257,19 +365,32 @@ bool IN_HandleEvent (NSEvent *event)
 		IN_FlagsChanged (event);
 		return false;
 
+	case NSEventTypeMouseMoved:
+	case NSEventTypeLeftMouseDragged:
+	case NSEventTypeRightMouseDragged:
+	case NSEventTypeOtherMouseDragged:
+		if (!in_captured)
+			return false;
+		in_nsdx += event.deltaX;
+		in_nsdy += event.deltaY;
+		return true;
+
+	// captured, every button is the game's; otherwise only in the picture, and
+	// only where they can be bound (menus)
 	case NSEventTypeLeftMouseDown:
 	case NSEventTypeRightMouseDown:
 	case NSEventTypeOtherMouseDown:
-		if (IN_InContent (event) && IN_WantsMouseButtons () && IN_ButtonKey (event))
-			Key_Event (IN_ButtonKey (event), true);
-		return false;
+		if (in_captured || (IN_InContent (event) && IN_WantsMouseButtons ()))
+			if (IN_ButtonKey (event))
+				Key_Event (IN_ButtonKey (event), true);
+		return in_captured;
 
 	case NSEventTypeLeftMouseUp:
 	case NSEventTypeRightMouseUp:
 	case NSEventTypeOtherMouseUp:
-		if (IN_WantsMouseButtons () && IN_ButtonKey (event))
+		if ((in_captured || IN_WantsMouseButtons ()) && IN_ButtonKey (event))
 			Key_Event (IN_ButtonKey (event), false);
-		return false;
+		return in_captured;
 
 	case NSEventTypeScrollWheel:
 		if (event.window == vid_window)
@@ -293,12 +414,29 @@ void IN_Init (void)
 {
 	Cvar_RegisterVariable (&_windowed_mouse);
 	in_iso = KBGetLayoutType ((SInt16)LMGetKbdType ()) == KEYBOARD_ISO;
+
+	// mice come and go; the handlers are given each as it is connected
+	in_mousequeue = dispatch_queue_create ("softworld.mouse", DISPATCH_QUEUE_SERIAL);
+	for (GCMouse *mouse in GCMouse.mice)
+		IN_WatchMouse (mouse);
+	[NSNotificationCenter.defaultCenter addObserverForName:GCMouseDidConnectNotification object:nil
+		queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+			IN_WatchMouse (note.object);
+		}];
 }
 
 void IN_Shutdown (void)
 {
+	IN_SetCapture (false);
 }
 
 void IN_Commands (void)
 {
+	bool	want;
+
+	want = ActiveApp && !Minimized && IN_WantsMouse ()
+		&& (VID_IsFullscreen () || _windowed_mouse.value);
+	IN_SetCapture (want);
+	if (in_captured)
+		IN_MouseMove ();
 }

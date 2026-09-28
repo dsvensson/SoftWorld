@@ -107,7 +107,7 @@ elseif(APPLE)
 	target_include_directories(sw_platform_gui PRIVATE . mac)
 	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_mac
 		"-framework AppKit" "-framework Metal" "-framework QuartzCore" "-framework AudioToolbox"
-		"-framework Carbon")
+		"-framework Carbon" "-framework GameController")
 
 	# the application's icon, from the Windows one
 	set(SW_ICON "${CMAKE_CURRENT_BINARY_DIR}/softworld.icns")
