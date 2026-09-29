@@ -40,6 +40,13 @@ byte	*FS_LoadFile (const char *path, int *length);
 void	FS_AddGamedirCallback (void (*callback)(void));
 void	FS_RemoveGamedirCallback (void (*callback)(void));
 
+// the paths under the search path that begin with partial: files with one of
+// the extensions (NULL-terminated, each with its dot), and the directories
+// with such files in them, ending with '/'; a path the search path has twice
+// is given twice
+void	FS_ListPaths (const char *partial, const char *const *extensions, void (*add) (void *ctx, const char *path),
+			void *ctx);
+
 void	COM_WriteFile (char *filename, void *data, int len);
 int		COM_FOpenFile (const char *filename, FILE **file);
 void	COM_CreatePath (char *path);

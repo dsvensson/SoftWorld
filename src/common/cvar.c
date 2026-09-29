@@ -90,6 +90,22 @@ char *Cvar_CompleteVariable (char *partial)
 }
 
 
+/*
+============
+Cvar_ListMatches
+============
+*/
+void Cvar_ListMatches (const char *partial, void (*match) (void *ctx, const char *name), void *ctx)
+{
+	cvar_t	*cvar;
+	size_t	len = strlen (partial);
+
+	for (cvar=cvar_vars ; cvar ; cvar=cvar->next)
+		if (!Q_strncasecmp (partial, cvar->name, len))
+			match (ctx, cvar->name);
+}
+
+
 static cvar_info_hook_t	cvar_userinfo_hook;		// the client's
 static cvar_info_hook_t	cvar_serverinfo_hook;	// the server's
 

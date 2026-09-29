@@ -31,6 +31,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 int		Sys_FileTime (char *path);
 void	Sys_mkdir (char *path);
 
+// each entry of a directory but . and ..: its name, and whether it is a
+// directory itself; false if the directory can't be read
+bool	Sys_ListDir (const char *path, void (*entry) (void *ctx, const char *name, bool isdir), void *ctx);
+
 //
 // memory
 //

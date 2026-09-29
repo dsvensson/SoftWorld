@@ -84,6 +84,17 @@ char 	*Cmd_CompleteCommand (char *partial);
 // attempts to match a partial command for automatic command line completion
 // returns NULL if nothing fits
 
+void	Cmd_ListMatches (const char *partial, void (*match) (void *ctx, const char *name), void *ctx);
+// each command and alias whose name begins with partial (case aside)
+
+typedef void (*xcompletion_t) (const char *partial, void (*add) (void *ctx, const char *candidate), void *ctx);
+void	Cmd_SetCompletion (char *cmd_name, xcompletion_t completion);
+bool	Cmd_CompleteArgument (const char *cmd_name, const char *partial, void (*add) (void *ctx, const char *candidate),
+			void *ctx);
+// a command that completes its argument: each candidate for an argument
+// begun with partial, given to add; Cmd_CompleteArgument is false for a
+// command that completes none
+
 int		Cmd_Argc (void);
 char	*Cmd_Argv (int arg);
 char	*Cmd_Args (void);

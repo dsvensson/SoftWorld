@@ -426,6 +426,7 @@ typedef struct cmd_function_s
 	struct cmd_function_s	*next;
 	char					*name;
 	xcommand_t				function;
+	xcompletion_t			completion;		// of its argument, NULL for none
 } cmd_function_t;
 
 
@@ -579,6 +580,64 @@ bool	Cmd_Exists (char *cmd_name)
 }
 
 
+
+/*
+============
+Cmd_SetCompletion
+============
+*/
+void Cmd_SetCompletion (char *cmd_name, xcompletion_t completion)
+{
+	cmd_function_t	*cmd;
+
+	for (cmd=cmd_functions ; cmd ; cmd=cmd->next)
+		if (!Q_strcmp (cmd_name, cmd->name))
+		{
+			cmd->completion = completion;
+			return;
+		}
+	Sys_Error ("Cmd_SetCompletion: no command %s", cmd_name);
+}
+
+/*
+============
+Cmd_CompleteArgument
+============
+*/
+bool Cmd_CompleteArgument (const char *cmd_name, const char *partial, void (*add) (void *ctx, const char *candidate),
+	void *ctx)
+{
+	cmd_function_t	*cmd;
+
+	for (cmd=cmd_functions ; cmd ; cmd=cmd->next)
+		if (!Q_strcasecmp (cmd_name, cmd->name))
+		{
+			if (!cmd->completion)
+				return false;
+			cmd->completion (partial, add, ctx);
+			return true;
+		}
+	return false;
+}
+
+/*
+============
+Cmd_ListMatches
+============
+*/
+void Cmd_ListMatches (const char *partial, void (*match) (void *ctx, const char *name), void *ctx)
+{
+	cmd_function_t	*cmd;
+	cmdalias_t		*a;
+	size_t			len = strlen (partial);
+
+	for (cmd=cmd_functions ; cmd ; cmd=cmd->next)
+		if (!Q_strncasecmp (partial, cmd->name, len))
+			match (ctx, cmd->name);
+	for (a=cmd_alias ; a ; a=a->next)
+		if (!Q_strncasecmp (partial, a->name, len))
+			match (ctx, a->name);
+}
 
 /*
 ============

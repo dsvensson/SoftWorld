@@ -1245,6 +1245,8 @@ static void CL_InitLocal (void)
 	Cmd_AddCommand ("stop", CL_Stop_f);
 	Cmd_AddCommand ("playdemo", CL_PlayDemo_f);
 	Cmd_AddCommand ("timedemo", CL_TimeDemo_f);
+	Cmd_SetCompletion ("playdemo", CL_CompleteDemo);
+	Cmd_SetCompletion ("timedemo", CL_CompleteDemo);
 	CL_InitDemo ();
 	CL_InitMVD ();
 	CL_InitItems ();

@@ -18,6 +18,26 @@ void Sys_mkdir (char *path)
 	_mkdir (path);
 }
 
+bool Sys_ListDir (const char *path, void (*entry) (void *ctx, const char *name, bool isdir), void *ctx)
+{
+	WIN32_FIND_DATAA	data;
+	HANDLE				find;
+	char				pattern[MAX_PATH];
+
+	snprintf (pattern, sizeof(pattern), "%s\\*", path);
+	find = FindFirstFileA (pattern, &data);
+	if (find == INVALID_HANDLE_VALUE)
+		return false;
+	do
+	{
+		if (!strcmp (data.cFileName, ".") || !strcmp (data.cFileName, ".."))
+			continue;
+		entry (ctx, data.cFileName, (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0);
+	} while (FindNextFileA (find, &data));
+	FindClose (find);
+	return true;
+}
+
 // the file stays open, flushed after each write: opened for every print, a
 // map whose entities print thousands of lines took seconds to load
 void Sys_DebugLog (char *file, char *fmt, ...)

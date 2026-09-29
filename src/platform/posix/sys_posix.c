@@ -6,6 +6,7 @@
 #include "posix_local.h"
 #include "cpu_relax.h"
 
+#include <dirent.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +24,34 @@ int Sys_FileTime (char *path)
 void Sys_mkdir (char *path)
 {
 	mkdir (path, 0777);
+}
+
+bool Sys_ListDir (const char *path, void (*entry) (void *ctx, const char *name, bool isdir), void *ctx)
+{
+	DIR				*dir = opendir (path);
+	struct dirent	*d;
+	struct stat		st;
+	char			full[1024];
+	bool			isdir;
+
+	if (!dir)
+		return false;
+	while ((d = readdir (dir)))
+	{
+		if (!strcmp (d->d_name, ".") || !strcmp (d->d_name, ".."))
+			continue;
+		// what the directory says, else what the entry is (links followed)
+		if (d->d_type != DT_UNKNOWN && d->d_type != DT_LNK)
+			isdir = d->d_type == DT_DIR;
+		else
+		{
+			snprintf (full, sizeof(full), "%s/%s", path, d->d_name);
+			isdir = !stat (full, &st) && S_ISDIR (st.st_mode);
+		}
+		entry (ctx, d->d_name, isdir);
+	}
+	closedir (dir);
+	return true;
 }
 
 // the file stays open, flushed after each write: opened for every print, a

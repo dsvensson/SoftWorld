@@ -91,6 +91,9 @@ char 	*Cvar_CompleteVariable (char *partial);
 // attempts to match a partial variable name for command line completion
 // returns NULL if nothing fits
 
+void	Cvar_ListMatches (const char *partial, void (*match) (void *ctx, const char *name), void *ctx);
+// each variable whose name begins with partial (case aside)
+
 bool Cvar_Command (void);
 // called by Cmd_ExecuteString when Cmd_Argv(0) doesn't match a known
 // command.  Returns true if the command was a variable reference that

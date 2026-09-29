@@ -801,6 +801,21 @@ static const char *CL_Extension (const char *file)
 
 /*
 ====================
+CL_CompleteDemo
+
+playdemo's and timedemo's argument: the demos under the search path, and the
+directories on the way to them
+====================
+*/
+void CL_CompleteDemo (const char *partial, void (*add) (void *ctx, const char *candidate), void *ctx)
+{
+	static const char *const	extensions[] = {".qwd", ".mvd", NULL};
+
+	FS_ListPaths (partial, extensions, add, ctx);
+}
+
+/*
+====================
 CL_PlayDemo_f
 
 play [demoname]

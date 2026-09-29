@@ -442,6 +442,157 @@ int COM_FOpenFile (const char *filename, FILE **file)
 }
 
 /*
+===============================================================================
+
+LISTING
+
+===============================================================================
+*/
+
+#define FS_PROBE_DEPTH	3		// how deep a directory is looked into for a file listed
+
+typedef struct
+{
+	const char			*dir;		// the partial path's directory, "" or ending with '/'
+	const char			*name;		// and the start of the name in it
+	const char			*diskdir;	// that directory in the search path's, on disk
+	const char *const	*extensions;
+	void				(*add) (void *ctx, const char *path);
+	void				*ctx;
+} fs_listing_t;
+
+typedef struct
+{
+	const char			*dir;
+	const char *const	*extensions;
+	int					depth;		// directories further down to look into
+	bool				found;
+} fs_probe_t;
+
+// the name ends with one of the extensions (case aside)
+static bool FS_HasExtension (const char *name, const char *const *extensions)
+{
+	size_t	len = strlen (name), elen;
+
+	for ( ; *extensions ; extensions++)
+	{
+		elen = strlen (*extensions);
+		if (len > elen && !Q_strcasecmp (name + len - elen, *extensions))
+			return true;
+	}
+	return false;
+}
+
+static void FS_ProbeEntry (void *ctx, const char *name, bool isdir)
+{
+	fs_probe_t	*p = ctx, sub;
+	char		path[MAX_OSPATH];
+
+	if (p->found || name[0] == '.')
+		return;
+	if (!isdir)
+	{
+		p->found = FS_HasExtension (name, p->extensions);
+		return;
+	}
+	if (p->depth <= 0)
+		return;
+	snprintf (path, sizeof(path), "%s/%s", p->dir, name);
+	sub = *p;
+	sub.dir = path;
+	sub.depth--;
+	Sys_ListDir (path, FS_ProbeEntry, &sub);
+	p->found = sub.found;
+}
+
+// a file with one of the extensions in the directory, or a few directories down
+static bool FS_HasFiles (const char *dir, const char *const *extensions)
+{
+	fs_probe_t	p = {.dir = dir, .extensions = extensions, .depth = FS_PROBE_DEPTH - 1};
+
+	Sys_ListDir (dir, FS_ProbeEntry, &p);
+	return p.found;
+}
+
+// an entry of a directory of the search path, the listing's own directory
+static void FS_ListEntry (void *ctx, const char *name, bool isdir)
+{
+	fs_listing_t	*l = ctx;
+	char			path[MAX_OSPATH];
+
+	// hidden entries only when asked for by their dot
+	if (Q_strncasecmp (name, l->name, strlen (l->name)) || (name[0] == '.' && l->name[0] != '.'))
+		return;
+	if (!isdir && !FS_HasExtension (name, l->extensions))
+		return;
+	if (isdir)
+	{
+		snprintf (path, sizeof(path), "%s/%s", l->diskdir, name);
+		if (!FS_HasFiles (path, l->extensions))
+			return;
+	}
+	snprintf (path, sizeof(path), "%s%s%s", l->dir, name, isdir ? "/" : "");
+	l->add (l->ctx, path);
+}
+
+/*
+============
+FS_ListPaths
+
+The paths under the search path that begin with partial (case aside): the
+files with one of the extensions, and the directories on the way to others,
+ending with '/' (those with such files in them: on disk a few directories
+deep), each as often as the search path has it
+============
+*/
+void FS_ListPaths (const char *partial, const char *const *extensions, void (*add) (void *ctx, const char *path),
+	void *ctx)
+{
+	searchpath_t	*search;
+	pack_t			*pak;
+	fs_listing_t	l = {.extensions = extensions, .add = add, .ctx = ctx};
+	char			dir[MAX_OSPATH], full[MAX_OSPATH * 2], path[MAX_QPATH];
+	const char		*slash = strrchr (partial, '/'), *next;
+	size_t			len = strlen (partial), dirlen;
+	int				i;
+
+	dirlen = slash ? (size_t)(slash - partial) + 1 : 0;
+	if (dirlen >= sizeof(dir))
+		return;
+	memcpy (dir, partial, dirlen);
+	dir[dirlen] = 0;
+	l.dir = dir;
+	l.name = partial + dirlen;
+
+	for (search = com_searchpaths ; search ; search = search->next)
+	{
+		if (!search->pack)
+		{
+			snprintf (full, sizeof(full), "%s/%s", search->filename, dir);
+			l.diskdir = full;
+			Sys_ListDir (full, FS_ListEntry, &l);
+			continue;
+		}
+		// a pak's files have whole paths: a directory is where one of them goes
+		// on past the partial's
+		pak = search->pack;
+		for (i = 0 ; i < pak->numfiles ; i++)
+		{
+			if (Q_strncasecmp (pak->files[i].name, partial, len) || !FS_HasExtension (pak->files[i].name, extensions))
+				continue;
+			next = strchr (pak->files[i].name + dirlen, '/');
+			if (next)
+			{
+				snprintf (path, sizeof(path), "%.*s", (int)(next - pak->files[i].name) + 1, pak->files[i].name);
+				add (ctx, path);
+			}
+			else
+				add (ctx, pak->files[i].name);
+		}
+	}
+}
+
+/*
 ============
 FS_LoadFile
 
