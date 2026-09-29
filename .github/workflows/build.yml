@@ -23,12 +23,44 @@ jobs:
           - name: Windows
             os: windows-2025-vs2026
             preset: msvc-v4
+            fteqcc: fteqcc.exe
           - name: macOS
             os: macos-26
             preset: macos-m3
+            fteqcc: fteqcc
+
+    # fteqcc compiles qw-qc into the game the server carries (cmake/qwprogs.cmake)
+    env:
+      FTEQCC: ${{ github.workspace }}/fteqcc/${{ matrix.fteqcc }}
 
     steps:
       - uses: actions/checkout@v7
+
+      # fteqcc from fteqw's newest commit, built again only when there is a newer
+      - name: fteqw's commit
+        id: fteqw
+        shell: bash
+        run: echo "sha=$(git ls-remote https://github.com/fte-team/fteqw.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cached fteqcc
+        id: fteqcc
+        uses: actions/cache@v6
+        with:
+          path: fteqcc
+          key: fteqcc-${{ runner.os }}-${{ steps.fteqw.outputs.sha }}
+
+      # fteqw's own build, of fteqcc alone; without zlib, which qw-qc doesn't need
+      - name: Build fteqcc
+        if: steps.fteqcc.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git init -q fteqw
+          git -C fteqw fetch -q --depth 1 https://github.com/fte-team/fteqw.git ${{ steps.fteqw.outputs.sha }}
+          git -C fteqw checkout -q FETCH_HEAD
+          cmake -S fteqw -B fteqw/build -DCMAKE_BUILD_TYPE=Release -DFTE_DEP_ZLIB=OFF
+          cmake --build fteqw/build --target fteqcc --config Release --parallel
+          mkdir -p fteqcc
+          cp "$(find fteqw/build -type f \( -name fteqcc -o -name fteqcc.exe \) | head -1)" fteqcc/
 
       # MSVC, the Windows SDK's fxc and Ninja, from a Visual Studio developer shell
       - name: Build (Windows)
