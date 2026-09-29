@@ -178,7 +178,7 @@ vid_fit_t VID_Fit (int clientwidth, int clientheight)
 	return fit;
 }
 
-void VID_FillConstants (vid_present_constants_t *constants, const vid_fit_t *fit, bool hdr,
+void VID_FillConstants (vid_present_constants_t *constants, const vid_fit_t *fit, int output,
 	float paperwhite, float peak)
 {
 	int		i;
@@ -192,7 +192,7 @@ void VID_FillConstants (vid_present_constants_t *constants, const vid_fit_t *fit
 	constants->gamma = vid_present.gamma;
 	constants->contrast = vid_contrast.value > 0 ? vid_contrast.value : 1;
 	constants->sharp = fit->scale == floorf (fit->scale) && fit->stretch == 1.0f ? 0.0f : 1.0f;
-	constants->hdr = hdr ? 1.0f : 0.0f;
+	constants->hdr = (float)output;
 	constants->paperwhite = paperwhite;
 	constants->peak = peak;
 	constants->pad[0] = constants->pad[1] = 0;

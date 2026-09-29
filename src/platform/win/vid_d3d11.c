@@ -670,8 +670,8 @@ void VID_Update (void)
 	};
 
 	// scRGB 1.0 is 80 nits
-	VID_FillConstants (&constants, &fit, vid_hdroutput, VID_PaperWhiteNits () / 80.0f,
-		fmaxf (vid_peaknits, VID_PaperWhiteNits ()) / 80.0f);
+	VID_FillConstants (&constants, &fit, vid_hdroutput ? VID_OUTPUT_LINEAR : VID_OUTPUT_SDR,
+		VID_PaperWhiteNits () / 80.0f, fmaxf (vid_peaknits, VID_PaperWhiteNits ()) / 80.0f);
 	ID3D11DeviceContext_UpdateSubresource (d3d_context, (ID3D11Resource *)d3d_constants, 0, NULL, &constants, 0, 0);
 
 	static const float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};

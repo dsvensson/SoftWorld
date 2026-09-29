@@ -747,7 +747,8 @@ void VID_Update (void)
 			peak = (float)vid_window.screen.maximumExtendedDynamicRangeColorComponentValue;
 		fit = VID_Fit (client_width, client_height);
 		constants = (vid_present_constants_t *)((byte *)mtl_constants.contents + VID_CONSTANTS * slot);
-		VID_FillConstants (constants, &fit, hdr, paperwhite, fmaxf (peak, paperwhite));
+		VID_FillConstants (constants, &fit, hdr ? VID_OUTPUT_LINEAR : VID_OUTPUT_SDR, paperwhite,
+			fmaxf (peak, paperwhite));
 
 		// the slot's last frame is done: its buffer wasn't handed out before
 		commands = mtl_commands[slot];

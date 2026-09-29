@@ -48,8 +48,8 @@ typedef struct
 
 vid_fit_t	VID_Fit (int clientwidth, int clientheight);
 
-// the constants of the present shaders (present.hlsl, present.metal), laid
-// out as both declare them
+// the constants of the present shaders (present.hlsl, present.metal,
+// present.glsl), laid out as they declare them
 typedef struct
 {
 	float	blend[4];		// sRGB color, and how much of it covers the view
@@ -58,7 +58,7 @@ typedef struct
 	float	gamma;			// exponent applied to the view's light; 1 keeps it
 	float	contrast;		// the light as mid gray times (light / mid gray) to this
 	float	sharp;			// 0: integer scale, nearest texel; 1: sharp bilinear
-	float	hdr;			// 0: SDR output; 1: linear light output
+	float	hdr;			// the output: VID_OUTPUT_SDR, _LINEAR or _PQ
 	float	paperwhite;		// output value of SDR white
 	float	peak;			// output value of the display's brightest white
 	float	pad[2];
@@ -66,7 +66,12 @@ typedef struct
 
 static_assert (sizeof(vid_present_constants_t) == 64, "the shaders' constants are 64 bytes");
 
-void	VID_FillConstants (vid_present_constants_t *constants, const vid_fit_t *fit, bool hdr,
+// what the shaders output: sRGB; linear light (scRGB, EDR); or that light as
+// PQ in BT.2020, 1 being 203 cd/m² (present.glsl alone). paperwhite and peak
+// are in the output's linear values.
+enum { VID_OUTPUT_SDR, VID_OUTPUT_LINEAR, VID_OUTPUT_PQ };
+
+void	VID_FillConstants (vid_present_constants_t *constants, const vid_fit_t *fit, int output,
 			float paperwhite, float peak);
 
 // the layers of the frame last drawn, which VID_FrameToRGB reads (the

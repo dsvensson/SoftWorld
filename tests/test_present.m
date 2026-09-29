@@ -186,7 +186,7 @@ static void Draw (bool hdr, float paperwhite, float peak, float *out)
 	id<MTL4RenderCommandEncoder>	encoder;
 	id<MTL4CommandBuffer>		list[1] = {commands};
 
-	VID_FillConstants (constants.contents, &fit, hdr, paperwhite, peak);
+	VID_FillConstants (constants.contents, &fit, hdr ? VID_OUTPUT_LINEAR : VID_OUTPUT_SDR, paperwhite, peak);
 
 	[allocator reset];
 	[commands beginCommandBufferWithAllocator:allocator];
