@@ -28,16 +28,16 @@ const char *Cpu_CheckSupport (void)
 	if (!Cpu_HasBits (regs[2], leaf1_ecx))
 		return "This build requires an x86-64-v4 CPU, but AVX/FMA/SSE4.2-level features are missing.";
 
-	// XCR0: SSE, AVX, opmask, ZMM_Hi256 and Hi16_ZMM state must be enabled by the OS
-	if ((Cpu_Xgetbv (0) & 0xE6) != 0xE6)
-		return "This build requires an x86-64-v4 CPU, but the OS has not enabled AVX-512 state.";
-
 	// leaf 7 EBX: BMI1, AVX2, BMI2, AVX512F, AVX512DQ, AVX512CD, AVX512BW, AVX512VL
 	Cpu_Cpuid (7, 0, regs);
 	const uint32_t leaf7_ebx = (1u << 3) | (1u << 5) | (1u << 8) | (1u << 16) | (1u << 17) |
 		(1u << 28) | (1u << 30) | (1u << 31);
 	if (!Cpu_HasBits (regs[1], leaf7_ebx))
 		return "This build requires an x86-64-v4 CPU with AVX-512 (F, DQ, CD, BW, VL).";
+
+	// the CPU has it; XCR0: SSE, AVX, opmask, ZMM_Hi256 and Hi16_ZMM state must be enabled by the OS
+	if ((Cpu_Xgetbv (0) & 0xE6) != 0xE6)
+		return "This build requires an x86-64-v4 CPU, but the OS has not enabled AVX-512 state.";
 
 	// extended leaf 0x80000001 ECX: LAHF/SAHF, LZCNT
 	Cpu_Cpuid (0x80000001, 0, regs);

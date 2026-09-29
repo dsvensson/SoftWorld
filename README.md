@@ -8,7 +8,7 @@ server, and the protocol extensions today's servers and clients speak.
   whole number, presented through Direct3D 11 on Windows, Metal 4 on macOS and Vulkan on
   Linux (Wayland); on macOS and Linux the renderer draws straight into memory the GPU reads (HDR
   output on HDR displays, all three). Colored lighting (`.lit`, BSPX), BSP2 maps, translucency,
-  and AVX-512 and NEON kernels.
+  and AVX-512, AVX2 and NEON kernels.
 - **Network:** the FTE, MVD1 and ZQuake extensions (float coordinates, 2048 entities, 4096
   models, chunked downloads, …), mvdsv's player movement and its `pm_` keys.
 - **Demos:** QWD and MVD playback, MVD seeking (`demo_jump`), QTV (`qtvplay`), item timers.
@@ -38,11 +38,13 @@ ctest --preset msvc-v4
 |---|---|---|
 | `msvc-v4` | MSVC | x86-64-v4 (AVX-512) |
 | `clangcl-v4` | clang-cl with lld-link | x86-64-v4 |
+| `msvc-v3` | MSVC | x86-64-v3 (AVX2) |
 | `msvc-generic` | MSVC | baseline x86-64 |
 | `msvc-asan` | MSVC, AddressSanitizer | x86-64-v4, Debug only |
 
-`SW_ARCH` (`x86-64-v4` or `generic`) chooses the instruction set: the v4 builds use AVX-512 and
-refuse to start on a CPU without it. Builds treat warnings as errors
+`SW_ARCH` (`x86-64-v4`, `x86-64-v3` or `generic`) chooses the instruction set: the v4 builds use
+AVX-512 and refuse to start on a CPU without it, the v3 builds AVX2 (Intel's since Haswell, AMD's
+since Zen), for CPUs without AVX-512. Builds treat warnings as errors
 (`SW_WARNINGS_AS_ERRORS`). The build presets build Release; `msvc-v4-debug` and
 `clangcl-v4-debug` build Debug. The `msvc-v4-maps` test preset loads every map under the
 directory the `SW_BASEDIR` environment variable names, and is skipped without it.
@@ -94,6 +96,7 @@ ctest --preset linux-v4
 | Preset | Instructions |
 |---|---|
 | `linux-v4` | x86-64-v4 (AVX-512) |
+| `linux-v3` | x86-64-v3 (AVX2) |
 | `linux-generic` | baseline x86-64 or arm64, scalar kernels |
 
 `-debug` build presets build Debug, and `-maps` test presets load the maps as on Windows. The

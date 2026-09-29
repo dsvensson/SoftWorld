@@ -1,11 +1,13 @@
-# test_simd runs every kernel of the build's SIMD backend (AVX-512 or NEON)
-# against the scalar reference, so it needs a build that has one.
-if(SW_ARCH STREQUAL "x86-64-v4" OR SW_ARCH STREQUAL "apple-m3")
+# test_simd runs every kernel of the build's SIMD backend (AVX-512, AVX2 or
+# NEON) against the scalar reference, so it needs a build that has one; the
+# backend's kernels are named by their prefix.
+set(SW_SIMD_PREFIX_x86-64-v4 Simd_V4_)
+set(SW_SIMD_PREFIX_x86-64-v3 Simd_V3_)
+set(SW_SIMD_PREFIX_apple-m3 Simd_M3_)
+if(DEFINED SW_SIMD_PREFIX_${SW_ARCH})
 	sw_add_program(test_simd test_simd.c)
 	target_link_libraries(test_simd PRIVATE sw_simd)
-	if(SW_ARCH STREQUAL "apple-m3")
-		target_compile_definitions(test_simd PRIVATE SW_SIMD_APPLE_M3)
-	endif()
+	target_compile_definitions(test_simd PRIVATE SW_SIMD_PREFIX=${SW_SIMD_PREFIX_${SW_ARCH}})
 	add_test(NAME simd COMMAND test_simd)
 endif()
 

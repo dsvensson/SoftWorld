@@ -39,6 +39,12 @@
 			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "x86-64-v4" }
 		},
 		{
+			"name": "msvc-v3",
+			"displayName": "MSVC, x86-64-v3 (AVX2)",
+			"inherits": "windows",
+			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "x86-64-v3" }
+		},
+		{
 			"name": "msvc-generic",
 			"displayName": "MSVC, baseline x86-64",
 			"inherits": "windows",
@@ -79,6 +85,12 @@
 			"cacheVariables": { "SW_ARCH": "x86-64-v4" }
 		},
 		{
+			"name": "linux-v3",
+			"displayName": "clang + lld, x86-64-v3 (AVX2)",
+			"inherits": "linux",
+			"cacheVariables": { "SW_ARCH": "x86-64-v3" }
+		},
+		{
 			"name": "linux-generic",
 			"displayName": "clang + lld, baseline x86-64 or arm64, scalar kernels",
 			"inherits": "linux",
@@ -88,6 +100,8 @@
 	"buildPresets": [
 		{ "name": "msvc-v4", "configurePreset": "msvc-v4", "configuration": "Release" },
 		{ "name": "msvc-v4-debug", "configurePreset": "msvc-v4", "configuration": "Debug" },
+		{ "name": "msvc-v3", "configurePreset": "msvc-v3", "configuration": "Release" },
+		{ "name": "msvc-v3-debug", "configurePreset": "msvc-v3", "configuration": "Debug" },
 		{ "name": "msvc-generic", "configurePreset": "msvc-generic", "configuration": "Release" },
 		{ "name": "msvc-asan", "configurePreset": "msvc-asan", "configuration": "Debug" },
 		{ "name": "clangcl-v4", "configurePreset": "clangcl-v4", "configuration": "Release" },
@@ -98,6 +112,8 @@
 		{ "name": "macos-generic-debug", "configurePreset": "macos-generic", "configuration": "Debug" },
 		{ "name": "linux-v4", "configurePreset": "linux-v4", "configuration": "Release" },
 		{ "name": "linux-v4-debug", "configurePreset": "linux-v4", "configuration": "Debug" },
+		{ "name": "linux-v3", "configurePreset": "linux-v3", "configuration": "Release" },
+		{ "name": "linux-v3-debug", "configurePreset": "linux-v3", "configuration": "Debug" },
 		{ "name": "linux-generic", "configurePreset": "linux-generic", "configuration": "Release" },
 		{ "name": "linux-generic-debug", "configurePreset": "linux-generic", "configuration": "Debug" }
 	],
@@ -108,6 +124,8 @@
 			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "msvc-v4-maps", "configurePreset": "msvc-v4", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "include": { "label": "maps" } } },
+		{ "name": "msvc-v3", "configurePreset": "msvc-v3", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "macos-m3", "configurePreset": "macos-m3", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "macos-m3-maps", "configurePreset": "macos-m3", "configuration": "Release", "output": { "outputOnFailure": true },
@@ -119,6 +137,10 @@
 		{ "name": "linux-v4", "configurePreset": "linux-v4", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "linux-v4-maps", "configurePreset": "linux-v4", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "include": { "label": "maps" } } },
+		{ "name": "linux-v3", "configurePreset": "linux-v3", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "exclude": { "label": "maps" } } },
+		{ "name": "linux-v3-maps", "configurePreset": "linux-v3", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "include": { "label": "maps" } } },
 		{ "name": "linux-generic", "configurePreset": "linux-generic", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },

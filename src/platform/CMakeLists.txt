@@ -4,11 +4,11 @@
 # _macos and _linux: each system takes its own here, as each compiler takes its
 # own of the CPU check's.
 
-# the CPU check, and for x86-64-v4 CPUID as the compiler has it
+# the CPU check, and for x86-64-v3 and v4 CPUID as the compiler has it
 set(SW_CPU_CHECK_SOURCES cpu/cpu_check_${SW_ARCH_SUFFIX}.c)
-if(SW_ARCH STREQUAL "x86-64-v4" AND MSVC)
+if(SW_ARCH MATCHES "^x86-64-v[34]$" AND MSVC)
 	list(APPEND SW_CPU_CHECK_SOURCES cpu/cpuid_msvc.c)
-elseif(SW_ARCH STREQUAL "x86-64-v4")
+elseif(SW_ARCH MATCHES "^x86-64-v[34]$")
 	list(APPEND SW_CPU_CHECK_SOURCES cpu/cpuid_gnu.c)
 endif()
 

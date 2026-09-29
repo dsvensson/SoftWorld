@@ -17,17 +17,16 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// test_simd.c -- each kernel of the build's SIMD backend (x86-64-v4 or
-// apple-m3) against the scalar reference, on random input; the results must be
-// the same bit for bit
+// test_simd.c -- each kernel of the build's SIMD backend (x86-64-v4, x86-64-v3
+// or apple-m3) against the scalar reference, on random input; the results must
+// be the same bit for bit
 
 #include "simd_backends.h"
 
-#ifdef SW_SIMD_APPLE_M3
-#define TESTED(kernel)	Simd_M3_##kernel
-#else
-#define TESTED(kernel)	Simd_V4_##kernel
-#endif
+// the backend's kernel, by the prefix the build names (SW_SIMD_PREFIX)
+#define TESTED_NAME(prefix, kernel)		prefix##kernel
+#define TESTED_EXPAND(prefix, kernel)	TESTED_NAME (prefix, kernel)
+#define TESTED(kernel)					TESTED_EXPAND (SW_SIMD_PREFIX, kernel)
 
 #include <stdio.h>
 #include <stdlib.h>

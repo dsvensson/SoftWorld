@@ -146,15 +146,24 @@ jobs:
           if-no-files-found: error
 
   # Linux in an Arch container: Ubuntu's wayland-protocols is older than the
-  # color management the client asks the compositor about
+  # color management the client asks the compositor about. For AVX-512 CPUs,
+  # and for AVX2 ones without it.
   linux:
-    name: Linux
+    name: Linux ${{ matrix.arch }}
     runs-on: ubuntu-latest
     container: archlinux:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86-64-v4
+            preset: linux-v4
+          - arch: x86-64-v3
+            preset: linux-v3
 
     env:
       FTEQCC: ${{ github.workspace }}/fteqcc/fteqcc
-      PRESET: linux-v4
+      PRESET: ${{ matrix.preset }}
 
     steps:
       - name: Packages
@@ -198,12 +207,12 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          tar -C build/$PRESET/Release -czf dist/SoftWorld-Linux.tar.gz softworld
+          tar -C build/$PRESET/Release -czf dist/SoftWorld-Linux-${{ matrix.arch }}.tar.gz softworld
 
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
-          name: SoftWorld-Linux.tar.gz
-          path: dist/SoftWorld-Linux.tar.gz
+          name: SoftWorld-Linux-${{ matrix.arch }}.tar.gz
+          path: dist/SoftWorld-Linux-${{ matrix.arch }}.tar.gz
           archive: false
           if-no-files-found: error
