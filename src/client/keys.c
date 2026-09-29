@@ -177,37 +177,114 @@ static bool CheckForCommand (void)
 ==============================================================================
 */
 
-#define MAX_COMPLETIONS		1024
+#define MAX_COMPLETIONS		65536	// candidates taken at most
+#define MAX_LISTED			256		// and listed
 
-// the candidates for the word being completed, each once
+// the candidates for the word being completed
 typedef struct
 {
-	char	*names[MAX_COMPLETIONS];
-	int		count;
+	char	**names;
+	int		count, size;
 	bool	overflow;		// there were more
 } completions_t;
 
 static void Key_AddCompletion (void *ctx, const char *name)
 {
 	completions_t	*c = ctx;
-	int				i;
 
-	for (i = 0 ; i < c->count ; i++)
-		if (!strcmp (c->names[i], name))
-			return;
 	if (c->count == MAX_COMPLETIONS)
 	{
 		c->overflow = true;
 		return;
+	}
+	if (c->count == c->size)
+	{
+		c->size = c->size ? c->size * 2 : 64;
+		c->names = Mem_Realloc (c->names, (size_t)c->size * sizeof(c->names[0]));
 	}
 	c->names[c->count] = Mem_Alloc (strlen (name) + 1);
 	strcpy (c->names[c->count], name);
 	c->count++;
 }
 
+// case aside, and then as they are: the same name twice is side by side
 static int Key_CompareNames (const void *a, const void *b)
 {
-	return Q_strcasecmp (*(char *const *)a, *(char *const *)b);
+	const char	*x = *(char *const *)a, *y = *(char *const *)b;
+	int			d = Q_strcasecmp (x, y);
+
+	return d ? d : strcmp (x, y);
+}
+
+// sorted, each once
+static void Key_SortCompletions (completions_t *c)
+{
+	int		i, n;
+
+	if (!c->count)
+		return;
+	qsort (c->names, (size_t)c->count, sizeof(c->names[0]), Key_CompareNames);
+	for (i = n = 1 ; i < c->count ; i++)
+		if (strcmp (c->names[i], c->names[n - 1]))
+			c->names[n++] = c->names[i];
+		else
+			Mem_Free (c->names[i]);
+	c->count = n;
+}
+
+static void Key_FreeCompletions (completions_t *c)
+{
+	int		i;
+
+	for (i = 0 ; i < c->count ; i++)
+		Mem_Free (c->names[i]);
+	Mem_Free (c->names);
+}
+
+// the first len characters of text have sub in them, case aside
+static bool Key_HasText (const char *text, size_t len, const char *sub)
+{
+	size_t	sublen = strlen (sub), i;
+
+	for (i = 0 ; i + sublen <= len ; i++)
+		if (!Q_strncasecmp (text + i, sub, sublen))
+			return true;
+	return false;
+}
+
+/*
+====================
+Key_FilterCompletions
+
+The candidates that begin with typed; or when none does, those with the name
+typed (after the dirlen characters of its directory) in their name, as demos
+named by their date are found by the rest. True for the latter.
+====================
+*/
+static bool Key_FilterCompletions (completions_t *c, const char *typed, size_t dirlen)
+{
+	size_t	len = strlen (typed);
+	int		i, n, begin = 0;
+	bool	contains, keep;
+
+	for (i = 0 ; i < c->count ; i++)
+		if (!Q_strncasecmp (c->names[i], typed, len))
+			begin++;
+	contains = !begin;
+
+	for (i = n = 0 ; i < c->count ; i++)
+	{
+		if (contains)
+			keep = Key_HasText (c->names[i] + dirlen, strlen (c->names[i] + dirlen), typed + dirlen);
+		else
+			keep = !Q_strncasecmp (c->names[i], typed, len);
+		if (keep)
+			c->names[n++] = c->names[i];
+		else
+			Mem_Free (c->names[i]);
+	}
+	c->count = n;
+	return contains;
 }
 
 // how much of the first candidate all the others begin with, case aside
@@ -225,14 +302,13 @@ static size_t Key_CommonPrefix (const completions_t *c)
 	return len;
 }
 
-// the candidates under the line typed, in columns across the console
-static void Key_ListCompletions (completions_t *c)
+// the candidates (sorted) under the line typed, in columns across the console
+static void Key_ListCompletions (const completions_t *c)
 {
 	size_t	width = 0, len;
-	int		i, columns;
+	int		i, columns, listed = c->count < MAX_LISTED ? c->count : MAX_LISTED;
 
-	qsort (c->names, (size_t)c->count, sizeof(c->names[0]), Key_CompareNames);
-	for (i = 0 ; i < c->count ; i++)
+	for (i = 0 ; i < listed ; i++)
 	{
 		len = strlen (c->names[i]);
 		if (len > width)
@@ -244,13 +320,15 @@ static void Key_ListCompletions (completions_t *c)
 		columns = 1;
 
 	Con_Printf ("%s\n", key_input.lines[key_input.edit_line]);
-	for (i = 0 ; i < c->count ; i++)
-		if (i % columns == columns - 1 || i == c->count - 1)
+	for (i = 0 ; i < listed ; i++)
+		if (i % columns == columns - 1 || i == listed - 1)
 			Con_Printf ("%s\n", c->names[i]);
 		else
 			Con_Printf ("%-*s", (int)width, c->names[i]);
 	if (c->overflow)
 		Con_Printf ("and more\n");
+	else if (listed < c->count)
+		Con_Printf ("and %d more\n", c->count - listed);
 }
 
 /*
@@ -259,22 +337,28 @@ Key_CompleteWord
 
 The word of the edit line from start, which the candidates complete: made as
 long as they all agree, and when only one is left the whole of it and after
-(a directory, ending with '/', is only on the way). A word with a space is
-quoted (quoted says it is already). When nothing can be added, the
-candidates are listed.
+(a directory, ending with '/', is only on the way). Candidates found by the
+name in them (contains) replace the word only when what they agree on has
+it too. A word with a space is quoted (quoted says it is already). When
+nothing can be added, the candidates are listed.
 ====================
 */
-static void Key_CompleteWord (completions_t *c, int start, bool quoted, const char *after)
+static void Key_CompleteWord (completions_t *c, int start, bool quoted, const char *after, bool contains,
+	size_t dirlen)
 {
 	char	*line = key_input.lines[key_input.edit_line];
 	char	word[MAXCMDLINE];
 	size_t	len;
-	bool	whole, quote;
+	bool	whole, quote, grows;
 
 	if (!c->count)
 		return;
 	len = Key_CommonPrefix (c);
-	if (c->count > 1 && len <= strlen (line + start))
+	if (contains)
+		grows = len > dirlen && Key_HasText (c->names[0] + dirlen, len - dirlen, line + start + dirlen);
+	else
+		grows = len > strlen (line + start);
+	if (c->count > 1 && !grows)
 	{
 		Key_ListCompletions (c);
 		return;
@@ -299,10 +383,12 @@ that completes it (demos to play)
 static void CompleteCommand (void)
 {
 	char			*line = key_input.lines[key_input.edit_line];
-	char			name[MAXCMDLINE];
+	char			name[MAXCMDLINE], dir[MAXCMDLINE];
+	const char		*slash;
 	completions_t	c = {0};
-	int				cmd, space, arg, i;
-	bool			quoted;
+	int				cmd, space, arg;
+	size_t			dirlen;
+	bool			quoted, contains;
 
 	line[key_input.linepos] = 0;		// what is typed, not what backspacing left after it
 	cmd = line[1] == '/' || line[1] == '\\' ? 2 : 1;
@@ -313,29 +399,36 @@ static void CompleteCommand (void)
 	{	// the command's name; a line of one is a command, not chat
 		Cmd_ListMatches (line + cmd, Key_AddCompletion, &c);
 		Cvar_ListMatches (line + cmd, Key_AddCompletion, &c);
+		Key_SortCompletions (&c);
 		if (c.count && cmd == 1 && key_input.linepos < MAXCMDLINE - 1)
 		{
 			memmove (line + 2, line + 1, strlen (line + 1) + 1);
 			line[1] = '/';
 			cmd = 2;
 		}
-		Key_CompleteWord (&c, cmd, false, " ");
+		Key_CompleteWord (&c, cmd, false, " ", false, 0);
 	}
 	else
-	{	// its first argument, if it completes it
+	{	// its first argument, if it completes it: from what is in the directory typed
 		snprintf (name, sizeof(name), "%.*s", space - cmd, line + cmd);
 		for (arg = space ; line[arg] == ' ' ; arg++)
 			;
 		quoted = line[arg] == '"';
 		if (quoted)
 			arg++;
+		slash = strrchr (line + arg, '/');
+		dirlen = slash ? (size_t)(slash - (line + arg)) + 1 : 0;
+		snprintf (dir, sizeof(dir), "%.*s", (int)dirlen, line + arg);
 		if ((quoted ? !strchr (line + arg, '"') : !strchr (line + arg, ' '))
-			&& Cmd_CompleteArgument (name, line + arg, Key_AddCompletion, &c))
-			Key_CompleteWord (&c, arg, quoted, "");
+			&& Cmd_CompleteArgument (name, dir, Key_AddCompletion, &c))
+		{
+			Key_SortCompletions (&c);
+			contains = Key_FilterCompletions (&c, line + arg, dirlen);
+			Key_CompleteWord (&c, arg, quoted, "", contains, dirlen);
+		}
 	}
 
-	for (i = 0 ; i < c.count ; i++)
-		Mem_Free (c.names[i]);
+	Key_FreeCompletions (&c);
 }
 
 /*
