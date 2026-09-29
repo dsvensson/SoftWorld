@@ -14,7 +14,7 @@ viddef_t	vid;				// global video state
 
 cvar_t	vid_vsync = {.name = "vid_vsync", .string = "1", .archive = true};
 // render pixels per pixel of the 320x200 layout; 0 is the most the window holds
-static cvar_t	vid_scale = {.name = "vid_scale", .string = "0", .archive = true};
+static cvar_t	vid_scale = {.name = "vid_scale", .string = "1", .archive = true};
 // pixels 1.2 times as tall as wide, as 320x200 was shown on 4:3 screens
 static cvar_t	vid_crt = {.name = "vid_crt", .string = "0", .archive = true};
 // the layout is as wide as the window instead of 320, and sees more to the sides

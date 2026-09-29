@@ -158,7 +158,7 @@ Worth knowing:
 
 | | |
 |---|---|
-| `-scale n`, `vid_scale` | render at 320×200 times n; 0 picks the largest that fits the window |
+| `-scale n`, `vid_scale` | render at 320×200 times n (1, the default, is 320×200 itself); 0 picks the largest that fits the window |
 | `vid_widescreen`, `vid_crt` | wider view (hor+); CRT pixel aspect |
 | `r_lightmode` | 1 linear light in RGB, brighter than white where it is (the default); 0 lighting as Quake had it |
 | `r_fullbright_scale`, `r_dlight_scale` | fullbrights' light, and dynamic lights' on surfaces, times these |
