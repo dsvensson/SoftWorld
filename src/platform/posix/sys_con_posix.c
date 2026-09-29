@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// sys_mac_con.c -- the dedicated server's console on macOS: lines typed in the
-// terminal, which edits them, and Ctrl+C
+// sys_con_posix.c -- the dedicated server's console on macOS and Linux: lines
+// typed in the terminal, which edits them, and Ctrl+C
 
 #include "args.h"
 #include "cvar.h"
@@ -26,7 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "print.h"
 #include "sys.h"
 #include "entry.h"
-#include "mac_local.h"
+#include "posix_local.h"
 
 #include <errno.h>
 #include <poll.h>
@@ -35,8 +35,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/event.h>
-#include <time.h>
 #include <unistd.h>
 
 static cvar_t	sys_nostdout = {.name = "sys_nostdout", .string = "0"};

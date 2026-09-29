@@ -17,17 +17,18 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// net_tcp_mac.c -- TCP streams on BSD sockets (QTV)
+// net_tcp_posix.c -- TCP streams on BSD sockets (QTV), on macOS and Linux
 
 #include "mem.h"
 #include "net_socket.h"
-#include "mac_local.h"
+#include "posix_local.h"
 
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
+#include <signal.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -48,7 +49,7 @@ Starts a non-blocking connection
 tcpsocket_t *TCP_Connect (const netadr_t *to)
 {
 	tcpsocket_t			*s;
-	struct sockaddr_in	addr = {.sin_len = sizeof(addr), .sin_family = AF_INET};
+	struct sockaddr_in	addr = {.sin_family = AF_INET};
 
 	s = Mem_Calloc (1, sizeof(*s));
 	s->socket = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -58,8 +59,9 @@ tcpsocket_t *TCP_Connect (const netadr_t *to)
 		return NULL;
 	}
 	setsockopt (s->socket, IPPROTO_TCP, TCP_NODELAY, &(int){1}, sizeof(int));
-	// a write to a closed connection is an error, not SIGPIPE
-	setsockopt (s->socket, SOL_SOCKET, SO_NOSIGPIPE, &(int){1}, sizeof(int));
+	// a write to a closed connection is an error, not SIGPIPE: the process
+	// ignores it (SO_NOSIGPIPE, which did it for the socket, is macOS's alone)
+	signal (SIGPIPE, SIG_IGN);
 	if (fcntl (s->socket, F_SETFL, fcntl (s->socket, F_GETFL) | O_NONBLOCK) < 0)
 	{
 		close (s->socket);

@@ -1,5 +1,20 @@
 # The platform layers: the process entry points, the system services, and for
-# the programs with a client the window, drawing, input and sound.
+# the programs with a client the window, drawing, input and sound. Files named
+# _posix are macOS's and Linux's both, and the systems' own halves of them
+# _macos and _linux: each system takes its own here, as each compiler takes its
+# own of the CPU check's.
+
+# the CPU check, and for x86-64-v4 CPUID as the compiler has it
+set(SW_CPU_CHECK_SOURCES cpu/cpu_check_${SW_ARCH_SUFFIX}.c)
+if(SW_ARCH STREQUAL "x86-64-v4" AND MSVC)
+	list(APPEND SW_CPU_CHECK_SOURCES cpu/cpuid_msvc.c)
+elseif(SW_ARCH STREQUAL "x86-64-v4")
+	list(APPEND SW_CPU_CHECK_SOURCES cpu/cpuid_gnu.c)
+endif()
+
+# the services of macOS and Linux (posix/), over what each system has
+set(SW_POSIX_SOURCES
+	posix/sys_posix.c posix/sys_workers_posix.c posix/net_udp_posix.c posix/net_tcp_posix.c)
 
 if(WIN32)
 	# Process entry points and the CPU check: built without architecture flags and
@@ -10,7 +25,7 @@ if(WIN32)
 	foreach(kind gui con)
 		add_library(sw_entry_${kind} OBJECT
 			${SW_ENTRY_${kind}}
-			cpu/cpu_check_${SW_ARCH_SUFFIX}.c)
+			${SW_CPU_CHECK_SOURCES})
 		target_include_directories(sw_entry_${kind} PRIVATE .)
 		set_target_properties(sw_entry_${kind} PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
 		sw_set_warnings(sw_entry_${kind})
@@ -78,23 +93,24 @@ elseif(APPLE)
 	foreach(kind gui con)
 		add_library(sw_entry_${kind} OBJECT
 			${SW_ENTRY_${kind}}
-			cpu/cpu_check_${SW_ARCH_SUFFIX}.c)
+			${SW_CPU_CHECK_SOURCES})
 		target_include_directories(sw_entry_${kind} PRIVATE .)
 		set_target_properties(sw_entry_${kind} PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
 		sw_set_warnings(sw_entry_${kind})
 	endforeach()
 
-	# macOS services shared by every program
-	sw_add_module(sw_platform_mac
-		mac/sys_mac.c mac/sys_mac_workers.c mac/net_udp_mac.c mac/net_tcp_mac.c)
-	target_include_directories(sw_platform_mac PRIVATE mac)
-	target_link_libraries(sw_platform_mac PUBLIC sw_net sw_common)
+	# the system services shared by every program: macOS's and Linux's, and macOS's own
+	sw_add_module(sw_platform_posix
+		${SW_POSIX_SOURCES}
+		mac/sys_macos.c mac/sys_workers_macos.c)
+	target_include_directories(sw_platform_posix PUBLIC posix PRIVATE "${SW_CPU_RELAX_DIR}")
+	target_link_libraries(sw_platform_posix PUBLIC sw_net sw_common)
 
 	# the console of the dedicated server
 	sw_add_module(sw_platform_con
-		mac/sys_mac_con.c)
-	target_include_directories(sw_platform_con PRIVATE . mac)
-	target_link_libraries(sw_platform_con PUBLIC sw_platform_mac)
+		posix/sys_con_posix.c)
+	target_include_directories(sw_platform_con PRIVATE .)
+	target_link_libraries(sw_platform_con PUBLIC sw_platform_posix)
 
 	option(SW_SANDBOX "The applications run in the App Sandbox, in a game directory the player chooses" ON)
 
@@ -115,7 +131,7 @@ elseif(APPLE)
 		mac/sys_mac_gui.m mac/vid_metal.m mac/in_mac.m mac/in_gamepad_mac.m mac/snd_coreaudio.c
 		$<TARGET_OBJECTS:sw_present_metallib>)
 	target_include_directories(sw_platform_gui PRIVATE . mac)
-	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_mac
+	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_posix
 		"-framework AppKit" "-framework Metal" "-framework QuartzCore" "-framework AudioToolbox"
 		"-framework Carbon" "-framework GameController")
 

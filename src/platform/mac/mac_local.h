@@ -19,32 +19,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #pragma once
-// mac_local.h -- shared by the macOS platform files
+// mac_local.h -- shared by the macOS platform files; the waits and the
+// worker threads are posix_local.h's
 
-#include "q_types.h"
-
-// sys_mac.c: the file descriptors Sys_WaitUntil wakes up for (console input,
-// sockets), in a kqueue. Edge-triggered: an fd wakes it when something new
-// arrives, not again while unread data waits (the client leaves packets
-// unread until its frame is due). False for what a kqueue can't wait on, such
-// as /dev/null.
-bool	Sys_AddWaitFd (int fd);
-void	Sys_RemoveWaitFd (int fd);
-int		Sys_WaitQueue (void);		// the kqueue itself, created on first use
-
-// a timer in the kqueue for when the wait ends: critical, so not put off to
-// fire with others as a plain timeout is (by over a millisecond)
-void	Sys_SetWaitTimer (double until);
-void	Sys_ClearWaitTimer (void);
-
-// what the kqueue has: its timer fired, an fd has something, or a signal
-// interrupted the wait; waits for one of them if block
-enum { SYS_WAIT_TIMER = 1, SYS_WAIT_FD = 2, SYS_WAIT_SIGNAL = 4 };
-int		Sys_ReadWaitQueue (bool block);
-
-// each program's own: sleeps until Sys_DoubleTime () reaches until, or until
-// input or a packet arrives; true if woken early
-bool	Sys_WaitEvents (double until);
+#include "posix_local.h"
 
 //
 // the programs with a client

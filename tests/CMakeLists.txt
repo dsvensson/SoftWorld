@@ -37,7 +37,7 @@ sw_add_program(test_workers test_workers.c)
 if(WIN32)
 	target_link_libraries(test_workers PRIVATE sw_platform_win)
 else()
-	target_link_libraries(test_workers PRIVATE sw_platform_mac)
+	target_link_libraries(test_workers PRIVATE sw_platform_posix)
 endif()
 add_test(NAME workers COMMAND test_workers)
 

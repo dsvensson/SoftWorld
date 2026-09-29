@@ -17,14 +17,14 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// net_udp_mac.c -- UDP sockets over BSD sockets
+// net_udp_posix.c -- UDP sockets over BSD sockets, on macOS and Linux
 
 #include "args.h"
 #include "mem.h"
 #include "net_socket.h"
 #include "print.h"
 #include "sys.h"
-#include "mac_local.h"
+#include "posix_local.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -45,8 +45,8 @@ struct udpsocket_s
 
 static void NetadrToSockadr (const netadr_t *a, struct sockaddr_in *s)
 {
+	// no sin_len: macOS takes the length from the call's
 	memset (s, 0, sizeof(*s));
-	s->sin_len = sizeof(*s);
 	s->sin_family = AF_INET;
 	memcpy (&s->sin_addr, a->ip, 4);
 	s->sin_port = a->port;
@@ -101,7 +101,7 @@ Binds to -ip if given, otherwise to every interface
 udpsocket_t *UDP_Open (int port)
 {
 	udpsocket_t	*s;
-	struct sockaddr_in	address = {.sin_len = sizeof(address), .sin_family = AF_INET};
+	struct sockaddr_in	address = {.sin_family = AF_INET};
 	struct ifaddrs	*interfaces, *ifa;
 	socklen_t	namelen;
 	int		i;

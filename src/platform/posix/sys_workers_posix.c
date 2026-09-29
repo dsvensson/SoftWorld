@@ -1,11 +1,12 @@
-// sys_mac_workers.c -- the worker threads of Sys_Parallel
+// sys_workers_posix.c -- the worker threads of Sys_Parallel, on macOS and Linux
 //
 // As on Windows (sys_win_workers.c): a run publishes its jobs and bumps a
 // generation the workers wait on; the jobs are taken by an index each thread
 // increments. The caller starts on the jobs at once and the workers join as
-// they wake. A worker out of jobs sleeps (os_sync_wait_on_address) at once:
-// spinning for the next run cost more than waking, as spinning cores take
-// clock speed and cycles from the thread drawing the rest of the frame.
+// they wake. A worker out of jobs sleeps (Sys_WorkerWait: macOS's
+// os_sync_wait_on_address, Linux's futex) at once: spinning for the next run
+// cost more than waking, as spinning cores take clock speed and cycles from
+// the thread drawing the rest of the frame.
 //
 // x86 kept the Windows version's plain loads in order; arm64 doesn't, so the
 // shared fields are atomics, sequentially consistent as Interlocked* are. The
@@ -13,12 +14,12 @@
 // publishes them, and a worker reads them only after seeing it.
 
 #include "sys.h"
+#include "posix_local.h"
+#include "cpu_relax.h"
 
-#include <os/os_sync_wait_on_address.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>
-#include <sys/sysctl.h>
 
 #define	MAX_WORKERS		63
 #define	WORKER_STACK	(1 << 20)	// Windows' default; macOS gives threads 512 KB
@@ -38,21 +39,6 @@ static struct
 	int				numworkers;
 	pthread_t		threads[MAX_WORKERS];
 } pool;
-
-// the performance cores: a job left to an efficiency core would hold up the frame
-int Sys_NumCores (void)
-{
-	int		cores = 0;
-	size_t	size = sizeof(cores);
-
-	if (sysctlbyname ("hw.perflevel0.physicalcpu", &cores, &size, NULL, 0) || cores < 1)
-	{
-		size = sizeof(cores);
-		if (sysctlbyname ("hw.physicalcpu", &cores, &size, NULL, 0) || cores < 1)
-			cores = 1;
-	}
-	return cores;
-}
 
 // takes and runs the run's jobs until none are left
 static void Sys_RunJobs (void)
@@ -76,7 +62,7 @@ static void *Sys_WorkerMain (void *unused)
 		// sleep until the next run
 		atomic_fetch_add (&pool.sleepers, 1);
 		while ((now = atomic_load (&pool.generation)) == seen)
-			os_sync_wait_on_address (&pool.generation, seen, sizeof(seen), OS_SYNC_WAIT_ON_ADDRESS_NONE);
+			Sys_WorkerWait (&pool.generation, seen);
 		atomic_fetch_sub (&pool.sleepers, 1);
 		seen = now;
 		if (atomic_load (&pool.quit))
@@ -95,7 +81,7 @@ static void Sys_WakeWorkers (void)
 {
 	atomic_fetch_add (&pool.generation, 1);
 	if (atomic_load (&pool.sleepers))
-		os_sync_wake_by_address_all (&pool.generation, sizeof(uint32_t), OS_SYNC_WAKE_BY_ADDRESS_NONE);
+		Sys_WorkerWakeAll (&pool.generation);
 }
 
 void Sys_SetWorkers (int workers)
@@ -123,7 +109,7 @@ void Sys_SetWorkers (int workers)
 	atomic_store (&pool.generation, 0);
 	pthread_attr_init (&attr);
 	pthread_attr_setstacksize (&attr, WORKER_STACK);
-	pthread_attr_set_qos_class_np (&attr, QOS_CLASS_USER_INTERACTIVE, 0);
+	Sys_WorkerThreadAttr (&attr);
 	for (i = 0 ; i < workers ; i++)
 		if (pthread_create (&pool.threads[i], &attr, Sys_WorkerMain, NULL))
 			break;
@@ -155,10 +141,10 @@ void Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx)
 
 	Sys_RunJobs ();
 	while (atomic_load (&pool.done) < count)
-		__builtin_arm_yield ();
+		Sys_CpuRelax ();
 
 	// no worker may still be taking jobs when the next run is published
 	atomic_store (&pool.running, 0);
 	while (atomic_load (&pool.active))
-		__builtin_arm_yield ();
+		Sys_CpuRelax ();
 }
