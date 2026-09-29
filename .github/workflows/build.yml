@@ -47,20 +47,45 @@ jobs:
         uses: actions/cache@v6
         with:
           path: fteqcc
-          key: fteqcc-${{ runner.os }}-${{ steps.fteqw.outputs.sha }}
+          key: fteqcc-qclib-${{ runner.os }}-${{ steps.fteqw.outputs.sha }}
 
-      # fteqw's own build, of fteqcc alone; without zlib, which qw-qc doesn't need
-      - name: Build fteqcc
+      # built by the qc compiler's own Makefile (engine/qclib), ten C files and
+      # nothing configured: C17 as fteqw is written in, optimized, without zlib,
+      # which qw-qc doesn't need, and named by its revision as fteqw's builds are
+      - name: fteqw's source
+        id: fteqw-src
         if: steps.fteqcc.outputs.cache-hit != 'true'
         shell: bash
         run: |
           git init -q fteqw
           git -C fteqw fetch -q --depth 1 https://github.com/fte-team/fteqw.git ${{ steps.fteqw.outputs.sha }}
           git -C fteqw checkout -q FETCH_HEAD
-          cmake -S fteqw -B fteqw/build -DCMAKE_BUILD_TYPE=Release -DFTE_DEP_ZLIB=OFF
-          cmake --build fteqw/build --target fteqcc --config Release --parallel
+          revision="git-$(git -C fteqw rev-parse --short=7 HEAD)"
+          date="$(git -C fteqw log -1 --format=%cs)"
+          echo "cflags=-O2 -std=gnu17 -DNO_ZLIB -DSVNREVISION=$revision -DSVNDATE=$date" >> "$GITHUB_OUTPUT"
+
+      - name: MSYS2's gcc and make
+        if: steps.fteqcc.outputs.cache-hit != 'true' && runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: make mingw-w64-ucrt-x86_64-gcc
+
+      # linked statically, to run outside MSYS2
+      - name: Build fteqcc (Windows)
+        if: steps.fteqcc.outputs.cache-hit != 'true' && runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          make -C fteqw/engine/qclib qcc CC=gcc CFLAGS="${{ steps.fteqw-src.outputs.cflags }}" BASE_LDFLAGS=-static
           mkdir -p fteqcc
-          cp "$(find fteqw/build -type f \( -name fteqcc -o -name fteqcc.exe \) | head -1)" fteqcc/
+          cp fteqw/engine/qclib/fteqcc.bin fteqcc/fteqcc.exe
+
+      - name: Build fteqcc (macOS)
+        if: steps.fteqcc.outputs.cache-hit != 'true' && runner.os == 'macOS'
+        run: |
+          make -C fteqw/engine/qclib qcc CC=cc CFLAGS="${{ steps.fteqw-src.outputs.cflags }}" BASE_LDFLAGS=
+          mkdir -p fteqcc
+          cp fteqw/engine/qclib/fteqcc.bin fteqcc/fteqcc
 
       # MSVC, the Windows SDK's fxc and Ninja, from a Visual Studio developer shell
       - name: Build (Windows)
