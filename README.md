@@ -98,15 +98,18 @@ softworld -basedir C:\quake +qtvplay 1@qtv.example.com:27599
 softworld-server -basedir C:\quake -port 27500 +map dm4
 ```
 
-On macOS the same, with the application's program:
+On macOS the applications run in the App Sandbox, from wherever they are: on the first start
+they ask for the Quake directory (the one with `id1/pak0.pak`), and remember it for the next.
+`sys_forget_sandbox` forgets it, and the next start asks again. From a terminal:
 
 ```
-softworld.app/Contents/MacOS/softworld -basedir ~/Games/Quake +map dm4
+softworld.app/Contents/MacOS/softworld +map dm4
 softworld-server -basedir ~/Games/Quake -port 27500 +map dm4
 ```
 
-Without `-basedir` the directory is the working one, as on Windows; opened from the Finder,
-the application looks next to itself.
+`-basedir` still names the directory, but the sandbox only lets the applications into the one
+chosen (and what is in it). The dedicated server isn't sandboxed. Configure with
+`-DSW_SANDBOX=OFF` for applications without the sandbox, which take `-basedir` anywhere.
 
 Worth knowing:
 

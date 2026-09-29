@@ -18,7 +18,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 // sys_mac_gui.m -- the macOS system interface for the programs with a client: the
-// application, its event loop and its waits, errors, and the clipboard
+// application, its game directory, its event loop and its waits, errors, and the
+// clipboard
+//
+// The applications run in the App Sandbox: the game directory is one the player
+// chooses, on the first start, and a security-scoped bookmark of it in the user
+// defaults opens it again on the next (sys_forget_sandbox forgets it). The
+// defaults, not a cvar: the cvars' config.cfg is in that directory.
 //
 // The main loop is the game's, as on Windows; events are taken from the queue
 // between frames. The wait for the next frame is AppKit's wait for an event,
@@ -36,6 +42,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "entry.h"
 #include "mac_local.h"
 
+#include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -263,6 +271,170 @@ bool Sys_WaitEvents (double until)
 /*
 ===============================================================================
 
+THE GAME DIRECTORY
+
+===============================================================================
+*/
+
+#define SYS_BASEDIR_KEY		@"basedir"	// the user default holding the directory's bookmark
+
+static void Sys_Alert (NSString *title, NSString *text)
+{
+	NSAlert	*alert = [NSAlert new];
+
+	alert.messageText = title;
+	alert.informativeText = text;
+	[NSApp activate];
+	[alert runModal];
+}
+
+// the directory holds the game
+static bool Sys_IsGameDir (NSURL *dir)
+{
+	return [NSFileManager.defaultManager fileExistsAtPath:[dir URLByAppendingPathComponent:@"id1/pak0.pak"].path];
+}
+
+static bool Sys_SaveBookmark (NSURL *dir)
+{
+	NSError	*error = nil;
+	NSData	*bookmark = [dir bookmarkDataWithOptions:NSURLBookmarkCreationWithSecurityScope
+		includingResourceValuesForKeys:nil relativeToURL:nil error:&error];
+
+	if (!bookmark)
+	{
+		Sys_Alert (@"The game directory can't be remembered", error.localizedDescription);
+		return false;
+	}
+	[NSUserDefaults.standardUserDefaults setObject:bookmark forKey:SYS_BASEDIR_KEY];
+	return true;
+}
+
+// the directory chosen before, opened for as long as the program runs; nil if
+// none was, or it can't be opened
+static NSURL *Sys_BookmarkedDir (void)
+{
+	NSData	*bookmark = [NSUserDefaults.standardUserDefaults dataForKey:SYS_BASEDIR_KEY];
+	NSError	*error = nil;
+	BOOL	stale = NO;
+	NSURL	*dir;
+
+	if (!bookmark)
+		return nil;
+	dir = [NSURL URLByResolvingBookmarkData:bookmark options:NSURLBookmarkResolutionWithSecurityScope
+		relativeToURL:nil bookmarkDataIsStale:&stale error:&error];
+	if (!dir)
+	{
+		Sys_Printf ("The game directory remembered can't be found: %s\n", error.localizedDescription.UTF8String);
+		return nil;
+	}
+	if (![dir startAccessingSecurityScopedResource])
+	{
+		Sys_Printf ("The game directory remembered, %s, can't be opened\n", dir.fileSystemRepresentation);
+		return nil;
+	}
+	// moved or renamed: the bookmark is made again from where it is now
+	if (stale)
+		Sys_SaveBookmark (dir);
+	return dir;
+}
+
+// asks for the game directory until one with the game in it is chosen, and
+// remembers it; nil if the player would rather not
+static NSURL *Sys_ChooseDir (void)
+{
+	NSOpenPanel	*panel = [NSOpenPanel openPanel];
+	NSURL		*dir;
+
+	Sys_Printf ("Asking for the game directory\n");
+	panel.canChooseFiles = NO;
+	panel.canChooseDirectories = YES;
+	panel.allowsMultipleSelection = NO;
+	panel.message = @"Choose your Quake directory: the one with id1/pak0.pak in it, and qw and the mods.";
+	panel.prompt = @"Play";
+	[NSApp activate];
+	while ([panel runModal] == NSModalResponseOK)
+	{
+		dir = panel.URL;
+		if (Sys_IsGameDir (dir))
+		{
+			Sys_SaveBookmark (dir);
+			return dir;
+		}
+		Sys_Alert (@"That isn't a Quake directory", @"Choose the directory with id1/pak0.pak in it.");
+	}
+	return nil;
+}
+
+/*
+================
+Sys_GameDir
+
+The game directory: the one remembered, or else one the player chooses. With
+-basedir that is the directory (inside the one remembered: the sandbox lets
+the program into nothing else), and nothing is asked.
+================
+*/
+static const char *Sys_GameDir (void)
+{
+	static char	path[MAX_OSPATH];
+	NSURL		*dir;
+	FILE		*f;
+	int			i;
+
+	@autoreleasepool
+	{
+		dir = Sys_BookmarkedDir ();
+		if ((i = COM_CheckParm ("-basedir")) && i + 1 < com_argc)
+		{
+			// fs.c takes -basedir's; a directory the sandbox keeps the program out of is said so
+			snprintf (path, sizeof(path), "%s/id1/pak0.pak", com_argv[i + 1]);
+			f = fopen (path, "rb");
+			if (!f && (errno == EPERM || errno == EACCES))
+			{
+				Sys_Printf ("The sandbox keeps SoftWorld out of %s\n", com_argv[i + 1]);
+				Sys_Alert (@"SoftWorld can't open that directory",
+					[NSString stringWithFormat:@"The sandbox keeps it out of %s: -basedir must be inside the game "
+						"directory chosen. Start SoftWorld without -basedir to choose one (sys_forget_sandbox "
+						"forgets the one chosen).", com_argv[i + 1]]);
+				exit (1);
+			}
+			if (f)
+				fclose (f);
+			return ".";
+		}
+
+		if (dir && !Sys_IsGameDir (dir))
+		{
+			Sys_Printf ("The game directory remembered, %s, has no id1/pak0.pak\n", dir.fileSystemRepresentation);
+			dir = nil;
+		}
+		if (!dir)
+			dir = Sys_ChooseDir ();
+		if (!dir)
+			exit (0);
+
+		// relative paths go there too, as they do on Windows
+		snprintf (path, sizeof(path), "%s", dir.fileSystemRepresentation);
+		chdir (path);
+		return path;
+	}
+}
+
+// the next start asks for the game directory again; this one keeps it open
+static void Sys_ForgetSandbox_f (void)
+{
+	if (![NSUserDefaults.standardUserDefaults dataForKey:SYS_BASEDIR_KEY])
+	{
+		Con_Printf ("No game directory is remembered.\n");
+		return;
+	}
+	[NSUserDefaults.standardUserDefaults removeObjectForKey:SYS_BASEDIR_KEY];
+	Con_Printf ("The game directory is forgotten: the next start asks for one.\n");
+}
+
+/*
+===============================================================================
+
 MAIN
 
 ===============================================================================
@@ -281,28 +453,6 @@ static void Sys_CreateMenu (void)
 	NSApp.mainMenu = bar;
 }
 
-// the directory the game is in: the working directory, as on Windows, unless
-// that is the root, as it is for a program opened from the Finder; then the
-// one the application is in
-static const char *Sys_BaseDir (void)
-{
-	static char	cwd[1024];
-	size_t		len;
-
-	if (!getcwd (cwd, sizeof(cwd)))
-		Sys_Error ("Couldn't determine current directory");
-	if (!strcmp (cwd, "/"))
-	{
-		NSString	*dir = [NSBundle mainBundle].bundlePath.stringByDeletingLastPathComponent;
-
-		snprintf (cwd, sizeof(cwd), "%s", dir.fileSystemRepresentation);
-	}
-	len = strlen (cwd);
-	if (len > 1 && cwd[len-1] == '/')
-		cwd[len-1] = 0;
-	return cwd;
-}
-
 int Sys_MacMain (int argc, char **argv)
 {
 	quakeparms_t	parms;
@@ -319,13 +469,14 @@ int Sys_MacMain (int argc, char **argv)
 		NSApp.delegate = sys_delegate;
 		Sys_CreateMenu ();
 		[NSApp finishLaunching];
-		parms.basedir = (char *)Sys_BaseDir ();
 	}
-	parms.cachedir = NULL;
 
 	COM_InitArgv (argc, argv);
 	parms.argc = com_argc;
 	parms.argv = com_argv;
+	parms.basedir = (char *)Sys_GameDir ();
+	parms.cachedir = NULL;
+	Cmd_AddCommand ("sys_forget_sandbox", Sys_ForgetSandbox_f);
 
 	Sys_WatchWaitQueue ();
 

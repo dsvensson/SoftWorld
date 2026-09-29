@@ -49,6 +49,14 @@ if(WIN32)
 			win/softworld.rc win/softworld.manifest
 			$<TARGET_OBJECTS:sw_entry_gui>)
 		target_link_libraries(${target} PRIVATE sw_platform_gui)
+		# in the App Sandbox: the game directory is one the player chooses
+		if(SW_SANDBOX)
+			add_custom_command(TARGET ${target} POST_BUILD
+				COMMAND codesign --force --sign - --entitlements "${CMAKE_CURRENT_SOURCE_DIR}/mac/softworld.entitlements"
+					"$<TARGET_BUNDLE_DIR:${target}>"
+				COMMENT "Signing ${target}.app for the App Sandbox"
+				VERBATIM)
+		endif()
 	endforeach()
 	target_link_libraries(softworld PRIVATE sw_server)
 	target_link_libraries(softworld-client PRIVATE sw_server_null)
@@ -87,6 +95,8 @@ elseif(APPLE)
 		mac/sys_mac_con.c)
 	target_include_directories(sw_platform_con PRIVATE . mac)
 	target_link_libraries(sw_platform_con PUBLIC sw_platform_mac)
+
+	option(SW_SANDBOX "The applications run in the App Sandbox, in a game directory the player chooses" ON)
 
 	# the shaders, compiled at build time and carried inside the programs
 	include(metal)
@@ -135,6 +145,14 @@ elseif(APPLE)
 			MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
 			MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
 		target_link_libraries(${target} PRIVATE sw_platform_gui)
+		# in the App Sandbox: the game directory is one the player chooses
+		if(SW_SANDBOX)
+			add_custom_command(TARGET ${target} POST_BUILD
+				COMMAND codesign --force --sign - --entitlements "${CMAKE_CURRENT_SOURCE_DIR}/mac/softworld.entitlements"
+					"$<TARGET_BUNDLE_DIR:${target}>"
+				COMMENT "Signing ${target}.app for the App Sandbox"
+				VERBATIM)
+		endif()
 	endforeach()
 	target_link_libraries(softworld PRIVATE sw_server)
 	target_link_libraries(softworld-client PRIVATE sw_server_null)

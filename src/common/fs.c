@@ -422,9 +422,13 @@ int COM_FOpenFile (const char *filename, FILE **file)
 			if (findtime == -1)
 				continue;
 				
-			Sys_Printf ("FindFile: %s\n",netpath);
-
 			*file = fopen (netpath, "rb");
+			if (!*file)
+			{	// there, but not to be read (permissions, a sandbox)
+				Sys_Printf ("FindFile: can't open %s\n", netpath);
+				continue;
+			}
+			Sys_Printf ("FindFile: %s\n",netpath);
 			return COM_filelength (*file);
 		}
 		
