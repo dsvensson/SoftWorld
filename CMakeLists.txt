@@ -12,8 +12,9 @@ if(WIN32 AND MSVC)
 	enable_language(RC)
 elseif(APPLE)
 	enable_language(OBJC)
-else()
-	message(FATAL_ERROR "SoftWorld builds with MSVC or clang-cl on Windows, or Apple clang on macOS")
+elseif(NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID MATCHES "^(Clang|GNU)$"))
+	message(FATAL_ERROR "SoftWorld builds with MSVC or clang-cl on Windows, Apple clang on macOS, "
+		"or clang or GCC on Linux")
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -58,6 +59,9 @@ else()
 	# Windows builds' (arm64 fuses multiplies and adds unless told not to); and no
 	# type-based aliasing, which MSVC never did and the progs' fields rely on
 	add_compile_options(-ffp-contract=off -fno-strict-aliasing)
+endif()
+
+if(APPLE)
 	add_compile_options("$<$<COMPILE_LANGUAGE:OBJC>:-fobjc-arc>")
 	add_link_options("$<$<CONFIG:Release,RelWithDebInfo>:-Wl,-dead_strip>")
 	# static libraries are listed again for the ones after them that need them
@@ -65,6 +69,17 @@ else()
 	set(CMAKE_OBJC_STANDARD 23)
 	set(CMAKE_OBJC_STANDARD_REQUIRED ON)
 	set(CMAKE_OBJC_EXTENSIONS OFF)
+elseif(NOT WIN32)
+	# Linux: POSIX and glibc's own (futexes, epoll, timerfd), which strict C23 hides
+	add_compile_definitions(_GNU_SOURCE)
+	link_libraries(m)
+	add_compile_options("$<$<CONFIG:Release,RelWithDebInfo>:-ffunction-sections;-fdata-sections>")
+	add_link_options("$<$<CONFIG:Release,RelWithDebInfo>:-Wl,--gc-sections>")
+	# the modules need each other both ways (the engine calls the platform, the
+	# platform the engine): the libraries are one group, searched until nothing
+	# more is found, for linkers that search each once in order (GNU ld)
+	set(CMAKE_C_LINK_EXECUTABLE
+		"<CMAKE_C_COMPILER> <FLAGS> <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> -Wl,--start-group <LINK_LIBRARIES> -Wl,--end-group")
 endif()
 
 # all executables land in <build dir>/<config>, whichever directory defines them

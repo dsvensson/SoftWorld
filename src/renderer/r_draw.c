@@ -42,6 +42,7 @@ static polydesc_t		r_polydesc;
 clipplane_t	view_clipplanes[4];
 
 static medge_t			*r_pedge;
+static medge_t			r_tedge;	// a dummy edge, for the edge caching to write to
 
 static bool		r_leftclipped, r_rightclipped;
 static bool	makeleftedge, makerightedge;
@@ -385,7 +386,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	mplane_t	*pplane;
 	float		distinv;
 	vec3_t		p_normal;
-	medge_t		*pedges, tedge;
+	medge_t		*pedges;
 	clipplane_t	*pclip;
 
 // a translucent surface is blended in after the models; a fence mustn't
@@ -539,7 +540,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 // FIXME: share clipped edges?
 	if (makeleftedge)
 	{
-		r_pedge = &tedge;
+		r_pedge = &r_tedge;
 		r_lastvertvalid = false;
 		R_ClipEdge (&r_leftexit, &r_leftenter, pclip->next);
 	}
@@ -547,7 +548,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 // if there was a clip off the right edge, get the right r_nearzi
 	if (makerightedge)
 	{
-		r_pedge = &tedge;
+		r_pedge = &r_tedge;
 		r_lastvertvalid = false;
 		r_nearzionly = true;
 		R_ClipEdge (&r_rightexit, &r_rightenter, view_clipplanes[1].next);
@@ -597,7 +598,6 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	mplane_t	*pplane;
 	float		distinv;
 	vec3_t		p_normal;
-	medge_t		tedge;
 	clipplane_t	*pclip;
 
 	alpha = R_SurfaceAlpha (psurf);
@@ -629,7 +629,7 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	c_faceclip++;
 
 // this is a dummy to give the caching mechanism someplace to write to
-	r_pedge = &tedge;
+	r_pedge = &r_tedge;
 
 // set up clip planes
 	pclip = NULL;
@@ -668,14 +668,14 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 // FIXME: share clipped edges?
 	if (makeleftedge)
 	{
-		r_pedge = &tedge;
+		r_pedge = &r_tedge;
 		R_ClipEdge (&r_leftexit, &r_leftenter, pclip->next);
 	}
 
 // if there was a clip off the right edge, get the right r_nearzi
 	if (makerightedge)
 	{
-		r_pedge = &tedge;
+		r_pedge = &r_tedge;
 		r_nearzionly = true;
 		R_ClipEdge (&r_rightexit, &r_rightenter, view_clipplanes[1].next);
 	}

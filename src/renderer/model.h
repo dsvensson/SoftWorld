@@ -392,5 +392,5 @@ bool	Mod_LoadFromBuffer (model_t *mod, byte *buffer, int size);
 void	Mod_Unload (model_t *mod);
 void	*Mod_Extradata (model_t *mod);	// handles caching
 
-mleaf_t *Mod_PointInLeaf (float *p, model_t *model);
+mleaf_t *Mod_PointInLeaf (vec3_t p, model_t *model);
 byte	*Mod_LeafPVS (mleaf_t *leaf, model_t *model);

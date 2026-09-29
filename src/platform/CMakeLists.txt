@@ -178,4 +178,37 @@ elseif(APPLE)
 		"${SW_HOST_DIR}/host_ded.c"
 		$<TARGET_OBJECTS:sw_entry_con>)
 	target_link_libraries(softworld-server PRIVATE sw_server sw_platform_con)
+else()
+	# Linux: the process entry points and the CPU check, built as on Windows
+	set(SW_ENTRY_gui linux/entry_gui.c)
+	set(SW_ENTRY_con entry_con.c)
+	foreach(kind gui con)
+		add_library(sw_entry_${kind} OBJECT
+			${SW_ENTRY_${kind}}
+			${SW_CPU_CHECK_SOURCES})
+		target_include_directories(sw_entry_${kind} PRIVATE .)
+		set_target_properties(sw_entry_${kind} PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
+		sw_set_warnings(sw_entry_${kind})
+	endforeach()
+
+	# the system services shared by every program: macOS's and Linux's, and Linux's own
+	sw_add_module(sw_platform_posix
+		${SW_POSIX_SOURCES}
+		linux/sys_linux.c linux/sys_workers_linux.c)
+	target_include_directories(sw_platform_posix PUBLIC posix PRIVATE "${SW_CPU_RELAX_DIR}")
+	target_link_libraries(sw_platform_posix PUBLIC sw_net sw_common)
+
+	# the console of the dedicated server
+	sw_add_module(sw_platform_con
+		posix/sys_con_posix.c)
+	target_include_directories(sw_platform_con PRIVATE .)
+	target_link_libraries(sw_platform_con PUBLIC sw_platform_posix)
+
+	set(SW_HOST_DIR "${PROJECT_SOURCE_DIR}/src/host")
+
+	# dedicated server
+	sw_add_program(softworld-server
+		"${SW_HOST_DIR}/host_ded.c"
+		$<TARGET_OBJECTS:sw_entry_con>)
+	target_link_libraries(softworld-server PRIVATE sw_server sw_platform_con)
 endif()

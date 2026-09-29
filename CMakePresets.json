@@ -26,6 +26,13 @@
 			"condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
 		},
 		{
+			"name": "linux",
+			"hidden": true,
+			"inherits": "base",
+			"condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+			"cacheVariables": { "CMAKE_C_COMPILER": "clang", "CMAKE_LINKER_TYPE": "LLD" }
+		},
+		{
 			"name": "msvc-v4",
 			"displayName": "MSVC, x86-64-v4 (AVX-512)",
 			"inherits": "windows",
@@ -64,6 +71,18 @@
 			"displayName": "Apple clang, arm64, scalar kernels",
 			"inherits": "macos",
 			"cacheVariables": { "SW_ARCH": "generic" }
+		},
+		{
+			"name": "linux-v4",
+			"displayName": "clang + lld, x86-64-v4 (AVX-512)",
+			"inherits": "linux",
+			"cacheVariables": { "SW_ARCH": "x86-64-v4" }
+		},
+		{
+			"name": "linux-generic",
+			"displayName": "clang + lld, baseline x86-64 or arm64, scalar kernels",
+			"inherits": "linux",
+			"cacheVariables": { "SW_ARCH": "generic" }
 		}
 	],
 	"buildPresets": [
@@ -76,7 +95,11 @@
 		{ "name": "macos-m3", "configurePreset": "macos-m3", "configuration": "Release" },
 		{ "name": "macos-m3-debug", "configurePreset": "macos-m3", "configuration": "Debug" },
 		{ "name": "macos-generic", "configurePreset": "macos-generic", "configuration": "Release" },
-		{ "name": "macos-generic-debug", "configurePreset": "macos-generic", "configuration": "Debug" }
+		{ "name": "macos-generic-debug", "configurePreset": "macos-generic", "configuration": "Debug" },
+		{ "name": "linux-v4", "configurePreset": "linux-v4", "configuration": "Release" },
+		{ "name": "linux-v4-debug", "configurePreset": "linux-v4", "configuration": "Debug" },
+		{ "name": "linux-generic", "configurePreset": "linux-generic", "configuration": "Release" },
+		{ "name": "linux-generic-debug", "configurePreset": "linux-generic", "configuration": "Debug" }
 	],
 	"testPresets": [
 		{ "name": "msvc-v4", "configurePreset": "msvc-v4", "configuration": "Release", "output": { "outputOnFailure": true },
@@ -92,6 +115,14 @@
 		{ "name": "macos-generic", "configurePreset": "macos-generic", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "macos-generic-maps", "configurePreset": "macos-generic", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "include": { "label": "maps" } } },
+		{ "name": "linux-v4", "configurePreset": "linux-v4", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "exclude": { "label": "maps" } } },
+		{ "name": "linux-v4-maps", "configurePreset": "linux-v4", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "include": { "label": "maps" } } },
+		{ "name": "linux-generic", "configurePreset": "linux-generic", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "exclude": { "label": "maps" } } },
+		{ "name": "linux-generic-maps", "configurePreset": "linux-generic", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "include": { "label": "maps" } } }
 	]
 }
