@@ -52,3 +52,19 @@ if(APPLE)
 	target_link_libraries(test_present PRIVATE sw_common "-framework Metal" "-framework Foundation")
 	add_test(NAME present COMMAND test_present)
 endif()
+
+# test_present_vulkan draws present.glsl with Vulkan as vid_vulkan.c does, and
+# compares what it shows with VID_FrameToRGB, and its HDR and PQ with what they
+# should be. It needs a GPU with Vulkan 1.3, and without one is skipped.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	find_package(Vulkan 1.3 REQUIRED)
+	sw_add_program(test_present_vulkan test_present_vulkan.c
+		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c"
+		$<TARGET_OBJECTS:sw_present_spirv>)
+	target_include_directories(test_present_vulkan PRIVATE
+		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/platform/linux"
+		"${PROJECT_SOURCE_DIR}/src/renderer")
+	target_link_libraries(test_present_vulkan PRIVATE sw_common Vulkan::Vulkan)
+	add_test(NAME present_vulkan COMMAND test_present_vulkan)
+	set_tests_properties(present_vulkan PROPERTIES SKIP_RETURN_CODE 77)
+endif()

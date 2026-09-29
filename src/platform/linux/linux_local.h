@@ -33,3 +33,26 @@ bool	Sys_AddWindowFd (int fd);
 
 // a time on CLOCK_MONOTONIC, in nanoseconds, as Sys_DoubleTime has it
 double	Sys_MonotonicToTime (uint64_t ns);
+
+//
+// the programs with a client
+//
+
+// sys_linux_gui.c: the window has the focus; the window can't be seen
+extern	bool	ActiveApp, Minimized;
+
+// vid_vulkan.c: the focus came or went, the compositor stopped or started
+// showing the window, Alt+Enter
+void	VID_AppActivate (bool active);
+void	VID_WindowSuspended (bool suspended);
+void	VID_ToggleFullscreen (void);
+
+// in_wayland.c: the keyboard's focus; keys held repeat until then (0 for
+// none), and repeat when it has come
+void	IN_WindowActivated (bool active);
+double	IN_NextRepeat (void);
+void	IN_Repeat (void);
+
+// in_evdev.c
+void	IN_InitGamepad (void);
+void	IN_PollGamepad (void);
