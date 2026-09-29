@@ -1,0 +1,89 @@
+# Release builds of softworld, the client with its own server, for Windows and
+# macOS, uploaded as artifacts.
+
+name: Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-2025-vs2026
+            preset: msvc-v4
+          - name: macOS
+            os: macos-26
+            preset: macos-m3
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # MSVC, the Windows SDK's fxc and Ninja, from a Visual Studio developer shell
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          Import-Module (Join-Path $vs 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
+          cmake --preset ${{ matrix.preset }}
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build --preset ${{ matrix.preset }} --target softworld
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      # the Metal shader compiler is a component of Xcode's, downloaded apart
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          xcodebuild -showComponent MetalToolchain | grep -q 'Status: installed' \
+            || sudo xcodebuild -downloadComponent MetalToolchain
+          cmake --preset ${{ matrix.preset }}
+          cmake --build --preset ${{ matrix.preset }} --target softworld
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item build/${{ matrix.preset }}/Release/softworld.exe dist/
+
+      # zipped here: the artifact's own zip loses the executable bit. Without the
+      # extended attributes, which unzip would make files in the bundle of and so
+      # break its signature (and the sandbox's entitlements with it)
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dist
+          ditto -c -k --norsrc --noextattr --noqtn --keepParent \
+            build/${{ matrix.preset }}/Release/softworld.app dist/SoftWorld-macOS.zip
+
+      - name: Upload (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: SoftWorld-Windows
+          path: dist/
+          if-no-files-found: error
+
+      # the zip as it is, not zipped again
+      - name: Upload (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: SoftWorld-macOS.zip
+          path: dist/SoftWorld-macOS.zip
+          archive: false
+          if-no-files-found: error
