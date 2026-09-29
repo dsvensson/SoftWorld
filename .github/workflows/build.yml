@@ -1,5 +1,5 @@
-# Release builds of softworld, the client with its own server, for Windows and
-# macOS, uploaded as artifacts.
+# Release builds of softworld, the client with its own server, for Windows,
+# macOS and Linux, uploaded as artifacts.
 
 name: Build
 
@@ -142,5 +142,68 @@ jobs:
         with:
           name: SoftWorld-macOS.zip
           path: dist/SoftWorld-macOS.zip
+          archive: false
+          if-no-files-found: error
+
+  # Linux in an Arch container: Ubuntu's wayland-protocols is older than the
+  # color management the client asks the compositor about
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+
+    env:
+      FTEQCC: ${{ github.workspace }}/fteqcc/fteqcc
+      PRESET: linux-v4
+
+    steps:
+      - name: Packages
+        run: |
+          pacman -Syu --noconfirm --needed git make gcc cmake ninja clang lld vulkan-headers \
+            vulkan-icd-loader glslang wayland wayland-protocols libxkbcommon libpipewire
+
+      - uses: actions/checkout@v7
+
+      - name: fteqw's commit
+        id: fteqw
+        run: echo "sha=$(git ls-remote https://github.com/fte-team/fteqw.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cached fteqcc
+        id: fteqcc
+        uses: actions/cache@v6
+        with:
+          path: fteqcc
+          key: fteqcc-qclib-Linux-${{ steps.fteqw.outputs.sha }}
+
+      # as for Windows and macOS: qclib's own Makefile, without zlib
+      - name: Build fteqcc
+        if: steps.fteqcc.outputs.cache-hit != 'true'
+        run: |
+          git init -q fteqw
+          git -C fteqw fetch -q --depth 1 https://github.com/fte-team/fteqw.git ${{ steps.fteqw.outputs.sha }}
+          git -C fteqw checkout -q FETCH_HEAD
+          revision="git-$(git -C fteqw rev-parse --short=7 HEAD)"
+          date="$(git -C fteqw log -1 --format=%cs)"
+          make -C fteqw/engine/qclib qcc CC=cc \
+            CFLAGS="-O2 -std=gnu17 -DNO_ZLIB -DSVNREVISION=$revision -DSVNDATE=$date" BASE_LDFLAGS=
+          mkdir -p fteqcc
+          cp fteqw/engine/qclib/fteqcc.bin fteqcc/fteqcc
+
+      - name: Build
+        run: |
+          cmake --preset $PRESET
+          cmake --build --preset $PRESET --target softworld
+
+      # tarred here: the artifact's own zip loses the executable bit
+      - name: Package
+        run: |
+          mkdir -p dist
+          tar -C build/$PRESET/Release -czf dist/SoftWorld-Linux.tar.gz softworld
+
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: SoftWorld-Linux.tar.gz
+          path: dist/SoftWorld-Linux.tar.gz
           archive: false
           if-no-files-found: error
