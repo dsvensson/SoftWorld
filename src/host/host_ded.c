@@ -90,7 +90,7 @@ void Host_Init (quakeparms_t *parms)
 
 	host.initialized = true;
 
-	Con_Printf ("\nServer Version %4.2f (Build %04d)\n\n", VERSION, build_number());
+	Con_Printf ("\nSoftWorld server %4.2f (Build %04d)\n\n", VERSION, build_number());
 	Con_Printf ("======== QuakeWorld Initialized ========\n");
 
 // process command line arguments

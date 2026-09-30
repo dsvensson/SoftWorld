@@ -131,7 +131,7 @@ void Host_Init (quakeparms_t *parms)
 
 	host.initialized = true;
 
-	Con_Printf ("\nVersion %4.2f (Build %04d)\n\n", VERSION, build_number());
+	Con_Printf ("\nSoftWorld %4.2f (Build %04d)\n\n", VERSION, build_number());
 
 	Con_Printf ("\x80\x81\x81\x81\x81\x81\x81 QuakeWorld Initialized \x81\x81\x81\x81\x81\x81\x82\n");
 }

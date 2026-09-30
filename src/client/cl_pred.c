@@ -384,7 +384,7 @@ void CL_PredictMove (bool repredict)
 		char		text[1024];
 
 		cls.state = ca_active;
-		snprintf (text, sizeof(text), "QuakeWorld: %s", cls.servername);
+		snprintf (text, sizeof(text), "SoftWorld: %s", cls.servername);
 		VID_SetCaption (text);
 	}
 

@@ -21,6 +21,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma once
 // version.h -- build identification
 
-#define	VERSION		2.40
+// SoftWorld's, the project's (CMakeLists.txt): a number, as the programs print
+// it with %4.2f
+#define	VERSION		SW_VERSION
 
 int		build_number (void);

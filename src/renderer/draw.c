@@ -341,7 +341,7 @@ static void Draw_ConsoleBackgroundNow (int lines, bool downloading)
 		snprintf (ver, sizeof(ver), "%4.2f", VERSION);
 		src = conback->data + 320 + 320*186 - 11 - 8*strlen(ver);
 	} else {
-		snprintf (ver, sizeof(ver), "QuakeWorld %4.2f", VERSION);
+		snprintf (ver, sizeof(ver), "SoftWorld %4.2f", VERSION);
 		src = conback->data + 320 - (strlen(ver)*8 + 11) + 320*186;
 	}
 

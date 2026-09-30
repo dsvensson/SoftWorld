@@ -125,7 +125,7 @@ CL_Version_f
 */
 static void CL_Version_f (void)
 {
-	Con_Printf ("Version %4.2f\n", VERSION);
+	Con_Printf ("SoftWorld %4.2f\n", VERSION);
 	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
 }
 
@@ -363,7 +363,7 @@ void CL_Disconnect (void)
 
 	connect_time = -1;
 
-	VID_SetCaption ("QuakeWorld: disconnected");
+	VID_SetCaption ("SoftWorld: disconnected");
 
 // stop sounds (especially looping!)
 	S_StopAllSounds (true);

@@ -6,7 +6,7 @@ if(CMAKE_HOST_APPLE)
 	set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "Architectures of the macOS programs")
 endif()
 
-project(SoftWorld VERSION 0.1.0 LANGUAGES C)
+project(SoftWorld VERSION 3.06 LANGUAGES C)
 
 if(WIN32 AND MSVC)
 	enable_language(RC)
@@ -25,6 +25,9 @@ if(WIN32)
 endif()
 include(modules)
 include(sanitize)
+
+# the version the programs tell (version.h), as the project has it
+add_compile_definitions(SW_VERSION=${PROJECT_VERSION})
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
