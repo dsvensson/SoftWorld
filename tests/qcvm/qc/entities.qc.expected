@@ -1,0 +1,16 @@
+ents 1 2 3
+health 100
+origin '1 2 3'
+netname alpha
+owner_health 50
+owner_owner 100
+eq 1
+ne 1
+not_world 0
+counter 200
+getter 50
+fieldvar 75
+origin2 '11 30 13'
+flags 12
+respawn 3
+fresh_health 0

@@ -1,0 +1,19 @@
+addstore 15
+substore 13
+mulstore 39
+divstore 3
+bitset 15
+bitclr 5
+addstore_v '11 12 13'
+substore_v '10 11 12'
+mulstore_v '20 22 24'
+addstorep 125
+substorep 75
+mulstorep 150
+divstorep 50
+bitsetp 6
+bitclrp 4
+addstorep_v '2 3 4'
+substorep_v '2 2 2'
+mulstorep_v '6 6 6'
+three 123

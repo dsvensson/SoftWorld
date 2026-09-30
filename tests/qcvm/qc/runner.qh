@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+//
+// Builtins of FTE's standalone qcvm runner, reproduced by tests/qcvm/qc_runner.c.
+
+void(string s, ...) puts = #1;
+string(float f) ftos = #2;
+entity() spawn = #3;
+void(entity e) remove = #4;
+string(vector v) vtos = #5;
+void(string s, ...) error = #6;
+float(vector v) vlen = #7;
+string(entity e) etos = #8;
+float(string s) stof = #9;
+string(string a, ...) strcat = #10;
+float(string a, string b) strcmp = #11;
+vector(vector v) normalize = #12;
+float(float f) sqrt = #13;
+float(float f) floor = #14;
+float(float a, float b) pow = #15;
+vector(string s) stov = #16;
+void(vector v) putv = #21;
+void(float f) putf = #22;
+void(string fmt, ...) printf = #23;
+
+void(float f) pf = { puts(ftos(f), "\n"); };
+void(string label, float f) show = { puts(label, " ", ftos(f), "\n"); };
+void(string label, vector v) showv = { puts(label, " ", vtos(v), "\n"); };

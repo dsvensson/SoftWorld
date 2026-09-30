@@ -1,0 +1,9 @@
+apply_add 7
+apply_mul 12
+var_fn 30
+fn_eq 1
+ten 10936
+varargs0 1
+varargs3 3061
+quad 10 11 12 13dyn 20
+recurse_dyn 10

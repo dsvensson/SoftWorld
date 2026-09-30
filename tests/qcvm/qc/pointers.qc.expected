@@ -1,0 +1,16 @@
+table 90
+sum 285
+sum_tail 255
+ptr_arith 25
+ptr_index 49
+ptr_store 1234
+ints 3 f 9
+rec_a 3
+rec_v '3 6 9'
+rec_name filled 1e
+rec_idx 7
+copy 5 '1 1 1' orig 9copied 5
+local_array 15
+sizeof 24
+strlen 11
+char 101

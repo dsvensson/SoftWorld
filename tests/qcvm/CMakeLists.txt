@@ -42,3 +42,52 @@ add_test(NAME qc_vm COMMAND test_qc_vm)
 sw_add_program(test_qc_fuzz test_qc_fuzz.c)
 target_link_libraries(test_qc_fuzz PRIVATE qc_testsupport)
 add_test(NAME qc_fuzz COMMAND test_qc_fuzz)
+
+# test_qc_fixtures runs the QuakeC fixtures in qc/, each compiled with fteqcc for
+# the targets it is meant for, with the builtins of FTE's standalone runner
+# (qc_runner.c): their output must be the .expected file's, and FTE_QCVM's when
+# it names FTE's runner. Without fteqcc it is skipped.
+set(QC_FIXTURE_DIR "${CMAKE_CURRENT_BINARY_DIR}/fixtures")
+set(QC_FIXTURES
+	"arith.qc|fte|-Tfte" "arith.qc|fte-O3|-Tfte -O3" "arith.qc|vanilla|-Tvanilla"
+	"control.qc|fte|-Tfte" "control.qc|fte-O3|-Tfte -O3" "control.qc|vanilla|-Tvanilla"
+	"ints.qc|fte|-Tfte" "ints.qc|fte-O3|-Tfte -O3"
+	"pointers.qc|fte|-Tfte" "pointers.qc|fte-O3|-Tfte -O3"
+	"entities.qc|fte|-Tfte" "entities.qc|fte-O3|-Tfte -O3" "entities.qc|vanilla|-Tvanilla"
+	"strings.qc|fte|-Tfte" "strings.qc|fte-O3|-Tfte -O3" "strings.qc|vanilla|-Tvanilla"
+	"funcs.qc|fte_6614|-Tfte_6614" "funcs.qc|fte_6614-O3|-Tfte_6614 -O3"
+	"hexen2.qc|h2|-Th2"
+	"state.qc|fte|-Tfte" "state.qc|fte-O3|-Tfte -O3" "state.qc|vanilla|-Tvanilla"
+	"advanced.qc|fte|-Tfte" "advanced.qc|fte-O3|-Tfte -O3")
+set(qc_fixture_outputs)
+set(qc_fixture_list)
+if(SW_FTEQCC)
+	foreach(entry IN LISTS QC_FIXTURES)
+		string(REPLACE "|" ";" parts "${entry}")
+		list(GET parts 0 fixture)
+		list(GET parts 1 label)
+		list(GET parts 2 flags)
+		get_filename_component(base "${fixture}" NAME_WE)
+		set(out "${QC_FIXTURE_DIR}/${base}-${label}.dat")
+		add_custom_command(OUTPUT "${out}"
+			COMMAND "${CMAKE_COMMAND}" "-DFTEQCC=${SW_FTEQCC}" "-DSRC=${CMAKE_CURRENT_SOURCE_DIR}/qc"
+				"-DFIXTURE=${fixture}" "-DFLAGS=${flags}" "-DOUT=${out}"
+				-P "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
+			DEPENDS "qc/${fixture}" qc/runner.qh "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
+			COMMENT "Compiling ${fixture} for ${label}"
+			VERBATIM)
+		list(APPEND qc_fixture_outputs "${out}")
+		list(APPEND qc_fixture_list "${base}|${label}")
+	endforeach()
+endif()
+add_custom_target(qc_fixtures DEPENDS ${qc_fixture_outputs})
+string(REPLACE ";" "," qc_fixture_list "${qc_fixture_list}")
+
+sw_add_program(test_qc_fixtures test_qc_fixtures.c qc_runner.c)
+target_link_libraries(test_qc_fixtures PRIVATE qc_testsupport)
+target_compile_definitions(test_qc_fixtures PRIVATE
+	QT_FIXTURE_DIR="${QC_FIXTURE_DIR}" QT_FIXTURE_SOURCES="${CMAKE_CURRENT_SOURCE_DIR}/qc"
+	QT_FIXTURES="${qc_fixture_list}")
+add_dependencies(test_qc_fixtures qc_fixtures)
+add_test(NAME qc_fixtures COMMAND test_qc_fixtures)
+set_tests_properties(qc_fixtures PROPERTIES SKIP_RETURN_CODE 77)

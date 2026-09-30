@@ -1,0 +1,8 @@
+anim1
+frame 5
+nextthink 10.1
+think_is_anim2 1
+anim2
+frame2 6
+nextthink2 20.1
+think_is_anim1 1

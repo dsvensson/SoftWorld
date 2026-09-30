@@ -1,0 +1,14 @@
+hello world
+cmp_eq 1
+cmp_ne 0
+empty_eq 1
+not_empty 1
+not_str 0
+12.5 12.5!
+stof -3.25
+stov '1 2.5 -3'
+zero,one,two
+strcmp -1
+eq_temp 1
+truthy
+null is false

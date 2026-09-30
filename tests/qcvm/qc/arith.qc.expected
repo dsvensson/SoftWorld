@@ -1,0 +1,38 @@
+add 3
+sub -1.5
+mul 0.3
+div 0.125
+third 0.333333
+big 1.67772e+07
+chain 1.125
+vadd '-3 2.5 13'
+vsub '5 1.5 -7'
+dot 27
+scale '2.5 5 7.5'
+scale2 '-2 0.25 5'
+eq 1
+ne 0
+lt 1
+le 1
+gt 0
+ge 0
+veq 1
+vne 1
+negzero_eq 1
+not 1
+notneg 1
+notv 0
+and 1
+or 0
+bitand 4
+bitor 15
+bitand_frac 2
+ternary 20
+floor -2
+sqrt 1.41421
+pow 1024
+vlen 5
+normalize '0.6 0.8 0'
+comp '2 4 6'
+va_x 7
+va '7 2 8'

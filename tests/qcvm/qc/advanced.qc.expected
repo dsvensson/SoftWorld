@@ -1,0 +1,4 @@
+-1 10 20 -1 -1 50 50 50 50 50 -1 
+bits 3 fffffff9 64
+bits_wrap 1 fffffff9
+huge 49
