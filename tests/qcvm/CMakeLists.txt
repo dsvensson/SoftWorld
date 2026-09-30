@@ -45,8 +45,8 @@ add_test(NAME qc_fuzz COMMAND test_qc_fuzz)
 
 # test_qc_lib_<area> test the standard builtins of an area through the harness:
 # the ports of qcvm-rs's tests/all/builtins_misc and builtins_strings.
-foreach(area IN ITEMS charset convert dtoa entity format hash hostcalls introspect math memory reflect strbuf strftime
-		string time tokenize vector)
+foreach(area IN ITEMS charset convert digest dtoa entity format hash hostcalls introspect json math memory reflect strbuf
+		strftime string time tokenize vector)
 	sw_add_program(test_qc_lib_${area} test_qc_lib_${area}.c)
 	target_link_libraries(test_qc_lib_${area} PRIVATE qc_testsupport)
 	add_test(NAME qc_lib_${area} COMMAND test_qc_lib_${area})

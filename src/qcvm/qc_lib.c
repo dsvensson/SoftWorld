@@ -44,8 +44,9 @@ qc_builtins_t *QC_BuiltinsStandard (qc_numbering_t numbering)
 
 	if (!b)
 		return NULL;
-	if (!QC_RegisterConvert (b) || !QC_RegisterEntity (b) || !QC_RegisterFormat (b) || !QC_RegisterHash (b)
-		|| !QC_RegisterHostcalls (b) || !QC_RegisterIntrospect (b) || !QC_RegisterMath (b) || !QC_RegisterMemory (b)
+	if (!QC_RegisterConvert (b) || !QC_RegisterDigest (b) || !QC_RegisterEntity (b) || !QC_RegisterFormat (b)
+		|| !QC_RegisterHash (b) || !QC_RegisterHostcalls (b) || !QC_RegisterIntrospect (b) || !QC_RegisterJson (b)
+		|| !QC_RegisterMath (b) || !QC_RegisterMemory (b)
 		|| !QC_RegisterReflect (b) || !QC_RegisterStrbuf (b) || !QC_RegisterStrftime (b) || !QC_RegisterString (b)
 		|| !QC_RegisterTime (b) || !QC_RegisterTokenize (b) || !QC_RegisterVector (b))
 	{
@@ -62,9 +63,11 @@ static const char *const qc_extensions[] = {
 	"DP_QC_ASINACOSATANATAN2TAN",
 	"DP_QC_CHANGEPITCH",
 	"DP_QC_COPYENTITY",
+	"DP_QC_CRC16",
 	"DP_QC_CVAR_DEFSTRING",
 	"DP_QC_CVAR_STRING",
 	"DP_QC_CVAR_TYPE",
+	"DP_QC_DIGEST_SHA256",
 	"DP_QC_EDICT_NUM",
 	"DP_QC_ETOS",
 	"DP_QC_FINDCHAIN",
@@ -92,6 +95,10 @@ static const char *const qc_extensions[] = {
 	"FTE_MEMALLOC",
 	"FTE_QC_CHECKCOMMAND",
 	"FTE_QC_CROSSPRODUCT",
+	"FTE_QC_DIGEST_SHA1",
+	"FTE_QC_DIGEST_SHA224",
+	"FTE_QC_DIGEST_SHA384",
+	"FTE_QC_DIGEST_SHA512",
 	"FTE_QC_HASHTABLES",
 	"FTE_QC_INTCONV",
 	"FTE_STRINGS",

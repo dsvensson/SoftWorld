@@ -19,6 +19,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 /* GLOBAL.H - RSAREF types and constants */
 
+#include "md4.h"
+
 #include <stdint.h>
 #include <string.h>
 
@@ -277,6 +279,21 @@ for (i = 0, j = 0; j < len; i++, j += 4)
 }
 
 //===================================================================
+
+void MD4_Block (const void *data, size_t length, byte digest[MD4_DIGEST_SIZE])
+{
+	const unsigned char	*p = data;
+	unsigned int		chunk;
+	MD4_CTX				ctx;
+
+	MD4Init (&ctx);
+	for ( ; length ; length -= chunk, p += chunk)
+	{
+		chunk = length > 0x40000000 ? 0x40000000 : (unsigned int)length;
+		MD4Update (&ctx, p, chunk);
+	}
+	MD4Final (digest, &ctx);
+}
 
 unsigned Com_BlockChecksum (const void *buffer, int length)
 {

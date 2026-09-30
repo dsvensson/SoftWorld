@@ -21,14 +21,18 @@ THE HEAP
 ==============================================================================
 */
 
-// n zeroed bytes of the heap: the pointer, or 0
-static uint32_t QC_HeapPointer (qcvm_t *vm, uint32_t n)
+uint32_t QC_LibHeapAlloc (qcvm_t *vm, uint32_t n)
 {
 	uint32_t	ofs;
 
 	if (!QC_HeapAlloc (&vm->mem.heap, n, &ofs) || ofs > UINT32_MAX - vm->mem.h_base)
 		return 0;
 	return vm->mem.h_base + ofs;
+}
+
+bool QC_LibHeapFree (qcvm_t *vm, uint32_t p)
+{
+	return p >= vm->mem.h_base && QC_HeapRelease (&vm->mem.heap, p - vm->mem.h_base);
 }
 
 // memalloc's and memrealloc's size: 0 is 1; negative or past 16 MiB refused (-1)
@@ -172,7 +176,7 @@ static bool QC_Memalloc (qcvm_t *vm)
 {
 	int32_t		size = QC_ArgInt (vm, 0);
 	int64_t		n = QC_AllocSize (size);
-	uint32_t	p = n < 0 ? 0 : QC_HeapPointer (vm, (uint32_t)n);
+	uint32_t	p = n < 0 ? 0 : QC_LibHeapAlloc (vm, (uint32_t)n);
 
 	QC_ReturnWord (vm, p);
 	if (!p)
@@ -182,11 +186,11 @@ static bool QC_Memalloc (qcvm_t *vm)
 
 // void memfree(__variant *ptr): frees a block (null ignored; anything not a
 // block's start only warns)
-static bool QC_Memfree (qcvm_t *vm)
+bool QC_LibMemfree (qcvm_t *vm)
 {
 	uint32_t	p = QC_ArgWord (vm, 0);
 
-	if (p && (p < vm->mem.h_base || !QC_HeapRelease (&vm->mem.heap, p - vm->mem.h_base)))
+	if (p && !QC_LibHeapFree (vm, p))
 		QC_Warning (vm, "memfree: %#x is not an allocated block", p);
 	return true;
 }
@@ -505,7 +509,7 @@ static bool QC_Base64decodeBuiltin (qcvm_t *vm)
 
 	QC_SinkInit (&data, SIZE_MAX);
 	QC_Base64Decode (&data, s, len, cap);
-	p = cap <= UINT32_MAX ? QC_HeapPointer (vm, (uint32_t)cap) : 0;
+	p = cap <= UINT32_MAX ? QC_LibHeapAlloc (vm, (uint32_t)cap) : 0;
 	if (!p || data.failed)
 	{
 		QC_SinkFree (&data);
@@ -523,7 +527,7 @@ static bool QC_Base64decodeBuiltin (qcvm_t *vm)
 
 static const qc_libentry_t	qc_memory[] = {
 	{"memalloc", QC_Memalloc, NULL, 0},
-	{"memfree", QC_Memfree, NULL, 0},
+	{"memfree", QC_LibMemfree, NULL, 0},
 	{"memrealloc", QC_Memrealloc, NULL, 0},
 	{"memcpy", QC_Memcpy, NULL, 0},
 	{"memfill8", QC_Memfill8, NULL, 0},

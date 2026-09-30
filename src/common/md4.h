@@ -19,6 +19,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #pragma once
-// md4.h -- MD4 block checksums (map and model checksums)
+// md4.h -- MD4 digests (RFC 1320), and the block checksums of maps and models
 
+#include "q_types.h"
+
+#include <stddef.h>
+
+#define MD4_DIGEST_SIZE	16
+
+void		MD4_Block (const void *data, size_t length, byte digest[MD4_DIGEST_SIZE]);
+
+// the digest's four words xored
 unsigned	Com_BlockChecksum (const void *buffer, int length);

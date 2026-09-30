@@ -31,11 +31,13 @@ typedef struct
 bool	QC_LibRegister (qc_builtins_t *b, const qc_libentry_t *table, size_t count);
 
 bool	QC_RegisterConvert (qc_builtins_t *b);
+bool	QC_RegisterDigest (qc_builtins_t *b);
 bool	QC_RegisterEntity (qc_builtins_t *b);
 bool	QC_RegisterFormat (qc_builtins_t *b);
 bool	QC_RegisterHash (qc_builtins_t *b);
 bool	QC_RegisterHostcalls (qc_builtins_t *b);
 bool	QC_RegisterIntrospect (qc_builtins_t *b);
+bool	QC_RegisterJson (qc_builtins_t *b);
 bool	QC_RegisterMath (qc_builtins_t *b);
 bool	QC_RegisterMemory (qc_builtins_t *b);
 bool	QC_RegisterReflect (qc_builtins_t *b);
@@ -313,6 +315,14 @@ void	QC_EntityBlock (qcvm_t *vm, qc_sink_t *s, uint32_t e);
 void	QC_CoredumpText (qcvm_t *vm, qc_sink_t *s);
 // the call stack, a line per frame
 void	QC_BacktraceSink (const qcvm_t *vm, qc_sink_t *s);
+
+// n zeroed bytes of the QuakeC heap: the pointer, or 0; and freeing a block
+uint32_t	QC_LibHeapAlloc (qcvm_t *vm, uint32_t n);
+bool		QC_LibHeapFree (qcvm_t *vm, uint32_t p);
+bool		QC_LibMemfree (qcvm_t *vm);			// the memfree builtin (json_free too)
+
+// the digest of data by FTE's name for it (up to 64 bytes): its size, or 0
+size_t	QC_Digest (const char *alg, const void *data, size_t len, uint8_t out[64]);
 
 // the UTC calendar time of seconds since 1970
 void	QC_CalendarFromUnix (int64_t secs, qc_calendar_t *out);

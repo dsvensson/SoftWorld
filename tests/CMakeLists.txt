@@ -27,6 +27,15 @@ sw_add_program(test_sha1 test_sha1.c)
 target_link_libraries(test_sha1 PRIVATE sw_common)
 add_test(NAME sha1 COMMAND test_sha1)
 
+# test_md5 and test_sha2 check the digests QuakeC's digest builtins make
+# against RFC 1321's and FIPS 180's.
+sw_add_program(test_md5 test_md5.c)
+target_link_libraries(test_md5 PRIVATE sw_common)
+add_test(NAME md5 COMMAND test_md5)
+sw_add_program(test_sha2 test_sha2.c)
+target_link_libraries(test_sha2 PRIVATE sw_common)
+add_test(NAME sha2 COMMAND test_sha2)
+
 # test_markup reads ezQuake's and FTE's colors out of text.
 sw_add_program(test_markup test_markup.c)
 target_link_libraries(test_markup PRIVATE sw_common)
