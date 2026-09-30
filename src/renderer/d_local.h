@@ -76,13 +76,15 @@ extern fixed16_t	bbextents, bbextentt;
 simd_texmap_t D_SpanTexmap (void);		// of the current surface, from the d_ gradients
 void D_DrawSpans (espan_t *pspan, const simd_texmap_t *map, const pixel_t *block, int blockwidth);
 void D_DrawZSpans (espan_t *pspan, const simd_texmap_t *map);
-void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture);
+// texels, if not NULL, are a TGA file's 64x64 in place of texture's
+void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture, const pixel_t *texels);
 int D_SurfaceMipLevel (msurface_t *surface, int miplevel);
 
 void D_DrawSkyScans (espan_t *pspan);
 void D_DrawSkyboxScans (espan_t *pspan);
 
 extern byte		*d_turbsource;	// the 64x64 texture of a turbulent surface
+extern const pixel_t	*d_turbsource30;	// a TGA file's texels in its place, or NULL
 
 extern void (*prealspandrawer)(void);
 surfcache_t	*D_CacheSurface (msurface_t *surface, int miplevel);

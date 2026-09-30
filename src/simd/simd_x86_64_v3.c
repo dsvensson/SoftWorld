@@ -496,9 +496,21 @@ void Simd_V3_CopyStream (void *dest, size_t destpitch, const void *src, size_t s
 	_mm_sfence ();
 }
 
-// fog is the scalar kernel's until it is vectorized here
+// these are the scalar kernels' until they are vectorized here
 void Simd_V3_FogSpan (uint32_t *dest, const float *zbuf, float zi, float step, int count,
 	const simd_fog_t *fog)
 {
 	Simd_Scalar_FogSpan (dest, zbuf, zi, step, count, fog);
+}
+
+void Simd_V3_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+	const int *turb, int u, int v, int count)
+{
+	Simd_Scalar_TurbSpanRGB30 (dest, map, src, turb, u, v, count);
+}
+
+void Simd_V3_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
+	const int light[3], const int step[3], int count)
+{
+	Simd_Scalar_LitRowRGB30 (dest, src, glow, glowscale, light, step, count);
 }

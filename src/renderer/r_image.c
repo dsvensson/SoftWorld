@@ -88,6 +88,31 @@ static unsigned R_LightChannel (float light)
 
 /*
 ===============
+R_AveragePixels
+
+n pixels averaged in linear light; their top bits are left out
+===============
+*/
+pixel_t R_AveragePixels (const pixel_t *p, int n)
+{
+	float	sum[3] = {0, 0, 0}, v;
+	int		i, c;
+
+	if (n <= 0)
+		return 0;
+	for (i = 0 ; i < n ; i++)
+		for (c = 0 ; c < 3 ; c++)
+		{
+			v = (float)((p[i] >> (10 * c)) & 1023);
+			v *= v;
+			sum[c] += v * v;
+		}
+	return RGB30 (R_LightChannel (sum[0] / (float)n), R_LightChannel (sum[1] / (float)n),
+		R_LightChannel (sum[2] / (float)n));
+}
+
+/*
+===============
 R_ImagePixels
 
 A w x h RGBA image as outw x outh pixels, each the average in linear light of

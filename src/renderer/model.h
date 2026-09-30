@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "bspfile.h"
 #include "mathlib.h"
 #include "q_types.h"
+#include "vid.h"
 
 /*
 
@@ -76,6 +77,11 @@ typedef struct texture_s
 	struct texture_s *anim_next;		// in the animation sequence
 	struct texture_s *alternate_anims;	// bmodels in frmae 1 use these
 	unsigned	offsets[MIPLEVELS];		// four mip maps stored
+	// a TGA file's texels in place of the map's (r_textures.c), as large, cut
+	// out by PIXEL_TRANSPARENT; a liquid's are 64x64, at rgb[0] alone. NULL if
+	// there is none.
+	pixel_t		*rgb[MIPLEVELS];
+	pixel_t		*glow[MIPLEVELS];		// their fullbright light, NULL for none
 } texture_t;
 
 

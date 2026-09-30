@@ -168,6 +168,29 @@ void Simd_Scalar_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte 
 	} while (st.count > 0);
 }
 
+void Simd_Scalar_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+	const int *turb, int u, int v, int count)
+{
+	scalar_stepper_t	st;
+	int					n, s0, t0, s, t, sstep, tstep, sturb, tturb;
+
+	Simd_Scalar_SpanStart (&st, map, u, v, count, 4);
+	do
+	{
+		n = Simd_Scalar_SpanNext (&st, &s0, &t0);
+		s = s0 & ((128 << 16) - 1);
+		t = t0 & ((128 << 16) - 1);
+		sstep = st.sstep;
+		tstep = st.tstep;
+		for ( ; n > 0 ; n--, s += sstep, t += tstep)
+		{
+			sturb = ((s + turb[(t >> 16) & 127]) >> 16) & 63;
+			tturb = ((t + turb[(s >> 16) & 127]) >> 16) & 63;
+			*dest++ = src[(tturb << 6) + sturb];
+		}
+	} while (st.count > 0);
+}
+
 void Simd_Scalar_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 	int light, int step, int count)
 {
@@ -199,6 +222,33 @@ void Simd_Scalar_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *pal
 				c[k] = 1023;
 		}
 		dest[j] = c[0] | (c[1] << 10) | (c[2] << 20);
+	}
+}
+
+void Simd_Scalar_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
+	const int light[3], const int step[3], int count)
+{
+	unsigned	c, f;
+	uint32_t	p, g, out;
+	int			j, k, l;
+
+	for (j = 0 ; j < count ; j++)
+	{
+		p = src[j];
+		g = glow ? glow[j] : 0;
+		out = 0;
+		for (k = 0 ; k < 3 ; k++)
+		{
+			l = light[k] + (count - 1 - j) * step[k];
+			c = (((p >> (10 * k)) & 1023) * (unsigned)(l > 0 ? l : 0)) >> 15;
+			f = (((g >> (10 * k)) & 1023) * (unsigned)glowscale) >> 15;
+			if (c < f)
+				c = f;
+			if (c > 1023)
+				c = 1023;
+			out |= c << (10 * k);
+		}
+		dest[j] = out;
 	}
 }
 

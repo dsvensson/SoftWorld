@@ -101,6 +101,8 @@ extern pixel_t	d_cm30[VID_GRADES * 256];	// the palette through each colormap ro
 extern byte		r_identityremap[256];		// no player colors
 extern byte		d_palrgb[256][3];
 extern pixel_t	d_pal30_floor[256];
+extern bool		d_fullbright[256];
+extern int		d_glowscale;				// as simd_litrow_rgb30 takes r_fullbright_scale
 double		R_SrgbToLinear (double c);
 unsigned	R_LightCode (double light);
 
@@ -111,6 +113,18 @@ void R_BuildMips (texture_t *tx, bool fence);
 byte	*R_LoadTGA (const char *path, int *width, int *height);
 pixel_t	R_RGBA8Pixel (const byte *rgba);
 void	R_ImagePixels (const byte *rgba, int w, int h, pixel_t *out, int outw, int outh, bool cutout);
+pixel_t	R_AveragePixels (const pixel_t *p, int n);
+
+// r_textures.c: TGA files in place of a map's textures
+extern cvar_t	r_externaltextures;
+void R_TexturesInit (void);
+void R_LoadTextureOverride (texture_t *tx, const char *modelname, struct arena_s *arena);
+
+// the texels to draw tx with in place of its own, or NULL
+static inline const pixel_t *R_TextureOverride (const texture_t *tx, int mip)
+{
+	return r_externaltextures.value ? tx->rgb[mip] : NULL;
+}
 
 // r_worldspawn.c: what the map's worldspawn entity says
 typedef struct

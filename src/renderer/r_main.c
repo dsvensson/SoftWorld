@@ -291,6 +291,7 @@ void R_Init (void)
 	R_LightDataInit ();
 	R_SkyboxInit ();
 	R_FogInit ();
+	R_TexturesInit ();
 	Cvar_RegisterVariable (&r_lightmode);
 	Cvar_RegisterVariable (&r_profile);
 	Cvar_RegisterVariable (&r_threads);
@@ -501,7 +502,7 @@ static void R_CheckThreads (void)
 
 static void R_CheckLightSettings (void)
 {
-	static float	lightmode = -1, dlightcolor = -1, fbscale = -1;
+	static float	lightmode = -1, dlightcolor = -1, fbscale = -1, external = -1;
 
 	if (r_fullbright_scale.value != fbscale)
 	{
@@ -509,10 +510,12 @@ static void R_CheckLightSettings (void)
 		R_SetFullbrightScale (fbscale > 0 ? fbscale : 1);
 		lightmode = -1;
 	}
-	if (r_lightmode.value != lightmode || r_dlight_color.value != dlightcolor)
+	if (r_lightmode.value != lightmode || r_dlight_color.value != dlightcolor
+		|| r_externaltextures.value != external)
 	{
 		lightmode = r_lightmode.value;
 		dlightcolor = r_dlight_color.value;
+		external = r_externaltextures.value;
 		D_FlushCaches ();
 	}
 }

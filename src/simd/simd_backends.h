@@ -29,10 +29,14 @@ void	Simd_Scalar_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32
 			int u, int v, int count);
 void	Simd_Scalar_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
 			const int *turb, int u, int v, int count);
+void	Simd_Scalar_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+			const int *turb, int u, int v, int count);
 void	Simd_Scalar_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 			int light, int step, int count);
 void	Simd_Scalar_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette,
 			const uint32_t *floor, const int light[3], const int step[3], int count);
+void	Simd_Scalar_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
+			const int light[3], const int step[3], int count);
 void	Simd_Scalar_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,
 			int light, int zi, int count, const simd_aliasmap_t *map);
 void	Simd_Scalar_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
@@ -49,10 +53,14 @@ void	Simd_V4_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *
 			int u, int v, int count);
 void	Simd_V4_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
 			const int *turb, int u, int v, int count);
+void	Simd_V4_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+			const int *turb, int u, int v, int count);
 void	Simd_V4_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 			int light, int step, int count);
 void	Simd_V4_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette,
 			const uint32_t *floor, const int light[3], const int step[3], int count);
+void	Simd_V4_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
+			const int light[3], const int step[3], int count);
 void	Simd_V4_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,
 			int light, int zi, int count, const simd_aliasmap_t *map);
 void	Simd_V4_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
@@ -69,10 +77,14 @@ void	Simd_V3_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *
 			int u, int v, int count);
 void	Simd_V3_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
 			const int *turb, int u, int v, int count);
+void	Simd_V3_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+			const int *turb, int u, int v, int count);
 void	Simd_V3_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 			int light, int step, int count);
 void	Simd_V3_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette,
 			const uint32_t *floor, const int light[3], const int step[3], int count);
+void	Simd_V3_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
+			const int light[3], const int step[3], int count);
 void	Simd_V3_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,
 			int light, int zi, int count, const simd_aliasmap_t *map);
 void	Simd_V3_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
@@ -89,10 +101,14 @@ void	Simd_M3_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *
 			int u, int v, int count);
 void	Simd_M3_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
 			const int *turb, int u, int v, int count);
+void	Simd_M3_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+			const int *turb, int u, int v, int count);
 void	Simd_M3_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 			int light, int step, int count);
 void	Simd_M3_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette,
 			const uint32_t *floor, const int light[3], const int step[3], int count);
+void	Simd_M3_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
+			const int light[3], const int step[3], int count);
 void	Simd_M3_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,
 			int light, int zi, int count, const simd_aliasmap_t *map);
 void	Simd_M3_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,

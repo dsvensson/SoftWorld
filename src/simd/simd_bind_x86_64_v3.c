@@ -39,6 +39,12 @@ void simd_turbspan (uint32_t *dest, const simd_texmap_t *map, const byte *src, c
 	Simd_V3_TurbSpan (dest, map, src, palette, turb, u, v, count);
 }
 
+void simd_turbspan_rgb30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+	const int *turb, int u, int v, int count)
+{
+	Simd_V3_TurbSpanRGB30 (dest, map, src, turb, u, v, count);
+}
+
 void simd_litrow_colormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 	int light, int step, int count)
 {
@@ -49,6 +55,12 @@ void simd_litrow_rgb (uint32_t *dest, const byte *src, const uint32_t *palette,
 	const uint32_t *floor, const int light[3], const int step[3], int count)
 {
 	Simd_V3_LitRowRGB (dest, src, palette, floor, light, step, count);
+}
+
+void simd_litrow_rgb30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
+	const int light[3], const int step[3], int count)
+{
+	Simd_V3_LitRowRGB30 (dest, src, glow, glowscale, light, step, count);
 }
 
 void simd_aliasspan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,

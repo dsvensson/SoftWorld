@@ -54,6 +54,10 @@ void	simd_texspan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src
 void	simd_turbspan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
 			const int *turb, int u, int v, int count);
 
+// simd_turbspan with 64x64 RGB30 texels, drawn as they are
+void	simd_turbspan_rgb30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+			const int *turb, int u, int v, int count);
+
 // a row of a surface lit through a colormap: texel j (0 .. count-1) gets
 // light + (count - 1 - j) * step, and becomes colormap[(light & 0xFF00) + texel]
 void	simd_litrow_colormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
@@ -65,6 +69,12 @@ void	simd_litrow_colormap (uint32_t *dest, const byte *src, const uint32_t *colo
 // floor (RGB30, 0 for colors light may darken), at most 1023.
 void	simd_litrow_rgb (uint32_t *dest, const byte *src, const uint32_t *palette,
 			const uint32_t *floor, const int light[3], const int step[3], int count);
+
+// simd_litrow_rgb with the texels' colors src (RGB30, the top bit left out) in
+// place of palette indices, each channel at least the same channel of glow
+// (RGB30) times glowscale >> 15; glow may be NULL, for none
+void	simd_litrow_rgb30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
+			const int light[3], const int step[3], int count);
 
 // how the spans of an alias model triangle step: per pixel, 1/z and light by
 // their steps, and the skin by stepwhole texels plus the carries of the 16 bit

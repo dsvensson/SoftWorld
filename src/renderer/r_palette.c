@@ -28,9 +28,11 @@ pixel_t	d_pal30[256];
 pixel_t	d_cm30[VID_GRADES * 256];
 byte	r_identityremap[256];
 byte	d_palrgb[256][3];		// the palette as it is, sRGB: the 2D, and finding colors
-static bool	d_fullbright[256];	// colors light doesn't change
+bool	d_fullbright[256];		// colors light doesn't change
 pixel_t	d_pal30_floor[256];		// the least a lit color can be: fullbrights brightened
 								// by r_fullbright_scale, 0 for the others
+int		d_glowscale = 32768;	// r_fullbright_scale for a pixel's channels (the fourth
+								// root of light), 32768 being 1.0
 
 // an sRGB value, 0 .. 1, as linear light
 double R_SrgbToLinear (double c)
@@ -101,6 +103,7 @@ void R_SetFullbrightScale (float scale)
 			v[c] = R_LightCode (R_SrgbToLinear (d_palrgb[i][c] / 255.0) * scale);
 		d_pal30_floor[i] = d_fullbright[i] ? RGB30 (v[0], v[1], v[2]) : 0;
 	}
+	d_glowscale = (int)(32768.0 * sqrt (sqrt (scale)) + 0.5);
 }
 
 /*

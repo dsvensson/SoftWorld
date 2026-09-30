@@ -30,14 +30,17 @@ static thread_local int				lightleft, blocksize, sourcetstep;
 static thread_local int				lightright, lightleftstep, lightrightstep, blockdivshift;
 static thread_local unsigned		blockdivmask;
 static thread_local pixel_t			*prowdestbase;
-static thread_local unsigned char	*pbasesource;
+static thread_local const byte		*pbasesource;
 static thread_local int				surfrowpixels;
 static thread_local unsigned		*r_lightptr;			// the light at the column's block corners
 static thread_local unsigned		*r_lightptr_rgb;
 static thread_local int				r_stepback;
 static thread_local int				r_lightwidth;
 static thread_local int				r_numhblocks, r_numvblocks;
-static thread_local unsigned char	*r_source, *r_sourcemax;
+static thread_local const byte		*r_source, *r_sourcemax;
+static thread_local int				r_texelbytes;			// of a texel of r_source: 1, or a pixel's
+static thread_local const pixel_t	*r_rgbsource;			// r_source's pixels, NULL for palette indices
+static thread_local const pixel_t	*r_glowsource;			// their fullbright light, NULL for none
 static thread_local int				r_texels;		// drawn of the surface
 
 static void R_DrawSurfaceBlock (void);
@@ -440,8 +443,9 @@ R_DrawSurface
 ===============
 R_MarkFenceTexels
 
-The texels of a fence surface's block whose texture index is 255, so the
-fence drawer skips them; the texture tiles as R_DrawSurface tiles it
+The texels of a fence surface's block whose texture index is 255, or whose
+TGA file's texel is cut out, so the fence drawer skips them; the texture
+tiles as R_DrawSurface tiles it
 ===============
 */
 static void R_MarkFenceTexels (void)
@@ -452,14 +456,23 @@ static void R_MarkFenceTexels (void)
 	const byte	*src = (byte *)mt + mt->offsets[mip];
 	int			s0, t0, x, y;
 	const byte	*row;
+	const pixel_t	*row30;
 	pixel_t		*dest;
 
 	s0 = ((r_drawsurf.surf->texturemins[0] >> mip) % tw + tw) % tw;
 	t0 = ((r_drawsurf.surf->texturemins[1] >> mip) % th + th) % th;
 	for (y = 0 ; y < r_drawsurf.surfheight ; y++)
 	{
-		row = src + ((t0 + y) % th) * tw;
 		dest = r_drawsurf.surfdat + y * r_drawsurf.rowpixels;
+		if (r_rgbsource)
+		{
+			// a TGA file's texels are cut out as they are marked
+			row30 = r_rgbsource + ((t0 + y) % th) * tw;
+			for (x = 0 ; x < r_drawsurf.surfwidth ; x++)
+				dest[x] |= row30[(s0 + x) % tw] & PIXEL_TRANSPARENT;
+			continue;
+		}
+		row = src + ((t0 + y) % th) * tw;
 		for (x = 0 ; x < r_drawsurf.surfwidth ; x++)
 			if (row[(s0 + x) % tw] == 255)
 				dest[x] |= PIXEL_TRANSPARENT;
@@ -501,7 +514,7 @@ static const byte *R_KeepLight (void)
 
 int R_DrawSurface (void)
 {
-	unsigned char	*basetptr;
+	const byte		*basetptr;
 	int				smax, tmax, twidth;
 	int				u;
 	int				soffset, basetoffset, texwidth;
@@ -521,8 +534,13 @@ int R_DrawSurface (void)
 	surfrowpixels = r_drawsurf.rowpixels;
 
 	mt = r_drawsurf.texture;
-	
-	r_source = (byte *)mt + mt->offsets[r_drawsurf.surfmip];
+
+	// in r_lightmode 1, a TGA file's texels in place of the texture's own: a
+	// pixel each where those are a byte
+	r_rgbsource = r_lightmode.value ? R_TextureOverride (mt, r_drawsurf.surfmip) : NULL;
+	r_glowsource = r_rgbsource ? mt->glow[r_drawsurf.surfmip] : NULL;
+	r_texelbytes = r_rgbsource ? (int)sizeof(pixel_t) : 1;
+	r_source = r_rgbsource ? (const byte *)r_rgbsource : (byte *)mt + mt->offsets[r_drawsurf.surfmip];
 	
 // the fractional light values should range from 0 to (VID_GRADES - 1) << 16
 // from a source range of 0 - 255
@@ -545,18 +563,18 @@ int R_DrawSurface (void)
 	smax = mt->width >> r_drawsurf.surfmip;
 	twidth = texwidth;
 	tmax = mt->height >> r_drawsurf.surfmip;
-	sourcetstep = texwidth;
-	r_stepback = tmax * twidth;
+	sourcetstep = texwidth * r_texelbytes;
+	r_stepback = tmax * twidth * r_texelbytes;
 
-	r_sourcemax = r_source + (tmax * smax);
+	r_sourcemax = r_source + (tmax * smax) * r_texelbytes;
 
 	soffset = r_drawsurf.surf->texturemins[0];
 	basetoffset = r_drawsurf.surf->texturemins[1];
 
 // << 16 components are to guarantee positive values for %
 	soffset = ((soffset >> r_drawsurf.surfmip) + (smax << 16)) % smax;
-	basetptr = &r_source[((((basetoffset >> r_drawsurf.surfmip) 
-		+ (tmax << 16)) % tmax) * twidth)];
+	basetptr = &r_source[((((basetoffset >> r_drawsurf.surfmip)
+		+ (tmax << 16)) % tmax) * twidth) * r_texelbytes];
 
 	pcolumndest = r_drawsurf.surfdat;
 
@@ -568,7 +586,7 @@ int R_DrawSurface (void)
 
 		prowdestbase = pcolumndest;
 
-		pbasesource = basetptr + soffset;
+		pbasesource = basetptr + soffset * r_texelbytes;
 
 		if (r_lightmode.value)
 			R_DrawSurfaceBlockRGB ();
@@ -615,7 +633,7 @@ static void R_DrawSurfaceBlock (void)
 {
 	int				v, i, lightstep, lighttemp;
 	int				shift = blockdivshift;
-	byte			*psource;
+	const byte		*psource;
 	pixel_t			*prowdest;
 
 	psource = pbasesource;
@@ -662,7 +680,8 @@ static void R_DrawSurfaceBlock (void)
 R_DrawSurfaceBlockRGB
 
 R_DrawSurfaceBlock for r_lightmode 1: each channel's light interpolated
-between the block corners multiplies the texel's color
+between the block corners multiplies the texel's color, the palette's or a
+TGA file's
 ================
 */
 static void R_DrawSurfaceBlockRGB (void)
@@ -671,7 +690,8 @@ static void R_DrawSurfaceBlockRGB (void)
 	int				shift = blockdivshift;
 	int				left[3], right[3], leftstep[3], rightstep[3], step[3];
 	const unsigned	*lp = r_lightptr_rgb;
-	byte			*psource;
+	const byte		*psource;
+	const pixel_t	*texels;
 	pixel_t			*prowdest;
 
 	psource = pbasesource;
@@ -705,7 +725,14 @@ static void R_DrawSurfaceBlockRGB (void)
 			for (c=0 ; c<3 ; c++)
 				step[c] = (left[c] - right[c]) >> shift;
 
-			simd_litrow_rgb (prowdest, psource, d_pal30, d_pal30_floor, right, step, blocksize);
+			if (r_rgbsource)
+			{
+				texels = (const pixel_t *)psource;
+				simd_litrow_rgb30 (prowdest, texels, r_glowsource ? r_glowsource + (texels - r_rgbsource) : NULL,
+					d_glowscale, right, step, blocksize);
+			}
+			else
+				simd_litrow_rgb (prowdest, psource, d_pal30, d_pal30_floor, right, step, blocksize);
 
 			psource += sourcetstep;
 			for (c=0 ; c<3 ; c++)

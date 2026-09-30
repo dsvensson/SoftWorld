@@ -176,6 +176,7 @@ void D_DrawTranslucentFace (msurface_t *surf, const vec3_t transformed_org, emit
 	{
 		miplevel = 0;
 		d_turbsource = (byte *)surf->texinfo->texture + surf->texinfo->texture->offsets[0];
+		d_turbsource30 = R_TextureOverride (surf->texinfo->texture, 0);
 		D_CalcGradients (surf);
 		D_DrawBlendedPolygon (pverts, nump, alpha, true);
 		return;
@@ -220,7 +221,8 @@ typedef struct
 	dsdraw_t		draw;
 	int				color;			// DS_SOLID: palette index
 	simd_texmap_t	map;			// the texture mapping, and the 1/z of all
-	const byte		*turb;			// DS_TURB: the 64x64 texture
+	const byte		*turb;			// DS_TURB: the 64x64 texture,
+	const pixel_t	*turb30;		// or a TGA file's texels in its place
 	msurface_t		*face;			// DS_CACHED: the surface, its entity,
 	entity_t		*entity;
 	int				miplevel;		// mip level and block
@@ -295,6 +297,7 @@ static bool D_PrepareSurface (surf_t *s, dsjob_t *job)
 			miplevel = 0;
 			job->draw = DS_TURB;
 			job->turb = (byte *)pface->texinfo->texture + pface->texinfo->texture->offsets[0];
+			job->turb30 = R_TextureOverride (pface->texinfo->texture, 0);
 		}
 		else
 		{
@@ -356,7 +359,7 @@ static void D_DrawJob (void *ctx, int index)
 		D_DrawSkyboxScans (spans);
 		break;
 	case DS_TURB:
-		Turbulent8 (spans, &job->map, job->turb);
+		Turbulent8 (spans, &job->map, job->turb, job->turb30);
 		break;
 	case DS_CACHED:
 		D_DrawSpans (spans, &job->map, job->cache->data, (int)job->cache->width);

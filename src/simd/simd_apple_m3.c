@@ -222,6 +222,36 @@ void Simd_M3_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src
 	}
 }
 
+// Simd_M3_TurbSpan's stepping, the texels read as they are
+void Simd_M3_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+	const int *turb, int u, int v, int count)
+{
+	m3_stepper_t	st;
+	m3_batch_t		b;
+	int				first, n, k, pixels, s, t, sstep, tstep, sturb, tturb;
+
+	Simd_M3_SpanStart (&st, map, u, v, count, 4);
+	for (first = 0 ; first < st.subdivisions ; first += n)
+	{
+		n = st.subdivisions - first < 4 ? st.subdivisions - first : 4;
+		Simd_M3_SpanBatch (&st, first, n, &b);
+		for (k = 0 ; k < n ; k++)
+		{
+			pixels = count - ((first + k) << 4) < 16 ? count - ((first + k) << 4) : 16;
+			s = b.sstart[k] & ((128 << 16) - 1);
+			t = b.tstart[k] & ((128 << 16) - 1);
+			sstep = b.sstep[k];
+			tstep = b.tstep[k];
+			for ( ; pixels > 0 ; pixels--, s += sstep, t += tstep)
+			{
+				sturb = ((s + turb[(t >> 16) & 127]) >> 16) & 63;
+				tturb = ((t + turb[(s >> 16) & 127]) >> 16) & 63;
+				*dest++ = src[(tturb << 6) + sturb];
+			}
+		}
+	}
+}
+
 /*
 ===============================================================================
 
@@ -276,6 +306,65 @@ void Simd_M3_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette
 		{
 			l = vmaxq_s32 (vmlaq_s32 (vdupq_n_s32 (light[k]), rev, vdupq_n_s32 (step[k])), vdupq_n_s32 (0));
 			out = Simd_M3_LitChannel (out, pal, fl, vreinterpretq_u32_s32 (l), k);
+		}
+		if (j + 4 <= count)
+			vst1q_u32 (dest + j, out);
+		else
+		{
+			vst1q_u32 (o, out);
+			for (k = 0 ; j + k < count ; k++)
+				dest[j + k] = o[k];
+		}
+	}
+}
+
+// channel k of 4 colors lit as Simd_M3_LitChannel lights them, the floor the
+// glow's channel times glowscale
+static inline uint32x4_t Simd_M3_GlowChannel (uint32x4_t out, uint32x4_t pix, uint32x4_t glow, uint32x4_t gs,
+	uint32x4_t l, int k)
+{
+	const uint32x4_t	channel = vdupq_n_u32 (1023);
+	const int32x4_t		down = vdupq_n_s32 (-10 * k);
+	uint32x4_t			c, f;
+
+	c = vshrq_n_u32 (vmulq_u32 (vandq_u32 (vshlq_u32 (pix, down), channel), l), 15);
+	f = vshrq_n_u32 (vmulq_u32 (vandq_u32 (vshlq_u32 (glow, down), channel), gs), 15);
+	c = vminq_u32 (vmaxq_u32 (c, f), channel);
+	return vorrq_u32 (out, vshlq_u32 (c, vdupq_n_s32 (10 * k)));
+}
+
+void Simd_M3_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
+	const int light[3], const int step[3], int count)
+{
+	const uint32x4_t	gs = vdupq_n_u32 ((uint32_t)glowscale);
+	uint32_t			p[4], g[4], o[4];
+	uint32x4_t			pix, gl, out;
+	int32x4_t			rev, l;
+	int					j, k;
+
+	for (j = 0 ; j < count ; j += 4)
+	{
+		if (j + 4 <= count)
+		{
+			pix = vld1q_u32 (src + j);
+			gl = glow ? vld1q_u32 (glow + j) : vdupq_n_u32 (0);
+		}
+		else
+		{
+			for (k = 0 ; k < 4 ; k++)
+			{
+				p[k] = j + k < count ? src[j + k] : 0;
+				g[k] = j + k < count && glow ? glow[j + k] : 0;
+			}
+			pix = vld1q_u32 (p);
+			gl = vld1q_u32 (g);
+		}
+		rev = vsubq_s32 (vdupq_n_s32 (count - 1 - j), Simd_M3_Iota ());
+		out = vdupq_n_u32 (0);
+		for (k = 0 ; k < 3 ; k++)
+		{
+			l = vmaxq_s32 (vmlaq_s32 (vdupq_n_s32 (light[k]), rev, vdupq_n_s32 (step[k])), vdupq_n_s32 (0));
+			out = Simd_M3_GlowChannel (out, pix, gl, gs, vreinterpretq_u32_s32 (l), k);
 		}
 		if (j + 4 <= count)
 			vst1q_u32 (dest + j, out);

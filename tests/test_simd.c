@@ -234,6 +234,31 @@ static void TestTurbSpan (void)
 	}
 }
 
+static void TestTurbSpanRGB30 (void)
+{
+	static uint32_t	tex[64 * 64], a[600], b[600];
+	static int		turb[256];
+	simd_texmap_t	map;
+	int				r, i, count, u, v;
+
+	for (i = 0 ; i < 64 * 64 ; i++)
+		tex[i] = Rand ();
+	for (i = 0 ; i < 256 ; i++)
+		turb[i] = RandRange (0, 16 << 16);
+	for (r = 0 ; r < ROUNDS ; r++)
+	{
+		map = RandTexmap (RandRange (1, 1024), RandRange (1, 1024));
+		count = RandRange (1, 600);
+		u = RandRange (0, 2047 - count);
+		v = RandRange (0, 2047);
+		memset (a, 0, sizeof(a));
+		memset (b, 0, sizeof(b));
+		Simd_Scalar_TurbSpanRGB30 (a, &map, tex, turb + (r & 127), u, v, count);
+		TESTED (TurbSpanRGB30) (b, &map, tex, turb + (r & 127), u, v, count);
+		Check ("TurbSpanRGB30", r, !memcmp (a, b, sizeof(a)));
+	}
+}
+
 static void TestLitRowColormap (void)
 {
 	static uint32_t	colormap[64 * 256];
@@ -284,6 +309,35 @@ static void TestLitRowRGB (void)
 		Simd_Scalar_LitRowRGB (a, src, palette, floor, light, step, count);
 		TESTED (LitRowRGB) (b, src, palette, floor, light, step, count);
 		Check ("LitRowRGB", r, !memcmp (a, b, sizeof(a)));
+	}
+}
+
+// truecolor texels, some cut out, lit with and without glow, rows of 2 to 16
+// and odd lengths
+static void TestLitRowRGB30 (void)
+{
+	uint32_t	src[16], glow[16], a[16], b[16];
+	int			r, i, k, count, glowscale, light[3], step[3];
+
+	for (r = 0 ; r < ROUNDS ; r++)
+	{
+		count = (r & 2) ? RandRange (1, 16) : 1 << RandRange (1, 4);
+		for (i = 0 ; i < 16 ; i++)
+		{
+			src[i] = Rand () & ((Rand () & 7) ? 0x3FFFFFFFu : 0xBFFFFFFFu);
+			glow[i] = (Rand () & 3) ? 0 : Rand () & 0x3FFFFFFF;
+		}
+		glowscale = RandRange (0, 2 * 32768);
+		for (k = 0 ; k < 3 ; k++)
+		{
+			light[k] = RandRange (-4096, 4 * 32768);
+			step[k] = RandRange (-16384, 16384);
+		}
+		memset (a, 0, sizeof(a));
+		memset (b, 0, sizeof(b));
+		Simd_Scalar_LitRowRGB30 (a, src, (r & 1) ? glow : NULL, glowscale, light, step, count);
+		TESTED (LitRowRGB30) (b, src, (r & 1) ? glow : NULL, glowscale, light, step, count);
+		Check ("LitRowRGB30", r, !memcmp (a, b, sizeof(a)));
 	}
 }
 
@@ -400,8 +454,10 @@ int main (void)
 	TestZSpan ();
 	TestTexSpan ();
 	TestTurbSpan ();
+	TestTurbSpanRGB30 ();
 	TestLitRowColormap ();
 	TestLitRowRGB ();
+	TestLitRowRGB30 ();
 	TestAliasSpan ();
 	TestBlendSpan ();
 	TestFogSpan ();
