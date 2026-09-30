@@ -20,7 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "sv_local.h"
 
-static bool	sv_allow_cheats;
+bool	sv_allow_cheats;
 
 extern cvar_t cl_warncmd;
 

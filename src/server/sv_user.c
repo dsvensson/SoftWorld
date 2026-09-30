@@ -1475,6 +1475,41 @@ static void SV_ShowServerinfo_f (void)
 	Info_Print (svs.info);
 }
 
+/*
+==================
+SV_SetPos_f
+
+Puts the player at an origin, and looking a way when given: what viewpos
+prints, to look at a place again
+==================
+*/
+static void SV_SetPos_f (void)
+{
+	int		i;
+
+	if (!sv_allow_cheats)
+	{
+		Con_Printf ("You must run the server with -cheats to enable this command.\n");
+		return;
+	}
+	if (Cmd_Argc () != 4 && Cmd_Argc () != 7)
+	{
+		Con_Printf ("Usage: setpos <x> <y> <z> [<pitch> <yaw> <roll>]\n");
+		return;
+	}
+
+	for (i=0 ; i<3 ; i++)
+		sv_player->v.origin[i] = Q_atof (Cmd_Argv (i + 1));
+	VectorCopy (vec3_origin, sv_player->v.velocity);
+	if (Cmd_Argc () == 7)
+	{
+		for (i=0 ; i<3 ; i++)
+			sv_player->v.angles[i] = Q_atof (Cmd_Argv (i + 4));
+		sv_player->v.fixangle = 1;
+	}
+	SV_LinkEdict (sv_player, false);
+}
+
 static void SV_NoSnap_f(void)
 {
 	if (*host_client->uploadfn) {
@@ -1506,6 +1541,7 @@ static ucmd_t ucmds[] =
 // issued by hand at client consoles	
 	{"rate", SV_Rate_f},
 	{"kill", SV_Kill_f},
+	{"setpos", SV_SetPos_f},
 	{"pause", SV_Pause_f},
 	{"msg", SV_Msg_f},
 

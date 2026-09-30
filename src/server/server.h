@@ -418,6 +418,8 @@ extern	client_t	*host_client;
 
 extern	edict_t		*sv_player;
 
+extern	bool		sv_allow_cheats;	// -cheats: god, noclip, give, setpos
+
 
 
 

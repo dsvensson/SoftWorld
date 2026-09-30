@@ -1131,6 +1131,24 @@ static void CL_Pause_f (void)
 
 /*
 ===================
+CL_ViewPos_f
+
+The player's origin and view angles, as setpos takes them
+===================
+*/
+static void CL_ViewPos_f (void)
+{
+	if (cls.state != ca_active)
+	{
+		Con_Printf ("Not in a game\n");
+		return;
+	}
+	Con_Printf ("setpos %.1f %.1f %.1f %.1f %.1f %.1f\n", cl.simorg[0], cl.simorg[1], cl.simorg[2],
+		cl.viewangles[0], cl.viewangles[1], cl.viewangles[2]);
+}
+
+/*
+===================
 Cmd_ForwardToServer
 
 adds the current command line as a clc_stringcmd to the client message.
@@ -1374,6 +1392,10 @@ static void CL_InitLocal (void)
 // forward to server commands
 //
 	Cmd_AddCommand ("kill", NULL, "Kills your player, a suicide (sent to the server).");
+	Cmd_AddCommand ("viewpos", CL_ViewPos_f,
+		"Prints your origin and view angles as a setpos command, to come back to the place.");
+	Cmd_AddCommand ("setpos", NULL, "Moves you to an origin, looking a way when given; needs the server "
+		"started with -cheats (sent to the server). Usage: setpos <x> <y> <z> [<pitch> <yaw> <roll>]");
 	Cmd_AddCommand ("pause", CL_Pause_f,
 		"Pauses or unpauses an MVD playing, else asks the server to (it must be pausable).");
 	Cmd_AddCommand ("say", NULL, "Says something to everyone on the server. Usage: say <message>");
