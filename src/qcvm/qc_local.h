@@ -597,6 +597,7 @@ typedef struct
 } qc_sharedtable_t;
 
 typedef struct qc_std_s qc_std_t;			// the standard builtins' state (qc_lib.h)
+void	QC_LibFreeState (qcvm_t *vm);
 typedef struct qc_thread_s qc_thread_t;		// a sleeping QuakeC thread (qc_threads.c)
 
 #define QC_STRING_COPIES	16

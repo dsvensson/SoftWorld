@@ -419,6 +419,7 @@ static void QC_FreeCore (qcvm_t *vm)
 		free (vm->copies[i]);
 		vm->copies[i] = NULL;
 	}
+	QC_LibFreeState (vm);
 }
 
 static bool QC_OutOfMemory (qcvm_t *vm, qc_resource_t r)

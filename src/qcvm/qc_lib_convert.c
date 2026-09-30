@@ -63,20 +63,6 @@ void QC_FtosText (qc_sink_t *s, float v)
 	QC_SinkFree (&t);
 }
 
-static bool QC_ReturnSink (qcvm_t *vm, qc_sink_t *s)
-{
-	bool	ok;
-
-	if (s->failed)
-	{
-		QC_SinkFree (s);
-		return QC_Fail (vm, QC_ERR_OUT_OF_MEMORY, QC_RES_TEMP_STRINGS, NULL);
-	}
-	ok = QC_ReturnString (vm, QC_SinkText (s), s->len);
-	QC_SinkFree (s);
-	return ok;
-}
-
 // string ftos(float)
 static bool QC_Ftos (qcvm_t *vm)
 {
@@ -84,7 +70,7 @@ static bool QC_Ftos (qcvm_t *vm)
 
 	QC_SinkInit (&s, SIZE_MAX);
 	QC_FtosText (&s, QC_ArgFloat (vm, 0));
-	return QC_ReturnSink (vm, &s);
+	return QC_LibReturnSink (vm, &s);
 }
 
 // string vtos(vector): 'x y z', each C's %f
@@ -104,7 +90,7 @@ static bool QC_Vtos (qcvm_t *vm)
 		QC_FormatF (&s, (double)v[k], 6);
 	}
 	QC_SinkPush (&s, '\'');
-	return QC_ReturnSink (vm, &s);
+	return QC_LibReturnSink (vm, &s);
 }
 
 // string etos(entity): "entity N"

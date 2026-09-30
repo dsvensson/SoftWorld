@@ -44,8 +44,9 @@ qc_builtins_t *QC_BuiltinsStandard (qc_numbering_t numbering)
 
 	if (!b)
 		return NULL;
-	if (!QC_RegisterConvert (b) || !QC_RegisterEntity (b) || !QC_RegisterHostcalls (b) || !QC_RegisterIntrospect (b)
-		|| !QC_RegisterMath (b) || !QC_RegisterReflect (b) || !QC_RegisterTime (b) || !QC_RegisterVector (b))
+	if (!QC_RegisterConvert (b) || !QC_RegisterEntity (b) || !QC_RegisterFormat (b) || !QC_RegisterHostcalls (b)
+		|| !QC_RegisterIntrospect (b) || !QC_RegisterMath (b) || !QC_RegisterReflect (b) || !QC_RegisterStrftime (b)
+		|| !QC_RegisterString (b) || !QC_RegisterTime (b) || !QC_RegisterTokenize (b) || !QC_RegisterVector (b))
 	{
 		QC_BuiltinsFree (b);
 		return NULL;
@@ -73,6 +74,13 @@ static const char *const qc_extensions[] = {
 	"DP_QC_MINMAXBOUND",
 	"DP_QC_RANDOMVEC",
 	"DP_QC_SINCOSSQRTPOW",
+	"DP_QC_SPRINTF",
+	"DP_QC_STRFTIME",
+	"DP_QC_STRINGCOLORFUNCTIONS",
+	"DP_QC_STRING_CASE_FUNCTIONS",
+	"DP_QC_STRREPLACE",
+	"DP_QC_TOKENIZEBYSEPARATOR",
+	"DP_QC_URI_ESCAPE",
 	"DP_QC_VECTOANGLES_WITH_ROLL",
 	"DP_QC_VECTORVECTORS",
 	"DP_REGISTERCVAR",
@@ -82,6 +90,8 @@ static const char *const qc_extensions[] = {
 	"FTE_QC_CHECKCOMMAND",
 	"FTE_QC_CROSSPRODUCT",
 	"FTE_QC_INTCONV",
+	"FTE_STRINGS",
+	"ZQ_QC_STRINGS",
 };
 
 bool QC_StandardExtension (const char *name)
@@ -92,6 +102,58 @@ bool QC_StandardExtension (const char *name)
 		if (!strcmp (qc_extensions[i], name))
 			return true;
 	return false;
+}
+
+/*
+==============================================================================
+
+STATE
+
+==============================================================================
+*/
+
+qc_std_t *QC_LibState (qcvm_t *vm)
+{
+	if (!vm->std && !(vm->std = calloc (1, sizeof(*vm->std))))
+		QC_Fail (vm, QC_ERR_OUT_OF_MEMORY, QC_RES_TEMP_STRINGS, NULL);
+	return vm->std;
+}
+
+void QC_LibFreeTokens (qc_std_t *std)
+{
+	uint32_t	i;
+
+	for (i = 0 ; i < std->numtokens ; i++)
+		free (std->tokens[i].text);
+	free (std->tokens);
+	std->tokens = NULL;
+	std->numtokens = 0;
+}
+
+void QC_LibFreeState (qcvm_t *vm)
+{
+	if (!vm->std)
+		return;
+	QC_LibFreeTokens (vm->std);
+	free (vm->std);
+	vm->std = NULL;
+}
+
+bool QC_LibCharge (qcvm_t *vm, size_t n)
+{
+	qc_std_t	*std = QC_LibState (vm);
+
+	if (!std || n > vm->config.limits.container_bytes - std->container_bytes
+		|| std->container_bytes > vm->config.limits.container_bytes)
+		return false;
+	std->container_bytes += n;
+	return true;
+}
+
+void QC_LibRelease (qcvm_t *vm, size_t n)
+{
+	if (vm->std)
+		vm->std->container_bytes = n < vm->std->container_bytes ? vm->std->container_bytes - n : 0;
 }
 
 /*
@@ -165,6 +227,20 @@ bool QC_LibReturnOptString (qcvm_t *vm, const char *text)
 		return QC_ReturnString (vm, text, strlen (text));
 	QC_ReturnWord (vm, 0);
 	return true;
+}
+
+bool QC_LibReturnSink (qcvm_t *vm, qc_sink_t *s)
+{
+	bool	ok;
+
+	if (s->failed)
+	{
+		QC_SinkFree (s);
+		return QC_Fail (vm, QC_ERR_OUT_OF_MEMORY, QC_RES_TEMP_STRINGS, NULL);
+	}
+	ok = QC_ReturnString (vm, QC_SinkText (s), s->len);
+	QC_SinkFree (s);
+	return ok;
 }
 
 bool QC_LibSoftError (qcvm_t *vm, const char *fmt, ...)

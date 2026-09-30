@@ -165,7 +165,7 @@ static bool QC_Nextent (qcvm_t *vm)
 
 // entity find(entity start, .string fld, string match): searching for "" finds
 // null and empty fields; otherwise a null field never matches
-static bool QC_Find (qcvm_t *vm)
+static bool QC_FindBuiltin (qcvm_t *vm)
 {
 	uint32_t	start = QC_ArgWord (vm, 0), f = QC_ArgWord (vm, 1), e, t;
 	const char	*want, *text;
@@ -517,7 +517,7 @@ static const qc_libentry_t	qc_entity[] = {
 	{"remove", QC_RemoveBuiltin, NULL, 0},
 	{"removeinstant", QC_Removeinstant, NULL, 0},
 	{"nextent", QC_Nextent, NULL, 0},
-	{"find", QC_Find, NULL, 0},
+	{"find", QC_FindBuiltin, NULL, 0},
 	{"findfloat", QC_Findfloat, NULL, 0},
 	{"findentity", NULL, "findfloat", 0},
 	{"findflags", QC_Findflags, NULL, 0},

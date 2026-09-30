@@ -10,6 +10,8 @@
 
 #include <stdarg.h>
 
+typedef struct qc_sink_s qc_sink_t;		// text with a cap (qc_dtoa.c)
+
 /*
 ==============================================================================
 
@@ -30,12 +32,49 @@ bool	QC_LibRegister (qc_builtins_t *b, const qc_libentry_t *table, size_t count)
 
 bool	QC_RegisterConvert (qc_builtins_t *b);
 bool	QC_RegisterEntity (qc_builtins_t *b);
+bool	QC_RegisterFormat (qc_builtins_t *b);
 bool	QC_RegisterHostcalls (qc_builtins_t *b);
 bool	QC_RegisterIntrospect (qc_builtins_t *b);
 bool	QC_RegisterMath (qc_builtins_t *b);
 bool	QC_RegisterReflect (qc_builtins_t *b);
+bool	QC_RegisterString (qc_builtins_t *b);
+bool	QC_RegisterStrftime (qc_builtins_t *b);
 bool	QC_RegisterTime (qc_builtins_t *b);
+bool	QC_RegisterTokenize (qc_builtins_t *b);
 bool	QC_RegisterVector (qc_builtins_t *b);
+
+/*
+==============================================================================
+
+THE LIBRARY'S STATE (vm->std)
+
+==============================================================================
+*/
+
+// a token: its text and the bytes of the input it was read from
+typedef struct
+{
+	char		*text;
+	size_t		len;
+	size_t		start, end;
+} qc_token_t;
+
+struct qc_std_s
+{
+	qc_token_t	*tokens;			// the token list (FTE keeps one a process, this one a VM)
+	uint32_t	numtokens;
+	size_t		token_bytes;		// what the list is charged
+	size_t		container_bytes;	// charged against limits.container_bytes
+};
+
+// the VM's library state, made when first needed; NULL after an out-of-memory error
+qc_std_t	*QC_LibState (qcvm_t *vm);
+void		QC_LibFreeTokens (qc_std_t *std);
+
+// Charges n bytes of containers (token lists, hash tables, string buffers)
+// against limits.container_bytes; false (charging nothing) past it
+bool	QC_LibCharge (qcvm_t *vm, size_t n);
+void	QC_LibRelease (qcvm_t *vm, size_t n);
 
 /*
 ==============================================================================
@@ -66,6 +105,10 @@ void	QC_LibReturnBool (qcvm_t *vm, bool b);
 
 // Returns text as a temp string, or null for NULL; false past the limits
 bool	QC_LibReturnOptString (qcvm_t *vm, const char *text);
+
+// Returns a sink's text as a temp string, and frees the sink; false past the
+// limits or when the sink ran out of memory
+bool	QC_LibReturnSink (qcvm_t *vm, qc_sink_t *s);
 
 // FTE's builtin error for builtins that carry on after it: in developer mode a
 // warning and a zeroed result, and true for the builtin to go on with its
@@ -116,14 +159,14 @@ conventions on top. And C's strtod, strtol and strtoul in the C locale.
 */
 
 // text that takes at most cap bytes, dropping the rest
-typedef struct
+struct qc_sink_s
 {
 	char	*buf;			// NUL-terminated (NULL until something is added)
 	size_t	len;
 	size_t	size;			// allocated
 	size_t	cap;
 	bool	failed;			// out of memory: the text is short
-} qc_sink_t;
+};
 
 void	QC_SinkInit (qc_sink_t *s, size_t cap);
 void	QC_SinkFree (qc_sink_t *s);
@@ -172,6 +215,57 @@ uint64_t	QC_Strtoul (const char *s, uint32_t base);	// ULONG_MAX on overflow
 /*
 ==============================================================================
 
+CHARACTERS (qc_lib_charset.c)
+
+==============================================================================
+*/
+
+#define QC_REPLACEMENT	0xFFFD
+
+// why a UTF-8 sequence didn't decode cleanly
+typedef enum
+{
+	QC_UTF8_OK,
+	QC_UTF8_MALFORMED,		// a stray continuation byte, FE or FF, or a lead byte cut short
+	QC_UTF8_ILLEGAL,		// an overlong form, U+FFFE, U+FFFF, or past U+10FFFF
+	QC_UTF8_LONE_HIGH,		// a high surrogate without a low one after it
+	QC_UTF8_LOW				// a low surrogate
+} qc_utf8err_t;
+
+// One character at s (len bytes left) and the bytes it takes (at least one):
+// FTE's lenient UTF-8 decoder, or a scheme's
+uint32_t	QC_DecodeUtf8 (const uint8_t *s, size_t len, size_t *used, qc_utf8err_t *err);
+uint32_t	QC_DecodeChar (const uint8_t *s, size_t len, qc_charscheme_t scheme, size_t *used);
+
+size_t	QC_CharCount (const uint8_t *s, size_t len, qc_charscheme_t scheme);
+// the byte offset of character index, or len if there are fewer
+size_t	QC_ByteOffset (const uint8_t *s, size_t len, size_t index, qc_charscheme_t scheme);
+// the characters that end at or before byte offset ofs
+size_t	QC_CharOffset (const uint8_t *s, size_t len, size_t ofs, qc_charscheme_t scheme);
+
+// FTE's UTF-8 encoder: NUL as C0 80, up to 0x7FFFFFFF in the old 5 and 6-byte forms
+void	QC_EncodeUtf8 (qc_sink_t *out, uint32_t ch);
+// a character in a scheme; what it can't write is ?, or FTE's ^U and ^{} markup
+void	QC_EncodeChar (qc_sink_t *out, uint32_t ch, qc_charscheme_t scheme, bool markup);
+
+/*
+==============================================================================
+
+STRINGS (qc_lib_string.c, qc_lib_format.c)
+
+==============================================================================
+*/
+
+// the first needle in haystack (an empty one at 0), or -1; linear time for long needles
+int64_t	QC_Find (const char *haystack, size_t hlen, const char *needle, size_t nlen);
+
+// FTE's COM_QuotedString: the text quoted for the console's tokenizer to read
+// back as one argument, as if into a buffer of bufsize bytes
+void	QC_QuoteString (qc_sink_t *out, const char *s, size_t len, size_t bufsize);
+
+/*
+==============================================================================
+
 MODULE HELPERS
 
 ==============================================================================
@@ -179,6 +273,9 @@ MODULE HELPERS
 
 // ftos's text of v (FTE's digits)
 void	QC_FtosText (qc_sink_t *s, float v);
+
+// strftime's text of a time
+void	QC_StrftimeText (qc_sink_t *out, const char *fmt, const qc_calendar_t *t);
 
 // Quake's AngleVectors: forward, right, up of (pitch, yaw, roll)
 void	QC_AngleVectors (const float angles[3], float forward[3], float right[3], float up[3]);
