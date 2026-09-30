@@ -174,6 +174,7 @@ Worth knowing:
 | `demo_jump [+\|-][m:]s` | seek in an MVD |
 | `track [name]`, jump, attack | in an MVD or QTV: follow a player, the next one; attack flies the camera and gives it back |
 | `demo_itemtimers`, `demo_itemrings` | KTX's item announcements, as a list and as rings on the floor |
+| `f_version`, `f_system`, `f_modified` | answered in chat as ezQuake answers them; `f_modified` also as a command, and `allow_f_system 0` answers `f_system` with "disabled" |
 | `memstats` | memory by use |
 
 ## License

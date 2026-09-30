@@ -36,6 +36,9 @@ const char	*FS_BaseDir (void);	// the directory holding the game directories
 // loads a file into memory from Mem_Alloc (0-terminated); NULL if missing
 byte	*FS_LoadFile (const char *path, int *length);
 
+// sees each file FS_LoadFile loads, as it is loaded (f_modified's checks)
+void	FS_SetLoadHook (void (*hook) (const char *path, const byte *data, int length));
+
 // called whenever the game directory changes
 void	FS_AddGamedirCallback (void (*callback)(void));
 void	FS_RemoveGamedirCallback (void (*callback)(void));

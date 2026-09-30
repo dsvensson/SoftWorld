@@ -13,6 +13,9 @@
 
 #include <errno.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/epoll.h>
 #include <sys/prctl.h>
 #include <sys/timerfd.h>
@@ -74,6 +77,58 @@ double Sys_MonotonicToTime (uint64_t ns)
 	if (!sys_start)
 		Sys_DoubleTime ();
 	return ((double)ns - (double)sys_start) * 1e-9;
+}
+
+/*
+===============================================================================
+
+THE MACHINE
+
+===============================================================================
+*/
+
+const char *Sys_Platform (void)
+{
+	return sizeof(void *) == 8 ? "Linux64" : "Linux32";
+}
+
+// memory from /proc/meminfo, the CPU's name and clock from /proc/cpuinfo (the
+// first core's; the name is "model name" on x86, and missing on some ARM)
+void Sys_SystemInfo (sys_info_t *info)
+{
+	char		line[512], *value, *end;
+	unsigned long long	kb;
+	FILE		*f;
+
+	memset (info, 0, sizeof(*info));
+	if ((f = fopen ("/proc/meminfo", "r")))
+	{
+		while (fgets (line, sizeof(line), f))
+			if (sscanf (line, "MemTotal: %llu kB", &kb) == 1)
+			{
+				info->memory = (unsigned)(kb / 1024);
+				break;
+			}
+		fclose (f);
+	}
+	if ((f = fopen ("/proc/cpuinfo", "r")))
+	{
+		while (fgets (line, sizeof(line), f) && (!info->cpu[0] || !info->mhz))
+		{
+			value = strchr (line, ':');
+			if (!value)
+				continue;
+			for (value++ ; *value == ' ' || *value == '\t' ; value++)
+				;
+			if ((end = strchr (value, '\n')))
+				*end = 0;
+			if (!strncmp (line, "model name", 10) && !info->cpu[0])
+				snprintf (info->cpu, sizeof(info->cpu), "%s", value);
+			else if (!strncmp (line, "cpu MHz", 7) && !info->mhz)
+				info->mhz = (int)(atof (value) + 0.5);
+		}
+		fclose (f);
+	}
 }
 
 /*

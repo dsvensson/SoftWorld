@@ -7,6 +7,7 @@
 #include <direct.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 int Sys_FileTime (char *path)
 {
@@ -36,6 +37,30 @@ bool Sys_ListDir (const char *path, void (*entry) (void *ctx, const char *name, 
 	} while (FindNextFileA (find, &data));
 	FindClose (find);
 	return true;
+}
+
+const char *Sys_Platform (void)
+{
+	return sizeof(void *) == 8 ? "Win64" : "Win32";
+}
+
+// memory from the system, the CPU's name and clock from the registry's first core
+void Sys_SystemInfo (sys_info_t *info)
+{
+	MEMORYSTATUSEX	memory = {.dwLength = sizeof(memory)};
+	DWORD			mhz, size;
+
+	memset (info, 0, sizeof(*info));
+	if (GlobalMemoryStatusEx (&memory))
+		info->memory = (unsigned)(memory.ullTotalPhys / (1024 * 1024));
+	size = sizeof(info->cpu);
+	if (RegGetValueA (HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+			"ProcessorNameString", RRF_RT_REG_SZ, NULL, info->cpu, &size) != ERROR_SUCCESS)
+		info->cpu[0] = 0;
+	size = sizeof(mhz);
+	if (RegGetValueA (HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+			"~MHz", RRF_RT_REG_DWORD, NULL, &mhz, &size) == ERROR_SUCCESS)
+		info->mhz = (int)mhz;
 }
 
 // the file stays open, flushed after each write: opened for every print, a

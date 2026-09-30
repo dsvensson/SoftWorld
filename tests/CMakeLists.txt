@@ -21,6 +21,12 @@ sw_add_program(test_md4 test_md4.c)
 target_link_libraries(test_md4 PRIVATE sw_common)
 add_test(NAME md4 COMMAND test_md4)
 
+# test_sha1 checks the SHA-1 f_modified hashes files with against FIPS 180's
+# digests.
+sw_add_program(test_sha1 test_sha1.c)
+target_link_libraries(test_sha1 PRIVATE sw_common)
+add_test(NAME sha1 COMMAND test_sha1)
+
 # test_markup reads ezQuake's and FTE's colors out of text.
 sw_add_program(test_markup test_markup.c)
 target_link_libraries(test_markup PRIVATE sw_common)

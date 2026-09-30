@@ -45,6 +45,7 @@ static ID3D11PixelShader		*d3d_ps;
 static ID3D11SamplerState		*d3d_sampler;
 static ID3D11Buffer				*d3d_constants;
 static HANDLE					d3d_waitable;		// signaled when a frame may be queued
+static char						d3d_gpuname[128];	// the adapter's name
 static bool						d3d_allow_tearing;
 static UINT						d3d_swapflags;
 
@@ -292,6 +293,25 @@ static void VID_CheckOutput (void)
 		Con_Printf ("SDR output\n");
 }
 
+// the adapter the device is on, by name
+static void VID_GetGPUName (void)
+{
+	IDXGIDevice			*device;
+	IDXGIAdapter		*adapter;
+	DXGI_ADAPTER_DESC	desc;
+
+	if (FAILED (ID3D11Device_QueryInterface (d3d_device, &IID_IDXGIDevice, (void **)&device)))
+		return;
+	if (SUCCEEDED (IDXGIDevice_GetAdapter (device, &adapter)))
+	{
+		if (SUCCEEDED (IDXGIAdapter_GetDesc (adapter, &desc))
+			&& !WideCharToMultiByte (CP_UTF8, 0, desc.Description, -1, d3d_gpuname, sizeof(d3d_gpuname), NULL, NULL))
+			d3d_gpuname[0] = 0;
+		IDXGIAdapter_Release (adapter);
+	}
+	IDXGIDevice_Release (device);
+}
+
 /*
 ================
 VID_CreateDevice
@@ -314,6 +334,7 @@ static void VID_CreateDevice (void)
 			D3D11_SDK_VERSION, &d3d_device, NULL, &d3d_context), "D3D11CreateDevice");
 	}
 
+	VID_GetGPUName ();
 	VID_CheckHR (CreateDXGIFactory2 (0, &IID_IDXGIFactory2, (void **)&d3d_factory), "CreateDXGIFactory2");
 
 	if (SUCCEEDED (IDXGIFactory2_QueryInterface (d3d_factory, &IID_IDXGIFactory5, (void **)&factory5)))
@@ -843,4 +864,9 @@ bool VID_IsMinimized (void)
 bool VID_IsFullscreen (void)
 {
 	return vid_fullscreen;
+}
+
+const char *VID_GPUName (void)
+{
+	return d3d_gpuname;
 }

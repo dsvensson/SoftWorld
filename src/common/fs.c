@@ -601,6 +601,13 @@ appended. Returns NULL if the file doesn't exist; the caller frees the data
 with Mem_Free. length (if not NULL) receives the file size.
 ============
 */
+static void	(*fs_loadhook) (const char *path, const byte *data, int length);
+
+void FS_SetLoadHook (void (*hook) (const char *path, const byte *data, int length))
+{
+	fs_loadhook = hook;
+}
+
 byte *FS_LoadFile (const char *path, int *length)
 {
 	FILE	*h;
@@ -618,6 +625,8 @@ byte *FS_LoadFile (const char *path, int *length)
 		Sys_Error ("FS_LoadFile: error reading %s", path);
 	fclose (h);
 
+	if (fs_loadhook)
+		fs_loadhook (path, buf, len);
 	if (length)
 		*length = len;
 	return buf;

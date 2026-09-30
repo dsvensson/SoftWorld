@@ -910,3 +910,12 @@ bool VID_IsFullscreen (void)
 {
 	return vid_fullscreen;
 }
+
+const char *VID_GPUName (void)
+{
+	static char	name[128];
+
+	if (!name[0] && mtl_device)
+		snprintf (name, sizeof(name), "%s", mtl_device.name.UTF8String);
+	return name;
+}

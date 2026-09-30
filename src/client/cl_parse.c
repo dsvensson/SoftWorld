@@ -1338,6 +1338,7 @@ void CL_ParseServerMessage (void)
 				break;
 			if (i == PRINT_CHAT)
 			{
+				CL_FCheckRequest (s);
 				S_LocalSound ("misc/talk.wav");
 				CL_ChatText (s, chat, sizeof(chat));
 				s = chat;

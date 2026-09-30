@@ -1177,6 +1177,7 @@ static void CL_InitLocal (void)
 	CL_InitTEnts ();
 	CL_InitPrediction ();
 	CL_InitCam ();
+	CL_InitFChecks ();
 	
 //
 // register our commands

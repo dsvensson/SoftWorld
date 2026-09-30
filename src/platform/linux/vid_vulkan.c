@@ -1459,3 +1459,8 @@ bool VID_IsFullscreen (void)
 {
 	return WL_IsFullscreen ();
 }
+
+const char *VID_GPUName (void)
+{
+	return vk_gpuprops.deviceName;
+}

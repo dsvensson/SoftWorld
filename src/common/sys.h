@@ -78,6 +78,22 @@ void	Sys_SendKeyEvents (void);
 char	*Sys_GetClipboardText (void);
 
 //
+// the machine, as f_version and f_system tell it
+//
+
+typedef struct
+{
+	unsigned	memory;			// MB
+	char		cpu[128];		// the CPU's name, "" where unknown
+	int			mhz;			// its clock, 0 where unknown
+} sys_info_t;
+
+void	Sys_SystemInfo (sys_info_t *info);
+
+// the platform as ezQuake names it: Win64, Linux64, MacOSX
+const char	*Sys_Platform (void);
+
+//
 // worker threads
 //
 

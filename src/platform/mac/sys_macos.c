@@ -5,7 +5,9 @@
 #include "posix_local.h"
 
 #include <errno.h>
+#include <string.h>
 #include <sys/event.h>
+#include <sys/sysctl.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -46,6 +48,37 @@ double Sys_DoubleTime (void)
 	if (!start)
 		start = now;
 	return (double)(now - start) * 1e-9;
+}
+
+/*
+===============================================================================
+
+THE MACHINE
+
+===============================================================================
+*/
+
+const char *Sys_Platform (void)
+{
+	return "MacOSX";
+}
+
+// the CPU's clock only where the system tells it (Intel Macs; not Apple silicon)
+void Sys_SystemInfo (sys_info_t *info)
+{
+	uint64_t	memory = 0, hz = 0;
+	size_t		size;
+
+	memset (info, 0, sizeof(*info));
+	size = sizeof(memory);
+	if (!sysctlbyname ("hw.memsize", &memory, &size, NULL, 0))
+		info->memory = (unsigned)(memory / (1024 * 1024));
+	size = sizeof(info->cpu) - 1;
+	if (sysctlbyname ("machdep.cpu.brand_string", info->cpu, &size, NULL, 0))
+		info->cpu[0] = 0;
+	size = sizeof(hz);
+	if (!sysctlbyname ("hw.cpufrequency", &hz, &size, NULL, 0))
+		info->mhz = (int)(hz / 1000000);
 }
 
 /*

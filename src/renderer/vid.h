@@ -97,6 +97,9 @@ void	VID_BringToFront (void);
 
 bool	VID_IsFullscreen (void);
 
+// the GPU the frames are presented with (f_system), "" before there is one
+const char	*VID_GPUName (void);
+
 bool	VID_IsActive (void);		// the window has the focus
 bool	VID_IsMinimized (void);
 

@@ -457,6 +457,19 @@ void CL_ReRecord_f (void);
 void CL_PlayDemo_f (void);
 void CL_TimeDemo_f (void);
 void CL_CompleteDemo (const char *partial, void (*add) (void *ctx, const char *candidate), void *ctx);
+
+//
+// cl_fchecks.c: replies to f_version, f_system and f_modified asked in chat
+//
+void CL_InitFChecks (void);
+void CL_FCheckRequest (const char *line);
+
+//
+// cl_fmod.c: f_modified, whether the files checked are the originals
+//
+void CL_InitFMod (void);
+void CL_FModResponse (void);
+const char *CL_FModText (void);
 void CL_InitDemo (void);
 
 //
