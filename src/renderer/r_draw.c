@@ -221,18 +221,9 @@ static void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	if (edge->u > r_refdef.vrectright_adj_shift20)
 		edge->u = r_refdef.vrectright_adj_shift20;
 
-// sorted on u when its scan line is reached (R_SortNewEdges); a leading edge
-// may be given a trailing surface later, so the kind is kept by the list
-	if (side == 0)
-	{
-		edge->next = newtrailers[v];
-		newtrailers[v] = edge;
-	}
-	else
-	{
-		edge->next = newedges[v];
-		newedges[v] = edge;
-	}
+// sorted when the scan starts (R_SortNewEdges); a leading edge may be given a
+// trailing surface later, so the kind is kept apart
+	r_edgestarts[edge - r_edges] = (uint32_t)v << 1 | (side == 0);
 
 	edge->nextremove = removeedges[v2];
 	removeedges[v2] = edge;

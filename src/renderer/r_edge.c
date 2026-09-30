@@ -32,11 +32,18 @@ surf_t	*surfaces, *surface_p, *surf_max;
 // pointer is greater than another one, it should be drawn in front
 // surfaces[1] is the background, and is used as the active surface stack
 
-// the edges starting on each scan line, unsorted: leading edges and trailing
-// edges each the most recent first (R_SortNewEdges sorts them at the scan)
-edge_t	**newedges;
-edge_t	**newtrailers;
+// of each edge of the frame, by its index in r_edges: the scan line it starts
+// on times two, plus one for a trailing edge (R_EmitEdge)
+uint32_t	*r_edgestarts;
 edge_t	**removeedges;
+
+// the frame's edges sorted for the scan (R_SortNewEdges), as indices into
+// r_edges; line v's from r_linestart[v] to r_linestart[v + 1]
+static uint32_t	*r_sortededges, *r_sortbuffer;
+static int		r_maxsortededges;
+static int		*r_linestart;		// r_edgelines + 2
+static int		*r_columnstart;		// the view's width + 1
+static int		r_edgelines;
 static espan_t	*basespans;		// room for r_maxspans
 static int		r_maxspans;
 
@@ -123,13 +130,14 @@ spans are drawn and the room reused when they run out
 */
 void R_SetEdgeSize (int width, int height)
 {
-	Mem_Free (newedges);
-	Mem_Free (newtrailers);
 	Mem_Free (removeedges);
+	Mem_Free (r_linestart);
+	Mem_Free (r_columnstart);
 	Mem_Free (basespans);
-	newedges = Mem_Calloc ((size_t)height, sizeof(*newedges));
-	newtrailers = Mem_Calloc ((size_t)height, sizeof(*newtrailers));
 	removeedges = Mem_Calloc ((size_t)height, sizeof(*removeedges));
+	r_edgelines = height;
+	r_linestart = Mem_Alloc ((size_t)(height + 2) * sizeof(*r_linestart));
+	r_columnstart = Mem_Alloc ((size_t)(width + 1) * sizeof(*r_columnstart));
 	r_maxspans = width * 4 > MINSPANS ? width * 4 : MINSPANS;
 	basespans = Mem_Alloc ((size_t)r_maxspans * sizeof(*basespans));
 }
@@ -168,7 +176,7 @@ void R_BeginEdgeFrame (void)
 // FIXME: set with memset
 	for (v=r_refdef.vrect.y ; v<r_refdef.vrectbottom ; v++)
 	{
-		newedges[v] = newtrailers[v] = removeedges[v] = NULL;
+		removeedges[v] = NULL;
 	}
 }
 
@@ -176,114 +184,129 @@ void R_BeginEdgeFrame (void)
 
 /*
 ==============
-R_MergeEdges
+R_EdgeColumn
 
-Two lists sorted on u as one; at the same u, a's edges come first
+The pixel column an edge starts in, of the view's: edges in different columns
+are in order on u
 ==============
 */
-static edge_t *R_MergeEdges (edge_t *a, edge_t *b)
+static inline int R_EdgeColumn (const edge_t *edge, int ncolumns)
 {
-	edge_t	head, *tail;
+	int64_t	c;
 
-	tail = &head;
-	while (a && b)
-	{
-		if (b->u < a->u)
-		{
-			tail->next = b;
-			tail = b;
-			b = b->next;
-		}
-		else
-		{
-			tail->next = a;
-			tail = a;
-			a = a->next;
-		}
-	}
-	tail->next = a ? a : b;
-	return head.next;
+	c = (edge->u >> 20) - r_refdef.vrect.x;
+	return c < 0 ? 0 : c >= ncolumns ? ncolumns - 1 : (int)c;
 }
 
 /*
 ==============
-R_SortEdges
+R_EdgeBefore
 
-A list sorted on u, keeping the order of edges at the same u: a merge sort,
-where bins[i] holds 2^i edges that came before those of the lower bins
+Whether edge a goes before edge b on the scan line both start on: on u, and
+at the same u leading edges before trailing ones, the leading edges the
+latest emitted first and the trailing edges the earliest. That is the order
+id's sorted insertion as each was emitted gave them, which the spans depend
+on.
 ==============
 */
-static edge_t *R_SortEdges (edge_t *list)
+static inline bool R_EdgeBefore (uint32_t a, uint32_t b)
 {
-	edge_t	*bins[32], *carry, *next;
-	int		i, top;
+	uint32_t	trailing;
 
-	top = 0;
-	for ( ; list ; list = next)
-	{
-		next = list->next;
-		list->next = NULL;
-		carry = list;
-		for (i=0 ; i<top && bins[i] ; i++)
-		{
-			carry = R_MergeEdges (bins[i], carry);
-			bins[i] = NULL;
-		}
-		bins[i] = carry;
-		if (i == top)
-			top++;
-	}
-
-	carry = NULL;
-	for (i=0 ; i<top ; i++)
-	{
-		if (bins[i])
-			carry = carry ? R_MergeEdges (bins[i], carry) : bins[i];
-	}
-	return carry;
+	if (r_edges[a].u != r_edges[b].u)
+		return r_edges[a].u < r_edges[b].u;
+	trailing = r_edgestarts[a] & 1;
+	if (trailing != (r_edgestarts[b] & 1))
+		return !trailing;
+	return trailing ? a < b : a > b;
 }
 
 /*
 ==============
 R_SortNewEdges
 
-The edges starting on a scan line, sorted on u. At the same u, leading edges
-come before trailing ones, the leading edges the most recent first and the
-trailing edges the earliest first: the order id's sorted insertion as each was
-emitted gave them, which the spans depend on.
+The frame's edges by the scan line each starts on, and there in the order
+R_EdgeBefore gives; r_linestart[v] is where line v's are. A counting sort on
+the pixel column and then one on the line leave only edges in the same column
+of a line out of order, which an insertion sort puts right.
 ==============
 */
-static edge_t *R_SortNewEdges (int v)
+static void R_SortNewEdges (void)
 {
-	edge_t	*trailers, *edge, *next;
+	int			i, j, n, v, ncolumns, count, total;
+	uint32_t	e;
 
-	trailers = NULL;		// in the order emitted
-	for (edge = newtrailers[v] ; edge ; edge = next)
+	n = (int)(edge_p - r_edges);
+	if (n > r_maxsortededges)
 	{
-		next = edge->next;
-		edge->next = trailers;
-		trailers = edge;
+		Mem_Free (r_sortededges);
+		Mem_Free (r_sortbuffer);
+		r_maxsortededges = r_numallocatededges;
+		r_sortededges = Mem_Alloc ((size_t)r_maxsortededges * sizeof(*r_sortededges));
+		r_sortbuffer = Mem_Alloc ((size_t)r_maxsortededges * sizeof(*r_sortbuffer));
 	}
-	return R_MergeEdges (R_SortEdges (newedges[v]), R_SortEdges (trailers));
+
+// count the edges of each column, and of each line one place on (for the
+// scatter below to leave r_linestart[v] at the start of line v)
+	ncolumns = r_refdef.vrect.width + 1;
+	memset (r_columnstart, 0, (size_t)ncolumns * sizeof(*r_columnstart));
+	memset (r_linestart, 0, (size_t)(r_edgelines + 2) * sizeof(*r_linestart));
+	for (i=0 ; i<n ; i++)
+	{
+		r_columnstart[R_EdgeColumn (&r_edges[i], ncolumns)]++;
+		r_linestart[(r_edgestarts[i] >> 1) + 2]++;
+	}
+
+// by column
+	total = 0;
+	for (i=0 ; i<ncolumns ; i++)
+	{
+		count = r_columnstart[i];
+		r_columnstart[i] = total;
+		total += count;
+	}
+	for (i=0 ; i<n ; i++)
+		r_sortbuffer[r_columnstart[R_EdgeColumn (&r_edges[i], ncolumns)]++] = (uint32_t)i;
+
+// then by line, keeping the columns' order
+	for (v=2 ; v<r_edgelines + 2 ; v++)
+		r_linestart[v] += r_linestart[v - 1];
+	for (i=0 ; i<n ; i++)
+	{
+		e = r_sortbuffer[i];
+		r_sortededges[r_linestart[(r_edgestarts[e] >> 1) + 1]++] = e;
+	}
+
+// and within each column of a line
+	for (v=r_refdef.vrect.y ; v<r_refdef.vrectbottom ; v++)
+	{
+		for (i=r_linestart[v] + 1 ; i<r_linestart[v + 1] ; i++)
+		{
+			e = r_sortededges[i];
+			for (j=i ; j>r_linestart[v] && R_EdgeBefore (e, r_sortededges[j - 1]) ; j--)
+				r_sortededges[j] = r_sortededges[j - 1];
+			r_sortededges[j] = e;
+		}
+	}
 }
 
 /*
 ==============
 R_InsertNewEdges
 
-Adds the edges in the linked list edgestoadd, adding them to the edges in the
-linked list edgelist.  edgestoadd is assumed to be sorted on u, and non-empty (this is actually newedges[v]).  edgelist is assumed to be sorted on u, with a
+Adds the count edges of toadd, indices into r_edges sorted on u, to the edges
+in the linked list edgelist.  edgelist is assumed to be sorted on u, with a
 sentinel at the end (actually, this is the active edge table starting at
 edge_head.next).
 ==============
 */
-static void R_InsertNewEdges (edge_t *edgestoadd, edge_t *edgelist)
+static void R_InsertNewEdges (const uint32_t *toadd, int count, edge_t *edgelist)
 {
-	edge_t	*next_edge;
+	edge_t	*edgestoadd;
 
-	do
+	for ( ; count > 0 ; count--, toadd++)
 	{
-		next_edge = edgestoadd->next;
+		edgestoadd = &r_edges[*toadd];
 edgesearch:
 		if (edgelist->u >= edgestoadd->u)
 			goto addedge;
@@ -305,7 +328,7 @@ addedge:
 		edgestoadd->prev = edgelist->prev;
 		edgelist->prev->next = edgestoadd;
 		edgelist->prev = edgestoadd;
-	} while ((edgestoadd = next_edge) != NULL);
+	}
 }
 
 	
@@ -753,7 +776,7 @@ static void R_GenerateSpansBackward (void)
 R_ScanEdges
 
 Input: 
-newedges[] and newtrailers[] arrays
+r_edgestarts[], the line each edge of r_edges starts on
 	this has links to edges, which have links to surfaces
 
 Output:
@@ -765,6 +788,8 @@ void R_ScanEdges (void)
 	int		iv, bottom;
 	espan_t	*basespan_p;
 	surf_t	*s;
+
+	R_SortNewEdges ();
 
 	basespan_p = basespans;
 	max_span_p = &basespan_p[r_maxspans - r_refdef.vrect.width];
@@ -811,8 +836,9 @@ void R_ScanEdges (void)
 	// mark that the head (background start) span is pre-included
 		surfaces[1].spanstate = 1;
 
-		if (newedges[iv] || newtrailers[iv])
-			R_InsertNewEdges (R_SortNewEdges (iv), edge_head.next);
+		if (r_linestart[iv] < r_linestart[iv + 1])
+			R_InsertNewEdges (&r_sortededges[r_linestart[iv]], r_linestart[iv + 1] - r_linestart[iv],
+				edge_head.next);
 
 		(*pdrawfunc) ();
 
@@ -847,8 +873,9 @@ void R_ScanEdges (void)
 // mark that the head (background start) span is pre-included
 	surfaces[1].spanstate = 1;
 
-	if (newedges[iv] || newtrailers[iv])
-		R_InsertNewEdges (R_SortNewEdges (iv), edge_head.next);
+	if (r_linestart[iv] < r_linestart[iv + 1])
+		R_InsertNewEdges (&r_sortededges[r_linestart[iv]], r_linestart[iv + 1] - r_linestart[iv],
+			edge_head.next);
 
 	(*pdrawfunc) ();
 

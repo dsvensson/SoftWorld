@@ -357,8 +357,10 @@ static void R_AllocEdges (int numedges, int numsurfs)
 		numsurfs = MINSURFACES;
 
 	Mem_Free (r_edges);
+	Mem_Free (r_edgestarts);
 	r_numallocatededges = numedges;
 	r_edges = Mem_Calloc ((size_t)r_numallocatededges, sizeof(edge_t));
+	r_edgestarts = Mem_Alloc ((size_t)r_numallocatededges * sizeof(*r_edgestarts));
 
 	Mem_Free (r_surfaces_mem);
 	r_cnumsurfs = numsurfs;
