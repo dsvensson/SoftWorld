@@ -263,8 +263,9 @@ void Netchan_Transmit (netchan_t *chan, int length, byte *data)
 	send.maxsize = sizeof(send_buf);
 	send.cursize = 0;
 
-	w1 = chan->outgoing_sequence | (send_reliable<<31);
-	w2 = chan->incoming_sequence | (chan->incoming_reliable_sequence<<31);
+	// the reliable bits are the top bits: shifted unsigned, which an int can't
+	w1 = (unsigned)chan->outgoing_sequence | ((unsigned)send_reliable << 31);
+	w2 = (unsigned)chan->incoming_sequence | ((unsigned)chan->incoming_reliable_sequence << 31);
 
 	chan->outgoing_sequence++;
 
@@ -336,8 +337,8 @@ bool Netchan_Process (netchan_t *chan, netadr_t from, sizebuf_t *msg)
 	reliable_message = sequence >> 31;
 	reliable_ack = sequence_ack >> 31;
 
-	sequence &= ~(1<<31);	
-	sequence_ack &= ~(1<<31);	
+	sequence &= ~(1u << 31);
+	sequence_ack &= ~(1u << 31);
 
 	if (showpackets.value)
 		Con_Printf ("<-- s=%i(%i) a=%i(%i) %i\n"

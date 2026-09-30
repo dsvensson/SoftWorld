@@ -17,7 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// test_msg.c -- coordinates, angles and entity deltas through a sized
+// test_msg.c -- longs, coordinates, angles and entity deltas through a sized
 // buffer, in each encoding and with each protocol extension: sizes on the
 // wire, and what reads back
 
@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "protocol.h"
 #include "sys.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -60,6 +61,30 @@ static void Check (bool ok, const char *what, double got, double want)
 		return;
 	printf ("FAIL %s: got %.9g, want %.9g\n", what, got, want);
 	failures++;
+}
+
+// longs, the top byte's high bit set too (a connection's sequence numbers and
+// the FTE extension magic have it)
+static void TestLongs (void)
+{
+	static const int	values[] = {0, 1, -1, 0x7fffffff, INT_MIN, 0x12345678, -123456789, 0x80, 0x8000, 0x800000,
+		(int)0x80000000u | 0x7f, (int)0xff000000u};
+	byte		data[64];
+	sizebuf_t	buf = {.data = data, .maxsize = sizeof(data)};
+	int			i, n, got;
+
+	n = (int)(sizeof(values) / sizeof(values[0]));
+	for (i=0 ; i<n ; i++)
+		MSG_WriteLong (&buf, values[i]);
+	Check (buf.cursize == n * 4, "long size", buf.cursize, n * 4);
+
+	MSG_BeginReading (&buf);
+	for (i=0 ; i<n ; i++)
+	{
+		got = MSG_ReadLong ();
+		Check (got == values[i], "long", got, values[i]);
+	}
+	Check (!msg_badread, "longs read past the end", 0, 0);
 }
 
 // coordinates: 1/8 unit shorts, truncated toward zero, or floats as they are
@@ -218,6 +243,7 @@ static void TestDeltas (void)
 
 int main (void)
 {
+	TestLongs ();
 	TestCoords (false);
 	TestCoords (true);
 	TestAngles (false);
@@ -230,6 +256,6 @@ int main (void)
 		printf ("%d failures\n", failures);
 		return 1;
 	}
-	printf ("msg: all encodings round-trip\n");
+	printf ("msg: longs and all encodings round-trip\n");
 	return 0;
 }

@@ -389,10 +389,11 @@ int MSG_ReadLong (void)
 		return -1;
 	}
 		
-	c = msg_readbuf->data[msg_readcount]
-	+ (msg_readbuf->data[msg_readcount+1]<<8)
-	+ (msg_readbuf->data[msg_readcount+2]<<16)
-	+ (msg_readbuf->data[msg_readcount+3]<<24);
+	// unsigned: the top byte's high bit would overflow an int's shift
+	c = (int)((uint32_t)msg_readbuf->data[msg_readcount]
+	| (uint32_t)msg_readbuf->data[msg_readcount+1] << 8
+	| (uint32_t)msg_readbuf->data[msg_readcount+2] << 16
+	| (uint32_t)msg_readbuf->data[msg_readcount+3] << 24);
 	
 	msg_readcount += 4;
 	
