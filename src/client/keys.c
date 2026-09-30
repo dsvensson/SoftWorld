@@ -188,7 +188,7 @@ typedef struct
 	bool	overflow;		// there were more
 } completions_t;
 
-static void Key_AddCompletion (void *ctx, const char *name)
+static void Key_AddCompletion (void *ctx, const char *candidate)
 {
 	completions_t	*c = ctx;
 
@@ -202,8 +202,8 @@ static void Key_AddCompletion (void *ctx, const char *name)
 		c->size = c->size ? c->size * 2 : 64;
 		c->names = Mem_Realloc (c->names, (size_t)c->size * sizeof(c->names[0]));
 	}
-	c->names[c->count] = Mem_Alloc (strlen (name) + 1);
-	strcpy (c->names[c->count], name);
+	c->names[c->count] = Mem_Alloc (strlen (candidate) + 1);
+	strcpy (c->names[c->count], candidate);
 	c->count++;
 }
 
@@ -383,7 +383,7 @@ that completes it (demos to play)
 static void CompleteCommand (void)
 {
 	char			*line = key_input.lines[key_input.edit_line];
-	char			name[MAXCMDLINE], dir[MAXCMDLINE];
+	char			command[MAXCMDLINE], dir[MAXCMDLINE];
 	const char		*slash;
 	completions_t	c = {0};
 	int				cmd, space, arg;
@@ -410,7 +410,7 @@ static void CompleteCommand (void)
 	}
 	else
 	{	// its first argument, if it completes it: from what is in the directory typed
-		snprintf (name, sizeof(name), "%.*s", space - cmd, line + cmd);
+		snprintf (command, sizeof(command), "%.*s", space - cmd, line + cmd);
 		for (arg = space ; line[arg] == ' ' ; arg++)
 			;
 		quoted = line[arg] == '"';
@@ -420,7 +420,7 @@ static void CompleteCommand (void)
 		dirlen = slash ? (size_t)(slash - (line + arg)) + 1 : 0;
 		snprintf (dir, sizeof(dir), "%.*s", (int)dirlen, line + arg);
 		if ((quoted ? !strchr (line + arg, '"') : !strchr (line + arg, ' '))
-			&& Cmd_CompleteArgument (name, dir, Key_AddCompletion, &c))
+			&& Cmd_CompleteArgument (command, dir, Key_AddCompletion, &c))
 		{
 			Key_SortCompletions (&c);
 			contains = Key_FilterCompletions (&c, line + arg, dirlen);

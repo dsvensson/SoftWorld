@@ -73,7 +73,7 @@ alone: after it only a number and spaces
 */
 static bool CL_FCheckMatch (const char *line, const char *request)
 {
-	const char	*name;
+	const char	*sender;
 	size_t		len;
 	int			i, offset = -1, state;
 
@@ -81,11 +81,11 @@ static bool CL_FCheckMatch (const char *line, const char *request)
 	{
 		if (!cl.players[i].name[0])
 			continue;
-		name = Info_ValueForKey (cl.players[i].userinfo, "name");
-		len = strlen (name);
+		sender = Info_ValueForKey (cl.players[i].userinfo, "name");
+		len = strlen (sender);
 		if (len > 31)
 			len = 31;
-		if (!strncmp (line, name, len) && line[len] == ':' && line[len + 1] == ' ')
+		if (!strncmp (line, sender, len) && line[len] == ':' && line[len + 1] == ' ')
 			offset = (int)len + 2;
 	}
 	if (offset < 0)
@@ -116,14 +116,14 @@ static void CL_FCheckClean (char *s)
 			*s = ' ';
 }
 
-static const char *CL_FCheckVendorColor (const char *name, bool gpu)
+static const char *CL_FCheckVendorColor (const char *device, bool gpu)
 {
 	size_t	i;
 	char	lower[128], vendor[16];
 	int		j;
 
-	for (j = 0 ; name[j] && j < (int)sizeof(lower) - 1 ; j++)
-		lower[j] = (char)tolower ((byte)name[j]);
+	for (j = 0 ; device[j] && j < (int)sizeof(lower) - 1 ; j++)
+		lower[j] = (char)tolower ((byte)device[j]);
 	lower[j] = 0;
 	for (i = 0 ; i < sizeof(fcheck_vendors) / sizeof(fcheck_vendors[0]) ; i++)
 	{

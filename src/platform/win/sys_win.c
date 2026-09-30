@@ -39,9 +39,10 @@ bool Sys_ListDir (const char *path, void (*entry) (void *ctx, const char *name, 
 	return true;
 }
 
+// the builds are x64's
 const char *Sys_Platform (void)
 {
-	return sizeof(void *) == 8 ? "Win64" : "Win32";
+	return "Win64";
 }
 
 // memory from the system, the CPU's name and clock from the registry's first core

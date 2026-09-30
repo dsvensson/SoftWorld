@@ -305,7 +305,8 @@ static void VID_GetGPUName (void)
 	if (SUCCEEDED (IDXGIDevice_GetAdapter (device, &adapter)))
 	{
 		if (SUCCEEDED (IDXGIAdapter_GetDesc (adapter, &desc))
-			&& !WideCharToMultiByte (CP_UTF8, 0, desc.Description, -1, d3d_gpuname, sizeof(d3d_gpuname), NULL, NULL))
+			&& !WideCharToMultiByte (CP_UTF8, 0, desc.Description, -1, d3d_gpuname, (int)sizeof(d3d_gpuname),
+				NULL, NULL))
 			d3d_gpuname[0] = 0;
 		IDXGIAdapter_Release (adapter);
 	}

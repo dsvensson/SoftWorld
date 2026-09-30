@@ -21,6 +21,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma once
 // sys.h -- services every platform layer provides (platform/<os>/sys_*.c)
 
+#include "q_types.h"
+
 #include <stddef.h>
 
 //
