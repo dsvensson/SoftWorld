@@ -594,6 +594,21 @@ bool	Cmd_Exists (char *cmd_name)
 	return false;
 }
 
+/*
+============
+Cmd_AliasExists
+============
+*/
+bool Cmd_AliasExists (const char *name)
+{
+	cmdalias_t	*a;
+
+	for (a = cmd_alias ; a ; a = a->next)
+		if (!strcmp (name, a->name))
+			return true;
+	return false;
+}
+
 
 
 /*

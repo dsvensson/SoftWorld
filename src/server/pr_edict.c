@@ -70,13 +70,20 @@ static void PR_OnSpawn (void *ctx, qcvm_t *vm, qc_ent_t e)
 		sv.num_edicts = (int)QC_NumEdicts (vm);
 }
 
-// an entity about to be freed: out of the world, and id's fields cleared
+// An entity about to be freed, as FTE's server has it (ED_CanFree): the
+// players' stay; the rest leave the world, with id's fields and the classname
+// cleared (the VM refuses the world itself)
 static bool PR_OnRemove (void *ctx, qcvm_t *vm, qc_ent_t e)
 {
-	edict_t	*ed = EDICT_NUM ((int)e);
+	edict_t	*ed;
 
 	(void)ctx;
-	(void)vm;
+	if (e <= MAX_CLIENTS)
+	{
+		QC_Warning (vm, "cannot free player entities");
+		return false;
+	}
+	ed = EDICT_NUM ((int)e);
 	SV_UnlinkEdict (ed);		// unlink from world bsp
 	ed->free = true;
 	ed->v.model = 0;
@@ -89,11 +96,77 @@ static bool PR_OnRemove (void *ctx, qcvm_t *vm, qc_ent_t e)
 	VectorCopy (vec3_origin, ed->v.angles);
 	ed->v.nextthink = -1;
 	ed->v.solid = 0;
+	ed->v.classname = 0;
+	return true;
+}
+
+// print, dprint (in developer mode), and the dumps of eprint, coredump and objerror
+static void PR_Print (void *ctx, const char *text)
+{
+	(void)ctx;
+	Con_Printf ("%s", text);
+}
+
+static void PR_Dump (void *ctx, qc_dumpkind_t kind, const char *text)
+{
+	(void)kind;
+	PR_Print (ctx, text);
+}
+
+static void PR_Localcmd (void *ctx, const char *text)
+{
+	(void)ctx;
+	Cbuf_AddText ((char *)text);
+}
+
+static float PR_CvarFloat (void *ctx, const char *name)
+{
+	(void)ctx;
+	return Cvar_VariableValue ((char *)name);
+}
+
+static const char *PR_CvarString (void *ctx, const char *name)
+{
+	cvar_t	*var = Cvar_FindVar ((char *)name);
+
+	(void)ctx;
+	return var ? var->string : NULL;
+}
+
+static void PR_CvarSet (void *ctx, const char *name, const char *value)
+{
+	(void)ctx;
+	Cvar_Set ((char *)name, (char *)value);
+}
+
+// checkcommand: 1 a command, 2 an alias, 3 a cvar
+static uint32_t PR_CheckCommand (void *ctx, const char *name)
+{
+	(void)ctx;
+	if (Cmd_Exists ((char *)name))
+		return 1;
+	if (Cmd_AliasExists (name))
+		return 2;
+	return Cvar_FindVar ((char *)name) ? 3 : 0;
+}
+
+static bool PR_IsServer (void *ctx)
+{
+	(void)ctx;
 	return true;
 }
 
 static const qc_host_t	pr_host = {
 	.warning = PR_Warning,
+	.print = PR_Print,
+	.dprint = PR_Print,
+	.localcmd = PR_Localcmd,
+	.dump = PR_Dump,
+	.cvar_float = PR_CvarFloat,
+	.cvar_string = PR_CvarString,
+	.cvar_set = PR_CvarSet,
+	.check_command = PR_CheckCommand,
+	.is_server = PR_IsServer,
 	.trace = PR_Trace,
 	.on_spawn = PR_OnSpawn,
 	.on_remove = PR_OnRemove,
@@ -271,8 +344,8 @@ edict_t *ED_Alloc (void)
 =================
 ED_Free
 
-Marks the edict as free; the VM refuses the world, and an entity that is free
-already
+Marks the edict as free; the VM refuses the world, an entity that is free
+already, and (PR_OnRemove) the players'
 =================
 */
 void ED_Free (edict_t *ed)
@@ -978,7 +1051,8 @@ PR_Init
 */
 void PR_Init (void)
 {
-	pr.builtins = QC_BuiltinsCreate (QC_NUMBERING_SSQC);
+	// FTE's builtins, and the engine's over them
+	pr.builtins = QC_BuiltinsStandard (QC_NUMBERING_SSQC);
 	if (!pr.builtins)
 		Sys_Error ("PR_Init: out of memory");
 	PR_InitBuiltins (pr.builtins);

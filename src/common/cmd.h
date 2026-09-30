@@ -81,6 +81,8 @@ void	Cmd_AddCommand (char *cmd_name, xcommand_t function, const char *descriptio
 bool Cmd_Exists (char *cmd_name);
 // used by the cvar code to check for cvar / command name overlap
 
+bool Cmd_AliasExists (const char *name);
+
 char 	*Cmd_CompleteCommand (char *partial);
 // attempts to match a partial command for automatic command line completion
 // returns NULL if nothing fits

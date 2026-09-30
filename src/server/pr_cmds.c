@@ -17,7 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// pr_cmds.c -- the server's builtins
+// pr_cmds.c -- the server's builtins: those that need the engine, and FTE's
+// server versions of error and objerror
 //
 // A builtin reads its arguments with QC_Arg*, sets its result with QC_Return*
 // and returns true; it fails the QuakeC call by returning QC_Error's false.
@@ -102,8 +103,8 @@ static bool PF_error (qcvm_t *vm)
 =================
 PF_objerror
 
-Dumps out self, then an error message.  Self is removed and the level
-goes on: as in FitzQuake and the engines after it, an entity the progs
+Dumps out self, then an error message.  Self is removed and the QuakeC that
+called it is abandoned, but the level goes on, as in FTE: an entity the progs
 can't set up (a map made for other progs) doesn't stop the server.
 
 objerror(value)
@@ -113,33 +114,20 @@ static bool PF_objerror (qcvm_t *vm)
 {
 	char	*s;
 	edict_t	*ed;
+	size_t	len;
 
 	s = PF_VarString(vm, 0);
 	Con_Printf ("======OBJECT ERROR in %s:\n%s\n", QC_CallerName (vm), s);
 	ed = PROG_TO_EDICT(pr.global_struct->self);
 	ED_Print (ed);
+	for (len = strlen (s) ; len && s[len - 1] == '\n' ; len--)
+		;
+	QC_Warning (vm, "Program error: %.*s", (int)len, s);
 	ED_Free (ed);
-	return true;
+	return QC_Abort (vm, QC_ValWord (0));
 }
 
 
-
-/*
-==============
-PF_makevectors
-
-Writes new values for v_forward, v_up, and v_right based on angles
-makevectors(vector)
-==============
-*/
-static bool PF_makevectors (qcvm_t *vm)
-{
-	vec3_t	angles;
-
-	QC_ArgVector (vm, 0, angles);
-	AngleVectors (angles, pr.global_struct->v_forward, pr.global_struct->v_right, pr.global_struct->v_up);
-	return true;
-}
 
 /*
 =================
@@ -313,149 +301,6 @@ static bool PF_centerprint (qcvm_t *vm)
 
 	ClientReliableWrite_Begin (cl, svc_centerprint, 2 + (int)strlen(s));
 	ClientReliableWrite_String (cl, s);
-	return true;
-}
-
-
-/*
-=================
-PF_normalize
-
-vector normalize(vector)
-=================
-*/
-static bool PF_normalize (qcvm_t *vm)
-{
-	vec3_t	value1;
-	vec3_t	newvalue;
-	float	new;
-	
-	QC_ArgVector (vm, 0, value1);
-
-	new = value1[0] * value1[0] + value1[1] * value1[1] + value1[2]*value1[2];
-	new = sqrtf(new);
-	
-	if (new == 0)
-		newvalue[0] = newvalue[1] = newvalue[2] = 0;
-	else
-	{
-		new = 1/new;
-		newvalue[0] = value1[0] * new;
-		newvalue[1] = value1[1] * new;
-		newvalue[2] = value1[2] * new;
-	}
-	
-	QC_ReturnVector (vm, newvalue);
-	return true;
-}
-
-/*
-=================
-PF_vlen
-
-scalar vlen(vector)
-=================
-*/
-static bool PF_vlen (qcvm_t *vm)
-{
-	vec3_t	value1;
-	float	new;
-	
-	QC_ArgVector (vm, 0, value1);
-
-	new = value1[0] * value1[0] + value1[1] * value1[1] + value1[2]*value1[2];
-	new = sqrtf(new);
-	
-	QC_ReturnFloat (vm, new);
-	return true;
-}
-
-/*
-=================
-PF_vectoyaw
-
-float vectoyaw(vector)
-=================
-*/
-static bool PF_vectoyaw (qcvm_t *vm)
-{
-	vec3_t	value1;
-	float	yaw;
-	
-	QC_ArgVector (vm, 0, value1);
-
-	if (value1[1] == 0 && value1[0] == 0)
-		yaw = 0;
-	else
-	{
-		yaw = (float)((int) (atan2(value1[1], value1[0]) * 180 / Q_PI));
-		if (yaw < 0)
-			yaw += 360;
-	}
-
-	QC_ReturnFloat (vm, yaw);
-	return true;
-}
-
-
-/*
-=================
-PF_vectoangles
-
-vector vectoangles(vector)
-=================
-*/
-static bool PF_vectoangles (qcvm_t *vm)
-{
-	vec3_t	value1, angles;
-	float	forward;
-	float	yaw, pitch;
-	
-	QC_ArgVector (vm, 0, value1);
-
-	if (value1[1] == 0 && value1[0] == 0)
-	{
-		yaw = 0;
-		if (value1[2] > 0)
-			pitch = 90;
-		else
-			pitch = 270;
-	}
-	else
-	{
-		yaw = (float)((int) (atan2(value1[1], value1[0]) * 180 / Q_PI));
-		if (yaw < 0)
-			yaw += 360;
-
-		forward = sqrtf(value1[0]*value1[0] + value1[1]*value1[1]);
-		pitch = (float)((int) (atan2(value1[2], forward) * 180 / Q_PI));
-		if (pitch < 0)
-			pitch += 360;
-	}
-
-	angles[0] = pitch;
-	angles[1] = yaw;
-	angles[2] = 0;
-	QC_ReturnVector (vm, angles);
-	return true;
-}
-
-/*
-=================
-PF_Random
-
-Returns a number from 0<= num < 1
-
-random()
-=================
-*/
-static bool PF_random (qcvm_t *vm)
-{
-	float		num;
-		
-	num = (rand ()&0x7fff) / ((float)0x7fff);
-	
-	QC_ReturnFloat (vm, num);
 	return true;
 }
 
@@ -736,180 +581,6 @@ static bool PF_stuffcmd (qcvm_t *vm)
 	return true;
 }
 
-/*
-=================
-PF_localcmd
-
-Sends text over to the client's execution buffer
-
-localcmd (string)
-=================
-*/
-static bool PF_localcmd (qcvm_t *vm)
-{
-	Cbuf_AddText ((char *)QC_ArgString(vm, 0));
-	return true;
-}
-
-/*
-=================
-PF_cvar
-
-float cvar (string)
-=================
-*/
-static bool PF_cvar (qcvm_t *vm)
-{
-	QC_ReturnFloat (vm, Cvar_VariableValue ((char *)QC_ArgString(vm, 0)));
-	return true;
-}
-
-/*
-=================
-PF_cvar_set
-
-float cvar (string)
-=================
-*/
-static bool PF_cvar_set (qcvm_t *vm)
-{
-	const char	*var, *val;
-	
-	var = QC_ArgString(vm, 0);
-	val = QC_ArgString(vm, 1);
-	
-	Cvar_Set ((char *)var, (char *)val);
-	return true;
-}
-
-/*
-=================
-PF_findradius
-
-Returns a chain of entities that have origins within a spherical area
-
-findradius (origin, radius)
-=================
-*/
-static bool PF_findradius (qcvm_t *vm)
-{
-	edict_t	*ent, *chain;
-	float	rad;
-	vec3_t	org;
-	vec3_t	eorg;
-	int		i, j;
-
-	chain = (edict_t *)sv.edicts;
-	
-	QC_ArgVector (vm, 0, org);
-	rad = QC_ArgFloat(vm, 1);
-
-	ent = NEXT_EDICT(sv.edicts);
-	for (i=1 ; i<sv.num_edicts ; i++, ent = NEXT_EDICT(ent))
-	{
-		if (ent->free)
-			continue;
-		if (ent->v.solid == SOLID_NOT)
-			continue;
-		for (j=0 ; j<3 ; j++)
-			eorg[j] = org[j] - (ent->v.origin[j] + (ent->v.mins[j] + ent->v.maxs[j])*0.5f);			
-		if (Length(eorg) > rad)
-			continue;
-			
-		ent->v.chain = EDICT_TO_PROG(chain);
-		chain = ent;
-	}
-
-	PF_ReturnEdict (vm, chain);
-	return true;
-}
-
-
-/*
-=========
-PF_dprint
-=========
-*/
-static bool PF_dprint (qcvm_t *vm)
-{
-	Con_Printf ("%s",PF_VarString(vm, 0));
-	return true;
-}
-
-static bool PF_ftos (qcvm_t *vm)
-{
-	float	v;
-	char	s[128];
-
-	v = QC_ArgFloat(vm, 0);
-	
-	if (v == (float)QC_FloatToInt (v))
-		snprintf (s, sizeof(s), "%d", QC_FloatToInt (v));
-	else
-		snprintf (s, sizeof(s), "%5.1f",v);
-	return PF_ReturnString (vm, s);
-}
-
-static bool PF_fabs (qcvm_t *vm)
-{
-	QC_ReturnFloat (vm, fabsf(QC_ArgFloat(vm, 0)));
-	return true;
-}
-
-static bool PF_vtos (qcvm_t *vm)
-{
-	vec3_t	v;
-	char	s[128];
-
-	QC_ArgVector (vm, 0, v);
-	snprintf (s, sizeof(s), "'%5.1f %5.1f %5.1f'", v[0], v[1], v[2]);
-	return PF_ReturnString (vm, s);
-}
-
-static bool PF_Spawn (qcvm_t *vm)
-{
-	PF_ReturnEdict (vm, ED_Alloc());
-	return true;
-}
-
-static bool PF_Remove (qcvm_t *vm)
-{
-	ED_Free (PF_ArgEdict(vm, 0));
-	return true;
-}
-
-
-// entity (entity start, .string field, string match) find = #5;
-static bool PF_Find (qcvm_t *vm)
-{
-	int			e;	
-	int			f;
-	const char	*s, *t;
-	edict_t		*ed;
-	
-	e = PF_ArgEdictNum(vm, 0);
-	f = QC_ArgInt(vm, 1);
-	s = QC_ArgString(vm, 2);
-	if (f < 0 || (uint32_t)f >= QC_FieldWords (vm))
-		return QC_Error (vm, "find: bad field %i", f);
-		
-	for (e++ ; e < sv.num_edicts ; e++)
-	{
-		ed = EDICT_NUM(e);
-		if (ed->free)
-			continue;
-		t = E_STRING(ed,f);
-		if (!strcmp(t,s))
-		{
-			PF_ReturnEdict (vm, ed);
-			return true;
-		}
-	}
-	
-	PF_ReturnEdict (vm, sv.edicts);
-	return true;
-}
-
 static bool PR_CheckEmptyString (qcvm_t *vm, const char *s)
 {
 	if (s[0] <= ' ')
@@ -975,31 +646,6 @@ static bool PF_precache_model (qcvm_t *vm)
 	return QC_Error (vm, "PF_precache_model: overflow");
 }
 
-
-static bool PF_coredump (qcvm_t *vm)
-{
-	(void)vm;
-	ED_PrintEdicts ();
-	return true;
-}
-
-static bool PF_traceon (qcvm_t *vm)
-{
-	QC_SetTrace (vm, true);
-	return true;
-}
-
-static bool PF_traceoff (qcvm_t *vm)
-{
-	QC_SetTrace (vm, false);
-	return true;
-}
-
-static bool PF_eprint (qcvm_t *vm)
-{
-	ED_PrintNum (PF_ArgEdictNum(vm, 0));
-	return true;
-}
 
 /*
 ===============
@@ -1135,28 +781,6 @@ static bool PF_lightstyle (qcvm_t *vm)
 	return true;
 }
 
-static bool PF_rint (qcvm_t *vm)
-{
-	float	f;
-	f = QC_ArgFloat(vm, 0);
-	if (f > 0)
-		QC_ReturnFloat (vm, (float)QC_DoubleToInt(f + 0.5));
-	else
-		QC_ReturnFloat (vm, (float)QC_DoubleToInt(f - 0.5));
-	return true;
-}
-static bool PF_floor (qcvm_t *vm)
-{
-	QC_ReturnFloat (vm, floorf(QC_ArgFloat(vm, 0)));
-	return true;
-}
-static bool PF_ceil (qcvm_t *vm)
-{
-	QC_ReturnFloat (vm, ceilf(QC_ArgFloat(vm, 0)));
-	return true;
-}
-
-
 /*
 =============
 PF_checkbottom
@@ -1180,36 +804,6 @@ static bool PF_pointcontents (qcvm_t *vm)
 	QC_ArgVector (vm, 0, v);
 	QC_ReturnFloat (vm, (float)SV_PointContents (v));
 	return true;
-}
-
-/*
-=============
-PF_nextent
-
-entity nextent(entity)
-=============
-*/
-static bool PF_nextent (qcvm_t *vm)
-{
-	int		i;
-	edict_t	*ent;
-	
-	i = PF_ArgEdictNum(vm, 0);
-	while (1)
-	{
-		i++;
-		if (i >= sv.num_edicts)
-		{
-			PF_ReturnEdict (vm, sv.edicts);
-			return true;
-		}
-		ent = EDICT_NUM(i);
-		if (!ent->free)
-		{
-			PF_ReturnEdict (vm, ent);
-			return true;
-		}
-	}
 }
 
 /*
@@ -1349,13 +943,6 @@ void SV_ChangeYaw (edict_t *ent)
 	}
 	
 	ent->v.angles[1] = anglemod (current + move);
-}
-
-static bool PF_changeyaw (qcvm_t *vm)
-{
-	(void)vm;
-	SV_ChangeYaw (PROG_TO_EDICT(pr.global_struct->self));
-	return true;
 }
 
 /*
@@ -1691,20 +1278,6 @@ static bool PF_infokey (qcvm_t *vm)
 
 /*
 ==============
-PF_stof
-
-float(string s) stof
-==============
-*/
-static bool PF_stof (qcvm_t *vm)
-{
-	QC_ReturnFloat (vm, (float)atof(QC_ArgString(vm, 0)));
-	return true;
-}
-
-
-/*
-==============
 PF_multicast
 
 void(vector where, float set) multicast
@@ -1725,7 +1298,8 @@ static bool PF_multicast (qcvm_t *vm)
 }
 
 
-// id's builtins, by id's numbers; the missing ones fail when called
+// the engine's builtins, by id's numbers, over FTE's standard ones (those that
+// need no engine: QC_BuiltinsStandard); numbers neither has fail when called
 static const struct
 {
 	uint32_t		number;
@@ -1733,51 +1307,26 @@ static const struct
 	qc_builtin_t	func;
 } pr_builtin[] =
 {
-	{1, "makevectors", PF_makevectors},
 	{2, "setorigin", PF_setorigin},
 	{3, "setmodel", PF_setmodel},
 	{4, "setsize", PF_setsize},
 	{6, "break", PF_break},
-	{7, "random", PF_random},
 	{8, "sound", PF_sound},
-	{9, "normalize", PF_normalize},
 	{10, "error", PF_error},
 	{11, "objerror", PF_objerror},
-	{12, "vlen", PF_vlen},
-	{13, "vectoyaw", PF_vectoyaw},
-	{14, "spawn", PF_Spawn},
-	{15, "remove", PF_Remove},
 	{16, "traceline", PF_traceline},
 	{17, "checkclient", PF_checkclient},
-	{18, "find", PF_Find},
 	{19, "precache_sound", PF_precache_sound},
 	{20, "precache_model", PF_precache_model},
 	{21, "stuffcmd", PF_stuffcmd},
-	{22, "findradius", PF_findradius},
 	{23, "bprint", PF_bprint},
 	{24, "sprint", PF_sprint},
-	{25, "dprint", PF_dprint},
-	{26, "ftos", PF_ftos},
-	{27, "vtos", PF_vtos},
-	{28, "coredump", PF_coredump},
-	{29, "traceon", PF_traceon},
-	{30, "traceoff", PF_traceoff},
-	{31, "eprint", PF_eprint},
 	{32, "walkmove", PF_walkmove},
 	{34, "droptofloor", PF_droptofloor},
 	{35, "lightstyle", PF_lightstyle},
-	{36, "rint", PF_rint},
-	{37, "floor", PF_floor},
-	{38, "ceil", PF_ceil},
 	{40, "checkbottom", PF_checkbottom},
 	{41, "pointcontents", PF_pointcontents},
-	{43, "fabs", PF_fabs},
 	{44, "aim", PF_aim},
-	{45, "cvar", PF_cvar},
-	{46, "localcmd", PF_localcmd},
-	{47, "nextent", PF_nextent},
-	{49, "changeyaw", PF_changeyaw},
-	{51, "vectoangles", PF_vectoangles},
 	{52, "WriteByte", PF_WriteByte},
 	{53, "WriteChar", PF_WriteChar},
 	{54, "WriteShort", PF_WriteShort},
@@ -1790,7 +1339,6 @@ static const struct
 	{68, "precache_file", PF_precache_file},
 	{69, "makestatic", PF_makestatic},
 	{70, "changelevel", PF_changelevel},
-	{72, "cvar_set", PF_cvar_set},
 	{73, "centerprint", PF_centerprint},
 	{74, "ambientsound", PF_ambientsound},
 	{75, "precache_model2", PF_precache_model},
@@ -1799,7 +1347,6 @@ static const struct
 	{78, "setspawnparms", PF_setspawnparms},
 	{79, "logfrag", PF_logfrag},
 	{80, "infokey", PF_infokey},
-	{81, "stof", PF_stof},
 	{82, "multicast", PF_multicast},
 };
 
