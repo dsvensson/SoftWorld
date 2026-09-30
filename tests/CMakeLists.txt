@@ -66,7 +66,10 @@ if(APPLE)
 		$<TARGET_OBJECTS:sw_present_metallib>)
 	target_include_directories(test_present PRIVATE
 		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/renderer")
-	target_link_libraries(test_present PRIVATE sw_common "-framework Metal" "-framework Foundation")
+	# the file system's calls into the platform: only link-time optimisation
+	# (Release) leaves them out
+	target_link_libraries(test_present PRIVATE sw_platform_posix sw_common "-framework Metal"
+		"-framework Foundation")
 	add_test(NAME present COMMAND test_present)
 endif()
 

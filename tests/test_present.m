@@ -62,6 +62,14 @@ void Sys_Printf (char *fmt, ...)
 	(void)fmt;
 }
 
+// the program's wait (posix_local.h), which the platform's Sys_WaitUntil
+// calls: nothing here waits
+bool Sys_WaitEvents (double until)
+{
+	(void)until;
+	return false;
+}
+
 void R_SetRenderSize (int width, int height, int scale)
 {
 	(void)width;
