@@ -29,7 +29,8 @@ console_t	con;
 static float		con_cursorspeed = 4;
 
 
-static cvar_t		con_notifytime = {.name = "con_notifytime", .string = "3"};		//seconds
+static cvar_t		con_notifytime = {.name = "con_notifytime", .string = "3",		//seconds
+	.description = "Seconds the console's last lines stay over the game after they are printed."};
 
 
 static void Key_ClearTyping (void)
@@ -226,11 +227,11 @@ void Con_Init (void)
 //
 	Cvar_RegisterVariable (&con_notifytime);
 
-	Cmd_AddCommand ("toggleconsole", Con_ToggleConsole_f);
-	Cmd_AddCommand ("togglechat", Con_ToggleChat_f);
-	Cmd_AddCommand ("messagemode", Con_MessageMode_f);
-	Cmd_AddCommand ("messagemode2", Con_MessageMode2_f);
-	Cmd_AddCommand ("clear", Con_Clear_f);
+	Cmd_AddCommand ("toggleconsole", Con_ToggleConsole_f, "Opens or closes the console (it stays open while not in a game).");
+	Cmd_AddCommand ("togglechat", Con_ToggleChat_f, "Opens or closes the console, as toggleconsole does.");
+	Cmd_AddCommand ("messagemode", Con_MessageMode_f, "Starts a chat message to everyone on the server.");
+	Cmd_AddCommand ("messagemode2", Con_MessageMode2_f, "Starts a chat message to your team.");
+	Cmd_AddCommand ("clear", Con_Clear_f, "Clears the console's text.");
 	con.initialized = true;
 }
 
@@ -394,36 +395,39 @@ DRAWING
 ================
 Con_DrawInput
 
-The input line scrolls horizontally if typing goes beyond the right edge
+The input line scrolls horizontally to keep the cursor in view. After the
+text, what completing the first word would add is drawn faded (fish's
+suggestion); the cursor blinks over the character it is on.
 ================
 */
 static void Con_DrawInput (void)
 {
-	int		i;
-	char	*text;
+	const char	*text, *suggestion;
+	int			i, at, len, suggestlen, start, y;
 
 	if (cls.key_dest != key_console && cls.state == ca_active)
 		return;		// don't draw anything (allways draw if not active)
 
 	text = key_input.lines[key_input.edit_line];
-	
-// add the cursor frame
-	text[key_input.linepos] = 10+((int)(host.realtime*con_cursorspeed)&1);
-	
-// fill out remainder with spaces
-	for (i=key_input.linepos+1 ; i< con.linewidth ; i++)
-		text[i] = ' ';
-		
-//	prestep if horizontally scrolling
-	if (key_input.linepos >= con.linewidth)
-		text += 1 + key_input.linepos - con.linewidth;
-		
-// draw it
-	for (i=0 ; i<con.linewidth ; i++)
-		Draw_Character ( (i+1)<<3, con.vislines - 22, text[i]);
+	len = (int)strlen (text);
+	suggestion = Key_Suggestion ();
+	suggestlen = suggestion ? (int)strlen (suggestion) : 0;
+	y = con.vislines - 22;
 
-// remove cursor
-	key_input.lines[key_input.edit_line][key_input.linepos] = 0;
+//	prestep if horizontally scrolling
+	start = key_input.linepos >= con.linewidth ? key_input.linepos - con.linewidth + 1 : 0;
+
+	for (i = 0 ; i < con.linewidth ; i++)
+	{
+		at = start + i;
+		if (at < len)
+			Draw_Character ((i+1)<<3, y, text[at]);
+		else if (at - len < suggestlen)
+			Draw_ColoredCharacter ((i+1)<<3, y, suggestion[at - len], TEXT_HALF);
+	}
+
+	if ((int)(host.realtime*con_cursorspeed) & 1)
+		Draw_Character ((key_input.linepos - start + 1)<<3, y, 11);
 }
 
 

@@ -30,6 +30,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "sys.h"
 
 #include <ctype.h>
+#include <stdlib.h>
 
 static void (*cmd_forward)(void);	// sends forwarded commands to the server
 
@@ -46,7 +47,9 @@ static cmdalias_t	*cmd_alias;
 
 static bool	cmd_wait;
 
-cvar_t cl_warncmd = {.name = "cl_warncmd", .string = "0"};
+cvar_t cl_warncmd = {.name = "cl_warncmd", .string = "0",
+	.description = "Warns of unknown commands, and names each config file exec runs.",
+	.values = (const cvar_value_t[]){{"0", "Quiet"}, {"1", "Warnings and exec's files printed"}, {0}}};
 
 //=============================================================================
 
@@ -437,6 +440,7 @@ typedef struct cmd_function_s
 	char					*name;
 	xcommand_t				function;
 	xcompletion_t			completion;		// of its argument, NULL for none
+	const char				*description;	// what it does, and its arguments
 } cmd_function_t;
 
 
@@ -546,7 +550,7 @@ void Cmd_TokenizeString (char *text)
 Cmd_AddCommand
 ============
 */
-void	Cmd_AddCommand (char *cmd_name, xcommand_t function)
+void	Cmd_AddCommand (char *cmd_name, xcommand_t function, const char *description)
 {
 	cmd_function_t	*cmd;
 	
@@ -567,6 +571,7 @@ void	Cmd_AddCommand (char *cmd_name, xcommand_t function)
 	cmd = Mem_Calloc (1, sizeof(cmd_function_t));
 	cmd->name = cmd_name;
 	cmd->function = function;
+	cmd->description = description;
 	cmd->next = cmd_functions;
 	cmd_functions = cmd;
 }
@@ -686,6 +691,101 @@ char *Cmd_CompleteCommand (char *partial)
 
 
 /*
+===============================================================================
+
+APROPOS
+
+===============================================================================
+*/
+
+// a name apropos found: a variable, a command or an alias
+typedef struct
+{
+	const char		*name;
+	cvar_t			*var;
+	cmd_function_t	*cmd;
+	cmdalias_t		*alias;
+} apropos_t;
+
+// text has sub in it, case aside
+static bool Cmd_HasText (const char *text, const char *sub)
+{
+	size_t	len = strlen (sub);
+
+	for ( ; text && *text ; text++)
+		if (!Q_strncasecmp (text, sub, len))
+			return true;
+	return false;
+}
+
+static int Cmd_CompareApropos (const void *a, const void *b)
+{
+	return Q_strcasecmp (((const apropos_t *)a)->name, ((const apropos_t *)b)->name);
+}
+
+/*
+============
+Cmd_Apropos_f
+
+The variables, commands and aliases with the text in their name or in what
+they do, by name, as FTE lists them
+============
+*/
+static void Cmd_Apropos_f (void)
+{
+	const char		*query = Cmd_Argv (1);
+	apropos_t		*found = NULL;
+	cmd_function_t	*cmd;
+	cmdalias_t		*a;
+	cvar_t			*var;
+	int				count = 0, size = 0, i;
+
+	if (Cmd_Argc () != 2 || !query[0])
+	{
+		Con_Printf ("apropos <text> : the variables and commands with the text in their name or description\n");
+		return;
+	}
+
+#define APROPOS_ADD(field, item, itemname) \
+	do { \
+		if (count == size) \
+			found = Mem_Realloc (found, (size_t)(size = size ? size * 2 : 64) * sizeof(*found)); \
+		found[count] = (apropos_t){.name = (itemname), .field = (item)}; \
+		count++; \
+	} while (0)
+
+	for (var = Cvar_List () ; var ; var = var->next)
+		if (Cmd_HasText (var->name, query) || Cmd_HasText (var->description, query))
+			APROPOS_ADD (var, var, var->name);
+	for (cmd = cmd_functions ; cmd ; cmd = cmd->next)
+		if (Cmd_HasText (cmd->name, query) || Cmd_HasText (cmd->description, query))
+			APROPOS_ADD (cmd, cmd, cmd->name);
+	for (a = cmd_alias ; a ; a = a->next)
+		if (Cmd_HasText (a->name, query) || Cmd_HasText (a->value, query))
+			APROPOS_ADD (alias, a, a->name);
+#undef APROPOS_ADD
+
+	if (!count)
+	{
+		Con_Printf ("Nothing has \"%s\" in its name or description.\n", query);
+		return;
+	}
+	qsort (found, (size_t)count, sizeof(*found), Cmd_CompareApropos);
+	for (i = 0 ; i < count ; i++)
+	{
+		if (found[i].var)
+			Con_Printf ("cvar ^2%s^7: \"%s\" : ^3%s\n", found[i].name, found[i].var->string,
+				found[i].var->description ? found[i].var->description : "no description");
+		else if (found[i].cmd)
+			Con_Printf ("command ^2%s^7: ^3%s\n", found[i].name,
+				found[i].cmd->description ? found[i].cmd->description : "no description");
+		else
+			Con_Printf ("alias ^2%s^7: ^3%s", found[i].name, found[i].alias->value);
+	}
+	Mem_Free (found);
+}
+
+/*
 ============
 Cmd_SetForwardHandler
 
@@ -758,10 +858,13 @@ void Cmd_Init (void)
 //
 // register our commands
 //
-	Cmd_AddCommand ("stuffcmds",Cmd_StuffCmds_f);
-	Cmd_AddCommand ("exec",Cmd_Exec_f);
-	Cmd_AddCommand ("echo",Cmd_Echo_f);
-	Cmd_AddCommand ("alias",Cmd_Alias_f);
-	Cmd_AddCommand ("wait", Cmd_Wait_f);
+	Cmd_AddCommand ("stuffcmds",Cmd_StuffCmds_f, "Runs the +commands given on the program's command line.");
+	Cmd_AddCommand ("exec",Cmd_Exec_f, "Runs the commands in a config file. Usage: exec <file>");
+	Cmd_AddCommand ("echo",Cmd_Echo_f, "Prints its arguments to the console. Usage: echo [text]");
+	Cmd_AddCommand ("alias",Cmd_Alias_f, "Makes a command that runs the given commands; "
+		"without arguments, lists the aliases. Usage: alias [<name> <commands>]");
+	Cmd_AddCommand ("wait", Cmd_Wait_f, "Holds the rest of the command buffer until the next frame.");
+	Cmd_AddCommand ("apropos", Cmd_Apropos_f,
+		"Lists the variables, commands and aliases with the text in their name or description. Usage: apropos <text>");
 }
 

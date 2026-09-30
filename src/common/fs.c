@@ -38,7 +38,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 
 
-static cvar_t	registered = {.name = "registered", .string = "0"};
+static cvar_t	registered = {.name = "registered", .string = "0",
+	.description = "Whether the registered game's data (gfx/pop.lmp) was found; set at startup, read by the game code.",
+	.values = (const cvar_value_t[]){{"0", "Shareware data"}, {"1", "Registered data"}, {0}}};
 
 static bool	com_modified;	// set true if using non-id files
 
@@ -180,8 +182,8 @@ void COM_Init (const char *basedir)
 {
 	Con_PrintInit ();
 	Cvar_RegisterVariable (&registered);
-	Cmd_AddCommand ("path", COM_Path_f);
-	Cmd_AddCommand ("memstats", Arena_PrintStats);
+	Cmd_AddCommand ("path", COM_Path_f, "Lists the directories and pak files searched for game files, in order.");
+	Cmd_AddCommand ("memstats", Arena_PrintStats, "Lists memory by arena: kilobytes used and held, and the totals.");
 
 	COM_InitFilesystem (basedir);
 	COM_CheckRegistered ();

@@ -29,12 +29,19 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 cvar_t variables are used to hold scalar or string variables that can be changed or displayed at the console or prog code as well as accessed directly
 in C code.
 
-it is sufficient to initialize a cvar_t with just the first two fields, or
-you can add a ,true flag for variables that you want saved to the configuration
-file when the game is quit:
+A cvar_t is initialized with its name, its default string and what it does
+(the console shows it; apropos searches it), and .archive for a variable saved
+to the configuration file when the game is quit. A variable whose values each
+do something else has .values too:
 
-cvar_t	r_draworder = {"r_draworder","1"};
-cvar_t	scr_screensize = {"screensize","1",true};
+cvar_t	r_draworder = {.name = "r_draworder", .string = "0",
+	.description = "Draws the world's surfaces back to front."};
+cvar_t	scr_screensize = {.name = "screensize", .string = "100", .archive = true,
+	.description = "How much of the screen the view takes, in percent."};
+cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true,
+	.description = "How the frame is scaled to the window.",
+	.values = (const cvar_value_t[]){{"0", "Whole multiples, letterboxed"},
+		{"1", "Filling the window"}, {0}}};
 
 Cvars must be registered before use, or they will have a 0 value instead of the float interpretation of the string.  Generally, all cvar_t declarations should be registered in the apropriate init function before any console commands are executed:
 Cvar_RegisterVariable (&host_framerate);
@@ -58,6 +65,13 @@ Cvars are restricted from having the same names as commands to keep this
 interface from being ambiguous.
 */
 
+// what a value of a variable does, for those whose values each do something else
+typedef struct
+{
+	const char	*value;
+	const char	*meaning;
+} cvar_value_t;
+
 typedef struct cvar_s
 {
 	char	*name;
@@ -65,6 +79,9 @@ typedef struct cvar_s
 	bool archive;		// set to true to cause it to be saved to vars.rc
 	bool userinfo;		// the client's userinfo carries it
 	bool serverinfo;	// the server's serverinfo carries it
+	const char	*description;		// what it does, for the console
+	const cvar_value_t	*values;	// what each value does, ended by {0}; or NULL
+	char	*defaultstring;			// the string it was registered with
 	float	value;
 	struct cvar_s *next;
 } cvar_t;
@@ -104,4 +121,7 @@ void 	Cvar_WriteVariables (FILE *f);
 // with the archive flag set to true.
 
 cvar_t *Cvar_FindVar (char *var_name);
+
+cvar_t *Cvar_List (void);
+// the first variable registered; the rest follow by next
 

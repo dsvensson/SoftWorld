@@ -39,17 +39,36 @@ solid_edge items only clip against bsp models.
 
 */
 
-cvar_t	sv_maxvelocity = {.name = "sv_maxvelocity", .string = "2000"}; 
+cvar_t	sv_maxvelocity = {.name = "sv_maxvelocity", .string = "2000",
+	.description = "Caps each axis of a falling or thrown entity's velocity, in units per second; "
+		"player movement doesn't use it."};
 
-cvar_t	sv_gravity			 = {.name = "sv_gravity", .string = "800"};    
-cvar_t	sv_stopspeed		 = {.name = "sv_stopspeed", .string = "100"};    
-cvar_t	sv_maxspeed			 = {.name = "sv_maxspeed", .string = "320"};    
-cvar_t	sv_spectatormaxspeed = {.name = "sv_spectatormaxspeed", .string = "500"};
-cvar_t	sv_accelerate		 = {.name = "sv_accelerate", .string = "10"};     
-cvar_t	sv_airaccelerate	 = {.name = "sv_airaccelerate", .string = "0.7"};    
-cvar_t	sv_wateraccelerate	 = {.name = "sv_wateraccelerate", .string = "10"};     
-cvar_t	sv_friction			 = {.name = "sv_friction", .string = "4"};      
-cvar_t	sv_waterfriction	 = {.name = "sv_waterfriction", .string = "4"};      
+cvar_t	sv_gravity			 = {.name = "sv_gravity", .string = "800",
+	.description = "Downward acceleration of players and falling entities, in units per second squared. "
+		"Takes effect on the next map."};
+cvar_t	sv_stopspeed		 = {.name = "sv_stopspeed", .string = "100",
+	.description = "Players slower than this, in units per second, get ground friction as if this fast, so they stop. "
+		"Takes effect on the next map."};
+cvar_t	sv_maxspeed			 = {.name = "sv_maxspeed", .string = "320",
+	.description = "Players' top running speed, in units per second, given to each as they enter the game; "
+		"the game code may change a player's."};
+cvar_t	sv_spectatormaxspeed = {.name = "sv_spectatormaxspeed", .string = "500",
+	.description = "Spectators' top flying speed, in units per second. Takes effect on the next map."};
+cvar_t	sv_accelerate		 = {.name = "sv_accelerate", .string = "10",
+	.description = "Player acceleration on the ground and in the air, per second as a multiple of the speed "
+		"wished for. Takes effect on the next map."};
+cvar_t	sv_airaccelerate	 = {.name = "sv_airaccelerate", .string = "0.7",
+	.description = "Sent to clients with the movement settings, but unused: acceleration in the air is "
+		"sv_accelerate's."};
+cvar_t	sv_wateraccelerate	 = {.name = "sv_wateraccelerate", .string = "10",
+	.description = "Player acceleration in water, per second as a multiple of the speed wished for. "
+		"Takes effect on the next map."};
+cvar_t	sv_friction			 = {.name = "sv_friction", .string = "4",
+	.description = "Ground friction on players: speed lost per second as a multiple of their speed, doubled "
+		"at a ledge. Takes effect on the next map."};
+cvar_t	sv_waterfriction	 = {.name = "sv_waterfriction", .string = "4",
+	.description = "Water friction on players: speed lost per second as a multiple of their speed, times 2 waist-deep "
+		"and 3 under. Takes effect on the next map."};
 
 
 #define	MOVE_EPSILON	0.01

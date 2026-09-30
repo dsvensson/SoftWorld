@@ -80,18 +80,38 @@ static float		scr_conlines;		// lines of console to display
 
 static float		oldscreensize, oldfov, oldviewmodelfov;
 static float		oldsbar;
-cvar_t		scr_viewsize = {.name = "viewsize", .string = "100", .archive = true};
-static cvar_t		scr_fov = {.name = "fov", .string = "90"};	// 10 - 170
+cvar_t		scr_viewsize = {.name = "viewsize", .string = "100", .archive = true,
+	.description = "How much of the screen the view takes, in percent, 30 to 120; 110 drops the inventory, "
+		"120 the status bar too."};
+static cvar_t		scr_fov = {.name = "fov", .string = "90",	// 10 - 170
+	.description = "The horizontal field of view in degrees, 10 to 170, of the 320 wide layout; "
+		"a wider one sees more to the sides."};
 // the gun's own field of view, so it looks the same whatever fov is; 0 is fov's
-static cvar_t		r_viewmodel_fov = {.name = "r_viewmodel_fov", .string = "0", .archive = true};
-static cvar_t		scr_conspeed = {.name = "scr_conspeed", .string = "300"};
-static cvar_t		scr_centertime = {.name = "scr_centertime", .string = "2"};
-static cvar_t		scr_showram = {.name = "showram", .string = "1"};
-static cvar_t		scr_showturtle = {.name = "showturtle", .string = "0"};
-static cvar_t		scr_showpause = {.name = "showpause", .string = "1"};
-static cvar_t		scr_printspeed = {.name = "scr_printspeed", .string = "8"};
-static cvar_t		scr_allowsnap = {.name = "scr_allowsnap", .string = "1"};
-static cvar_t		r_netgraph = {.name = "r_netgraph", .string = "0"};
+static cvar_t		r_viewmodel_fov = {.name = "r_viewmodel_fov", .string = "0", .archive = true,
+	.description = "The gun's own field of view in degrees, 10 to 170, so it looks the same whatever fov is; "
+		"0 is fov's."};
+static cvar_t		scr_conspeed = {.name = "scr_conspeed", .string = "300",
+	.description = "How fast the console slides down and up, in pixels of the 2D layout a second."};
+static cvar_t		scr_centertime = {.name = "scr_centertime", .string = "2",
+	.description = "How long a message printed in the center of the screen stays, in seconds."};
+static cvar_t		scr_showram = {.name = "showram", .string = "1",
+	.description = "Shows the RAM icon in a frame the surface cache ran out in.",
+	.values = (const cvar_value_t[]){{"0", "Hidden"}, {"1", "Shown when the surface cache runs out"}, {0}}};
+static cvar_t		scr_showturtle = {.name = "showturtle", .string = "0",
+	.description = "Shows the turtle icon when frames keep taking a tenth of a second or longer.",
+	.values = (const cvar_value_t[]){{"0", "Hidden"}, {"1", "Shown when frames are slow"}, {0}}};
+static cvar_t		scr_showpause = {.name = "showpause", .string = "1",
+	.description = "Shows the pause picture while the game is paused.",
+	.values = (const cvar_value_t[]){{"0", "Hidden"}, {"1", "Shown while paused"}, {0}}};
+static cvar_t		scr_printspeed = {.name = "scr_printspeed", .string = "8",
+	.description = "How fast centered text types out in an intermission, such as the finale's, "
+		"in characters a second."};
+static cvar_t		scr_allowsnap = {.name = "scr_allowsnap", .string = "1",
+	.description = "Lets the server ask for a screenshot of the client (snap).",
+	.values = (const cvar_value_t[]){{"0", "Refused, telling the server"}, {"1", "Sent when asked"}, {0}}};
+static cvar_t		r_netgraph = {.name = "r_netgraph", .string = "0",
+	.description = "Draws a graph of packet latency, drops and chokes, with the packet loss, above the status bar.",
+	.values = (const cvar_value_t[]){{"0", "Hidden"}, {"1", "Drawn"}, {0}}};
 
 static bool	scr_initialized;		// ready to draw
 
@@ -435,10 +455,13 @@ void SCR_Init (void)
 //
 // register our commands
 //
-	Cmd_AddCommand ("screenshot",SCR_ScreenShot_f);
-	Cmd_AddCommand ("snap",SCR_RSShot_f);
-	Cmd_AddCommand ("sizeup",SCR_SizeUp_f);
-	Cmd_AddCommand ("sizedown",SCR_SizeDown_f);
+	Cmd_AddCommand ("screenshot",SCR_ScreenShot_f,
+		"Saves the screen as it looks in SDR as quakeNN.png (00 to 99) in the game directory.");
+	Cmd_AddCommand ("snap",SCR_RSShot_f,
+		"Uploads a PCX screenshot of at most 320x200, stamped with the time, server and name, as the server asks; "
+		"scr_allowsnap 0 refuses.");
+	Cmd_AddCommand ("sizeup",SCR_SizeUp_f, "Grows the view, adding 10 to viewsize, up to 120.");
+	Cmd_AddCommand ("sizedown",SCR_SizeDown_f, "Shrinks the view, taking 10 from viewsize, down to 30.");
 
 	scr_ram = W_GetLumpName ("ram");
 	scr_net = W_GetLumpName ("net");

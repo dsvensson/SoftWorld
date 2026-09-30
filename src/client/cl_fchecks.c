@@ -30,7 +30,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define FCHECK_INTERVAL		20		// seconds between replies of a kind
 
 // f_system tells what it is asked, or "disabled"
-static cvar_t	allow_f_system = {.name = "allow_f_system", .string = "1", .archive = true};
+static cvar_t	allow_f_system = {.name = "allow_f_system", .string = "1", .archive = true,
+	.description = "Answers a player's f_system in chat with this computer's memory, CPU and GPU.",
+	.values = (const cvar_value_t[]){{"0", "Answers \"disabled\""}, {"1", "Answers with the memory, CPU and GPU"}, {0}}};
 
 // the platforms' colors in f_version
 static const struct

@@ -31,7 +31,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "keys.h"
 #include "vid.h"
 
-cvar_t	_windowed_mouse = {.name = "_windowed_mouse", .string = "1", .archive = true};
+cvar_t	_windowed_mouse = {.name = "_windowed_mouse", .string = "1", .archive = true,
+	.description = "Captures the mouse in a window too, as fullscreen always does; the console and menus let it go.",
+	.values = (const cvar_value_t[]){{"0", "Captured only in fullscreen"}, {"1", "Captured in a window too"}, {0}}};
 
 static bool	in_captured;
 

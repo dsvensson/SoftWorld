@@ -476,7 +476,8 @@ int Sys_MacMain (int argc, char **argv)
 	parms.argv = com_argv;
 	parms.basedir = (char *)Sys_GameDir ();
 	parms.cachedir = NULL;
-	Cmd_AddCommand ("sys_forget_sandbox", Sys_ForgetSandbox_f);
+	Cmd_AddCommand ("sys_forget_sandbox", Sys_ForgetSandbox_f,
+		"Forgets the remembered Quake directory, so the next start asks for it again.");
 
 	Sys_WatchWaitQueue ();
 

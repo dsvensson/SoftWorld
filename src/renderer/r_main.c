@@ -111,55 +111,121 @@ float	se_time1, se_time2, de_time1, de_time2, dv_time1, dv_time2;
 
 static void R_MarkLeaves (void);
 
-cvar_t	r_draworder = {.name = "r_draworder", .string = "0"};
-static cvar_t	r_speeds = {.name = "r_speeds", .string = "0"};
-static cvar_t	r_timegraph = {.name = "r_timegraph", .string = "0"};
-static cvar_t	r_zgraph = {.name = "r_zgraph", .string = "0"};
-cvar_t	r_graphheight = {.name = "r_graphheight", .string = "15"};
-cvar_t	r_clearcolor = {.name = "r_clearcolor", .string = "2"};
-cvar_t	r_waterwarp = {.name = "r_waterwarp", .string = "1"};
-cvar_t	r_fullbright = {.name = "r_fullbright", .string = "0"};
+cvar_t	r_draworder = {.name = "r_draworder", .string = "0",
+	.description = "Draws the world's surfaces back to front; held at 0 against cheating, so it does nothing."};
+static cvar_t	r_speeds = {.name = "r_speeds", .string = "0",
+	.description = "Prints each frame the view's time in milliseconds and its counts of polygons and surfaces.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Printed each frame"}, {0}}};
+static cvar_t	r_timegraph = {.name = "r_timegraph", .string = "0",
+	.description = "Meant to graph each frame's time below the view; the value it graphs is never set, "
+		"so nothing shows."};
+static cvar_t	r_zgraph = {.name = "r_zgraph", .string = "0",
+	.description = "Graphs the view's height, modulo 32 units, over the last 256 frames below the view.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Graphed"}, {0}}};
+cvar_t	r_graphheight = {.name = "r_graphheight", .string = "15",
+	.description = "How tall r_netgraph's and r_zgraph's bars can be, in steps of two pixels."};
+cvar_t	r_clearcolor = {.name = "r_clearcolor", .string = "2",
+	.description = "The palette index, 0 to 255, of what shows where no surface covers the view, "
+		"such as outside the map."};
+cvar_t	r_waterwarp = {.name = "r_waterwarp", .string = "1",
+	.description = "Warps the view under water, slime and lava.",
+	.values = (const cvar_value_t[]){{"0", "Not warped"}, {"1", "Warped under liquids"}, {0}}};
+cvar_t	r_fullbright = {.name = "r_fullbright", .string = "0",
+	.description = "Meant to draw the world without its light; unused, and held at 0."};
 // 0: light through the colormap as Quake did; 1: light in RGB with 4x headroom
-static cvar_t	r_profile = {.name = "r_profile", .string = "0"};
+static cvar_t	r_profile = {.name = "r_profile", .string = "0",
+	.description = "Times each stage of drawing the frames, for r_profile_show to print.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Timing the frames"}, {0}}};
 // threads drawing the view, this one included; 0 has one a core, at most R_AUTO_THREADS
-static cvar_t	r_threads = {.name = "r_threads", .string = "0", .archive = true};
+static cvar_t	r_threads = {.name = "r_threads", .string = "0", .archive = true,
+	.description = "Threads drawing the view, this one included; 0 is one a core, at most 8."};
 #define R_AUTO_THREADS	8		// the most r_threads 0 picks: more drew no faster (Ryzen 7950X)
 static void R_Profile_f (void);
-cvar_t	r_lightmode = {.name = "r_lightmode", .string = "1", .archive = true};
+cvar_t	r_lightmode = {.name = "r_lightmode", .string = "1", .archive = true,
+	.description = "How the world and models are lit.",
+	.values = (const cvar_value_t[]){{"0", "Through the colormap, as Quake had it"},
+		{"1", "Linear light in RGB, colored and brighter than white where the light is"}, {0}}};
 // dynamic lights have color (r_lightmode 1)
-static cvar_t	r_dlight_color = {.name = "r_dlight_color", .string = "1", .archive = true};
+static cvar_t	r_dlight_color = {.name = "r_dlight_color", .string = "1", .archive = true,
+	.description = "Gives dynamic lights their color, in r_lightmode 1.",
+	.values = (const cvar_value_t[]){{"0", "White"}, {"1", "Their own color"}, {0}}};
 // fullbright colors are this much brighter than white allows (r_lightmode 1)
 // fullbrights' light, and dynamic lights' on surfaces, times these
-static cvar_t	r_fullbright_scale = {.name = "r_fullbright_scale", .string = "1.5", .archive = true};
-cvar_t	r_dlight_scale = {.name = "r_dlight_scale", .string = "1", .archive = true};
-static cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1"};
+static cvar_t	r_fullbright_scale = {.name = "r_fullbright_scale", .string = "1.5", .archive = true,
+	.description = "How bright fullbright colors are at the least, times their color, in r_lightmode 1; "
+		"0 or less is 1."};
+cvar_t	r_dlight_scale = {.name = "r_dlight_scale", .string = "1", .archive = true,
+	.description = "Multiplies dynamic lights' light on surfaces, in r_lightmode 1; 0 is none."};
+static cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1",
+	.description = "Draws the entities: models, sprites and brush models.",
+	.values = (const cvar_value_t[]){{"0", "The world alone"}, {"1", "The entities too"}, {0}}};
 
 // how opaque liquids are drawn, 0 .. 1; seeing through them needs a map whose
 // visibility was built for it
-static cvar_t	r_wateralpha = {.name = "r_wateralpha", .string = "1", .archive = true};
-static cvar_t	r_lavaalpha = {.name = "r_lavaalpha", .string = "1", .archive = true};
-static cvar_t	r_slimealpha = {.name = "r_slimealpha", .string = "1", .archive = true};
-static cvar_t	r_telealpha = {.name = "r_telealpha", .string = "1", .archive = true};
+static cvar_t	r_wateralpha = {.name = "r_wateralpha", .string = "1", .archive = true,
+	.description = "How opaque water is drawn, 0 to 1; seeing through it needs a map whose visibility "
+		"was built for it, or r_novis 1."};
+static cvar_t	r_lavaalpha = {.name = "r_lavaalpha", .string = "1", .archive = true,
+	.description = "How opaque lava is drawn, 0 to 1; seeing through it needs a map whose visibility "
+		"was built for it, or r_novis 1."};
+static cvar_t	r_slimealpha = {.name = "r_slimealpha", .string = "1", .archive = true,
+	.description = "How opaque slime is drawn, 0 to 1; seeing through it needs a map whose visibility "
+		"was built for it, or r_novis 1."};
+static cvar_t	r_telealpha = {.name = "r_telealpha", .string = "1", .archive = true,
+	.description = "How opaque teleporters are drawn, 0 to 1; seeing through them needs a map whose visibility "
+		"was built for it, or r_novis 1."};
 // every leaf is drawn, not just what the view's leaf sees; liquids can then be
 // seen through on any map
-static cvar_t	r_novis = {.name = "r_novis", .string = "0"};
-static cvar_t	r_drawviewmodel = {.name = "r_drawviewmodel", .string = "1"};
+static cvar_t	r_novis = {.name = "r_novis", .string = "0",
+	.description = "Draws every leaf of the map, not just what the view's leaf sees, so liquids can be seen "
+		"through on any map.",
+	.values = (const cvar_value_t[]){{"0", "What the view's leaf sees"}, {"1", "Every leaf"}, {0}}};
+static cvar_t	r_drawviewmodel = {.name = "r_drawviewmodel", .string = "1",
+	.description = "Draws the weapon in the view.",
+	.values = (const cvar_value_t[]){{"0", "Hidden"}, {"1", "Drawn"}, {0}}};
 // models' animation frames blended into each other (ezQuake's): 0 a frame at a time
-cvar_t	r_lerpframes = {.name = "r_lerpframes", .string = "1", .archive = true};
+cvar_t	r_lerpframes = {.name = "r_lerpframes", .string = "1", .archive = true,
+	.description = "Blends models' animation frames into each other, as ezQuake does.",
+	.values = (const cvar_value_t[]){{"0", "A frame at a time"}, {"1", "Blended"}, {0}}};
 // the view model's muzzle flash is there at once, not drawn out from behind the view
-cvar_t	r_lerpmuzzlehack = {.name = "r_lerpmuzzlehack", .string = "1", .archive = true};
-static cvar_t	r_aliasstats = {.name = "r_polymodelstats", .string = "0"};
-static cvar_t	r_dspeeds = {.name = "r_dspeeds", .string = "0"};
-cvar_t	r_drawflat = {.name = "r_drawflat", .string = "0"};
-cvar_t	r_ambient = {.name = "r_ambient", .string = "0"};
-static cvar_t	r_reportsurfout = {.name = "r_reportsurfout", .string = "0"};
-static cvar_t	r_maxsurfs = {.name = "r_maxsurfs", .string = "0"};
-cvar_t	r_numsurfs = {.name = "r_numsurfs", .string = "0"};
-static cvar_t	r_reportedgeout = {.name = "r_reportedgeout", .string = "0"};
-static cvar_t	r_maxedges = {.name = "r_maxedges", .string = "0"};
-cvar_t	r_numedges = {.name = "r_numedges", .string = "0"};
-static cvar_t	r_aliastransbase = {.name = "r_aliastransbase", .string = "200"};
-static cvar_t	r_aliastransadj = {.name = "r_aliastransadj", .string = "100"};
+cvar_t	r_lerpmuzzlehack = {.name = "r_lerpmuzzlehack", .string = "1", .archive = true,
+	.description = "Shows the weapon's muzzle flash at once when frames blend, not drawn out from behind the view.",
+	.values = (const cvar_value_t[]){{"0", "Blended like the rest"}, {"1", "There at once"}, {0}}};
+static cvar_t	r_aliasstats = {.name = "r_polymodelstats", .string = "0",
+	.description = "Prints each frame how many polygon models it drew.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Printed each frame"}, {0}}};
+static cvar_t	r_dspeeds = {.name = "r_dspeeds", .string = "0",
+	.description = "Prints each frame the milliseconds of the view and of its particles, world, brush models, "
+		"spans, models and weapon.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Printed each frame"}, {0}}};
+cvar_t	r_drawflat = {.name = "r_drawflat", .string = "0",
+	.description = "Draws each surface in one flat color; held at 0 against cheating, so it does nothing."};
+cvar_t	r_ambient = {.name = "r_ambient", .string = "0",
+	.description = "Light added to everything; held at 0 against cheating, so it does nothing."};
+static cvar_t	r_reportsurfout = {.name = "r_reportsurfout", .string = "0",
+	.description = "Prints how many surfaces a frame was short of; frames short of any are drawn again "
+		"with more, so it prints nothing."};
+static cvar_t	r_maxsurfs = {.name = "r_maxsurfs", .string = "0",
+	.description = "How many surfaces a map starts with, 1000 at least; a frame that needs more doubles them."};
+cvar_t	r_numsurfs = {.name = "r_numsurfs", .string = "0",
+	.description = "Prints each frame how many surfaces the last one used, of how many, and the most since "
+		"the map loaded.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Printed each frame"}, {0}}};
+static cvar_t	r_reportedgeout = {.name = "r_reportedgeout", .string = "0",
+	.description = "Prints how many edges a frame was short of; frames short of any are drawn again "
+		"with more, so it prints nothing."};
+static cvar_t	r_maxedges = {.name = "r_maxedges", .string = "0",
+	.description = "How many edges a map starts with, 2000 at least; a frame that needs more doubles them."};
+cvar_t	r_numedges = {.name = "r_numedges", .string = "0",
+	.description = "Prints each frame how many edges the last one used, of how many, and the most since "
+		"the map loaded.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Printed each frame"}, {0}}};
+static cvar_t	r_aliastransbase = {.name = "r_aliastransbase", .string = "200",
+	.description = "The depth past which a model inside the view is drawn by recursive subdivision, "
+		"faster and coarser; scaled with the view's size and fov."};
+static cvar_t	r_aliastransadj = {.name = "r_aliastransadj", .string = "100",
+	.description = "Added to r_aliastransbase's depth for each unit of a model's size, so bigger models "
+		"switch farther away."};
 
 
 
@@ -207,8 +273,11 @@ void R_Init (void)
 {
 	R_InitTurb ();
 	
-	Cmd_AddCommand ("timerefresh", R_TimeRefresh_f);	
-	Cmd_AddCommand ("pointfile", R_ReadPointFile_f);	
+	Cmd_AddCommand ("timerefresh", R_TimeRefresh_f,
+		"Draws the view 128 times turning full circle, and prints how long it took and the frame rate.");
+	Cmd_AddCommand ("pointfile", R_ReadPointFile_f,
+		"Meant to show a map's leak trail from its .pts file as particles; the file name is never set, "
+		"so it fails.");
 
 	Cvar_RegisterVariable (&r_draworder);
 	Cvar_RegisterVariable (&r_speeds);
@@ -223,7 +292,9 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_lightmode);
 	Cvar_RegisterVariable (&r_profile);
 	Cvar_RegisterVariable (&r_threads);
-	Cmd_AddCommand ("r_profile_show", R_Profile_f);
+	Cmd_AddCommand ("r_profile_show", R_Profile_f,
+		"Prints each drawing stage's average microseconds a frame since it last printed (needs r_profile 1), "
+		"and starts counting again.");
 	Cvar_RegisterVariable (&r_dlight_color);
 	Cvar_RegisterVariable (&r_fullbright_scale);
 	Cvar_RegisterVariable (&r_dlight_scale);

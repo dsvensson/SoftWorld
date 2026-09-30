@@ -29,8 +29,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "r_local.h"
 
-static cvar_t	r_loadlit = {.name = "r_loadlit", .string = "1", .archive = true};
-static cvar_t	r_lit_normalize = {.name = "r_lit_normalize", .string = "1", .archive = true};
+static cvar_t	r_loadlit = {.name = "r_loadlit", .string = "1", .archive = true,
+	.description = "Loads a map's colored light from a .lit file in maps/, lits/ or maps/lits/, as the map loads.",
+	.values = (const cvar_value_t[]){{"0", "The light in the map"}, {"1", "A .lit file's, if there is one"}, {0}}};
+static cvar_t	r_lit_normalize = {.name = "r_lit_normalize", .string = "1", .archive = true,
+	.description = "Scales 8-bit colored light (a .lit's or the map's RGBLIGHTING) to the map's mono light "
+		"as the map loads.",
+	.values = (const cvar_value_t[]){{"0", "As stored"},
+		{"1", "Each sample's brightest channel the mono light's"}, {0}}};
 
 void R_LightDataInit (void)
 {

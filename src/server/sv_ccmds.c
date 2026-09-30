@@ -881,32 +881,57 @@ void SV_InitOperatorCommands (void)
 		Info_SetValueForStarKey (svs.info, "*cheats", "ON", MAX_SERVERINFO_STRING, SV_InfoCharset ());
 	}
 
-	Cmd_AddCommand ("logfile", SV_Logfile_f);
-	Cmd_AddCommand ("fraglogfile", SV_Fraglogfile_f);
+	Cmd_AddCommand ("logfile", SV_Logfile_f, "Starts or stops logging the console to qconsole.log "
+		"in the game directory.");
+	Cmd_AddCommand ("fraglogfile", SV_Fraglogfile_f, "Starts or stops logging frags to a new frag_<n>.log "
+		"in the game directory.");
 
 	// a listen server's client owns these names; the server's are sv_*
-	Cmd_AddCommand (host.dedicated ? "snap" : "sv_snap", SV_Snap_f);
-	Cmd_AddCommand (host.dedicated ? "say" : "sv_say", SV_ConSay_f);
-	Cmd_AddCommand (host.dedicated ? "serverinfo" : "sv_serverinfo", SV_Serverinfo_f);
-	Cmd_AddCommand (host.dedicated ? "user" : "sv_user", SV_User_f);
+	Cmd_AddCommand (host.dedicated ? "snap" : "sv_snap", SV_Snap_f, host.dedicated
+		? "Has a player's client upload a screenshot to snap/ in the game directory. Usage: snap <userid>"
+		: "Has a player's client upload a screenshot to snap/ in the game directory. Usage: sv_snap <userid>");
+	Cmd_AddCommand (host.dedicated ? "say" : "sv_say", SV_ConSay_f, host.dedicated
+		? "Sends a chat message from the server console to every player. Usage: say <message>"
+		: "Sends a chat message from the server console to every player. Usage: sv_say <message>");
+	Cmd_AddCommand (host.dedicated ? "serverinfo" : "sv_serverinfo", SV_Serverinfo_f, host.dedicated
+		? "Shows the serverinfo, or sets a key in it (and the cvar of that name) for the clients. "
+			"Usage: serverinfo [<key> <value>]"
+		: "Shows the serverinfo, or sets a key in it (and the cvar of that name) for the clients. "
+			"Usage: sv_serverinfo [<key> <value>]");
+	Cmd_AddCommand (host.dedicated ? "user" : "sv_user", SV_User_f, host.dedicated
+		? "Shows a player's userinfo. Usage: user <userid>"
+		: "Shows a player's userinfo. Usage: sv_user <userid>");
 
-	Cmd_AddCommand ("snapall", SV_SnapAll_f);
-	Cmd_AddCommand ("kick", SV_Kick_f);
-	Cmd_AddCommand ("status", SV_Status_f);
+	Cmd_AddCommand ("snapall", SV_SnapAll_f, "Has every player's client (not spectators') upload a screenshot "
+		"to snap/ in the game directory.");
+	Cmd_AddCommand ("kick", SV_Kick_f, "Drops a player from the server. Usage: kick <userid>");
+	Cmd_AddCommand ("status", SV_Status_f, "Shows the server's load and each client's frags, userid, address, "
+		"name, rate, ping and packet loss.");
 
-	Cmd_AddCommand ("map", SV_Map_f);
-	Cmd_AddCommand ("killserver", SV_KillServer_f);
-	Cmd_AddCommand ("setmaster", SV_SetMaster_f);
+	Cmd_AddCommand ("map", SV_Map_f, "Starts the server on a map, taking the connected clients with it. "
+		"Usage: map <mapname>");
+	Cmd_AddCommand ("killserver", SV_KillServer_f, "Ends the game, dropping every client.");
+	Cmd_AddCommand ("setmaster", SV_SetMaster_f, "Sets the master servers heartbeats go to, at port 27000 "
+		"unless given; none for no master. Usage: setmaster <address|none> [address ...]");
 
-	Cmd_AddCommand ("heartbeat", SV_Heartbeat_f);
-	Cmd_AddCommand ("god", SV_God_f);
-	Cmd_AddCommand ("give", SV_Give_f);
-	Cmd_AddCommand ("noclip", SV_Noclip_f);
-	Cmd_AddCommand ("localinfo", SV_Localinfo_f);
-	Cmd_AddCommand ("gamedir", SV_Gamedir_f);
-	Cmd_AddCommand ("sv_gamedir", SV_Gamedir);
-	Cmd_AddCommand ("floodprot", SV_Floodprot_f);
-	Cmd_AddCommand ("floodprotmsg", SV_Floodprotmsg_f);
+	Cmd_AddCommand ("heartbeat", SV_Heartbeat_f, "Sends the master servers a heartbeat now.");
+	Cmd_AddCommand ("god", SV_God_f, "Toggles god mode for a player; needs the server started with -cheats. "
+		"Usage: god <userid>");
+	Cmd_AddCommand ("give", SV_Give_f, "Gives a player a weapon by its number, or sets their shells, nails, "
+		"rockets, cells or health (s n r c h); needs -cheats. Usage: give <userid> <item> [amount]");
+	Cmd_AddCommand ("noclip", SV_Noclip_f, "Toggles flying through walls for a player; needs the server started "
+		"with -cheats. Usage: noclip <userid>");
+	Cmd_AddCommand ("localinfo", SV_Localinfo_f, "Shows the local info, or sets a key in it: settings for the "
+		"game code that the clients don't see. Usage: localinfo [<key> <value>]");
+	Cmd_AddCommand ("gamedir", SV_Gamedir_f, "Shows or changes the game directory, which the clients are told too. "
+		"Usage: gamedir [<dir>]");
+	Cmd_AddCommand ("sv_gamedir", SV_Gamedir, "Shows or changes the game directory the clients are told, apart "
+		"from the one the server reads. Usage: sv_gamedir [<dir>]");
+	Cmd_AddCommand ("floodprot", SV_Floodprot_f, "Shows or sets chat flood protection: a player who sends that "
+		"many messages within that many seconds is silenced. "
+		"Usage: floodprot [<messages> <seconds> <silence seconds>]");
+	Cmd_AddCommand ("floodprotmsg", SV_Floodprotmsg_f, "Shows or sets what a player silenced by floodprot is told. "
+		"Usage: floodprotmsg [<message>]");
 
 	cl_warncmd.value = 1;
 }

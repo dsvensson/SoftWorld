@@ -21,7 +21,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "cl_local.h"
 
-static cvar_t	cl_nodelta = {.name = "cl_nodelta", .string = "0"};
+static cvar_t	cl_nodelta = {.name = "cl_nodelta", .string = "0",
+	.description = "Asks for whole entity updates, not changes against the last one received; costs bandwidth.",
+	.values = (const cvar_value_t[]){{"0", "Changes against the last update received"},
+		{"1", "Whole updates every packet"}, {0}}};
 
 /*
 ===============================================================================
@@ -48,7 +51,10 @@ state bit 2 is edge triggered on the down to up transition
 static kbutton_t	in_mlook, in_klook;
 
 // the mouse looks around without holding +mlook
-cvar_t	freelook = {.name = "freelook", .string = "1", .archive = true};
+cvar_t	freelook = {.name = "freelook", .string = "1", .archive = true,
+	.description = "The mouse looks up and down without +mlook held.",
+	.values = (const cvar_value_t[]){{"0", "Moving the mouse up and down moves, unless +mlook is held"},
+		{"1", "Moving the mouse up and down looks"}, {0}}};
 
 static bool IN_MouseLook (void)
 {
@@ -224,17 +230,25 @@ static float CL_KeyState (kbutton_t *key)
 
 //==========================================================================
 
-cvar_t	cl_upspeed = {.name = "cl_upspeed", .string = "200"};
-cvar_t	cl_forwardspeed = {.name = "cl_forwardspeed", .string = "200", .archive = true};
-cvar_t	cl_backspeed = {.name = "cl_backspeed", .string = "200", .archive = true};
-cvar_t	cl_sidespeed = {.name = "cl_sidespeed", .string = "350"};
+cvar_t	cl_upspeed = {.name = "cl_upspeed", .string = "200",
+	.description = "Speed of +moveup and +movedown, swimming or flying, in units a second."};
+cvar_t	cl_forwardspeed = {.name = "cl_forwardspeed", .string = "200", .archive = true,
+	.description = "Speed of +forward and the left stick, in units a second; the server caps it at sv_maxspeed."};
+cvar_t	cl_backspeed = {.name = "cl_backspeed", .string = "200", .archive = true,
+	.description = "Speed of +back, in units a second; the server caps it at sv_maxspeed."};
+cvar_t	cl_sidespeed = {.name = "cl_sidespeed", .string = "350",
+	.description = "Speed of strafing, by key or the left stick, in units a second; the server caps it at sv_maxspeed."};
 
-cvar_t	cl_movespeedkey = {.name = "cl_movespeedkey", .string = "2.0"};
+cvar_t	cl_movespeedkey = {.name = "cl_movespeedkey", .string = "2.0",
+	.description = "How many times faster moving is while +speed is held."};
 
-cvar_t	cl_yawspeed = {.name = "cl_yawspeed", .string = "140"};
-cvar_t	cl_pitchspeed = {.name = "cl_pitchspeed", .string = "150"};
+cvar_t	cl_yawspeed = {.name = "cl_yawspeed", .string = "140",
+	.description = "How fast +left and +right turn, in degrees a second."};
+cvar_t	cl_pitchspeed = {.name = "cl_pitchspeed", .string = "150",
+	.description = "How fast +lookup, +lookdown and +klook look up and down, in degrees a second."};
 
-cvar_t	cl_anglespeedkey = {.name = "cl_anglespeedkey", .string = "1.5"};
+cvar_t	cl_anglespeedkey = {.name = "cl_anglespeedkey", .string = "1.5",
+	.description = "How many times faster turning and looking by keys is while +speed is held."};
 
 
 /*
@@ -557,10 +571,16 @@ MOUSE AND GAMEPAD
 ===============================================================================
 */
 
-static cvar_t	m_filter = {.name = "m_filter", .string = "0"};
-static cvar_t	joy_yawspeed = {.name = "joy_yawspeed", .string = "220", .archive = true};	// degrees per second
-static cvar_t	joy_pitchspeed = {.name = "joy_pitchspeed", .string = "160", .archive = true};
-static cvar_t	joy_invert = {.name = "joy_invert", .string = "0", .archive = true};
+static cvar_t	m_filter = {.name = "m_filter", .string = "0",
+	.description = "Averages the mouse's motion with the previous command's: smoother, a little behind.",
+	.values = (const cvar_value_t[]){{"0", "The motion as it is"}, {"1", "Averaged over two commands"}, {0}}};
+static cvar_t	joy_yawspeed = {.name = "joy_yawspeed", .string = "220", .archive = true,	// degrees per second
+	.description = "How fast the gamepad's right stick turns, pushed fully, in degrees a second."};
+static cvar_t	joy_pitchspeed = {.name = "joy_pitchspeed", .string = "160", .archive = true,
+	.description = "How fast the gamepad's right stick looks up and down, pushed fully, in degrees a second."};
+static cvar_t	joy_invert = {.name = "joy_invert", .string = "0", .archive = true,
+	.description = "Inverts the gamepad's right stick for looking up and down.",
+	.values = (const cvar_value_t[]){{"0", "Pushing up looks up"}, {"1", "Pushing up looks down"}, {0}}};
 
 static int		in_mouse_dx, in_mouse_dy;		// motion since the last move
 static int		in_old_mouse_x, in_old_mouse_y;	// for m_filter
@@ -682,41 +702,46 @@ void IN_Move (usercmd_t *cmd)
 
 void CL_InitInput (void)
 {
-	Cmd_AddCommand ("+moveup",IN_UpDown);
-	Cmd_AddCommand ("-moveup",IN_UpUp);
-	Cmd_AddCommand ("+movedown",IN_DownDown);
-	Cmd_AddCommand ("-movedown",IN_DownUp);
-	Cmd_AddCommand ("+left",IN_LeftDown);
-	Cmd_AddCommand ("-left",IN_LeftUp);
-	Cmd_AddCommand ("+right",IN_RightDown);
-	Cmd_AddCommand ("-right",IN_RightUp);
-	Cmd_AddCommand ("+forward",IN_ForwardDown);
-	Cmd_AddCommand ("-forward",IN_ForwardUp);
-	Cmd_AddCommand ("+back",IN_BackDown);
-	Cmd_AddCommand ("-back",IN_BackUp);
-	Cmd_AddCommand ("+lookup", IN_LookupDown);
-	Cmd_AddCommand ("-lookup", IN_LookupUp);
-	Cmd_AddCommand ("+lookdown", IN_LookdownDown);
-	Cmd_AddCommand ("-lookdown", IN_LookdownUp);
-	Cmd_AddCommand ("+strafe", IN_StrafeDown);
-	Cmd_AddCommand ("-strafe", IN_StrafeUp);
-	Cmd_AddCommand ("+moveleft", IN_MoveleftDown);
-	Cmd_AddCommand ("-moveleft", IN_MoveleftUp);
-	Cmd_AddCommand ("+moveright", IN_MoverightDown);
-	Cmd_AddCommand ("-moveright", IN_MoverightUp);
-	Cmd_AddCommand ("+speed", IN_SpeedDown);
-	Cmd_AddCommand ("-speed", IN_SpeedUp);
-	Cmd_AddCommand ("+attack", IN_AttackDown);
-	Cmd_AddCommand ("-attack", IN_AttackUp);
-	Cmd_AddCommand ("+use", IN_UseDown);
-	Cmd_AddCommand ("-use", IN_UseUp);
-	Cmd_AddCommand ("+jump", IN_JumpDown);
-	Cmd_AddCommand ("-jump", IN_JumpUp);
-	Cmd_AddCommand ("impulse", IN_Impulse);
-	Cmd_AddCommand ("+klook", IN_KLookDown);
-	Cmd_AddCommand ("-klook", IN_KLookUp);
-	Cmd_AddCommand ("+mlook", IN_MLookDown);
-	Cmd_AddCommand ("-mlook", IN_MLookUp);
+	Cmd_AddCommand ("+moveup",IN_UpDown, "Swims or flies up while held, at cl_upspeed.");
+	Cmd_AddCommand ("-moveup",IN_UpUp, "Releases +moveup.");
+	Cmd_AddCommand ("+movedown",IN_DownDown, "Swims or flies down while held, at cl_upspeed.");
+	Cmd_AddCommand ("-movedown",IN_DownUp, "Releases +movedown.");
+	Cmd_AddCommand ("+left",IN_LeftDown, "Turns left while held, at cl_yawspeed; with +strafe held, strafes left.");
+	Cmd_AddCommand ("-left",IN_LeftUp, "Releases +left.");
+	Cmd_AddCommand ("+right",IN_RightDown, "Turns right while held, at cl_yawspeed; with +strafe held, strafes right.");
+	Cmd_AddCommand ("-right",IN_RightUp, "Releases +right.");
+	Cmd_AddCommand ("+forward",IN_ForwardDown, "Moves forward while held; with +klook held, looks up.");
+	Cmd_AddCommand ("-forward",IN_ForwardUp, "Releases +forward.");
+	Cmd_AddCommand ("+back",IN_BackDown, "Moves back while held; with +klook held, looks down.");
+	Cmd_AddCommand ("-back",IN_BackUp, "Releases +back.");
+	Cmd_AddCommand ("+lookup", IN_LookupDown, "Looks up while held, at cl_pitchspeed.");
+	Cmd_AddCommand ("-lookup", IN_LookupUp, "Releases +lookup.");
+	Cmd_AddCommand ("+lookdown", IN_LookdownDown, "Looks down while held, at cl_pitchspeed.");
+	Cmd_AddCommand ("-lookdown", IN_LookdownUp, "Releases +lookdown.");
+	Cmd_AddCommand ("+strafe", IN_StrafeDown, "Makes the turn keys and the mouse move instead of turn while held.");
+	Cmd_AddCommand ("-strafe", IN_StrafeUp, "Releases +strafe.");
+	Cmd_AddCommand ("+moveleft", IN_MoveleftDown, "Strafes left while held.");
+	Cmd_AddCommand ("-moveleft", IN_MoveleftUp, "Releases +moveleft.");
+	Cmd_AddCommand ("+moveright", IN_MoverightDown, "Strafes right while held.");
+	Cmd_AddCommand ("-moveright", IN_MoverightUp, "Releases +moveright.");
+	Cmd_AddCommand ("+speed", IN_SpeedDown,
+		"Runs while held: moves cl_movespeedkey and turns cl_anglespeedkey times as fast.");
+	Cmd_AddCommand ("-speed", IN_SpeedUp, "Releases +speed.");
+	Cmd_AddCommand ("+attack", IN_AttackDown,
+		"Fires while held; as a spectator it toggles following a player, and in an MVD flying the camera.");
+	Cmd_AddCommand ("-attack", IN_AttackUp, "Releases +attack.");
+	Cmd_AddCommand ("+use", IN_UseDown, "Does nothing: QuakeWorld sends no use button; kept for configs that bind it.");
+	Cmd_AddCommand ("-use", IN_UseUp, "Releases +use.");
+	Cmd_AddCommand ("+jump", IN_JumpDown,
+		"Jumps or swims up while held; as a spectator following a player, and in an MVD, goes to the next player.");
+	Cmd_AddCommand ("-jump", IN_JumpUp, "Releases +jump.");
+	Cmd_AddCommand ("impulse", IN_Impulse,
+		"Sends an impulse to the game with the next command, such as a weapon to switch to. Usage: impulse <number>");
+	Cmd_AddCommand ("+klook", IN_KLookDown, "Makes +forward and +back look up and down while held.");
+	Cmd_AddCommand ("-klook", IN_KLookUp, "Releases +klook.");
+	Cmd_AddCommand ("+mlook", IN_MLookDown,
+		"Makes the mouse look up and down while held, as freelook always does; on release lookspring centers the view.");
+	Cmd_AddCommand ("-mlook", IN_MLookUp, "Releases +mlook.");
 
 	Cvar_RegisterVariable (&cl_nodelta);
 	Cvar_RegisterVariable (&m_filter);
@@ -724,6 +749,6 @@ void CL_InitInput (void)
 	Cvar_RegisterVariable (&joy_yawspeed);
 	Cvar_RegisterVariable (&joy_pitchspeed);
 	Cvar_RegisterVariable (&joy_invert);
-	Cmd_AddCommand ("force_centerview", Force_CenterView_f);
+	Cmd_AddCommand ("force_centerview", Force_CenterView_f, "Levels the view, looking straight ahead.");
 }
 

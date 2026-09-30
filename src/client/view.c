@@ -32,31 +32,54 @@ when crossing a water boudnary.
 
 
 
-static cvar_t	cl_bob = {.name = "cl_bob", .string = "0.02"};
-static cvar_t	cl_bobcycle = {.name = "cl_bobcycle", .string = "0.6"};
-static cvar_t	cl_bobup = {.name = "cl_bobup", .string = "0.5"};
+static cvar_t	cl_bob = {.name = "cl_bob", .string = "0.02",
+	.description = "How far the view bobs while moving on the ground, times the speed, at most 4 units up "
+		"and 7 down; 0 is none."};
+static cvar_t	cl_bobcycle = {.name = "cl_bobcycle", .string = "0.6",
+	.description = "How long one bob of the view takes, in seconds."};
+static cvar_t	cl_bobup = {.name = "cl_bobup", .string = "0.5",
+	.description = "The part of each bob, 0 to 1, the view spends rising."};
 
-static cvar_t	v_kicktime = {.name = "v_kicktime", .string = "0.5"};
-static cvar_t	v_kickroll = {.name = "v_kickroll", .string = "0.6"};
-static cvar_t	v_kickpitch = {.name = "v_kickpitch", .string = "0.6"};
+static cvar_t	v_kicktime = {.name = "v_kicktime", .string = "0.5",
+	.description = "How long the view's kick from taking damage lasts, in seconds."};
+static cvar_t	v_kickroll = {.name = "v_kickroll", .string = "0.6",
+	.description = "How far damage from the side rolls the view, times the damage; 0 is none."};
+static cvar_t	v_kickpitch = {.name = "v_kickpitch", .string = "0.6",
+	.description = "How far damage from the front or back pitches the view, times the damage; 0 is none."};
 
-static cvar_t	v_iyaw_cycle = {.name = "v_iyaw_cycle", .string = "2"};
-static cvar_t	v_iroll_cycle = {.name = "v_iroll_cycle", .string = "0.5"};
-static cvar_t	v_ipitch_cycle = {.name = "v_ipitch_cycle", .string = "1"};
-static cvar_t	v_iyaw_level = {.name = "v_iyaw_level", .string = "0.3"};
-static cvar_t	v_iroll_level = {.name = "v_iroll_level", .string = "0.1"};
-static cvar_t	v_ipitch_level = {.name = "v_ipitch_level", .string = "0.3"};
+static cvar_t	v_iyaw_cycle = {.name = "v_iyaw_cycle", .string = "2",
+	.description = "How fast the idle sway turns the view left and right, in radians a second."};
+static cvar_t	v_iroll_cycle = {.name = "v_iroll_cycle", .string = "0.5",
+	.description = "How fast the idle sway rolls the view, in radians a second."};
+static cvar_t	v_ipitch_cycle = {.name = "v_ipitch_cycle", .string = "1",
+	.description = "How fast the idle sway tips the view up and down, in radians a second."};
+static cvar_t	v_iyaw_level = {.name = "v_iyaw_level", .string = "0.3",
+	.description = "How far the idle sway turns the view left and right, in degrees times v_idlescale."};
+static cvar_t	v_iroll_level = {.name = "v_iroll_level", .string = "0.1",
+	.description = "How far the idle sway rolls the view, in degrees times v_idlescale."};
+static cvar_t	v_ipitch_level = {.name = "v_ipitch_level", .string = "0.3",
+	.description = "How far the idle sway tips the view up and down, in degrees times v_idlescale."};
 
-static cvar_t	v_idlescale = {.name = "v_idlescale", .string = "0"};
+static cvar_t	v_idlescale = {.name = "v_idlescale", .string = "0",
+	.description = "How much the view sways, times the v_i*_level angles; 0 is none. Intermissions sway as with 1."};
 
-static cvar_t	crosshair = {.name = "crosshair", .string = "0", .archive = true};
-static cvar_t	crosshaircolor = {.name = "crosshaircolor", .string = "79", .archive = true};
+static cvar_t	crosshair = {.name = "crosshair", .string = "0", .archive = true,
+	.description = "The crosshair drawn in the center of the view.",
+	.values = (const cvar_value_t[]){{"0", "None"}, {"1", "A + character"},
+		{"2", "A cross of dots in crosshaircolor"}, {0}}};
+static cvar_t	crosshaircolor = {.name = "crosshaircolor", .string = "79", .archive = true,
+	.description = "The palette index, 0 to 255, of crosshair 2's dots."};
 
-static cvar_t  cl_crossx = {.name = "cl_crossx", .string = "0", .archive = true};
-static cvar_t  cl_crossy = {.name = "cl_crossy", .string = "0", .archive = true};
+static cvar_t  cl_crossx = {.name = "cl_crossx", .string = "0", .archive = true,
+	.description = "How far right of the view's center the crosshair is, in pixels of the 2D layout."};
+static cvar_t  cl_crossy = {.name = "cl_crossy", .string = "0", .archive = true,
+	.description = "How far below the view's center the crosshair is, in pixels of the 2D layout."};
 
 
-static cvar_t  v_contentblend = {.name = "v_contentblend", .string = "1"};
+static cvar_t  v_contentblend = {.name = "v_contentblend", .string = "1",
+	.description = "Tints the view under water, slime and lava in their colors.",
+	.values = (const cvar_value_t[]){{"0", "Tinted as outside liquids (v_cshift)"},
+		{"1", "Tinted in the liquid's color"}, {0}}};
 
 static float	v_dmg_time, v_dmg_roll, v_dmg_pitch;
 
@@ -125,8 +148,11 @@ static float V_CalcBob (void)
 //=============================================================================
 
 
-static cvar_t	v_centermove = {.name = "v_centermove", .string = "0.15"};
-static cvar_t	v_centerspeed = {.name = "v_centerspeed", .string = "500"};
+static cvar_t	v_centermove = {.name = "v_centermove", .string = "0.15",
+	.description = "How long running forward on the ground takes, in seconds, to start the view drifting back "
+		"to level after looking up or down."};
+static cvar_t	v_centerspeed = {.name = "v_centerspeed", .string = "500",
+	.description = "How fast the view drifts back to level, in degrees a second, gaining as much each second."};
 
 
 void V_StartPitchDrift (void)
@@ -237,7 +263,9 @@ static cshift_t	cshift_water = { {130,80,50}, 128 };
 static cshift_t	cshift_slime = { {0,25,5}, 150 };
 static cshift_t	cshift_lava = { {255,80,0}, 150 };
 
-cvar_t		v_gamma = {.name = "gamma", .string = "1", .archive = true};
+cvar_t		v_gamma = {.name = "gamma", .string = "1", .archive = true,
+	.description = "The exponent the 3D view's light is raised to: under 1 brightens the darks, 1 leaves it, "
+		"0 or less is 1. The HUD keeps its own."};
 
 
 
@@ -788,9 +816,11 @@ V_Init
 */
 void V_Init (void)
 {
-	Cmd_AddCommand ("v_cshift", V_cshift_f);	
-	Cmd_AddCommand ("bf", V_BonusFlash_f);
-	Cmd_AddCommand ("centerview", V_StartPitchDrift);
+	Cmd_AddCommand ("v_cshift", V_cshift_f,
+		"Sets the view's tint outside liquids (in them too with v_contentblend 0): channels 0 to 255, "
+		"amount out of 256. Usage: v_cshift <red> <green> <blue> <amount>");
+	Cmd_AddCommand ("bf", V_BonusFlash_f, "Flashes the view gold, as the server has it do for picking up an item.");
+	Cmd_AddCommand ("centerview", V_StartPitchDrift, "Starts the view drifting back to level, when on the ground.");
 
 	Cvar_RegisterVariable (&v_centermove);
 	Cvar_RegisterVariable (&v_centerspeed);

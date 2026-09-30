@@ -10,7 +10,9 @@
 #define	MAXPRINTMSG		4096
 #define	MAX_PRINT_SINKS	8
 
-cvar_t	developer = {.name = "developer", .string = "0"};	// show extra messages
+cvar_t	developer = {.name = "developer", .string = "0",	// show extra messages
+	.description = "Prints developer messages to the console, and warns of unknown commands.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Developer messages printed"}, {0}}};
 
 static print_sink_t	print_sinks[MAX_PRINT_SINKS];
 static int			num_print_sinks;

@@ -19,14 +19,26 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 #include "cl_local.h"
 
-static cvar_t	cl_nopred = {.name = "cl_nopred", .string = "0"};
-static cvar_t	cl_pushlatency = {.name = "pushlatency", .string = "-999"};
+static cvar_t	cl_nopred = {.name = "cl_nopred", .string = "0",
+	.description = "Turns off movement prediction: the view is where the server last put the player, a ping behind.",
+	.values = (const cvar_value_t[]){{"0", "Predicted from the commands sent"},
+		{"1", "Where the server last put the player"}, {0}}};
+static cvar_t	cl_pushlatency = {.name = "pushlatency", .string = "-999",
+	.description = "How far ahead of the server's last reply prediction runs, in negative milliseconds, "
+		"up to the latest command; 0 is none."};
 // send commands at cl_physfps and draw frames at cl_maxfps
-static cvar_t	cl_independentPhysics = {.name = "cl_independentPhysics", .string = "1", .archive = true};
+static cvar_t	cl_independentPhysics = {.name = "cl_independentPhysics", .string = "1", .archive = true,
+	.description = "Sends commands at cl_physfps apart from drawing frames at cl_maxfps; not while playing a demo.",
+	.values = (const cvar_value_t[]){{"0", "A command each frame, 30 to 72 frames a second"},
+		{"1", "Commands at cl_physfps, frames at cl_maxfps"}, {0}}};
 // commands per second; 0 uses 77, never more than the server's maxfps
-cvar_t	cl_physfps = {.name = "cl_physfps", .string = "0", .archive = true};
+cvar_t	cl_physfps = {.name = "cl_physfps", .string = "0", .archive = true,
+	.description = "Commands sent a second with cl_independentPhysics, from 10 to the server's maxfps; 0 is 77."};
 // don't interpolate the view between commands, nor entities between updates
-cvar_t	cl_nolerp = {.name = "cl_nolerp", .string = "0", .archive = true};
+cvar_t	cl_nolerp = {.name = "cl_nolerp", .string = "0", .archive = true,
+	.description = "Draws the view and entities where the last command and update put them, unsmoothed; "
+		"MVDs are smoothed anyway.",
+	.values = (const cvar_value_t[]){{"0", "Smoothed between commands and updates"}, {"1", "Not smoothed"}, {0}}};
 
 
 /*

@@ -37,7 +37,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <string.h>
 #include <unistd.h>
 
-static cvar_t	sys_nostdout = {.name = "sys_nostdout", .string = "0"};
+static cvar_t	sys_nostdout = {.name = "sys_nostdout", .string = "0",
+	.description = "Stops the dedicated server printing its console output to standard output.",
+	.values = (const cvar_value_t[]){{"0", "Output printed"}, {"1", "Nothing printed"}, {0}}};
 
 /*
 ================

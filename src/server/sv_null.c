@@ -30,7 +30,7 @@ static void SV_NoServer_f (void)
 
 void SV_Init (void)
 {
-	Cmd_AddCommand ("map", SV_NoServer_f);
+	Cmd_AddCommand ("map", SV_NoServer_f, "Says this program has no server to load a map on; connect to one instead.");
 }
 
 void SV_Shutdown (void)

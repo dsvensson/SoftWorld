@@ -194,10 +194,43 @@ void Cvar_RegisterVariable (cvar_t *variable)
 
 // copy the value off, because future sets will Mem_Free it
 	Q_strncpyz (value, variable->string, sizeof(value));
+	variable->defaultstring = Mem_Alloc (strlen (value) + 1);
+	strcpy (variable->defaultstring, value);
 	variable->string = Mem_Calloc (1, 1);
 	
 // set it through the function to be consistant
 	Cvar_Set (variable->name, value);
+}
+
+cvar_t *Cvar_List (void)
+{
+	return cvar_vars;
+}
+
+/*
+============
+Cvar_Describe
+
+What a variable does, what its values do, and its default and current values,
+as ezQuake shows them: the values and their heading in the other charset
+============
+*/
+static void Cvar_Describe (cvar_t *v)
+{
+	const cvar_value_t	*val;
+
+	if (v->description)
+		Con_Printf ("  %s\n", v->description);
+	if (v->values)
+	{
+		Con_Printf ("\n^avalues^a\n");
+		for (val = v->values ; val->value ; val++)
+			Con_Printf ("  ^a%s^a - %s\n", val->value, val->meaning);
+	}
+	if (v->description || v->values)
+		Con_Printf ("\n");
+	Con_Printf ("%s : default value is \"%s\"\n", v->name, v->defaultstring);
+	Con_Printf ("%*s current value is \"%s\"\n", (int)strlen (v->name) + 2, "", v->string);
 }
 
 /*
@@ -219,7 +252,7 @@ bool	Cvar_Command (void)
 // perform a variable print or set
 	if (Cmd_Argc() == 1)
 	{
-		Con_Printf ("\"%s\" is \"%s\"\n", v->name, v->string);
+		Cvar_Describe (v);
 		return true;
 	}
 

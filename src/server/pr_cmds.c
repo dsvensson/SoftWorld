@@ -1133,7 +1133,9 @@ vector aim(entity, missilespeed)
 =============
 */
 //cvar_t	sv_aim = {.name = "sv_aim", .string = "0.93"};
-cvar_t	sv_aim = {.name = "sv_aim", .string = "2"};
+cvar_t	sv_aim = {.name = "sv_aim", .string = "2",
+	.description = "Autoaim: the cosine of the widest angle off the view a target is aimed at; above 1 turns it off. "
+		"A player's noaim userinfo key opts out."};
 static void PF_aim (void)
 {
 	edict_t	*ent, *check, *bestent;

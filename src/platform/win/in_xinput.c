@@ -31,7 +31,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <math.h>
 
-static cvar_t	in_joystick = {.name = "joystick", .string = "1", .archive = true};
+static cvar_t	in_joystick = {.name = "joystick", .string = "1", .archive = true,
+	.description = "Reads the first gamepad: buttons and triggers as keys to bind, sticks for moving and looking.",
+	.values = (const cvar_value_t[]){{"0", "Gamepads ignored"}, {"1", "The first gamepad read"}, {0}}};
 
 #define TRIGGER_THRESHOLD	30			// of 255
 #define PROBE_INTERVAL		2000		// ms between looking for a pad when none is connected

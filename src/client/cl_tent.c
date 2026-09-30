@@ -35,7 +35,9 @@ static beam_t		cl_beams[MAX_BEAMS];
 
 // how far toward the current aim the player's own beam turns from where the
 // server last put it, 0 .. 1: hides the beam's lag behind the view (FTE)
-static cvar_t		cl_truelightning = {.name = "cl_truelightning", .string = "1", .archive = true};
+static cvar_t		cl_truelightning = {.name = "cl_truelightning", .string = "1", .archive = true,
+	.description = "How far your own lightning beam turns from the server's aim toward your view, 0 to 1, "
+		"hiding its lag; 0 draws it as sent."};
 static vec3_t		cl_playerbeam_end;		// the server's end of the player's own beam
 
 #define	MAX_EXPLOSIONS	8

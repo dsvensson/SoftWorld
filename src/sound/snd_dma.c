@@ -51,17 +51,33 @@ static int S_Rand (void)
 }
 static vec_t		sound_nominal_clip_dist=1000.0;
 
-cvar_t bgmvolume = {.name = "bgmvolume", .string = "1", .archive = true};
-cvar_t volume = {.name = "volume", .string = "0.7", .archive = true};
+cvar_t bgmvolume = {.name = "bgmvolume", .string = "1", .archive = true,
+	.description = "Music volume, 0 to 1, as the options menu sets it; nothing in this program plays music."};
+cvar_t volume = {.name = "volume", .string = "0.7", .archive = true,
+	.description = "Volume of all sound, 0 to 1."};
 
-static cvar_t nosound = {.name = "nosound", .string = "0"};
-static cvar_t precache = {.name = "precache", .string = "1"};
-cvar_t loadas8bit = {.name = "loadas8bit", .string = "0"};
-static cvar_t ambient_level = {.name = "ambient_level", .string = "0.3"};
-static cvar_t ambient_fade = {.name = "ambient_fade", .string = "100"};
-static cvar_t snd_noextraupdate = {.name = "snd_noextraupdate", .string = "0"};
-static cvar_t snd_show = {.name = "snd_show", .string = "0"};
-static cvar_t _snd_mixahead = {.name = "_snd_mixahead", .string = "0.1", .archive = true};
+static cvar_t nosound = {.name = "nosound", .string = "0",
+	.description = "Silences the game: no sounds are loaded or started.",
+	.values = (const cvar_value_t[]){{"0", "Sound on"}, {"1", "No sounds"}, {0}}};
+static cvar_t precache = {.name = "precache", .string = "1",
+	.description = "Loads each sound when the game precaches it, rather than when it first plays.",
+	.values = (const cvar_value_t[]){{"0", "Loaded when first played"}, {"1", "Loaded when precached"}, {0}}};
+cvar_t loadas8bit = {.name = "loadas8bit", .string = "0",
+	.description = "Stores the sounds loaded from now on at 8 bits per sample, half the memory of 16.",
+	.values = (const cvar_value_t[]){{"0", "Each sound's own bits per sample"}, {"1", "8 bits per sample"}, {0}}};
+static cvar_t ambient_level = {.name = "ambient_level", .string = "0.3",
+	.description = "Volume of the ambient water and sky sounds, as a scale of the levels the map gives them; "
+		"0 turns them off."};
+static cvar_t ambient_fade = {.name = "ambient_fade", .string = "100",
+	.description = "How fast ambient sounds fade in and out as you move, in volume steps (of 255) per second."};
+static cvar_t snd_noextraupdate = {.name = "snd_noextraupdate", .string = "0",
+	.description = "Skips the extra sound mixing done while the menu is drawn, to keep timings clean.",
+	.values = (const cvar_value_t[]){{"0", "Extra mixing"}, {"1", "No extra mixing"}, {0}}};
+static cvar_t snd_show = {.name = "snd_show", .string = "0",
+	.description = "Prints how many channels are sounding, on every sound update.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Prints the count"}, {0}}};
+static cvar_t _snd_mixahead = {.name = "_snd_mixahead", .string = "0.1", .archive = true,
+	.description = "How far ahead of playback sound is mixed, in seconds; more resists stutter, less cuts delay."};
 
 
 // ====================================================================
@@ -146,11 +162,15 @@ void S_Init (void)
 	if (COM_CheckParm("-nosound"))
 		return;
 
-	Cmd_AddCommand("play", S_Play);
-	Cmd_AddCommand("playvol", S_PlayVol);
-	Cmd_AddCommand("stopsound", S_StopAllSoundsC);
-	Cmd_AddCommand("soundlist", S_SoundList);
-	Cmd_AddCommand("soundinfo", S_SoundInfo_f);
+	Cmd_AddCommand("play", S_Play, "Plays sounds at full volume where you are; .wav is added to a name without "
+		"an extension. Usage: play <sound> [sound ...]");
+	Cmd_AddCommand("playvol", S_PlayVol, "Plays sounds where you are, each at its volume from 0 to 1. "
+		"Usage: playvol <sound> <volume> [<sound> <volume> ...]");
+	Cmd_AddCommand("stopsound", S_StopAllSoundsC, "Stops every playing sound.");
+	Cmd_AddCommand("soundlist", S_SoundList, "Lists the loaded sounds with their bits per sample and size in bytes; "
+		"L marks looping ones.");
+	Cmd_AddCommand("soundinfo", S_SoundInfo_f, "Shows the sound device's format and state: stereo, buffer size and "
+		"position, bits per sample, rate and mixing channels.");
 
 	Cvar_RegisterVariable(&nosound);
 	Cvar_RegisterVariable(&volume);

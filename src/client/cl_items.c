@@ -75,8 +75,13 @@ static int		nummarks, maxmarks;
 
 static r_ring_t	rings[MAX_AWAY];
 
-static cvar_t	demo_itemtimers = {.name = "demo_itemtimers", .string = "1", .archive = true};
-static cvar_t	demo_itemrings = {.name = "demo_itemrings", .string = "1", .archive = true};
+static cvar_t	demo_itemtimers = {.name = "demo_itemtimers", .string = "1", .archive = true,
+	.description = "Lists items taken in a KTX MVD or QTV stream beside the view, and the seconds until each is back.",
+	.values = (const cvar_value_t[]){{"0", "Not listed"}, {"1", "Listed"}, {0}}};
+static cvar_t	demo_itemrings = {.name = "demo_itemrings", .string = "1", .archive = true,
+	.description = "Marks where an item was taken in a KTX MVD or QTV stream with a ring, lit as it nears return, "
+		"and a faint ghost of it.",
+	.values = (const cvar_value_t[]){{"0", "Not marked"}, {"1", "Marked"}, {0}}};
 
 void CL_ItemsClear (void)
 {

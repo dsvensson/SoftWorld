@@ -139,6 +139,10 @@ extern	key_input_t	key_input;
 
 const char *Key_BindingForKey (int keynum);	// NULL when unbound
 
+// what completing the first word of the console's line would add to it, drawn
+// faded after it; NULL for nothing
+const char *Key_Suggestion (void);
+
 void Key_Event (int key, bool down);
 void Key_Init (void);
 void Key_WriteBindings (FILE *f);

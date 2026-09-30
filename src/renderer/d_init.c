@@ -24,8 +24,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define NUM_MIPS	4
 
-static cvar_t	d_mipcap = {.name = "d_mipcap", .string = "0"};
-static cvar_t	d_mipscale = {.name = "d_mipscale", .string = "1"};
+static cvar_t	d_mipcap = {.name = "d_mipcap", .string = "0",
+	.description = "The most detailed mip level the world's textures are drawn at, 0 (full detail) to 3 (coarsest)."};
+static cvar_t	d_mipscale = {.name = "d_mipscale", .string = "1",
+	.description = "Multiplies the scales at which surfaces go to coarser mip levels; higher goes sooner, "
+		"blurrier and faster."};
 
 surfcache_t		*d_initial_rover;
 bool		d_roverwrapped;

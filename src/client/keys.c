@@ -177,6 +177,8 @@ static bool CheckForCommand (void)
 ==============================================================================
 */
 
+#define KEY_LINE	(key_input.lines[key_input.edit_line])
+
 #define MAX_COMPLETIONS		65536	// candidates taken at most
 #define MAX_LISTED			256		// and listed
 
@@ -331,45 +333,119 @@ static void Key_ListCompletions (const completions_t *c)
 		Con_Printf ("and %d more\n", c->count - listed);
 }
 
+// the word being completed, and how a candidate is written in its place
+typedef struct
+{
+	int			start;		// where it begins in the edit line
+	bool		quoted;		// begun with a quote
+	const char	*after;		// written after a whole completion
+	bool		contains;	// the candidates were found by the name in them
+	size_t		dirlen;		// the directory typed before the name
+} word_t;
+
+// Tab again, the line as the last Tab left it, and the next candidate
+// replaces the last: the candidates, and which one is written
+static struct
+{
+	bool			on;
+	completions_t	c;
+	word_t			word;
+	int				index;
+	char			line[MAXCMDLINE];
+	int				linepos;
+} key_cycle;
+
+static void Key_EndCycle (void)
+{
+	if (key_cycle.on)
+		Key_FreeCompletions (&key_cycle.c);
+	key_cycle.on = false;
+}
+
+/*
+====================
+Key_WriteWord
+
+The word before the cursor replaced by len characters of text, what is after
+the cursor kept. A word with a space is quoted; whole adds the closing quote
+and what goes after it.
+====================
+*/
+static void Key_WriteWord (const word_t *w, const char *text, size_t len, bool whole)
+{
+	char	*line = KEY_LINE;
+	char	rest[MAXCMDLINE], word[MAXCMDLINE];
+	bool	quote = !w->quoted && memchr (text, ' ', len);
+	const char	*after = whole ? w->after : "";
+
+	Q_strncpyz (rest, line + key_input.linepos, sizeof(rest));
+	if (after[0] == ' ' && rest[0] == ' ')
+		after = "";		// a space after it already
+	snprintf (word, sizeof(word), "%s%.*s%s%s", quote ? "\"" : "", (int)len, text,
+		whole && (w->quoted || quote) ? "\"" : "", after);
+	Q_strncpyz (line + w->start, word, (size_t)(MAXCMDLINE - w->start));
+	key_input.linepos = (int)strlen (line);
+	Q_strncatz (line, rest, MAXCMDLINE);
+}
+
+// the candidate the cycle is on, written in place
+static void Key_WriteCycle (void)
+{
+	const char	*name = key_cycle.c.names[key_cycle.index];
+
+	Key_WriteWord (&key_cycle.word, name, strlen (name), false);
+	Q_strncpyz (key_cycle.line, KEY_LINE, sizeof(key_cycle.line));
+	key_cycle.linepos = key_input.linepos;
+}
+
 /*
 ====================
 Key_CompleteWord
 
-The word of the edit line from start, which the candidates complete: made as
-long as they all agree, and when only one is left the whole of it and after
-(a directory, ending with '/', is only on the way). Candidates found by the
-name in them (contains) replace the word only when what they agree on has
-it too. A word with a space is quoted (quoted says it is already). When
-nothing can be added, the candidates are listed.
+The word before the cursor, typed so far, and its candidates: the only one is
+written whole; else as far as they all agree, when that adds to what is typed
+(candidates found by the name in them only when what they agree on has it
+too). When nothing can be added they are listed, and from then on each Tab
+writes the next (Shift+Tab the one before), starting after what is typed.
+Takes the candidates for the cycle.
 ====================
 */
-static void Key_CompleteWord (completions_t *c, int start, bool quoted, const char *after, bool contains,
-	size_t dirlen)
+static void Key_CompleteWord (completions_t *c, const word_t *w, const char *typed, bool back)
 {
-	char	*line = key_input.lines[key_input.edit_line];
-	char	word[MAXCMDLINE];
 	size_t	len;
-	bool	whole, quote, grows;
+	bool	grows;
+	int		i;
 
 	if (!c->count)
 		return;
 	len = Key_CommonPrefix (c);
-	if (contains)
-		grows = len > dirlen && Key_HasText (c->names[0] + dirlen, len - dirlen, line + start + dirlen);
+	if (c->count == 1)
+	{	// a directory, ending with '/', is only on the way
+		Key_WriteWord (w, c->names[0], len, c->names[0][len - 1] != '/');
+		return;
+	}
+	if (w->contains)
+		grows = len > w->dirlen && Key_HasText (c->names[0] + w->dirlen, len - w->dirlen, typed + w->dirlen);
 	else
-		grows = len > strlen (line + start);
-	if (c->count > 1 && !grows)
+		grows = len > strlen (typed);
+	if (grows)
 	{
-		Key_ListCompletions (c);
+		Key_WriteWord (w, c->names[0], len, false);
 		return;
 	}
 
-	whole = c->count == 1 && c->names[0][len - 1] != '/';
-	quote = !quoted && memchr (c->names[0], ' ', len);
-	snprintf (word, sizeof(word), "%s%.*s%s%s", quote ? "\"" : "", (int)len, c->names[0],
-		whole && (quoted || quote) ? "\"" : "", whole ? after : "");
-	Q_strncpyz (line + start, word, (size_t)(MAXCMDLINE - start));
-	key_input.linepos = (int)strlen (line);
+	Key_ListCompletions (c);
+	for (i = 0 ; i < c->count && Q_strcasecmp (c->names[i], typed) ; i++)
+		;
+	if (i == c->count)
+		key_cycle.index = back ? c->count - 1 : 0;
+	else
+		key_cycle.index = (i + (back ? c->count - 1 : 1)) % c->count;
+	key_cycle.c = *c;
+	*c = (completions_t){0};
+	key_cycle.word = *w;
+	key_cycle.on = true;
+	Key_WriteCycle ();
 }
 
 /*
@@ -377,54 +453,67 @@ static void Key_CompleteWord (completions_t *c, int start, bool quoted, const ch
 CompleteCommand
 
 The word the cursor ends: a command or variable, or the argument of a command
-that completes it (demos to play)
+that completes it (demos to play). Tab again goes on to the next candidate.
 ====================
 */
-static void CompleteCommand (void)
+static void CompleteCommand (bool back)
 {
-	char			*line = key_input.lines[key_input.edit_line];
-	char			command[MAXCMDLINE], dir[MAXCMDLINE];
-	const char		*slash;
+	char			*line = KEY_LINE;
+	char			typed[MAXCMDLINE], command[MAXCMDLINE], dir[MAXCMDLINE];
+	const char		*slash, *word;
 	completions_t	c = {0};
+	word_t			w = {0};
 	int				cmd, space, arg;
-	size_t			dirlen;
-	bool			quoted, contains;
 
-	line[key_input.linepos] = 0;		// what is typed, not what backspacing left after it
-	cmd = line[1] == '/' || line[1] == '\\' ? 2 : 1;
-	for (space = cmd ; line[space] && line[space] != ' ' ; space++)
+	if (key_cycle.on && key_input.linepos == key_cycle.linepos && !strcmp (line, key_cycle.line))
+	{
+		key_cycle.index = (key_cycle.index + (back ? key_cycle.c.count - 1 : 1)) % key_cycle.c.count;
+		Key_WriteCycle ();
+		return;
+	}
+	Key_EndCycle ();
+
+	// what is typed before the cursor; what is after it stays
+	snprintf (typed, sizeof(typed), "%.*s", key_input.linepos, line);
+	cmd = typed[1] == '/' || typed[1] == '\\' ? 2 : 1;
+	for (space = cmd ; typed[space] && typed[space] != ' ' ; space++)
 		;
 
-	if (!line[space])
+	if (!typed[space])
 	{	// the command's name; a line of one is a command, not chat
-		Cmd_ListMatches (line + cmd, Key_AddCompletion, &c);
-		Cvar_ListMatches (line + cmd, Key_AddCompletion, &c);
+		word = typed + cmd;
+		Cmd_ListMatches (typed + cmd, Key_AddCompletion, &c);
+		Cvar_ListMatches (typed + cmd, Key_AddCompletion, &c);
 		Key_SortCompletions (&c);
-		if (c.count && cmd == 1 && key_input.linepos < MAXCMDLINE - 1)
+		if (c.count && cmd == 1 && strlen (line) < MAXCMDLINE - 1)
 		{
 			memmove (line + 2, line + 1, strlen (line + 1) + 1);
 			line[1] = '/';
+			key_input.linepos++;
 			cmd = 2;
 		}
-		Key_CompleteWord (&c, cmd, false, " ", false, 0);
+		w = (word_t){.start = cmd, .after = " "};
+		Key_CompleteWord (&c, &w, word, back);
 	}
 	else
 	{	// its first argument, if it completes it: from what is in the directory typed
-		snprintf (command, sizeof(command), "%.*s", space - cmd, line + cmd);
-		for (arg = space ; line[arg] == ' ' ; arg++)
+		snprintf (command, sizeof(command), "%.*s", space - cmd, typed + cmd);
+		for (arg = space ; typed[arg] == ' ' ; arg++)
 			;
-		quoted = line[arg] == '"';
-		if (quoted)
+		w.quoted = typed[arg] == '"';
+		if (w.quoted)
 			arg++;
-		slash = strrchr (line + arg, '/');
-		dirlen = slash ? (size_t)(slash - (line + arg)) + 1 : 0;
-		snprintf (dir, sizeof(dir), "%.*s", (int)dirlen, line + arg);
-		if ((quoted ? !strchr (line + arg, '"') : !strchr (line + arg, ' '))
+		slash = strrchr (typed + arg, '/');
+		w.dirlen = slash ? (size_t)(slash - (typed + arg)) + 1 : 0;
+		snprintf (dir, sizeof(dir), "%.*s", (int)w.dirlen, typed + arg);
+		w.start = arg;
+		w.after = "";
+		if ((w.quoted ? !strchr (typed + arg, '"') : !strchr (typed + arg, ' '))
 			&& Cmd_CompleteArgument (command, dir, Key_AddCompletion, &c))
 		{
 			Key_SortCompletions (&c);
-			contains = Key_FilterCompletions (&c, line + arg, dirlen);
-			Key_CompleteWord (&c, arg, quoted, "", contains, dirlen);
+			w.contains = Key_FilterCompletions (&c, typed + arg, w.dirlen);
+			Key_CompleteWord (&c, &w, typed + arg, back);
 		}
 	}
 
@@ -433,34 +522,141 @@ static void CompleteCommand (void)
 
 /*
 ====================
+Key_SuggestedName
+
+The command or variable the first word typed is the start of, fish's way: the
+first by name, unless what is typed is one already; NULL for none, and unless
+the cursor is at the end of the line. Found again only when the line changes.
+====================
+*/
+static struct
+{
+	bool	valid;
+	char	line[MAXCMDLINE];		// the line it was found for
+	char	name[MAXCMDLINE];		// empty for none
+} key_suggest;
+
+static const char *Key_SuggestedName (void)
+{
+	char			*line = KEY_LINE;
+	int				cmd = line[1] == '/' || line[1] == '\\' ? 2 : 1, i;
+	completions_t	c = {0};
+
+	if (key_input.linepos != (int)strlen (line) || !line[cmd] || strchr (line + cmd, ' '))
+		return NULL;
+	if (!key_suggest.valid || strcmp (key_suggest.line, line))
+	{
+		Q_strncpyz (key_suggest.line, line, sizeof(key_suggest.line));
+		key_suggest.valid = true;
+		key_suggest.name[0] = 0;
+		Cmd_ListMatches (line + cmd, Key_AddCompletion, &c);
+		Cvar_ListMatches (line + cmd, Key_AddCompletion, &c);
+		Key_SortCompletions (&c);
+		for (i = 0 ; i < c.count && Q_strcasecmp (c.names[i], line + cmd) ; i++)
+			;
+		if (c.count && i == c.count)
+			Q_strncpyz (key_suggest.name, c.names[0], sizeof(key_suggest.name));
+		Key_FreeCompletions (&c);
+	}
+	return key_suggest.name[0] ? key_suggest.name : NULL;
+}
+
+const char *Key_Suggestion (void)
+{
+	const char	*name = Key_SuggestedName ();
+	char		*line = KEY_LINE;
+
+	return name ? name + strlen (line + (line[1] == '/' || line[1] == '\\' ? 2 : 1)) : NULL;
+}
+
+// the suggestion taken: the name written in place of what is typed
+static bool Key_AcceptSuggestion (void)
+{
+	const char	*name = Key_SuggestedName ();
+	char		*line = KEY_LINE;
+	int			cmd = line[1] == '/' || line[1] == '\\' ? 2 : 1;
+
+	if (!name)
+		return false;
+	Q_strncpyz (line + cmd, name, (size_t)(MAXCMDLINE - cmd));
+	key_input.linepos = (int)strlen (line);
+	return true;
+}
+
+/*
+==============================================================================
+
+			LINE EDITING
+
+==============================================================================
+*/
+
+static char		key_killed[MAXCMDLINE];		// what Ctrl+U, Ctrl+K and Ctrl+W cut, for Ctrl+Y
+
+// len characters of text put in at the cursor, as many as fit
+static void Key_InsertText (const char *text, size_t len)
+{
+	char	*line = KEY_LINE;
+	size_t	end = strlen (line), room = MAXCMDLINE - 1 - end;
+
+	if (len > room)
+		len = room;
+	if (!len)
+		return;
+	memmove (line + key_input.linepos + len, line + key_input.linepos, end - (size_t)key_input.linepos + 1);
+	memcpy (line + key_input.linepos, text, len);
+	key_input.linepos += (int)len;
+}
+
+// the characters from .. to taken out, the cursor where they were; cut keeps
+// them for Ctrl+Y
+static void Key_DeleteText (int from, int to, bool cut)
+{
+	char	*line = KEY_LINE;
+
+	if (to <= from)
+		return;
+	if (cut)
+		snprintf (key_killed, sizeof(key_killed), "%.*s", to - from, line + from);
+	memmove (line + from, line + to, strlen (line + to) + 1);
+	key_input.linepos = from;
+}
+
+/*
+====================
 Key_Console
 
-Interactive line editing and console scrollback
+Interactive line editing and console scrollback: the keys (and Ctrl with a
+letter), as bash has them. Typed text comes by Key_ConsoleText.
 ====================
 */
 static void Key_Console (int key)
 {
-	int		i;
-	char	*clipText;
-	
+	char	*line = KEY_LINE, *clipText;
+	int		end = (int)strlen (line), i;
+	bool	ctrl = keydown[K_CTRL];
+	int		letter = ctrl && !keydown[K_ALT] && key >= 'A' && key <= 'z' ? tolower (key) : 0;	// not AltGr's text
+
 	if (key == K_ENTER)
 	{	// backslash text are commands, else chat
-		if (key_input.lines[key_input.edit_line][1] == '\\' || key_input.lines[key_input.edit_line][1] == '/')
-			Cbuf_AddText (key_input.lines[key_input.edit_line]+2);	// skip the >
+		Key_EndCycle ();
+		if (line[1] == '\\' || line[1] == '/')
+			Cbuf_AddText (line+2);	// skip the >
 		else if (CheckForCommand())
-			Cbuf_AddText (key_input.lines[key_input.edit_line]+1);	// valid command
+			Cbuf_AddText (line+1);	// valid command
 		else
 		{	// convert to a chat message
 			if (cls.state >= ca_connected)
 				Cbuf_AddText ("say ");
-			Cbuf_AddText (key_input.lines[key_input.edit_line]+1);	// skip the >
+			Cbuf_AddText (line+1);	// skip the >
 		}
 
 		Cbuf_AddText ("\n");
-		Con_Printf ("%s\n",key_input.lines[key_input.edit_line]);
+		Con_Printf ("%s\n", line);
 		key_input.edit_line = (key_input.edit_line + 1) & 31;
 		history_line = key_input.edit_line;
-		key_input.lines[key_input.edit_line][0] = ']';
+		KEY_LINE[0] = ']';
+		KEY_LINE[1] = 0;
 		key_input.linepos = 1;
 		if (cls.state == ca_disconnected)
 			SCR_UpdateScreen ();	// force an update, because the command
@@ -469,15 +665,97 @@ static void Key_Console (int key)
 	}
 
 	if (key == K_TAB)
-	{	// command completion
-		CompleteCommand ();
+	{	// completion; Shift+Tab goes back through the candidates
+		CompleteCommand (shift_down);
 		return;
 	}
-	
-	if (key == K_BACKSPACE || key == K_LEFTARROW)
+
+	if (key == K_BACKSPACE)
+	{
+		if (key_input.linepos > 1)
+			Key_DeleteText (key_input.linepos - 1, key_input.linepos, false);
+		return;
+	}
+
+	if (key == K_DEL || letter == 'd')
+	{
+		if (key_input.linepos < end)
+			Key_DeleteText (key_input.linepos, key_input.linepos + 1, false);
+		return;
+	}
+
+	if (key == K_LEFTARROW || letter == 'b')
 	{
 		if (key_input.linepos > 1)
 			key_input.linepos--;
+		return;
+	}
+
+	// at the end of the line, right takes the suggestion, as in fish
+	if (key == K_RIGHTARROW || letter == 'f')
+	{
+		if (key_input.linepos < end)
+			key_input.linepos++;
+		else
+			Key_AcceptSuggestion ();
+		return;
+	}
+
+	if ((key == K_HOME && !ctrl) || letter == 'a')
+	{
+		key_input.linepos = 1;
+		return;
+	}
+
+	if ((key == K_END && !ctrl) || letter == 'e')
+	{
+		if (key_input.linepos < end)
+			key_input.linepos = end;
+		else
+			Key_AcceptSuggestion ();
+		return;
+	}
+
+	if (letter == 'u')
+	{	// cuts from the start of the line
+		Key_DeleteText (1, key_input.linepos, true);
+		return;
+	}
+
+	if (letter == 'k')
+	{	// cuts to the end of the line
+		Key_DeleteText (key_input.linepos, end, true);
+		return;
+	}
+
+	if (letter == 'w')
+	{	// cuts the word before the cursor
+		for (i = key_input.linepos ; i > 1 && line[i - 1] == ' ' ; i--)
+			;
+		for ( ; i > 1 && line[i - 1] != ' ' ; i--)
+			;
+		Key_DeleteText (i, key_input.linepos, true);
+		return;
+	}
+
+	if (letter == 'y')
+	{	// puts back what was cut
+		Key_InsertText (key_killed, strlen (key_killed));
+		return;
+	}
+
+	if (letter == 'v')
+	{
+		clipText = Sys_GetClipboardText ();
+		if (clipText)
+		{
+			strtok (clipText, "\n\r\b");	// only the first line
+			for (i = 0 ; clipText[i] ; i++)
+				if ((byte)clipText[i] < 32)
+					clipText[i] = ' ';
+			Key_InsertText (clipText, strlen (clipText));
+			free (clipText);
+		}
 		return;
 	}
 
@@ -490,8 +768,8 @@ static void Key_Console (int key)
 				&& !key_input.lines[history_line][1]);
 		if (history_line == key_input.edit_line)
 			history_line = (key_input.edit_line+1)&31;
-		Q_strcpy(key_input.lines[key_input.edit_line], key_input.lines[history_line]);
-		key_input.linepos = Q_strlen(key_input.lines[key_input.edit_line]);
+		Q_strcpy(KEY_LINE, key_input.lines[history_line]);
+		key_input.linepos = Q_strlen(KEY_LINE);
 		return;
 	}
 
@@ -506,13 +784,14 @@ static void Key_Console (int key)
 			&& !key_input.lines[history_line][1]);
 		if (history_line == key_input.edit_line)
 		{
-			key_input.lines[key_input.edit_line][0] = ']';
+			KEY_LINE[0] = ']';
+			KEY_LINE[1] = 0;
 			key_input.linepos = 1;
 		}
 		else
 		{
-			Q_strcpy(key_input.lines[key_input.edit_line], key_input.lines[history_line]);
-			key_input.linepos = Q_strlen(key_input.lines[key_input.edit_line]);
+			Q_strcpy(KEY_LINE, key_input.lines[history_line]);
+			key_input.linepos = Q_strlen(KEY_LINE);
 		}
 		return;
 	}
@@ -531,6 +810,7 @@ static void Key_Console (int key)
 		return;
 	}
 
+	// Ctrl+Home and Ctrl+End: the top and the bottom of the scrollback
 	if (key == K_HOME)
 	{
 		con.display = con.current - con.totallines + 10;
@@ -542,37 +822,14 @@ static void Key_Console (int key)
 		con.display = con.current;
 		return;
 	}
-	
-	if ((key=='V' || key=='v') && keydown[K_CTRL])
-	{
-		clipText = Sys_GetClipboardText ();
-		if (clipText)
-		{
-			strtok (clipText, "\n\r\b");	// only the first line
-			i = (int)strlen (clipText);
-			if (i + key_input.linepos >= MAXCMDLINE)
-				i = MAXCMDLINE - 1 - key_input.linepos;
-			if (i > 0)
-			{
-				clipText[i] = 0;
-				Q_strncatz (key_input.lines[key_input.edit_line], clipText, sizeof(key_input.lines[key_input.edit_line]));
-				key_input.linepos += i;
-			}
-			free (clipText);
-		}
-		return;
-	}
+}
 
-	if (key < 32 || key > 127)
-		return;	// non printable
-		
-	if (key_input.linepos < MAXCMDLINE-1)
-	{
-		key_input.lines[key_input.edit_line][key_input.linepos] = (char)key;
-		key_input.linepos++;
-		key_input.lines[key_input.edit_line][key_input.linepos] = 0;
-	}
+// a character typed into the console's line, at the cursor
+static void Key_ConsoleText (int ch)
+{
+	char	c = (char)ch;
 
+	Key_InsertText (&c, 1);
 }
 
 //============================================================================
@@ -855,6 +1112,8 @@ void Key_Init (void)
 	consolekeys[K_PGUP] = true;
 	consolekeys[K_PGDN] = true;
 	consolekeys[K_SHIFT] = true;
+	consolekeys[K_CTRL] = true;		// Ctrl with a letter edits the line, and runs no binding
+	consolekeys[K_DEL] = true;
 	consolekeys[K_MWHEELUP] = true;
 	consolekeys[K_MWHEELDOWN] = true;
 	consolekeys['`'] = false;
@@ -893,9 +1152,9 @@ void Key_Init (void)
 //
 // register our functions
 //
-	Cmd_AddCommand ("bind",Key_Bind_f);
-	Cmd_AddCommand ("unbind",Key_Unbind_f);
-	Cmd_AddCommand ("unbindall",Key_Unbindall_f);
+	Cmd_AddCommand ("bind",Key_Bind_f, "Binds a command to a key, or shows the key's binding. Usage: bind <key> [command]");
+	Cmd_AddCommand ("unbind",Key_Unbind_f, "Removes a key's binding. Usage: unbind <key>");
+	Cmd_AddCommand ("unbindall",Key_Unbindall_f, "Removes every key's binding.");
 
 
 }
@@ -935,8 +1194,10 @@ void Key_Event (int key, bool down)
 			&& key != K_PAUSE 
 			&& key != K_PGUP 
 			&& key != K_PGDN
+			&& !(cls.key_dest == key_console && (key == K_LEFTARROW || key == K_RIGHTARROW || key == K_DEL
+				|| (keydown[K_CTRL] && key != K_CTRL)))
 			&& key_repeats[key] > 1)
-			return;	// ignore most autorepeats
+			return;	// ignore most autorepeats; the line's editing keys repeat
 			
 		if (key >= 200 && !keybindings[key])
 			Con_Printf ("%s is unbound, hit F4 to set.\n", Key_KeynumToString (key) );
@@ -1096,11 +1357,11 @@ void Key_CharEvent (int ch)
 		Key_Message (ch);
 		break;
 	case key_console:
-		Key_Console (ch);
+		Key_ConsoleText (ch);
 		break;
 	case key_game:
 		if (cls.state != ca_active)
-			Key_Console (ch);		// the console fills the screen
+			Key_ConsoleText (ch);		// the console fills the screen
 		break;
 	default:
 		break;

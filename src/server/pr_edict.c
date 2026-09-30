@@ -891,10 +891,13 @@ PR_Init
 */
 void PR_Init (void)
 {
-	Cmd_AddCommand ("edict", ED_PrintEdict_f);
-	Cmd_AddCommand ("edicts", ED_PrintEdicts);
-	Cmd_AddCommand ("edictcount", ED_Count);
-	Cmd_AddCommand ("profile", PR_Profile_f);
+	Cmd_AddCommand ("edict", ED_PrintEdict_f, "Prints the fields of an entity of the running map. "
+		"Usage: edict <number>");
+	Cmd_AddCommand ("edicts", ED_PrintEdicts, "Prints the fields of every entity of the running map.");
+	Cmd_AddCommand ("edictcount", ED_Count, "Counts the running map's entities: in use, with a model, solid, "
+		"and stepping (MOVETYPE_STEP).");
+	Cmd_AddCommand ("profile", PR_Profile_f, "Lists the ten QuakeC functions that ran the most instructions, "
+		"and starts the counts over.");
 }
 
 

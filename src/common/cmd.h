@@ -70,9 +70,10 @@ typedef void (*xcommand_t) (void);
 
 void	Cmd_Init (void);
 
-void	Cmd_AddCommand (char *cmd_name, xcommand_t function);
+void	Cmd_AddCommand (char *cmd_name, xcommand_t function, const char *description);
 // called by the init functions of other parts of the program to
-// register commands and functions to call for them.
+// register commands and functions to call for them, with what the command
+// does and its arguments, for apropos.
 // The cmd_name is referenced later, so it should not be in temp memory
 // if function is NULL, the command will be forwarded to the server
 // as a clc_stringcmd instead of executed locally

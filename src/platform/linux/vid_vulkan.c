@@ -1378,8 +1378,10 @@ void VID_Init (void)
 	int		scale;
 
 	scale = VID_RegisterCommon ();
-	Cmd_AddCommand ("vid_fullscreen", VID_Fullscreen_f);
-	Cmd_AddCommand ("vid_info", VID_Info_f);
+	Cmd_AddCommand ("vid_fullscreen", VID_Fullscreen_f,
+		"Toggles fullscreen, the compositor's, as Alt+Enter does.");
+	Cmd_AddCommand ("vid_info", VID_Info_f,
+		"Prints the GPU, the presentation, the compositor's protocols, direct scanout and present-to-screen latency.");
 
 	if (!WL_Init (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale))
 		Sys_Error ("SoftWorld runs on Wayland, and found no Wayland compositor (WAYLAND_DISPLAY)");

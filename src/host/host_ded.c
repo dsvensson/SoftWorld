@@ -84,7 +84,7 @@ void Host_Init (quakeparms_t *parms)
 	NET_Init ();
 
 	SV_Init ();
-	Cmd_AddCommand ("quit", Host_Quit_f);
+	Cmd_AddCommand ("quit", Host_Quit_f, "Shuts the server down and exits.");
 
 	Cbuf_InsertText ("exec server.cfg\n");
 

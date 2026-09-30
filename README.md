@@ -154,6 +154,14 @@ render:direct_scanout = 2     # fullscreen games scanned out
 general:allow_tearing = true  # vid_vsync 0 tears in fullscreen
 ```
 
+In the console, Tab completes a command or variable as far as the candidates agree, and Tab
+again lists them and goes through them (Shift+Tab back). What completing would add shows
+faded after the line; Right or End takes it. The line edits as bash's does: Ctrl+A and Ctrl+E
+the start and end, Ctrl+B and Ctrl+F a character back and forward, Ctrl+U, Ctrl+K and Ctrl+W
+cut to the start, to the end and the word before, Ctrl+Y puts back what was cut, Ctrl+V
+pastes. `apropos text` lists the variables and commands with the text in their name or
+description, and a variable's name alone tells what it does, its values and its default.
+
 Worth knowing:
 
 | | |

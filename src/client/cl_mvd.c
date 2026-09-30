@@ -116,9 +116,14 @@ static struct
 	uint32_t	until;			// a seek reads the frames up to this
 } mvd = {.track = -1};
 
-static cvar_t	demo_speed = {.name = "demo_speed", .string = "1"};	// MVD playback speed, 1 is real time
+static cvar_t	demo_speed = {.name = "demo_speed", .string = "1",	// MVD playback speed, 1 is real time
+	.description = "How fast an MVD file plays, as a multiple of real time; 0 holds it still. "
+		"A QTV stream plays at real time."};
 // follow the player the server's "//at" hints name, until one is picked by hand
-static cvar_t	demo_autotrack = {.name = "demo_autotrack", .string = "1", .archive = true};
+static cvar_t	demo_autotrack = {.name = "demo_autotrack", .string = "1", .archive = true,
+	.description = "In an MVD or QTV stream, follows the player the server's hints name, "
+		"until one is picked with jump or track.",
+	.values = (const cvar_value_t[]){{"0", "Stays on the player followed"}, {"1", "Follows the server's picks"}, {0}}};
 
 static uint32_t MVD_Long (size_t at)
 {
@@ -1195,6 +1200,10 @@ void CL_InitMVD (void)
 {
 	Cvar_RegisterVariable (&demo_speed);
 	Cvar_RegisterVariable (&demo_autotrack);
-	Cmd_AddCommand ("track", CL_MVDTrack_f);
-	Cmd_AddCommand ("demo_jump", CL_MVDJump_f);
+	Cmd_AddCommand ("track", CL_MVDTrack_f,
+		"Follows a player in the MVD or QTV stream watched, by name or userid; without one, the next player. "
+		"Usage: track [name|userid]");
+	Cmd_AddCommand ("demo_jump", CL_MVDJump_f,
+		"Seeks an MVD file to a time, m:s or seconds, or that far on or back with + or -; without one, prints where "
+		"playback is. Usage: demo_jump [[+|-]time]");
 }

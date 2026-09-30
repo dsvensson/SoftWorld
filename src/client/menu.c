@@ -944,13 +944,14 @@ static void M_Quit_Draw (void)
 
 void M_Init (void)
 {
-	Cmd_AddCommand ("togglemenu", M_ToggleMenu_f);
+	Cmd_AddCommand ("togglemenu", M_ToggleMenu_f,
+		"Opens or closes the main menu (from another menu, goes back to it); closes the console if it is down.");
 
-	Cmd_AddCommand ("menu_main", M_Menu_Main_f);
-	Cmd_AddCommand ("menu_options", M_Menu_Options_f);
-	Cmd_AddCommand ("menu_keys", M_Menu_Keys_f);
-	Cmd_AddCommand ("help", M_Menu_Help_f);
-	Cmd_AddCommand ("menu_quit", M_Menu_Quit_f);
+	Cmd_AddCommand ("menu_main", M_Menu_Main_f, "Opens the main menu.");
+	Cmd_AddCommand ("menu_options", M_Menu_Options_f, "Opens the options menu.");
+	Cmd_AddCommand ("menu_keys", M_Menu_Keys_f, "Opens the menu for binding keys to actions.");
+	Cmd_AddCommand ("help", M_Menu_Help_f, "Shows the help pages, turned with the arrow keys.");
+	Cmd_AddCommand ("menu_quit", M_Menu_Quit_f, "Asks whether to quit the game, answered with Y or N.");
 }
 
 

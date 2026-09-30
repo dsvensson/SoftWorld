@@ -21,8 +21,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cl_local.h"
 static byte	*Skin_Cache (skin_t *skin);
 
-cvar_t		baseskin = {.name = "baseskin", .string = "base"};
-cvar_t		noskins = {.name = "noskins", .string = "0"};
+cvar_t		baseskin = {.name = "baseskin", .string = "base",
+	.description = "The skin, skins/<name>.pcx, for players without one and those whose skin can't be found."};
+cvar_t		noskins = {.name = "noskins", .string = "0",
+	.description = "Whether players' skins are shown and missing ones downloaded from the server.",
+	.values = (const cvar_value_t[]){{"0", "Shown, missing ones downloaded"},
+		{"1", "Every player in the model's own skin"}, {"2", "Those on disk shown, none downloaded"}, {0}}};
 
 static char		allskins[128];
 #define	MAX_CACHED_SKINS		128

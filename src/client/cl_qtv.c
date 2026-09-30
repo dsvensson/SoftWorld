@@ -290,5 +290,7 @@ static void CL_QTVPlay_f (void)
 
 void CL_InitQTV (void)
 {
-	Cmd_AddCommand ("qtvplay", CL_QTVPlay_f);
+	Cmd_AddCommand ("qtvplay", CL_QTVPlay_f,
+		"Watches a game a QTV relay or mvdsv streams, on port 27599 unless one is given. "
+		"Usage: qtvplay [stream@]host[:port]");
 }

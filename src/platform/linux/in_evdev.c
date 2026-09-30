@@ -44,7 +44,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-static cvar_t	in_joystick = {.name = "joystick", .string = "1", .archive = true};
+static cvar_t	in_joystick = {.name = "joystick", .string = "1", .archive = true,
+	.description = "Reads the first gamepad: buttons and triggers as keys to bind, sticks for moving and looking.",
+	.values = (const cvar_value_t[]){{"0", "Gamepads ignored"}, {"1", "The first gamepad read"}, {0}}};
 
 #define TRIGGER_THRESHOLD	(30.0f / 255.0f)	// XInput's 30 of 255
 #define LEFT_DEADZONE		(7849.0f / 32767.0f)	// XInput's dead zones

@@ -25,9 +25,14 @@ edict_t	*sv_player;
 
 static usercmd_t	cmd;
 
-static cvar_t	sv_spectalk = {.name = "sv_spectalk", .string = "1"};
+static cvar_t	sv_spectalk = {.name = "sv_spectalk", .string = "1",
+	.description = "Lets spectators chat with players; 0 keeps their messages among spectators.",
+	.values = (const cvar_value_t[]){{"0", "Spectators talk only to spectators"}, {"1", "Spectators talk to everyone"},
+		{0}}};
 
-static cvar_t	sv_mapcheck	= {.name = "sv_mapcheck", .string = "1"};
+static cvar_t	sv_mapcheck	= {.name = "sv_mapcheck", .string = "1",
+	.description = "Drops clients whose map file differs from the server's, by its checksum.",
+	.values = (const cvar_value_t[]){{"0", "Any map file is accepted"}, {"1", "Differing maps are refused"}, {0}}};
 
 
 extern cvar_t pausable;

@@ -318,5 +318,7 @@ void CL_InitFMod (void)
 			fmod_files[fmod_numfiles++].name = fmod_hashes[i].name;
 	}
 	FS_SetLoadHook (CL_FModLoaded);
-	Cmd_AddCommand ("f_modified", CL_FModResponse);
+	Cmd_AddCommand ("f_modified", CL_FModResponse,
+		"Says in chat which checked models, sounds and palette files are modified, or \"all models ok\"; "
+		"prints it offline or in a demo.");
 }

@@ -24,7 +24,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 static void CL_FinishTimeDemo (void);
 
 // every nth timedemo frame is written to <basedir>/frames, for comparing renderers
-static cvar_t	timedemo_dump = {.name = "timedemo_dump", .string = "0"};
+static cvar_t	timedemo_dump = {.name = "timedemo_dump", .string = "0",
+	.description = "Writes every nth timedemo frame as a PNG in <basedir>/frames, for comparing renderers; 0 none."};
 
 /*
 ==============

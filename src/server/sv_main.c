@@ -30,65 +30,140 @@ static void Master_Heartbeat (void);
 
 client_t	*host_client;			// current client
 
-cvar_t	sv_mintic = {.name = "sv_mintic", .string = "0.03"};	// bound the size of the
-cvar_t	sv_maxtic = {.name = "sv_maxtic", .string = "0.1"};	// physics time tic 
+cvar_t	sv_mintic = {.name = "sv_mintic", .string = "0.03",	// bound the size of the
+	.description = "Shortest step of the world's physics, in seconds: entities (not players) move no more often "
+		"than this."};
+cvar_t	sv_maxtic = {.name = "sv_maxtic", .string = "0.1",	// physics time tic
+	.description = "Longest step of the world's physics, in seconds: a longer gap is cut to it, and an empty server "
+		"steps this seldom."};
 
 
-static cvar_t	timeout = {.name = "timeout", .string = "65"};		// seconds without any message
-static cvar_t	zombietime = {.name = "zombietime", .string = "2"};	// seconds to sink messages
+static cvar_t	timeout = {.name = "timeout", .string = "65",		// seconds without any message
+	.description = "Seconds without a packet from a client before it is dropped; the local client never times out."};
+static cvar_t	zombietime = {.name = "zombietime", .string = "2",	// seconds to sink messages
 											// after disconnect
+	.description = "Seconds a dropped client's slot is held, so its last reliable message can be resent, "
+		"before it is reused."};
 
-static cvar_t	spectator_password = {.name = "spectator_password", .string = ""};	// password for entering as a sepctator
+static cvar_t	spectator_password = {.name = "spectator_password", .string = "",	// password for entering as a sepctator
+	.description = "Password spectators must give as their spectator userinfo key; empty or \"none\" for none. "
+		"Sets needpass in the serverinfo."};
 
-cvar_t	allow_download = {.name = "allow_download", .string = "1"};
-cvar_t	allow_download_skins = {.name = "allow_download_skins", .string = "1"};
-cvar_t	allow_download_models = {.name = "allow_download_models", .string = "1"};
-cvar_t	allow_download_sounds = {.name = "allow_download_sounds", .string = "1"};
-cvar_t	allow_download_maps = {.name = "allow_download_maps", .string = "1"};
+cvar_t	allow_download = {.name = "allow_download", .string = "1",
+	.description = "Lets clients download the files they lack from the server; 0 turns off all downloads.",
+	.values = (const cvar_value_t[]){{"0", "No downloads"}, {"1", "Downloads, as the allow_download_ cvars permit"},
+		{0}}};
+cvar_t	allow_download_skins = {.name = "allow_download_skins", .string = "1",
+	.description = "Lets clients download skins (files under skins/), when allow_download is on.",
+	.values = (const cvar_value_t[]){{"0", "Refused"}, {"1", "Allowed"}, {0}}};
+cvar_t	allow_download_models = {.name = "allow_download_models", .string = "1",
+	.description = "Lets clients download models (files under progs/), when allow_download is on.",
+	.values = (const cvar_value_t[]){{"0", "Refused"}, {"1", "Allowed"}, {0}}};
+cvar_t	allow_download_sounds = {.name = "allow_download_sounds", .string = "1",
+	.description = "Lets clients download sounds (files under sound/), when allow_download is on.",
+	.values = (const cvar_value_t[]){{"0", "Refused"}, {"1", "Allowed"}, {0}}};
+cvar_t	allow_download_maps = {.name = "allow_download_maps", .string = "1",
+	.description = "Lets clients download maps (files under maps/), when allow_download is on; "
+		"maps in pak files are never sent.",
+	.values = (const cvar_value_t[]){{"0", "Refused"}, {"1", "Allowed"}, {0}}};
 
-static cvar_t sv_highchars = {.name = "sv_highchars", .string = "1"};
+static cvar_t sv_highchars = {.name = "sv_highchars", .string = "1",
+	.description = "Lets names and other info strings keep high-bit (colored) and control characters; 0 strips them.",
+	.values = (const cvar_value_t[]){{"0", "Plain ASCII only"}, {"1", "Any characters"}, {0}}};
 
-cvar_t sv_phs = {.name = "sv_phs", .string = "1"};
+cvar_t sv_phs = {.name = "sv_phs", .string = "1",
+	.description = "Sends a sound only to the clients that could hear it (the map's PHS); 0 sends every sound to all.",
+	.values = (const cvar_value_t[]){{"0", "Every sound to every client"},
+		{"1", "Sounds only to clients that may hear them"}, {0}}};
 
 // float coordinates (FTE_PEXT_FLOATCOORDS) for every map, not just those
 // past the standard +-4096; clients without them can't join
-cvar_t sv_bigcoords = {.name = "sv_bigcoords", .string = "0"};
+cvar_t sv_bigcoords = {.name = "sv_bigcoords", .string = "0",
+	.description = "Uses float coordinates on every map, not only those past +-4096; clients without them can't join. "
+		"Read as a map loads.",
+	.values = (const cvar_value_t[]){{"0", "Only on maps past +-4096"}, {"1", "On every map"}, {0}}};
 // the most bytes per second a client's rate may ask for, 0 no limit (FTE's)
-static cvar_t	sv_maxrate = {.name = "sv_maxrate", .string = "50000"};
+static cvar_t	sv_maxrate = {.name = "sv_maxrate", .string = "50000",
+	.description = "Most bytes per second a client's rate may ask for; 0 for no limit."};
 // bytes per second to a client downloading, 0 no limit (FTE's)
-cvar_t	sv_maxdrate = {.name = "sv_maxdrate", .string = "10000000"};
+cvar_t	sv_maxdrate = {.name = "sv_maxdrate", .string = "10000000",
+	.description = "Bytes per second sent to a client while it downloads; 0 for no limit."};
 
 // player movement: serverinfo keys, so the clients predict the same (mvdsv's
 // names and defaults); pm_pground follows pm_airstep
-cvar_t	pm_ktjump = {.name = "pm_ktjump", .string = "1", .serverinfo = true};
-cvar_t	pm_bunnyspeedcap = {.name = "pm_bunnyspeedcap", .string = "", .serverinfo = true};
-cvar_t	pm_slidefix = {.name = "pm_slidefix", .string = "", .serverinfo = true};
-cvar_t	pm_airstep = {.name = "pm_airstep", .string = "", .serverinfo = true};
-cvar_t	pm_pground = {.name = "pm_pground", .string = "", .serverinfo = true};
-cvar_t	pm_rampjump = {.name = "pm_rampjump", .string = "", .serverinfo = true};
+cvar_t	pm_ktjump = {.name = "pm_ktjump", .string = "1", .serverinfo = true,
+	.description = "How far a jump made while moving down is raised toward a full jump, 0 to 1; 0 turns it off. "
+		"Serverinfo."};
+cvar_t	pm_bunnyspeedcap = {.name = "pm_bunnyspeedcap", .string = "", .serverinfo = true,
+	.description = "Stops speed gained in the air at this many times the player's top speed; 0 or empty for no cap. "
+		"Serverinfo."};
+cvar_t	pm_slidefix = {.name = "pm_slidefix", .string = "", .serverinfo = true,
+	.description = "Applies gravity to players on the ground too, so they go down ramps as in NetQuake. Serverinfo.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Gravity on the ground too"}, {0}}};
+cvar_t	pm_airstep = {.name = "pm_airstep", .string = "", .serverinfo = true,
+	.description = "Lets players step up in the air, onto a step with ground under it, for some of their speed; "
+		"pm_pground follows it. Serverinfo.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Steps in the air"}, {0}}};
+cvar_t	pm_pground = {.name = "pm_pground", .string = "", .serverinfo = true,
+	.description = "Players find the ground only by landing on it, and keep it; set to follow pm_airstep. Serverinfo.",
+	.values = (const cvar_value_t[]){{"0", "Ground traced on every move"}, {"1", "Ground found by landing"}, {0}}};
+cvar_t	pm_rampjump = {.name = "pm_rampjump", .string = "", .serverinfo = true,
+	.description = "The ground holds players moving up a steep ramp longer, and the jump fix applies even when "
+		"not falling. Serverinfo.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "On"}, {0}}};
 
 // how far players may look up and down: serverinfo keys for the clients
 // (Z_EXT_PITCHLIMITS), and the server holds commands to them
-cvar_t sv_maxpitch = {.name = "maxpitch", .string = "80", .serverinfo = true};
-cvar_t sv_minpitch = {.name = "minpitch", .string = "-70", .serverinfo = true};
+cvar_t sv_maxpitch = {.name = "maxpitch", .string = "80", .serverinfo = true,
+	.description = "How far down players may look, in degrees; clients take 0 to 89.9. Serverinfo, and the server "
+		"holds commands to it."};
+cvar_t sv_minpitch = {.name = "minpitch", .string = "-70", .serverinfo = true,
+	.description = "How far up players may look, in negative degrees; clients take -89.9 to 0. Serverinfo, and the "
+		"server holds commands to it."};
 
-cvar_t pausable	= {.name = "pausable", .string = "1"};
+cvar_t pausable	= {.name = "pausable", .string = "1",
+	.description = "Lets players pause the game with the pause command; spectators never can.",
+	.values = (const cvar_value_t[]){{"0", "No pausing"}, {"1", "Players may pause"}, {0}}};
 
 
 //
 // game rules mirrored in svs.info
 //
-static cvar_t	fraglimit = {.name = "fraglimit", .string = "0", .serverinfo = true};
-static cvar_t	timelimit = {.name = "timelimit", .string = "0", .serverinfo = true};
-cvar_t	teamplay = {.name = "teamplay", .string = "0", .serverinfo = true};
-static cvar_t	samelevel = {.name = "samelevel", .string = "0", .serverinfo = true};
-static cvar_t	maxclients = {.name = "maxclients", .string = "8", .serverinfo = true};
-static cvar_t	maxspectators = {.name = "maxspectators", .string = "8", .serverinfo = true};
-static cvar_t	deathmatch = {.name = "deathmatch", .string = "1", .serverinfo = true};			// 0, 1, or 2
-static cvar_t	spawn = {.name = "spawn", .string = "0", .serverinfo = true};
-static cvar_t	watervis = {.name = "watervis", .string = "0", .serverinfo = true};
+static cvar_t	fraglimit = {.name = "fraglimit", .string = "0", .serverinfo = true,
+	.description = "Frags at which the level ends, read by the game code; 0 for no limit. Serverinfo."};
+static cvar_t	timelimit = {.name = "timelimit", .string = "0", .serverinfo = true,
+	.description = "Minutes after which the level ends, read by the game code; 0 for no limit. Serverinfo."};
+cvar_t	teamplay = {.name = "teamplay", .string = "0", .serverinfo = true,
+	.description = "Team rules, read by the game code (the meanings are the stock game's); clients show team scores "
+		"when nonzero. Serverinfo.",
+	.values = (const cvar_value_t[]){{"0", "No teams"}, {"1", "No damage to teammates or yourself"},
+		{"2", "Teammates take damage; killing one costs a frag"}, {"3", "No damage to teammates, but to yourself"},
+		{0}}};
+static cvar_t	samelevel = {.name = "samelevel", .string = "0", .serverinfo = true,
+	.description = "What a level's end and exits do, read by the game code (the meanings are the stock game's). "
+		"Serverinfo.",
+	.values = (const cvar_value_t[]){{"0", "Go on to the next map"}, {"1", "Stay on the same map"},
+		{"2", "Exits kill whoever touches them"}, {"3", "Exits kill, except on start"}, {0}}};
+static cvar_t	maxclients = {.name = "maxclients", .string = "8", .serverinfo = true,
+	.description = "Most players the server takes at once, up to 32. Serverinfo."};
+static cvar_t	maxspectators = {.name = "maxspectators", .string = "8", .serverinfo = true,
+	.description = "Most spectators the server takes at once, up to 32. Serverinfo."};
+static cvar_t	deathmatch = {.name = "deathmatch", .string = "1", .serverinfo = true,			// 0, 1, or 2
+	.description = "Deathmatch rules, read by the game code (the meanings are the stock game's). Serverinfo.",
+	.values = (const cvar_value_t[]){{"1", "Weapons are picked up; items respawn"},
+		{"2", "Weapons stay; armor, ammo and health don't respawn"},
+		{"3", "Weapons stay; items respawn, ammo in half the time"},
+		{"4", "Spawn with all weapons and full ammo; no weapons or ammo on the map"},
+		{"5", "Spawn with all weapons and some ammo; no weapons on the map"}, {0}}};
+static cvar_t	spawn = {.name = "spawn", .string = "0", .serverinfo = true,
+	.description = "A serverinfo key left for the game code; neither the engine nor the stock game reads it."};
+static cvar_t	watervis = {.name = "watervis", .string = "0", .serverinfo = true,
+	.description = "Tells clients whether they may see through water (r_wateralpha); this engine's client doesn't "
+		"check it. Serverinfo.",
+	.values = (const cvar_value_t[]){{"0", "Water opaque"}, {"1", "Translucent water allowed"}, {0}}};
 
-static cvar_t	hostname = {.name = "hostname", .string = "unnamed", .serverinfo = true};
+static cvar_t	hostname = {.name = "hostname", .string = "unnamed", .serverinfo = true,
+	.description = "The server's name, as server browsers show it. Serverinfo."};
 
 
 static void Master_Shutdown (void);
@@ -1007,7 +1082,10 @@ typedef struct
 static ipfilter_t	ipfilters[MAX_IPFILTERS];
 static int			numipfilters;
 
-static cvar_t	filterban = {.name = "filterban", .string = "1"};
+static cvar_t	filterban = {.name = "filterban", .string = "1",
+	.description = "Whether the IP filters (addip) ban the addresses they match, or let only those in.",
+	.values = (const cvar_value_t[]){{"0", "Only matching addresses are heard"},
+		{"1", "Matching addresses are banned"}, {0}}};
 
 /*
 =================
@@ -1508,10 +1586,13 @@ static void SV_InitLocal (void)
 
 	Cvar_RegisterVariable (&pausable);
 
-	Cmd_AddCommand ("addip", SV_AddIP_f);
-	Cmd_AddCommand ("removeip", SV_RemoveIP_f);
-	Cmd_AddCommand ("listip", SV_ListIP_f);
-	Cmd_AddCommand ("writeip", SV_WriteIP_f);
+	Cmd_AddCommand ("addip", SV_AddIP_f, "Adds an IP filter, which filterban makes a ban or an allowance; "
+		"octets that are 0 or left out match any value. Usage: addip <ip>");
+	Cmd_AddCommand ("removeip", SV_RemoveIP_f, "Removes an IP filter, given exactly as it was added. "
+		"Usage: removeip <ip>");
+	Cmd_AddCommand ("listip", SV_ListIP_f, "Lists the IP filters.");
+	Cmd_AddCommand ("writeip", SV_WriteIP_f, "Writes the IP filters to listip.cfg in the game directory, "
+		"as addip commands to exec.");
 
 	for (i=0 ; i<MAX_MODELS ; i++)
 		snprintf (svs.localmodels[i], sizeof(svs.localmodels[i]), "*%i", i);

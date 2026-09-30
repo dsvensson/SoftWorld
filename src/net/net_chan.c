@@ -81,9 +81,15 @@ to the new value before sending out any replies.
 
 */
 
-static cvar_t	showpackets = {.name = "showpackets", .string = "0"};
-static cvar_t	showdrop = {.name = "showdrop", .string = "0"};
-static cvar_t	qport = {.name = "qport", .string = "0"};
+static cvar_t	showpackets = {.name = "showpackets", .string = "0",
+	.description = "Prints each packet sent (-->) and received (<--): its sequence numbers, reliable flags and size.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Every packet printed"}, {0}}};
+static cvar_t	showdrop = {.name = "showdrop", .string = "0",
+	.description = "Prints packets that arrive out of order, and how many were lost before one.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "Lost and out of order packets printed"}, {0}}};
+static cvar_t	qport = {.name = "qport", .string = "0",
+	.description = "The client's number, picked at start, that lets a server tell clients at one address apart "
+		"and follow a router's remapped port."};
 
 /*
 ===============

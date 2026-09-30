@@ -827,7 +827,8 @@ void VID_Init (void)
 	@autoreleasepool
 	{
 		scale = VID_RegisterCommon ();
-		Cmd_AddCommand ("vid_fullscreen", VID_Fullscreen_f);
+		Cmd_AddCommand ("vid_fullscreen", VID_Fullscreen_f,
+			"Toggles fullscreen, macOS's own, as Option+Enter does.");
 
 		VID_CreateDevice ();
 		VID_CreateWindow (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);

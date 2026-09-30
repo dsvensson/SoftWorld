@@ -105,8 +105,12 @@ SOCKETS
 
 static udpsocket_t	*net_sockets[2];	// indexed by end
 
-cvar_t	password = {.name = "password", .string = "", .userinfo = true};
-cvar_t	rcon_password = {.name = "rcon_password", .string = ""};
+cvar_t	password = {.name = "password", .string = "", .userinfo = true,
+	.description = "The password sent to join a server; on a server, the one players must send "
+		"(empty or none: no password)."};
+cvar_t	rcon_password = {.name = "rcon_password", .string = "",
+	.description = "The password rcon sends with remote commands; a server runs them only with its own, "
+		"and never when empty."};
 
 /*
 ====================

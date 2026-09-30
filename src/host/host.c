@@ -40,7 +40,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 hoststate_t	host;
 
 // a fixed frame time, for timedemos that must draw the same frames every run
-static cvar_t	host_framerate = {.name = "host_framerate", .string = "0"};
+static cvar_t	host_framerate = {.name = "host_framerate", .string = "0",
+	.description = "Seconds each frame advances the game, whatever time passed, as timedemos need; 0 is real time."};
 
 static jmp_buf	host_abort;			// Host_Error and Host_EndGame return here
 static bool		host_abort_set;		// once a frame has run

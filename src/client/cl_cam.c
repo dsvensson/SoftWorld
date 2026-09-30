@@ -42,9 +42,14 @@ static bool locked = false;
 static int oldbuttons;
 
 // track high fragger
-static cvar_t cl_hightrack = {.name = "cl_hightrack", .string = "0"};
+static cvar_t cl_hightrack = {.name = "cl_hightrack", .string = "0",
+	.description = "As a spectator following players, follows the top fragger, switching when another passes them.",
+	.values = (const cvar_value_t[]){{"0", "Jump picks who to follow"}, {"1", "The top fragger"}, {0}}};
 
-static cvar_t cl_chasecam = {.name = "cl_chasecam", .string = "0"};
+static cvar_t cl_chasecam = {.name = "cl_chasecam", .string = "0",
+	.description = "As a spectator following a player, sees through their eyes instead of from a camera nearby.",
+	.values = (const cvar_value_t[]){{"0", "From a spot nearby, looking at them"},
+		{"1", "Through their eyes, their weapon shown"}, {0}}};
 
 //cvar_t cl_camera_maxpitch = {.name = "cl_camera_maxpitch", .string = "10"};
 //cvar_t cl_camera_maxyaw = {.name = "cl_camera_maxyaw", .string = "30"};
