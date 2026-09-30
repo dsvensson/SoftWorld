@@ -2,6 +2,7 @@
 # bottom are links of the modules they need plus a platform layer.
 
 add_subdirectory(common)
+add_subdirectory(qcvm)
 add_subdirectory(net)
 add_subdirectory(game)
 add_subdirectory(simd)

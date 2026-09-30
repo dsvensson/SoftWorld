@@ -76,3 +76,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	add_test(NAME present_vulkan COMMAND test_present_vulkan)
 	set_tests_properties(present_vulkan PROPERTIES SKIP_RETURN_CODE 77)
 endif()
+
+# the QuakeC VM's tests
+add_subdirectory(qcvm)
