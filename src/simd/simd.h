@@ -95,6 +95,29 @@ void	simd_aliasspan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, in
 void	simd_blendspan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
 			int alpha, int count);
 
+// how fog lies over the view: a pixel keeps weight (of 256) of its light and
+// takes the rest from the fog's color, blended as simd_blendspan blends. Its
+// weight is the table's entry for its 1/z: the bits of the float 1/z shifted
+// down SIMD_FOG_SHIFT, less base, so 256 entries a doubling of distance, the
+// first entry for all farther (1/z 0 or less too) and the last for all nearer.
+// A sky pixel's weight is sky.
+#define SIMD_FOG_SHIFT	15
+
+typedef struct
+{
+	const float	*table;
+	int			size;			// entries, at least 1
+	int			base;
+	float		color[3];		// the fog's channels (vid.h), each to the fourth
+	float		sky;
+} simd_fog_t;
+
+// pixels fogged by their 1/z, zbuf[i] or (zbuf NULL) zi + i * step. A pixel
+// with its top bit set is left as it is; one with bit 30 set is sky, and
+// loses the bit.
+void	simd_fogspan (uint32_t *dest, const float *zbuf, float zi, float step, int count,
+			const simd_fog_t *fog);
+
 // 8 bit texels through a palette, each written scale times: dest[i*scale + k]
 // = palette[src[i]]; texels equal to transparent (if not -1) are skipped
 void	simd_expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,

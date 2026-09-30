@@ -148,6 +148,7 @@ typedef enum
 	PROF_DRAW,			// the spans of surfaces drawn, in PROF_SPANS
 	PROF_SURFCACHE,		// lighting surfaces into the surface cache
 	PROF_MODELS,		// alias models and sprites
+	PROF_FOG,			// what is drawn before translucency, fogged
 	PROF_VIEWMODEL,
 	PROF_PARTICLES,
 	PROF_WARP,			// the underwater warp

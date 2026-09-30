@@ -476,6 +476,84 @@ void Simd_M3_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, 
 	}
 }
 
+// one 10 bit channel at bit shift fogged, as simd_scalar.c fogs it
+static inline uint32x4_t Simd_M3_FogChannel (uint32x4_t p, float32x4_t fog, float32x4_t a, float32x4_t ia,
+	int shift)
+{
+	const uint32x4_t	mask = vdupq_n_u32 (1023);
+	float32x4_t			fs = vcvtq_f32_u32 (vandq_u32 (vshlq_u32 (p, vdupq_n_s32 (-shift)), mask));
+	float32x4_t			x;
+	uint32x4_t			c;
+
+	fs = vmulq_f32 (fs, fs);
+	fs = vmulq_f32 (fs, fs);
+	x = vmulq_f32 (vaddq_f32 (vmulq_f32 (fs, a), vmulq_f32 (fog, ia)), vdupq_n_f32 (1.0f / 256.0f));
+	c = vcvtq_u32_f32 (vaddq_f32 (vsqrtq_f32 (vsqrtq_f32 (x)), vdupq_n_f32 (0.5f)));
+	return vshlq_u32 (vminq_u32 (c, mask), vdupq_n_s32 (shift));
+}
+
+// four pixels fogged; the lanes whose top bit is set are left as they are
+static inline uint32x4_t Simd_M3_Fog4 (uint32x4_t p, float32x4_t z, const simd_fog_t *fog)
+{
+	const int32x4_t		base = vdupq_n_s32 (fog->base), last = vdupq_n_s32 (fog->size - 1);
+	const float32x4_t	full = vdupq_n_f32 (256.0f);
+	int32x4_t			e;
+	float32x4_t			a, ia;
+	float				ab[4];
+	uint32x4_t			out;
+
+	// the table's entries by the bits of 1/z, negative ones the first
+	e = vsubq_s32 (vshrq_n_s32 (vreinterpretq_s32_f32 (z), SIMD_FOG_SHIFT), base);
+	e = vminq_s32 (vmaxq_s32 (e, vdupq_n_s32 (0)), last);
+	ab[0] = fog->table[vgetq_lane_s32 (e, 0)];
+	ab[1] = fog->table[vgetq_lane_s32 (e, 1)];
+	ab[2] = fog->table[vgetq_lane_s32 (e, 2)];
+	ab[3] = fog->table[vgetq_lane_s32 (e, 3)];
+	a = vbslq_f32 (vtstq_u32 (p, vdupq_n_u32 (0x40000000u)), vdupq_n_f32 (fog->sky), vld1q_f32 (ab));
+	ia = vsubq_f32 (full, a);
+
+	out = vorrq_u32 (Simd_M3_FogChannel (p, vdupq_n_f32 (fog->color[0]), a, ia, 0),
+		vorrq_u32 (Simd_M3_FogChannel (p, vdupq_n_f32 (fog->color[1]), a, ia, 10),
+			Simd_M3_FogChannel (p, vdupq_n_f32 (fog->color[2]), a, ia, 20)));
+	return vbslq_u32 (vtstq_u32 (p, vdupq_n_u32 (0x80000000u)), p, out);
+}
+
+void Simd_M3_FogSpan (uint32_t *dest, const float *zbuf, float zi, float step, int count,
+	const simd_fog_t *fog)
+{
+	const float32x4_t	vzi = vdupq_n_f32 (zi), vstep = vdupq_n_f32 (step);
+	int32x4_t			idx = Simd_M3_Iota ();
+	float32x4_t			z;
+	uint32_t			pb[4];
+	float				zb[4];
+	int					i, n;
+
+	for (i = 0 ; i < count ; i += 4, idx = vaddq_s32 (idx, vdupq_n_s32 (4)))
+	{
+		n = count - i < 4 ? count - i : 4;
+		if (n == 4)
+		{
+			z = zbuf ? vld1q_f32 (zbuf + i) : vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep));
+			vst1q_u32 (dest + i, Simd_M3_Fog4 (vld1q_u32 (dest + i), z, fog));
+			continue;
+		}
+
+		// the last few through buffers; the lanes past them are left as they are
+		memset (pb, 0xFF, sizeof(pb));
+		memcpy (pb, dest + i, (size_t)n * 4);
+		if (zbuf)
+		{
+			memset (zb, 0, sizeof(zb));
+			memcpy (zb, zbuf + i, (size_t)n * 4);
+			z = vld1q_f32 (zb);
+		}
+		else
+			z = vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep));
+		vst1q_u32 (pb, Simd_M3_Fog4 (vld1q_u32 (pb), z, fog));
+		memcpy (dest + i, pb, (size_t)n * 4);
+	}
+}
+
 // the lookups and stores are all of it, and the compiler widens the stores
 void Simd_M3_Expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
 	int scale, int transparent)

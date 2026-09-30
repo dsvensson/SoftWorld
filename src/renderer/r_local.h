@@ -133,6 +133,16 @@ extern int		r_skyboxsize;
 void R_SkyboxInit (void);
 void R_CheckSkybox (bool reload);
 
+// r_fog.c: the frame's fog, if r_fogactive (R_SetupFog); R_DrawFog fogs what
+// is drawn before translucency by the depth buffer, R_FogPixel and simd_fogspan
+// with d_fog what is drawn after it
+extern bool			r_fogactive;
+extern simd_fog_t	d_fog;
+void	R_FogInit (void);
+void	R_SetupFog (void);
+void	R_DrawFog (void);
+pixel_t	R_FogPixel (pixel_t p, float zi);
+
 // r_lightdata.c
 typedef struct
 {
@@ -145,6 +155,7 @@ typedef struct
 
 // r_fence.c
 #define PIXEL_TRANSPARENT	0x80000000u		// a cut-out texel in a fence surface's cache block
+#define PIXEL_SKY			0x40000000u		// a sky pixel of the view while there is fog, until R_DrawFog
 
 void R_ClearFences (void);
 void R_AddFence (msurface_t *surf);

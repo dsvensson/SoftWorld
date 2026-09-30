@@ -165,8 +165,9 @@ pixel_t *D_BlendRow (int count)
 D_DrawBlendedSpans
 
 Spans of a translucent surface: each texel mapped as D_DrawSpans or
-Turbulent8 maps it, then blended in where it isn't behind the depth buffer
-(its 1/z as D_DrawZSpans makes it); the depth buffer keeps what is behind
+Turbulent8 maps it, fogged by its own depth, then blended in where it isn't
+behind the depth buffer (its 1/z as D_DrawZSpans makes it); the depth buffer
+keeps what is behind
 =============
 */
 void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb)
@@ -187,6 +188,8 @@ void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb)
 			simd_texspan (row, &map, cacheblock, cachewidth, pspan->u, pspan->v, pspan->count);
 
 		zi = d_ziorigin + (float)pspan->v * d_zistepv + (float)pspan->u * d_zistepu;
+		if (r_fogactive)
+			simd_fogspan (row, NULL, zi, d_zistepu, pspan->count, &d_fog);
 		simd_blendspan (d_viewbuffer + screenwidth * pspan->v + pspan->u, row,
 			d_pzbuffer + d_zwidth * pspan->v + pspan->u, zi, d_zistepu, alpha, pspan->count);
 	}

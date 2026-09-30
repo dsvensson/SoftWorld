@@ -292,6 +292,55 @@ void Simd_Scalar_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zb
 	}
 }
 
+// a channel fogged: its light weighted a (of 256) and the fog's, fog, ia, as
+// Simd_Scalar_BlendChannel blends
+static inline unsigned Simd_Scalar_FogChannel (unsigned s, float fog, float a, float ia)
+{
+	float		fs = (float)s;
+	unsigned	c;
+
+	fs *= fs;
+	fs *= fs;
+	c = (unsigned)(sqrtf (sqrtf ((fs * a + fog * ia) * (1.0f / 256.0f))) + 0.5f);
+	return c < 1023 ? c : 1023;
+}
+
+// the fog table's entry for a 1/z, by its bits
+static inline int Simd_Scalar_FogEntry (float zi, const simd_fog_t *fog)
+{
+	int32_t		bits;
+	int			e;
+
+	memcpy (&bits, &zi, sizeof(bits));
+	if (bits < 0)
+		return 0;
+	e = (bits >> SIMD_FOG_SHIFT) - fog->base;
+	return e < 0 ? 0 : e < fog->size ? e : fog->size - 1;
+}
+
+void Simd_Scalar_FogSpan (uint32_t *dest, const float *zbuf, float zi, float step, int count,
+	const simd_fog_t *fog)
+{
+	float		a, ia;
+	uint32_t	p;
+	int			i;
+
+	for (i = 0 ; i < count ; i++)
+	{
+		p = dest[i];
+		if (p & 0x80000000u)
+			continue;
+		if (p & 0x40000000u)
+			a = fog->sky;
+		else
+			a = fog->table[Simd_Scalar_FogEntry (zbuf ? zbuf[i] : zi + (float)i * step, fog)];
+		ia = 256.0f - a;
+		dest[i] = Simd_Scalar_FogChannel (p & 1023, fog->color[0], a, ia)
+			| (Simd_Scalar_FogChannel ((p >> 10) & 1023, fog->color[1], a, ia) << 10)
+			| (Simd_Scalar_FogChannel ((p >> 20) & 1023, fog->color[2], a, ia) << 20);
+	}
+}
+
 void Simd_Scalar_Expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
 	int scale, int transparent)
 {

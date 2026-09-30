@@ -109,6 +109,56 @@ static void TestBlendSpan (void)
 	}
 }
 
+// fog over a span: pixels kept (top bit), sky (bit 30) and the rest, by a z
+// buffer or a stepped 1/z, some infinitely far (0), some past the table
+static void TestFogSpan (void)
+{
+	uint32_t	dest[300], a[300], b[300];
+	float		zbuf[300], table[97];
+	simd_fog_t	fog;
+	int			r, i, count;
+
+	for (r = 0 ; r < ROUNDS ; r++)
+	{
+		float	zi = RandFloat (0.0001f, 0.05f), step = RandFloat (-1e-4f, 1e-4f);
+
+		count = RandRange (0, 300);
+		fog.size = RandRange (1, 97);
+		for (i = 0 ; i < fog.size ; i++)
+			table[i] = RandFloat (0, 256);
+		fog.table = table;
+		{
+			// the table over some of the 1/z the pixels have
+			float	near = RandFloat (0.0001f, 0.05f);
+			int32_t	bits;
+
+			memcpy (&bits, &near, sizeof(bits));
+			fog.base = (bits >> SIMD_FOG_SHIFT) - RandRange (0, fog.size);
+		}
+		for (i = 0 ; i < 3 ; i++)
+		{
+			fog.color[i] = RandFloat (0, 1023);
+			fog.color[i] *= fog.color[i];
+			fog.color[i] *= fog.color[i];
+		}
+		fog.sky = RandFloat (0, 256);
+		for (i = 0 ; i < 300 ; i++)
+		{
+			dest[i] = Rand () & 0x3FFFFFFF;
+			if (!(Rand () & 7))
+				dest[i] |= 0x80000000u;
+			if (!(Rand () & 7))
+				dest[i] |= 0x40000000u;
+			zbuf[i] = (Rand () & 15) ? RandFloat (0, 0.05f) : (Rand () & 1) ? 0 : -RandFloat (0, 0.05f);
+		}
+		memcpy (a, dest, sizeof(a));
+		memcpy (b, dest, sizeof(b));
+		Simd_Scalar_FogSpan (a, (r & 1) ? zbuf : NULL, zi, step, count, &fog);
+		TESTED (FogSpan) (b, (r & 1) ? zbuf : NULL, zi, step, count, &fog);
+		Check ("FogSpan", r, !memcmp (a, b, sizeof(a)));
+	}
+}
+
 // a texture on a random plane, seen from a span that stays in front of the
 // viewer: 1/z at least 0.002 over u, v below 2048
 static simd_texmap_t RandTexmap (int width, int height)
@@ -354,6 +404,7 @@ int main (void)
 	TestLitRowRGB ();
 	TestAliasSpan ();
 	TestBlendSpan ();
+	TestFogSpan ();
 	TestExpand8 ();
 	TestCopyStream ();
 

@@ -95,6 +95,8 @@ void D_DrawParticle (particle_t *pparticle)
 		pix = d_pix_max;
 
 	color = d_pal30[(byte)pparticle->color];
+	if (r_fogactive)
+		color = R_FogPixel (color, zi);
 	count = pix << d_y_aspect_shift;
 
 	for ( ; count ; count--, pz += d_zwidth, pdest += screenwidth)

@@ -290,6 +290,7 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_waterwarp);
 	R_LightDataInit ();
 	R_SkyboxInit ();
+	R_FogInit ();
 	Cvar_RegisterVariable (&r_lightmode);
 	Cvar_RegisterVariable (&r_profile);
 	Cvar_RegisterVariable (&r_threads);
@@ -422,7 +423,7 @@ whole frame, and of what no stage covers (the game, sound, the waits)
 */
 static void R_Profile_f (void)
 {
-	static const char	*names[PROF_COUNT] = {"edges", "spans", "draw", "surfcache", "models", "viewmodel",
+	static const char	*names[PROF_COUNT] = {"edges", "spans", "draw", "surfcache", "models", "fog", "viewmodel",
 		"particles", "warp", "2d", "present"};
 	double	frame, staged;
 	int		i;
@@ -1303,6 +1304,7 @@ void R_RenderView (void)
 
 	R_CheckLightSettings ();
 	R_CheckSkybox (false);
+	R_SetupFog ();
 	R_CheckThreads ();
 	R_SetupFrame ();
 
@@ -1326,6 +1328,13 @@ void R_RenderView (void)
 
 	prof = R_ProfStart ();
 	R_DrawEntitiesOnList ();
+	R_ProfEnd (PROF_MODELS, prof);
+
+	prof = R_ProfStart ();
+	R_DrawFog ();
+	R_ProfEnd (PROF_FOG, prof);
+
+	prof = R_ProfStart ();
 	R_DrawTranslucent ();
 	R_DrawRings ();
 	R_ProfEnd (PROF_MODELS, prof);

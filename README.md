@@ -173,6 +173,7 @@ Worth knowing:
 | `r_lightmode` | 1 linear light in RGB, brighter than white where it is (the default); 0 lighting as Quake had it |
 | `r_fullbright_scale`, `r_dlight_scale` | fullbrights' light, and dynamic lights' on surfaces, times these |
 | `r_skybox` | a skybox in place of the sky's texture: `<name>rt.tga` and the other five faces in `env/` or `gfx/env/`; empty (the default) for the one the map's worldspawn names |
+| `r_fog`, `r_fog_usemap`, `r_skyfog` | fog: the map's, from its worldspawn's `fog` key (`r_fog_usemap 0` leaves it out), with `r_fog`'s over it, as FTE's `fog` command takes it (`"density red green blue"`; 0 is no fog); how far the sky takes the fog's color |
 | `r_threads` | threads drawing the view; 0 (the default) one a core, at most 8 |
 | `r_lerpframes`, `r_lerpmuzzlehack` | models' animation frames blend into each other (1, the default), as in ezQuake; the view model's muzzle flash appears at once rather than blending in from behind the view |
 | `gamma`, `vid_contrast` | the view's gamma and contrast; the HUD keeps its own |

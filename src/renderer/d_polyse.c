@@ -115,7 +115,7 @@ static inline int D_SkinTexel (int s, int t)
 D_PolysetBlendSpan
 
 A span of a translucent model: its texels depth tested and depth written as
-usual, into a row that is then blended into the frame
+usual, into a row that is then fogged and blended into the frame
 ================
 */
 static void D_PolysetBlendSpan (spanpackage_t *p, int count, const simd_aliasmap_t *map)
@@ -126,6 +126,9 @@ static void D_PolysetBlendSpan (spanpackage_t *p, int count, const simd_aliasmap
 	for (i=0 ; i<count ; i++)
 		row[i] = 0xffffffffu;		// no texel: its top bit, which no pixel has
 	simd_aliasspan (row, p->pz, p->ptex, p->sfrac, p->tfrac, p->light, p->zi, count, map);
+	if (r_fogactive)
+		simd_fogspan (row, NULL, (float)p->zi * ALIAS_ZI_TO_FLOAT, (float)map->zistep * ALIAS_ZI_TO_FLOAT,
+			count, &d_fog);
 	simd_blendspan (p->pdest, row, NULL, 0, 0, d_alpha, count);
 }
 
@@ -197,12 +200,20 @@ int		d_alpha = 256;
 ================
 D_AliasPut
 
-A single pixel of a model, blended if it is translucent
+A single pixel of a model, 1/z zi, blended if it is translucent: drawn after
+the fog, it is fogged first
 ================
 */
-static void D_AliasPut (pixel_t *dest, pixel_t color)
+static void D_AliasPut (pixel_t *dest, pixel_t color, float zi)
 {
-	*dest = d_alpha < 256 ? D_BlendPixel (color, *dest, d_alpha) : color;
+	if (d_alpha >= 256)
+	{
+		*dest = color;
+		return;
+	}
+	if (r_fogactive)
+		color = R_FogPixel (color, zi);
+	*dest = D_BlendPixel (color, *dest, d_alpha);
 }
 
 /*
@@ -230,7 +241,7 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int nverts)
 
 				*zbuf = z;
 				pix = r_affinetridesc.skinremap[D_SkinTexel (fv->v[2], fv->v[3])];
-				D_AliasPut (&d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]], D_AliasPixel (pix, fv->v[4]));
+				D_AliasPut (&d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]], D_AliasPixel (pix, fv->v[4]), z);
 			}
 		}
 	}
@@ -436,7 +447,7 @@ split:
 	{
 		*zbuf = zf;
 		D_AliasPut (&d_viewbuffer[d_scantable[new[1]] + new[0]],
-			D_AliasPixel (r_affinetridesc.skinremap[D_SkinTexel (new[2], new[3])], d_tlight));
+			D_AliasPixel (r_affinetridesc.skinremap[D_SkinTexel (new[2], new[3])], d_tlight), zf);
 	}
 
 nodraw:

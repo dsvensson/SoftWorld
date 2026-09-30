@@ -495,3 +495,10 @@ void Simd_V3_CopyStream (void *dest, size_t destpitch, const void *src, size_t s
 	}
 	_mm_sfence ();
 }
+
+// fog is the scalar kernel's until it is vectorized here
+void Simd_V3_FogSpan (uint32_t *dest, const float *zbuf, float zi, float step, int count,
+	const simd_fog_t *fog)
+{
+	Simd_Scalar_FogSpan (dest, zbuf, zi, step, count, fog);
+}

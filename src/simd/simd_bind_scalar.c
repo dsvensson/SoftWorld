@@ -63,6 +63,12 @@ void simd_blendspan (uint32_t *dest, const uint32_t *src, const float *zbuf, flo
 	Simd_Scalar_BlendSpan (dest, src, zbuf, zi, step, alpha, count);
 }
 
+void simd_fogspan (uint32_t *dest, const float *zbuf, float zi, float step, int count,
+	const simd_fog_t *fog)
+{
+	Simd_Scalar_FogSpan (dest, zbuf, zi, step, count, fog);
+}
+
 void simd_expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
 	int scale, int transparent)
 {

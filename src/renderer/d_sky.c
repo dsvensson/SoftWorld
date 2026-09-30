@@ -66,6 +66,7 @@ void D_DrawSkyScans (espan_t *pspan)
 {
 	int				count, spancount, u, v;
 	pixel_t			*pdest;
+	pixel_t			sky = r_fogactive ? PIXEL_SKY : 0;
 	fixed16_t		s, t, snext, tnext, sstep, tstep;
 	int				spancountminus1;
 
@@ -124,7 +125,7 @@ void D_DrawSkyScans (espan_t *pspan)
 			do
 			{
 				*pdest++ = d_pal30[r_skysource[((t & R_SKY_TMASK) >> 8) +
-						((s & R_SKY_SMASK) >> 16)]];
+						((s & R_SKY_SMASK) >> 16)]] | sky;
 				s += sstep;
 				t += tstep;
 			} while (--spancount > 0);
@@ -208,6 +209,7 @@ void D_DrawSkyboxScans (espan_t *pspan)
 	int				i, c, u, n, count, size = r_skyboxsize;
 	int				face, s, t, facenext, snext, tnext, sstep, tstep;
 	pixel_t			*pdest;
+	pixel_t			sky = r_fogactive ? PIXEL_SKY : 0;
 	const pixel_t	*texels;
 
 	// the direction pixel (u, v) looks in is origin + u*du + v*dv
@@ -240,7 +242,7 @@ void D_DrawSkyboxScans (espan_t *pspan)
 				sstep = (snext - s) / n;
 				tstep = (tnext - t) / n;
 				for (i=0 ; i<n ; i++, s += sstep, t += tstep)
-					*pdest++ = texels[(t >> 16) * size + (s >> 16)];
+					*pdest++ = texels[(t >> 16) * size + (s >> 16)] | sky;
 			}
 			else
 			{
@@ -250,7 +252,7 @@ void D_DrawSkyboxScans (espan_t *pspan)
 					for (c=0 ; c<3 ; c++)
 						d[c] = origin[c] + (float)(u + i) * du[c] + (float)pspan->v * dv[c];
 					face = D_SkyboxTexel (d, &s, &t);
-					*pdest++ = r_skyfaces[((size_t)face * size + (size_t)(t >> 16)) * size + (size_t)(s >> 16)];
+					*pdest++ = r_skyfaces[((size_t)face * size + (size_t)(t >> 16)) * size + (size_t)(s >> 16)] | sky;
 				}
 			}
 
