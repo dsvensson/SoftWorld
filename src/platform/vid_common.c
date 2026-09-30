@@ -13,9 +13,20 @@
 viddef_t	vid;				// global video state
 
 cvar_t	vid_vsync = {.name = "vid_vsync", .string = "1", .archive = true,
-	.description = "Shows frames in step with the display's refresh.",
+	.description = "Shows frames in step with the display's refresh (never in a timedemo).",
 	.values = (const cvar_value_t[]){{"0", "Frames shown without waiting for the display"},
 		{"1", "A frame at each refresh"}, {0}}};
+static bool	vid_unpaced;		// a timedemo: no waiting for the display
+
+void VID_SetUnpaced (bool on)
+{
+	vid_unpaced = on;
+}
+
+bool VID_Vsync (void)
+{
+	return vid_vsync.value && !vid_unpaced;
+}
 // render pixels per pixel of the 320x200 layout; 0 is the most the window holds
 static cvar_t	vid_scale = {.name = "vid_scale", .string = "1", .archive = true,
 	.description = "Render pixels per pixel of the 320x200 layout, up to 16; 0 is the most the window holds. "

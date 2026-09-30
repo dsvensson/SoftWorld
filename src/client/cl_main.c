@@ -1556,6 +1556,8 @@ void CL_Frame (void)
 
 	if (!cls.timedemo && fps && host.realtime - oldrealtime < 1.0/fps)
 		return;			// framerate is too high
+	// a timedemo draws as fast as it can: no cl_maxfps (above), no vsync
+	VID_SetUnpaced (cls.timedemo);
 
 	cls.frametime = host.realtime - oldrealtime;
 	oldrealtime = host.realtime;

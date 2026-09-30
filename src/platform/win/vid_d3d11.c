@@ -659,7 +659,7 @@ void VID_Update (void)
 	// second would be a refresh more of input lag; two without, so a frame is
 	// drawn while the last is presented (at 1300 fps a sixth more frames, for
 	// under a millisecond)
-	interval = vid_vsync.value ? 1 : 0;
+	interval = VID_Vsync () ? 1 : 0;
 	latency = interval ? 1 : 2;
 	if (latency != d3d_latency)
 	{

@@ -13,6 +13,9 @@
 #define VID_CRT_STRETCH	1.2f	// 320x200 shown as 320x240
 
 extern cvar_t	vid_vsync;
+
+// frames in step with the display: vid_vsync, unless VID_SetUnpaced
+bool	VID_Vsync (void);
 extern cvar_t	vid_hdr;
 extern cvar_t	vid_hdr_paperwhite;
 

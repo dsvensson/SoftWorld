@@ -103,6 +103,10 @@ const char	*VID_GPUName (void);
 bool	VID_IsActive (void);		// the window has the focus
 bool	VID_IsMinimized (void);
 
+// frames presented as fast as they are drawn, whatever vid_vsync says: a
+// timedemo's
+void	VID_SetUnpaced (bool on);
+
 // How the presenter turns the 3D view into screen colors: in its light gamma
 // and contrast (vid_contrast), then the display's range, and the blend over
 // its sRGB values, as Quake laid it. The 2D layer is laid over it as it is.

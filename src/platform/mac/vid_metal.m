@@ -653,7 +653,7 @@ void VID_ShownLayers (const pixel_t **frame, const hudpixel_t **hud)
 // the last is presented
 static void VID_SetLatency (void)
 {
-	int		latency = vid_vsync.value ? 1 : 2;
+	int		latency = VID_Vsync () ? 1 : 2;
 
 	if (latency == vid_latency)
 		return;
