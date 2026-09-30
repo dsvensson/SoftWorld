@@ -473,6 +473,88 @@ static void ED_Count (void)
 }
 
 /*
+=============
+ED_Hash
+
+FNV-1a, 64 bits
+=============
+*/
+static uint64_t ED_Hash (uint64_t h, const void *data, size_t len)
+{
+	const byte	*p = data;
+	size_t		i;
+
+	for (i = 0 ; i < len ; i++)
+		h = (h ^ p[i]) * 0x100000001B3ull;
+	return h;
+}
+
+// a value normalized so another VM's can be compared: entities as numbers,
+// strings and functions by their text, the rest as their bits
+static uint64_t ED_HashValue (uint64_t h, int type, const int *v)
+{
+	const char	*s;
+	int			n;
+
+	switch (type & ~DEF_SAVEGLOBAL)
+	{
+	case ev_string:
+		s = PR_GetString (v[0]);
+		return ED_Hash (h, s, strlen (s) + 1);
+	case ev_entity:
+		n = v[0] / pr.edict_size;
+		return ED_Hash (h, &n, 4);
+	case ev_function:
+		s = v[0] > 0 && v[0] < pr.progs->numfunctions ? PR_GetString (pr.functions[v[0]].s_name) : "";
+		return ED_Hash (h, s, strlen (s) + 1);
+	case ev_vector:
+		return ED_Hash (h, v, 12);
+	default:
+		return ED_Hash (h, v, 4);
+	}
+}
+
+/*
+=============
+ED_Digest_f
+
+A hash of each entity's fields and of the globals, to compare what two VMs
+made of the same map
+=============
+*/
+static void ED_Digest_f (void)
+{
+	uint64_t	h, total = 0xCBF29CE484222325ull;
+	edict_t		*ed;
+	ddef_t		*d;
+	int			i, j;
+
+	if (sv.state == ss_dead)
+		return;
+	for (i = 0 ; i < sv.num_edicts ; i++)
+	{
+		ed = EDICT_NUM (i);
+		h = 0xCBF29CE484222325ull;
+		for (j = 1 ; j < pr.progs->numfielddefs ; j++)
+		{
+			d = &pr_fielddefs[j];
+			h = ED_HashValue (h, d->type, (int *)((char *)&ed->v + d->ofs * 4));
+		}
+		Con_Printf ("edict %4i %s%016llx\n", i, ed->free ? "free " : "", (unsigned long long)h);
+		total = ED_Hash (total, &h, 8);
+	}
+	h = 0xCBF29CE484222325ull;
+	for (j = 0 ; j < pr.progs->numglobaldefs ; j++)
+	{
+		d = &pr_globaldefs[j];
+		h = ED_HashValue (h, d->type, (int *)&pr.globals[d->ofs]);
+	}
+	total = ED_Hash (total, &h, 8);
+	Con_Printf ("globals %016llx\n", (unsigned long long)h);
+	Con_Printf ("edictdigest %i %016llx\n", sv.num_edicts, (unsigned long long)total);
+}
+
+/*
 ==============================================================================
 
 					ARCHIVING GLOBALS
@@ -896,6 +978,8 @@ void PR_Init (void)
 	Cmd_AddCommand ("edicts", ED_PrintEdicts, "Prints the fields of every entity of the running map.");
 	Cmd_AddCommand ("edictcount", ED_Count, "Counts the running map's entities: in use, with a model, solid, "
 		"and stepping (MOVETYPE_STEP).");
+	Cmd_AddCommand ("edictdigest", ED_Digest_f, "Prints a hash of each entity's fields and of the globals, "
+		"to compare what two builds made of a map.");
 	Cmd_AddCommand ("profile", PR_Profile_f, "Lists the ten QuakeC functions that ran the most instructions, "
 		"and starts the counts over.");
 }
