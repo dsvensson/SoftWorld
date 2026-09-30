@@ -352,6 +352,8 @@ extern float		r_aliastransition, r_resfudge;
 
 extern int		r_outofsurfaces;
 extern int		r_outofedges;
+extern bool		r_outofbmodel;		// a brush entity's clipping ran out of room
+bool	R_GrowBModelClip (void);
 
 extern mvertex_t	*r_pcurrentvertbase;
 extern int			r_maxvalidedgeoffset;

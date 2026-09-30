@@ -1232,6 +1232,7 @@ static void R_EdgeDrawing (void)
 	{
 		r_outofsurfaces = 0;
 		r_outofedges = 0;
+		r_outofbmodel = false;
 
 		R_BeginEdgeFrame ();
 		R_ClearFences ();
@@ -1253,10 +1254,13 @@ static void R_EdgeDrawing (void)
 		R_DrawBEntitiesOnList ();
 		R_ProfEnd (PROF_EDGES, prof);
 
-		if (!r_outofsurfaces && !r_outofedges)
+		if (r_outofbmodel && !R_GrowBModelClip ())
+			r_outofbmodel = false;		// drawn without what doesn't fit
+		if (!r_outofsurfaces && !r_outofedges && !r_outofbmodel)
 			break;
-		R_AllocEdges (r_outofedges ? r_numallocatededges * 2 : r_numallocatededges,
-			r_outofsurfaces ? r_cnumsurfs * 2 : r_cnumsurfs);
+		if (r_outofsurfaces || r_outofedges)
+			R_AllocEdges (r_outofedges ? r_numallocatededges * 2 : r_numallocatededges,
+				r_outofsurfaces ? r_cnumsurfs * 2 : r_cnumsurfs);
 	}
 
 	if (r_dspeeds.value)

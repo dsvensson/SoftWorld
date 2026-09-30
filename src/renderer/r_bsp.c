@@ -41,12 +41,20 @@ int				r_currentbkey;
 
 typedef enum {touchessolid, drawnode, nodrawnode} solidstate_t;
 
-#define MAX_BMODEL_VERTS	500			// 6K
-#define MAX_BMODEL_EDGES	1000		// 12K
+// A brush entity's polygon clipped through the world takes an edge and a
+// vertex from these for each node plane it crosses. A big entity crossing many
+// nodes (Arcane Dimensions' maps) can outgrow them: the frame is then drawn
+// again with twice the room (R_GrowBModelClip), as the edge and surface lists
+// are, up to a bound a map can't push it past.
+#define MIN_BMODEL_VERTS	500
+#define MIN_BMODEL_EDGES	1000
+#define MAX_BMODEL_EDGES	(1 << 20)
 
 static mvertex_t	*pbverts;
 static bedge_t		*pbedges;
 static int			numbverts, numbedges;
+static int			r_maxbverts, r_maxbedges;
+bool				r_outofbmodel;		// this frame's clipping ran out of room
 
 static mvertex_t	*pfrontenter, *pfrontexit;
 
@@ -205,8 +213,11 @@ static void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *p
 		if (side != lastside)
 		{
 		// clipped
-			if (numbverts >= MAX_BMODEL_VERTS)
+			if (numbverts >= r_maxbverts)
+			{
+				r_outofbmodel = true;
 				return;
+			}
 
 		// generate the clipped vertex
 			frac = lastdist / (lastdist - dist);
@@ -224,9 +235,9 @@ static void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *p
 		// split into two edges, one on each side, and remember entering
 		// and exiting points
 		// FIXME: share the clip edge by having a winding direction flag?
-			if (numbedges >= (MAX_BMODEL_EDGES - 1))
+			if (numbedges >= r_maxbedges - 1)
 			{
-				Con_Printf ("Out of edges for bmodel\n");
+				r_outofbmodel = true;
 				return;
 			}
 
@@ -268,9 +279,9 @@ static void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *p
 // plane to both sides (but in opposite directions)
 	if (makeclippededge)
 	{
-		if (numbedges >= (MAX_BMODEL_EDGES - 2))
+		if (numbedges >= r_maxbedges - 2)
 		{
-			Con_Printf ("Out of edges for bmodel\n");
+			r_outofbmodel = true;
 			return;
 		}
 
@@ -322,6 +333,34 @@ static void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *p
 
 /*
 ================
+R_GrowBModelClip
+
+Twice the room for clipping brush entities, after a frame ran out; false at
+the bound (the frame is drawn without what didn't fit)
+================
+*/
+bool R_GrowBModelClip (void)
+{
+	static bool	warned;
+
+	if (r_maxbedges >= MAX_BMODEL_EDGES)
+	{
+		if (!warned)
+			Con_Printf ("A brush entity needs more than %i edges to draw\n", MAX_BMODEL_EDGES);
+		warned = true;
+		return false;
+	}
+	Mem_Free (pbverts);
+	Mem_Free (pbedges);
+	r_maxbverts = r_maxbverts ? r_maxbverts * 2 : MIN_BMODEL_VERTS;
+	r_maxbedges = r_maxbedges ? r_maxbedges * 2 : MIN_BMODEL_EDGES;
+	pbverts = Mem_Alloc ((size_t)r_maxbverts * sizeof(*pbverts));
+	pbedges = Mem_Alloc ((size_t)r_maxbedges * sizeof(*pbedges));
+	return true;
+}
+
+/*
+================
 R_DrawSolidClippedSubmodelPolygons
 ================
 */
@@ -332,9 +371,11 @@ void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel)
 	msurface_t	*psurf;
 	int			numsurfaces;
 	mplane_t	*pplane;
-	mvertex_t	bverts[MAX_BMODEL_VERTS];
-	bedge_t		bedges[MAX_BMODEL_EDGES], *pbedge;
+	bedge_t		*pbedge;
 	medge_t		*pedge, *pedges;
+
+	if (!pbedges)
+		R_GrowBModelClip ();
 
 // FIXME: use bounding-box-based frustum clipping info?
 
@@ -359,13 +400,16 @@ void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel)
 		// clockwise winding
 		// FIXME: if edges and vertices get caches, these assignments must move
 		// outside the loop, and overflow checking must be done here
-			pbverts = bverts;
-			pbedges = bedges;
 			numbverts = numbedges = 0;
+			if (psurf->numedges > r_maxbedges)
+			{
+				r_outofbmodel = true;
+				continue;
+			}
 
 			if (psurf->numedges > 0)
 			{
-				pbedge = &bedges[numbedges];
+				pbedge = &pbedges[numbedges];
 				numbedges += psurf->numedges;
 
 				for (j=0 ; j<psurf->numedges ; j++)
