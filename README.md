@@ -12,6 +12,8 @@ server, and the protocol extensions today's servers and clients speak.
 - **Network:** the FTE, MVD1 and ZQuake extensions (float coordinates, 2048 entities, 4096
   models, chunked downloads, …), mvdsv's player movement and its `pm_` keys.
 - **Demos:** QWD and MVD playback, MVD seeking (`demo_jump`), QTV (`qtvplay`), item timers.
+- **QuakeC:** a hardened VM with FTE's opcodes and builtins, multiprogs and threads; the
+  client-side QuakeC's files and lifecycle, its networking and drawing still to come.
 
 ## Building
 
@@ -185,6 +187,21 @@ Worth knowing:
 | `demo_itemtimers`, `demo_itemrings` | KTX's item announcements, as a list and as rings on the floor |
 | `f_version`, `f_system`, `f_modified` | answered in chat as ezQuake answers them; `f_modified` also as a command, and `allow_f_system 0` answers `f_system` with "disabled" |
 | `memstats` | memory by use |
+
+## QuakeC
+
+QuakeC runs on a VM of SoftWorld's own, a C translation of
+[qcvm-rs](https://github.com/dsvensson/qcvm-rs), made for untrusted progs: every progs format
+and opcode `fteqcc` writes, about 200 of FTE's builtins, several progs in one VM (`addprogs`),
+QuakeC threads (`sleep`, `fork`), autocvars, and hard limits, so that a QuakeC error is an error
+with a backtrace, never a crash. [docs/qcvm](docs/qcvm) describes it.
+
+The server runs `qwprogs.dat` with FTE's server builtins and offers a `csprogs.dat`
+(`sv_csqc_progname`) in the serverinfo as FTE does. The client has the machinery of CSQC but not
+yet its networking and drawing, so `cl_nocsqc` keeps it off by default. With `cl_nocsqc 0` it
+downloads a server's csprogs into `csprogsvers` (`cl_download_csprogs`), checks it, loads it with
+`csaddon.dat` where cheats apply, and runs its lifecycle across maps. `csqc_builtins` lists the
+builtins a csprogs calls that the client still lacks.
 
 ## License
 
