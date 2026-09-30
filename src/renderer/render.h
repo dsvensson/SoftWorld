@@ -67,6 +67,8 @@ typedef struct entity_s
 	vec3_t					angles;	
 	struct model_s			*model;			// NULL = no model
 	int						frame;
+	int						oldframe;		// the frame it is turning from (r_lerpframes)
+	float					backlerp;		// how much of oldframe is drawn: 0 none, 1 all
 	const byte				*translate;		// player colors: a palette index remap, NULL for none
 	const pixel_t			*palette;		// and as the palette in them, for RGB lighting
 	int						skinnum;		// for Alias models

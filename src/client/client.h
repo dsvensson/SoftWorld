@@ -569,6 +569,15 @@ void CL_SetUpPlayerPrediction(bool dopred);
 void CL_EmitEntities (void);
 void CL_ClearProjectiles (void);
 void CL_ResetSmoothing (void);		// a new level, or a new connection
+
+// an entity's animation frame, and the one it turns from (r_lerpframes)
+typedef struct
+{
+	int		frame, oldframe;
+	double	changed;		// when frame came
+} framelerp_t;
+void CL_FrameArrived (framelerp_t *f, int frame, bool snap);	// the frame an update has
+void CL_FrameBlend (const framelerp_t *f, entity_t *ent);		// the frames to draw between
 extern cvar_t	cl_nolerp;
 void CL_ParseProjectiles (bool numbered);
 

@@ -150,6 +150,8 @@ void R_SetFaceLightmap (model_t *mod, msurface_t *surf, const bspface_t *face, c
 
 extern cvar_t	r_lightmode;
 extern cvar_t	r_dlight_scale;		// dynamic lights' light times this
+extern cvar_t	r_lerpframes;
+extern cvar_t	r_lerpmuzzlehack;
 void R_DlightColor (const dlight_t *dl, float color[3]);
 
 // lit texel color: a color times light, with 15 fraction bits. A fullbright

@@ -144,6 +144,10 @@ static cvar_t	r_telealpha = {.name = "r_telealpha", .string = "1", .archive = tr
 // seen through on any map
 static cvar_t	r_novis = {.name = "r_novis", .string = "0"};
 static cvar_t	r_drawviewmodel = {.name = "r_drawviewmodel", .string = "1"};
+// models' animation frames blended into each other (ezQuake's): 0 a frame at a time
+cvar_t	r_lerpframes = {.name = "r_lerpframes", .string = "1", .archive = true};
+// the view model's muzzle flash is there at once, not drawn out from behind the view
+cvar_t	r_lerpmuzzlehack = {.name = "r_lerpmuzzlehack", .string = "1", .archive = true};
 static cvar_t	r_aliasstats = {.name = "r_polymodelstats", .string = "0"};
 static cvar_t	r_dspeeds = {.name = "r_dspeeds", .string = "0"};
 cvar_t	r_drawflat = {.name = "r_drawflat", .string = "0"};
@@ -231,6 +235,8 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_telealpha);
 	Cvar_RegisterVariable (&r_novis);
 	Cvar_RegisterVariable (&r_drawviewmodel);
+	Cvar_RegisterVariable (&r_lerpframes);
+	Cvar_RegisterVariable (&r_lerpmuzzlehack);
 	Cvar_RegisterVariable (&r_aliasstats);
 	Cvar_RegisterVariable (&r_dspeeds);
 	Cvar_RegisterVariable (&r_reportsurfout);

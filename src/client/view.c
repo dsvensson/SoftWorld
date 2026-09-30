@@ -63,6 +63,9 @@ static float	v_dmg_time, v_dmg_roll, v_dmg_pitch;
 extern	int in_forward2;
 
 static frame_t		*view_frame;
+static framelerp_t	view_frames;		// the weapon's frames (r_lerpframes)
+static struct model_s	*view_model;	// and whose they are
+static int			view_player;
 static player_state_t		*view_message;
 
 /*
@@ -676,7 +679,14 @@ static void V_CalcRefdef (void)
  		view->model = NULL;
  	else
 		view->model = CL_Model (cl.stats[STAT_WEAPON]);
-	view->frame = view_message->weaponframe;
+
+	// the weapon's frames blend, but not another weapon's into it, nor
+	// another player's in an MVD
+	CL_FrameArrived (&view_frames, view_message->weaponframe,
+		view->model != view_model || cl.viewplayer != view_player);
+	view_model = view->model;
+	view_player = cl.viewplayer;
+	CL_FrameBlend (&view_frames, view);
 	view->translate = NULL;
 	view->palette = NULL;
 

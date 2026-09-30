@@ -198,6 +198,10 @@ a half times the mean gap between updates, 10 to 120 msec. A new entity,
 another model or a move of over 200 units is a snap. The players are run
 forward to the present through the movement code instead (CL_LinkPlayers).
 
+The models' animation frames blend too, each into the next in a tenth of a
+second (r_lerpframes, drawn by the renderer): everything the server places,
+the players and the view model. A snap snaps the frame as well.
+
 ===============================================================================
 */
 
@@ -215,6 +219,7 @@ typedef struct
 typedef struct
 {
 	lerptrail_t	origin, angles;
+	framelerp_t	frame;
 	int			modelindex;
 	int			stamp;		// the last update it was in
 } entlerp_t;
@@ -296,6 +301,59 @@ static void Trail_Sample (const lerptrail_t *t, double time, vec3_t out)
 
 /*
 ===============
+CL_FrameClock
+
+What the frames' blends are timed by: the moment an MVD plays, else the
+real time
+===============
+*/
+static double CL_FrameClock (void)
+{
+	return cls.mvdplayback ? CL_MVDTime () : host.realtime;
+}
+
+/*
+===============
+CL_FrameArrived
+
+An entity's frame as an update has it: another frame than before starts the
+turn to it; a snap (a new entity, another model, a teleport) is there at once
+===============
+*/
+void CL_FrameArrived (framelerp_t *f, int frame, bool snap)
+{
+	if (snap)
+	{
+		f->frame = f->oldframe = frame;
+		return;
+	}
+	if (frame == f->frame)
+		return;
+	f->oldframe = f->frame;
+	f->frame = frame;
+	f->changed = CL_FrameClock ();
+}
+
+/*
+===============
+CL_FrameBlend
+
+The frames an entity is drawn between: from the one before in a tenth of a
+second, the time QuakeC shows a frame (ezQuake's). A clock gone back, which
+a seek back in an MVD takes it, leaves the frame alone.
+===============
+*/
+void CL_FrameBlend (const framelerp_t *f, entity_t *ent)
+{
+	double	done = (CL_FrameClock () - f->changed) * 10;
+
+	ent->frame = f->frame;
+	ent->oldframe = f->oldframe;
+	ent->backlerp = f->oldframe == f->frame || done < 0 || done >= 1 ? 0 : (float)(1 - done);
+}
+
+/*
+===============
 CL_LerpSnapshot
 
 An update of the entities arrived: aim each one's trails at where it now is
@@ -341,11 +399,13 @@ static void CL_LerpSnapshot (const packet_entities_t *pack)
 				Trail_Push (&l->origin, s->origin, now);
 			if (angles[0] != l->angles.val[0][0] || angles[1] != l->angles.val[0][1] || angles[2] != l->angles.val[0][2])
 				Trail_Push (&l->angles, angles, now);
+			CL_FrameArrived (&l->frame, s->frame, false);
 		}
 		else
 		{	// new, teleported, or something else now: just be there
 			Trail_Fix (&l->origin, s->origin, now);
 			Trail_Fix (&l->angles, s->angles, now);
+			CL_FrameArrived (&l->frame, s->frame, true);
 			l->modelindex = s->modelindex;
 		}
 		l->stamp = lerp_update;
@@ -416,11 +476,13 @@ void CL_LerpMVDPlayers (void)
 			else if (angles[0] != l->angles.val[0][0] || angles[1] != l->angles.val[0][1]
 			 || angles[2] != l->angles.val[0][2])
 				Trail_Push (&l->angles, angles, now);
+			CL_FrameArrived (&l->frame, state->frame, false);
 		}
 		else
 		{
 			Trail_Fix (&l->origin, state->origin, now);
 			Trail_Fix (&l->angles, state->viewangles, now);
+			CL_FrameArrived (&l->frame, state->frame, true);
 			l->modelindex = state->modelindex;
 		}
 		l->stamp = (cl.parsecount << 1) | ((state->flags & PF_DEAD) ? 1 : 0);
@@ -478,6 +540,55 @@ static void CL_EntityPlace (const entity_state_t *s, vec3_t origin, vec3_t angle
 	trail = trail < LERP_MINTRAIL ? LERP_MINTRAIL : trail > LERP_MAXTRAIL ? LERP_MAXTRAIL : trail;
 	Trail_Sample (&l->origin, host.realtime - trail, origin);
 	Trail_Sample (&l->angles, host.realtime - trail, angles);
+}
+
+/*
+===============
+CL_EntityFrame
+
+The frames to draw an entity of the newest update between
+===============
+*/
+static void CL_EntityFrame (const entity_state_t *s, entity_t *ent)
+{
+	const entlerp_t	*l = &cl_entlerp[s->number];
+
+	ent->frame = s->frame;
+	ent->backlerp = 0;
+	if (l->stamp == lerp_update)
+		CL_FrameBlend (&l->frame, ent);
+}
+
+/*
+===============
+CL_PlayerFrame
+
+The frames to draw a player between. An MVD's turn as its frames are read
+(CL_LerpMVDPlayers); in play a player turns to another frame a packet brings,
+and snaps to it without the player in the packet before, with another model,
+or over 200 units from there.
+===============
+*/
+static void CL_PlayerFrame (int slot, const player_state_t *state, entity_t *ent)
+{
+	entlerp_t				*l = &cl_playerlerp[slot];
+	const player_state_t	*prev;
+	vec3_t					d;
+
+	ent->frame = state->frame;
+	ent->backlerp = 0;
+	if (cls.mvdplayback)
+	{
+		if ((l->stamp >> 1) == playerlerp_frame)
+			CL_FrameBlend (&l->frame, ent);
+		return;
+	}
+
+	prev = &cl.frames[(cl.parsecount - 1) & UPDATE_MASK].playerstate[slot];
+	VectorSubtract (state->origin, prev->origin, d);
+	CL_FrameArrived (&l->frame, state->frame, prev->messagenum != cl.parsecount - 1
+		|| prev->modelindex != state->modelindex || DotProduct (d, d) > LERP_SNAP*LERP_SNAP);
+	CL_FrameBlend (&l->frame, ent);
 }
 
 /*
@@ -709,7 +820,7 @@ static void CL_LinkPacketEntities (void)
 		ent->skinnum = s1->skinnum;
 		
 		// set frame
-		ent->frame = s1->frame;
+		CL_EntityFrame (s1, ent);
 
 		// rotate binary objects locally
 		if (model->flags & EF_ROTATE)
@@ -858,6 +969,7 @@ static void CL_LinkProjectiles (void)
 		ent->alpha = 0;
 		ent->skinnum = 0;
 		ent->frame = 0;
+		ent->backlerp = 0;
 		ent->translate = NULL;
 		ent->palette = NULL;
 		ent->skin = NULL;
@@ -1282,7 +1394,7 @@ static void CL_LinkPlayers (void)
 		ent->model = CL_Model (state->modelindex);
 		ent->alpha = state->alpha;
 		ent->skinnum = state->skinnum;
-		ent->frame = state->frame;
+		CL_PlayerFrame (j, state, ent);
 		ent->translate = info->translate;
 		ent->palette = info->palette;
 		if (state->modelindex == cl.playerindex)

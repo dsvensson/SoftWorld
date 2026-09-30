@@ -30,7 +30,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 affinetridesc_t	r_affinetridesc;
 
 
-static trivertx_t		*r_apverts;
+static trivertx_t		*r_apverts;		// the frame's pose
+static trivertx_t		*r_aoldverts;	// the pose turned from (r_lerpframes), NULL for none
+static float			r_alerp;		// how far from it to the frame's, 0 .. 1
+static bool				r_amuzzlehack;	// a view model's muzzle flash goes at once
 
 // TODO: these probably will go away with optimized rasterization
 static mdl_t				*pmdl;
@@ -82,8 +85,25 @@ static void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv,
 static void R_AliasSetUpTransform (int trivial_accept);
 static void R_AliasTransformVector (vec3_t in, vec3_t out);
 static void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
-	trivertx_t *pverts, stvert_t *pstverts);
+	int vert, stvert_t *pstverts);
 void R_AliasProjectFinalVert (finalvert_t *fv, auxvert_t *av);
+
+/*
+================
+R_AliasTurning
+
+Whether currententity is drawn between its frame and the one it turns from
+(r_lerpframes), its model's header pahdr
+================
+*/
+static bool R_AliasTurning (const aliashdr_t *pahdr)
+{
+	const mdl_t	*m = (const mdl_t *)((const byte *)pahdr + pahdr->model);
+
+	return r_lerpframes.value && currententity->backlerp > 0
+		&& currententity->oldframe != currententity->frame
+		&& currententity->oldframe >= 0 && currententity->oldframe < m->numframes;
+}
 
 
 /*
@@ -95,7 +115,7 @@ bool R_AliasCheckBBox (void)
 {
 	int					i, flags, frame, numv;
 	aliashdr_t			*pahdr;
-	float				zi, basepts[8][3], v0, v1, frac;
+	float				zi, basepts[8][3], v0, v1, frac, mins[3], maxs[3];
 	finalvert_t			*pv0, *pv1, viewpts[16];
 	auxvert_t			*pa0, *pa1, viewaux[16];
 	maliasframedesc_t	*pframedesc;
@@ -123,24 +143,37 @@ bool R_AliasCheckBBox (void)
 	}
 
 	pframedesc = &pahdr->frames[frame];
+	for (i=0 ; i<3 ; i++)
+	{
+		mins[i] = (float)pframedesc->bboxmin.v[i];
+		maxs[i] = (float)pframedesc->bboxmax.v[i];
+	}
+
+// turning from another frame, the vertices are within the two frames' boxes;
+// a trivially accepted model isn't clipped, so they must be
+	if (R_AliasTurning (pahdr))
+	{
+		pframedesc = &pahdr->frames[currententity->oldframe];
+		for (i=0 ; i<3 ; i++)
+		{
+			if (mins[i] > pframedesc->bboxmin.v[i])
+				mins[i] = (float)pframedesc->bboxmin.v[i];
+			if (maxs[i] < pframedesc->bboxmax.v[i])
+				maxs[i] = (float)pframedesc->bboxmax.v[i];
+		}
+	}
 
 // x worldspace coordinates
-	basepts[0][0] = basepts[1][0] = basepts[2][0] = basepts[3][0] =
-			(float)pframedesc->bboxmin.v[0];
-	basepts[4][0] = basepts[5][0] = basepts[6][0] = basepts[7][0] =
-			(float)pframedesc->bboxmax.v[0];
+	basepts[0][0] = basepts[1][0] = basepts[2][0] = basepts[3][0] = mins[0];
+	basepts[4][0] = basepts[5][0] = basepts[6][0] = basepts[7][0] = maxs[0];
 
 // y worldspace coordinates
-	basepts[0][1] = basepts[3][1] = basepts[5][1] = basepts[6][1] =
-			(float)pframedesc->bboxmin.v[1];
-	basepts[1][1] = basepts[2][1] = basepts[4][1] = basepts[7][1] =
-			(float)pframedesc->bboxmax.v[1];
+	basepts[0][1] = basepts[3][1] = basepts[5][1] = basepts[6][1] = mins[1];
+	basepts[1][1] = basepts[2][1] = basepts[4][1] = basepts[7][1] = maxs[1];
 
 // z worldspace coordinates
-	basepts[0][2] = basepts[1][2] = basepts[4][2] = basepts[5][2] =
-			(float)pframedesc->bboxmin.v[2];
-	basepts[2][2] = basepts[3][2] = basepts[6][2] = basepts[7][2] =
-			(float)pframedesc->bboxmax.v[2];
+	basepts[0][2] = basepts[1][2] = basepts[4][2] = basepts[5][2] = mins[2];
+	basepts[2][2] = basepts[3][2] = basepts[6][2] = basepts[7][2] = maxs[2];
 
 	zclipped = false;
 	zfullyclipped = true;
@@ -284,9 +317,9 @@ static void R_AliasPreparePoints (void)
  	fv = pfinalverts;
 	av = pauxverts;
 
-	for (i=0 ; i<r_anumverts ; i++, fv++, av++, r_apverts++, pstverts++)
+	for (i=0 ; i<r_anumverts ; i++, fv++, av++, pstverts++)
 	{
-		R_AliasTransformFinalVert (fv, av, r_apverts, pstverts);
+		R_AliasTransformFinalVert (fv, av, i, pstverts);
 		if (av->fv[2] < ALIAS_Z_CLIP_PLANE)
 			fv->flags |= ALIAS_Z_CLIP;
 		else
@@ -434,20 +467,82 @@ static int R_AliasVertexLight (int light)
 
 /*
 ================
+R_AliasFlashVert
+
+A vertex of a view model's muzzle flash, which is hidden behind the view: it
+crosses the view's plane, and far. Both are ezQuake's tests, of now and of
+old; parts of the guns cross the plane too, by 5 units at most, and a flash
+goes 12 to 84 (id's view models).
+================
+*/
+#define	FLASH_MINMOVE	6.3f		// units (ezQuake's)
+
+static bool R_AliasFlashVert (const trivertx_t *from, const trivertx_t *to)
+{
+	float	d[3];
+	int		j;
+
+	if ((from->v[0] * pmdl->scale[0] + pmdl->scale_origin[0] > 0)
+		== (to->v[0] * pmdl->scale[0] + pmdl->scale_origin[0] > 0))
+		return false;
+	for (j=0 ; j<3 ; j++)
+		d[j] = (to->v[j] - from->v[j]) * pmdl->scale[j];
+	return DotProduct (d, d) > FLASH_MINMOVE * FLASH_MINMOVE;
+}
+
+/*
+================
+R_AliasVertex
+
+Vertex vert on the model's grid, and the cosine of its normal and the light:
+between the pose turned from and the frame's when turning (r_lerpframes). A
+view model's muzzle flash is at the frame's at once, not drawn out from
+behind the view (r_lerpmuzzlehack).
+================
+*/
+static float R_AliasVertex (int vert, vec3_t v)
+{
+	const trivertx_t	*to = &r_apverts[vert], *from;
+	float				f, lightfrom, lightto;
+
+	lightto = DotProduct (r_avertexnormals[to->lightnormalindex], r_plightvec);
+	if (!r_aoldverts)
+	{
+		v[0] = (float)to->v[0];
+		v[1] = (float)to->v[1];
+		v[2] = (float)to->v[2];
+		return lightto;
+	}
+
+	from = &r_aoldverts[vert];
+	f = r_alerp;
+	if (r_amuzzlehack && R_AliasFlashVert (from, to))
+		f = 1;
+	v[0] = from->v[0] + (to->v[0] - from->v[0]) * f;
+	v[1] = from->v[1] + (to->v[1] - from->v[1]) * f;
+	v[2] = from->v[2] + (to->v[2] - from->v[2]) * f;
+	lightfrom = DotProduct (r_avertexnormals[from->lightnormalindex], r_plightvec);
+	return lightfrom + (lightto - lightfrom) * f;
+}
+
+/*
+================
 R_AliasTransformFinalVert
 ================
 */
 static void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
-	trivertx_t *pverts, stvert_t *pstverts)
+	int vert, stvert_t *pstverts)
 {
 	int		temp;
-	float	lightcos, *plightnormal;
+	float	lightcos;
+	vec3_t	v;
 
-	av->fv[0] = DotProduct(pverts->v, aliastransform[0]) +
+	lightcos = R_AliasVertex (vert, v);
+	av->fv[0] = DotProduct(v, aliastransform[0]) +
 			aliastransform[0][3];
-	av->fv[1] = DotProduct(pverts->v, aliastransform[1]) +
+	av->fv[1] = DotProduct(v, aliastransform[1]) +
 			aliastransform[1][3];
-	av->fv[2] = DotProduct(pverts->v, aliastransform[2]) +
+	av->fv[2] = DotProduct(v, aliastransform[2]) +
 			aliastransform[2][3];
 
 	fv->v[2] = pstverts->s;
@@ -456,8 +551,6 @@ static void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
 	fv->flags = pstverts->onseam;
 
 // lighting
-	plightnormal = r_avertexnormals[pverts->lightnormalindex];
-	lightcos = DotProduct (plightnormal, r_plightvec);
 	temp = r_ambientlight;
 
 	if (lightcos < 0)
@@ -483,15 +576,15 @@ R_AliasTransformAndProjectFinalVerts
 static void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
 {
 	int			i, temp;
-	float		lightcos, *plightnormal, zi;
-	trivertx_t	*pverts;
+	float		lightcos, zi;
+	vec3_t		v;
 
-	pverts = r_apverts;
-
-	for (i=0 ; i<r_anumverts ; i++, fv++, pverts++, pstverts++)
+	for (i=0 ; i<r_anumverts ; i++, fv++, pstverts++)
 	{
+		lightcos = R_AliasVertex (i, v);
+
 	// transform and project
-		zi = 1.0f / (DotProduct(pverts->v, aliastransform[2]) +
+		zi = 1.0f / (DotProduct(v, aliastransform[2]) +
 				aliastransform[2][3]);
 
 	// x, y, and z are scaled down by 1/2**31 in the transform, so 1/z is
@@ -499,9 +592,9 @@ static void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pst
 	// projection
 		fv->v[5] = R_AliasFixedZi (zi * r_aliaszmul);
 
-		fv->v[0] = (int)(((DotProduct(pverts->v, aliastransform[0]) +
+		fv->v[0] = (int)(((DotProduct(v, aliastransform[0]) +
 				aliastransform[0][3]) * zi) + aliasxcenter);
-		fv->v[1] = (int)(((DotProduct(pverts->v, aliastransform[1]) +
+		fv->v[1] = (int)(((DotProduct(v, aliastransform[1]) +
 				aliastransform[1][3]) * zi) + aliasycenter);
 
 		fv->v[2] = pstverts->s;
@@ -509,8 +602,6 @@ static void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pst
 		fv->flags = pstverts->onseam;
 
 	// lighting
-		plightnormal = r_avertexnormals[pverts->lightnormalindex];
-		lightcos = DotProduct (plightnormal, r_plightvec);
 		temp = r_ambientlight;
 
 		if (lightcos < 0)
@@ -679,31 +770,19 @@ static void R_AliasSetupLighting (alight_t *plighting)
 
 /*
 =================
-R_AliasSetupFrame
+R_AliasPose
 
-set r_apverts
+A frame's pose: a group's by the time
 =================
 */
-static void R_AliasSetupFrame (void)
+static trivertx_t *R_AliasPose (int frame)
 {
-	int				frame;
 	int				i, numframes;
 	maliasgroup_t	*paliasgroup;
 	float			*pintervals, fullinterval, targettime, time;
 
-	frame = currententity->frame;
-	if ((frame >= pmdl->numframes) || (frame < 0))
-	{
-		Con_DPrintf ("R_AliasSetupFrame: no such frame %d\n", frame);
-		frame = 0;
-	}
-
 	if (paliashdr->frames[frame].type == ALIAS_SINGLE)
-	{
-		r_apverts = (trivertx_t *)
-				((byte *)paliashdr + paliashdr->frames[frame].frame);
-		return;
-	}
+		return (trivertx_t *)((byte *)paliashdr + paliashdr->frames[frame].frame);
 	
 	paliasgroup = (maliasgroup_t *)
 				((byte *)paliashdr + paliashdr->frames[frame].frame);
@@ -725,8 +804,41 @@ static void R_AliasSetupFrame (void)
 			break;
 	}
 
-	r_apverts = (trivertx_t *)
-				((byte *)paliashdr + paliasgroup->frames[i].frame);
+	return (trivertx_t *)((byte *)paliashdr + paliasgroup->frames[i].frame);
+}
+
+/*
+=================
+R_AliasSetupFrame
+
+The frame's pose, and the pose turned from when turning (r_lerpframes)
+=================
+*/
+static void R_AliasSetupFrame (void)
+{
+	int		frame;
+
+	frame = currententity->frame;
+	if ((frame >= pmdl->numframes) || (frame < 0))
+	{
+		Con_DPrintf ("R_AliasSetupFrame: no such frame %d\n", frame);
+		frame = 0;
+	}
+	r_apverts = R_AliasPose (frame);
+
+	r_aoldverts = NULL;
+	if (R_AliasTurning (paliashdr))
+	{
+		r_aoldverts = R_AliasPose (currententity->oldframe);
+		if (r_aoldverts == r_apverts)
+			r_aoldverts = NULL;
+		r_alerp = currententity->backlerp < 1 ? 1 - currententity->backlerp : 0;
+	}
+
+	// the view models with a muzzle flash, the axe hasn't (ezQuake's)
+	r_amuzzlehack = r_aoldverts && r_lerpmuzzlehack.value && currententity == r_scene.viewent
+		&& !strncmp (currententity->model->name, "progs/v_", 8)
+		&& strcmp (currententity->model->name, "progs/v_axe.mdl");
 }
 
 
