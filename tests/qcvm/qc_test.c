@@ -2,6 +2,7 @@
 
 #include "qc_test.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -149,4 +150,26 @@ void QT_TextFree (qt_text_t *t)
 bool QT_Contains (const char *haystack, const char *needle)
 {
 	return haystack && strstr (haystack, needle) != NULL;
+}
+
+// what the platform's memory functions need of the program
+void Sys_Error (char *error, ...)
+{
+	va_list	args;
+
+	va_start (args, error);
+	printf ("Sys_Error: ");
+	vprintf (error, args);
+	printf ("\n");
+	va_end (args);
+	exit (1);
+}
+
+void Sys_Printf (char *fmt, ...)
+{
+	va_list	args;
+
+	va_start (args, fmt);
+	vprintf (fmt, args);
+	va_end (args);
 }

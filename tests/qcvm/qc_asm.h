@@ -107,3 +107,8 @@ uint8_t		*QA_Build (const qc_asm_t *a, qc_format_t format, size_t *size);
 
 // built and loaded; fails the test run on a load error
 qc_progs_t	*QA_Load (const qc_asm_t *a, qc_format_t format);
+
+// a VM running the program (as Fte16); config, builtins and host may be NULL
+// (the CSQC defaults, no builtins, no host); fails the test run if it can't
+qcvm_t		*QA_CreateVM (const qc_asm_t *a, const qc_config_t *config, const qc_builtins_t *builtins,
+				const qc_host_t *host, void *ctx);

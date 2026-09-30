@@ -568,3 +568,22 @@ qc_progs_t *QA_Load (const qc_asm_t *a, qc_format_t format)
 	}
 	return progs;
 }
+
+qcvm_t *QA_CreateVM (const qc_asm_t *a, const qc_config_t *config, const qc_builtins_t *builtins,
+	const qc_host_t *host, void *ctx)
+{
+	qc_progs_t	*progs = QA_Load (a, QC_FORMAT_FTE16);
+	qc_error_t	error;
+	qcvm_t		*vm;
+	char		text[256];
+
+	vm = QC_Create (progs, builtins, config, host, ctx, &error);
+	QC_ReleaseProgs (progs);
+	if (!vm)
+	{
+		printf ("QA_CreateVM: %s\n", QC_ErrorText (&error, text, sizeof(text)));
+		QC_FreeError (&error);
+		exit (1);
+	}
+	return vm;
+}

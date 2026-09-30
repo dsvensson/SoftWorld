@@ -47,6 +47,13 @@ void	*Sys_ReserveMemory (size_t size);
 // commits (zero-filled) memory for the first size bytes of a reservation
 void	Sys_CommitMemory (void *base, size_t size);
 
+// the same, failing with NULL and false instead
+void	*Sys_TryReserveMemory (size_t size);
+bool	Sys_TryCommitMemory (void *base, size_t size);
+
+// returns a reservation of size bytes, committed or not
+void	Sys_ReleaseMemory (void *base, size_t size);
+
 //
 // system IO
 //

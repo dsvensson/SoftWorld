@@ -14,7 +14,7 @@ endif()
 
 # the services of macOS and Linux (posix/), over what each system has
 set(SW_POSIX_SOURCES
-	posix/sys_posix.c posix/sys_workers_posix.c posix/net_udp_posix.c posix/net_tcp_posix.c)
+	posix/sys_posix.c posix/sys_memory_posix.c posix/sys_workers_posix.c posix/net_udp_posix.c posix/net_tcp_posix.c)
 
 if(WIN32)
 	# Process entry points and the CPU check: built without architecture flags and
@@ -33,7 +33,7 @@ if(WIN32)
 
 	# Windows services shared by every program
 	sw_add_module(sw_platform_win
-		win/sys_win.c win/sys_win_workers.c win/net_udp_win.c win/net_tcp_win.c)
+		win/sys_win.c win/sys_memory_win.c win/sys_win_workers.c win/net_udp_win.c win/net_tcp_win.c)
 	target_link_libraries(sw_platform_win PUBLIC sw_net sw_common ws2_32 synchronization)
 
 	set(SW_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")

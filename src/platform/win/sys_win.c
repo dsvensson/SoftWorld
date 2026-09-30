@@ -145,21 +145,6 @@ double Sys_DoubleTime (void)
 	return (double)(now.QuadPart - start.QuadPart) / (double)frequency.QuadPart;
 }
 
-void *Sys_ReserveMemory (size_t size)
-{
-	void	*base = VirtualAlloc (NULL, size, MEM_RESERVE, PAGE_NOACCESS);
-
-	if (!base)
-		Sys_Error ("Sys_ReserveMemory: couldn't reserve %zu bytes", size);
-	return base;
-}
-
-void Sys_CommitMemory (void *base, size_t size)
-{
-	if (!VirtualAlloc (base, size, MEM_COMMIT, PAGE_READWRITE))
-		Sys_Error ("Sys_CommitMemory: out of memory (%zu bytes)", size);
-}
-
 /*
 ===============================================================================
 

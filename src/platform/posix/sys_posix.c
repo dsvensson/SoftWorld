@@ -1,5 +1,5 @@
 // sys_posix.c -- the system services macOS and Linux share, for the windowed and
-// console programs: files, memory, and the wait for a time
+// console programs: files and the wait for a time (memory: sys_memory_posix.c)
 
 #include "print.h"
 #include "sys.h"
@@ -10,7 +10,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -88,25 +87,6 @@ void Sys_DebugLog (char *file, char *fmt, ...)
 	vfprintf (f, fmt, argptr);
 	va_end (argptr);
 	fflush (f);
-}
-
-void *Sys_ReserveMemory (size_t size)
-{
-	void	*base = mmap (NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
-
-	if (base == MAP_FAILED)
-		Sys_Error ("Sys_ReserveMemory: couldn't reserve %zu bytes", size);
-	return base;
-}
-
-// the pages already committed keep what they hold; new pages come zeroed
-void Sys_CommitMemory (void *base, size_t size)
-{
-	size_t	page = (size_t)getpagesize ();
-
-	size = (size + page - 1) & ~(page - 1);
-	if (mprotect (base, size, PROT_READ | PROT_WRITE))
-		Sys_Error ("Sys_CommitMemory: out of memory (%zu bytes)", size);
 }
 
 /*
