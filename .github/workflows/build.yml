@@ -1,11 +1,13 @@
 # Release builds of softworld, the client with its own server, for Windows,
-# macOS and Linux, uploaded as artifacts.
+# macOS and Linux, uploaded as artifacts; and for a version tag (v3.06) to the
+# tag's GitHub release (release.sh).
 
 name: Build
 
 on:
   push:
     branches: [master]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -16,6 +18,8 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -114,8 +118,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          New-Item -ItemType Directory -Force -Path dist, release | Out-Null
           Copy-Item build/${{ matrix.preset }}/Release/softworld.exe dist/
+          Compress-Archive -Path dist/softworld.exe -DestinationPath release/SoftWorld-Windows.zip
 
       # zipped here: the artifact's own zip loses the executable bit. Without the
       # extended attributes, which unzip would make files in the bundle of and so
@@ -145,6 +150,14 @@ jobs:
           archive: false
           if-no-files-found: error
 
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ runner.os == 'Windows' && 'release/SoftWorld-Windows.zip' || 'dist/SoftWorld-macOS.zip' }}
+        run: bash .github/release.sh "$ASSET"
+
   # Linux in an Arch container: Ubuntu's wayland-protocols is older than the
   # color management the client asks the compositor about. For AVX-512 CPUs,
   # and for AVX2 ones without it.
@@ -152,6 +165,8 @@ jobs:
     name: Linux ${{ matrix.arch }}
     runs-on: ubuntu-latest
     container: archlinux:latest
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -169,7 +184,7 @@ jobs:
       - name: Packages
         run: |
           pacman -Syu --noconfirm --needed git make gcc cmake ninja clang lld vulkan-headers \
-            vulkan-icd-loader glslang wayland wayland-protocols libxkbcommon libpipewire
+            vulkan-icd-loader glslang wayland wayland-protocols libxkbcommon libpipewire github-cli
 
       - uses: actions/checkout@v7
 
@@ -216,3 +231,9 @@ jobs:
           path: dist/SoftWorld-Linux-${{ matrix.arch }}.tar.gz
           archive: false
           if-no-files-found: error
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/release.sh dist/SoftWorld-Linux-${{ matrix.arch }}.tar.gz
