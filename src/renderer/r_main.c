@@ -1141,7 +1141,7 @@ static void R_DrawBEntitiesOnList (void)
 							continue;
 						}
 
-						R_MarkLights (&r_scene.dlights[k], 1<<k,
+						R_MarkLights (&r_scene.dlights[k], 1u<<k,
 							clmodel->nodes + clmodel->firstnode);
 					}
 				}

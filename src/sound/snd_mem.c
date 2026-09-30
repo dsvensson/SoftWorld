@@ -77,7 +77,7 @@ static void ResampleSfx (sfx_t *sfx, int inrate, int inwidth, byte *data)
 			if (inwidth == 2)
 				sample = LittleShort ( ((short *)data)[srcsample] );
 			else
-				sample = (int)( (unsigned char)(data[srcsample]) - 128) << 8;
+				sample = ((unsigned char)data[srcsample] - 128) * 256;	// a negative can't be shifted
 			if (sc->width == 2)
 				((short *)sc->data)[i] = (short)sample;
 			else
@@ -178,11 +178,11 @@ static short GetLittleShort(void)
 
 static int GetLittleLong(void)
 {
-	int val = 0;
-	val = *data_p;
-	val = val + (*(data_p+1)<<8);
-	val = val + (*(data_p+2)<<16);
-	val = val + (*(data_p+3)<<24);
+	int val;
+
+	// unsigned: the top byte's high bit would overflow an int's shift
+	val = (int)((uint32_t)data_p[0] | (uint32_t)data_p[1] << 8 | (uint32_t)data_p[2] << 16
+		| (uint32_t)data_p[3] << 24);
 	data_p += 4;
 	return val;
 }

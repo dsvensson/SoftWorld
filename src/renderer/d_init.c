@@ -106,7 +106,7 @@ height frame
 void R_SetRenderSize (int width, int height, int scale)
 {
 	static byte	*buffers;
-	int			zbuffersize, cachesize;
+	int			zbuffersize, cacheoffset, cachesize;
 
 	if (buffers)
 	{
@@ -116,9 +116,10 @@ void R_SetRenderSize (int width, int height, int scale)
 
 	cachesize = D_SurfaceCacheForRes (width, height);
 	zbuffersize = width * height * (int)sizeof (*d_pzbuffer);
-	buffers = Mem_AllocAligned ((size_t)zbuffersize + (size_t)cachesize, 64);
+	cacheoffset = (zbuffersize + 63) & ~63;		// the cache's blocks hold pointers
+	buffers = Mem_AllocAligned ((size_t)cacheoffset + (size_t)cachesize, 64);
 	d_pzbuffer = (float *)buffers;
-	D_InitCaches (buffers + zbuffersize, cachesize);
+	D_InitCaches (buffers + cacheoffset, cachesize);
 
 	Mem_Free (d_scantable);
 	Mem_Free (zspantable);

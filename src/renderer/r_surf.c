@@ -197,7 +197,7 @@ static void R_AddDynamicLights (unsigned *bl, bool rgb)
 
 	for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
 	{
-		if ( !(surf->dlightbits & (1<<lnum) ) )
+		if ( !(surf->dlightbits & (1u<<lnum) ) )
 			continue;		// not lit by this light
 
 		rad = r_scene.dlights[lnum].radius;

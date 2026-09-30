@@ -174,8 +174,9 @@ static surfcache_t     *D_SCAlloc (int width, int size)
 	if (size <= 0)
 		Sys_Error ("D_SCAlloc: bad cache size %d\n", size);
 	
+	// every block starts aligned for the pointers in its header
 	size = (int)offsetof (surfcache_t, data) + size;
-	size = (size + 3) & ~3;
+	size = (size + (int)_Alignof (surfcache_t) - 1) & ~((int)_Alignof (surfcache_t) - 1);
 	if (size > sc_size)
 		Sys_Error ("D_SCAlloc: %i > cache size",size);
 

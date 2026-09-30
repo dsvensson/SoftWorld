@@ -242,7 +242,7 @@ void Simd_Scalar_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sf
 			zbuf[i] = z;
 		}
 		zi = (int)((unsigned)zi + (unsigned)map->zistep);
-		light += map->lightstep;
+		light = (int)((unsigned)light + (unsigned)map->lightstep);
 		tex += map->stepwhole;
 		sfrac += map->sfracstep;
 		tex += sfrac >> 16;

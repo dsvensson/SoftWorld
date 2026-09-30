@@ -154,6 +154,18 @@ extern cvar_t	r_lerpframes;
 extern cvar_t	r_lerpmuzzlehack;
 void R_DlightColor (const dlight_t *dl, float color[3]);
 
+// a value as an int, saturated at the int's range (NaN 0), as ARM converts:
+// a sliver of a triangle has steps past it, whose plain conversion C leaves
+// undefined
+static inline int R_SaturateInt (double v)
+{
+	if (v >= (double)INT_MAX)
+		return INT_MAX;
+	if (v <= (double)INT_MIN)
+		return INT_MIN;
+	return v == v ? (int)v : 0;
+}
+
 // lit texel color: a color times light, with 15 fraction bits. A fullbright
 // color is never darker than its floor, but brighter light still brightens
 // it. The same as simd_litrow_rgb.
@@ -373,4 +385,4 @@ void R_AnimateLight (void);
 int R_LightPoint (vec3_t p, vec3_t color);
 void R_SetupFrame (void);
 void R_SplitEntityOnNode2 (mnode_t *node);
-void R_MarkLights (dlight_t *light, int bit, mnode_t *node);
+void R_MarkLights (dlight_t *light, unsigned bit, mnode_t *node);

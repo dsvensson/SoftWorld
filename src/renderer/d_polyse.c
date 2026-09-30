@@ -447,6 +447,52 @@ nodraw:
 
 
 
+// a + step * count as the machine computes it, wrapping: a sliver of a
+// triangle has steps whose sums overflow an int, which C leaves undefined (the
+// span kernels wrap theirs too)
+static inline int D_WrapStep (int a, int step, int count)
+{
+	return (int)((unsigned)a + (unsigned)step * (unsigned)count);
+}
+
+/*
+===================
+D_PolysetSetUpLeftEdgeSteps
+
+The left edge's steps along ubasestep, and one pixel further for when the
+error term carries
+====================
+*/
+static void D_PolysetSetUpLeftEdgeSteps (void)
+{
+	int		working_lstepx, s, t;
+
+// for negative steps in x along left edge, bias toward overflow rather than
+// underflow (sort of turning the floor () we did in the gradient calcs into
+// ceil (), but plus a little bit)
+	if (ubasestep < 0)
+		working_lstepx = D_WrapStep (r_lstepx, -1, 1);
+	else
+		working_lstepx = r_lstepx;
+
+	d_countextrastep = ubasestep + 1;
+	s = D_WrapStep (r_sstepy, r_sstepx, ubasestep);
+	t = D_WrapStep (r_tstepy, r_tstepx, ubasestep);
+	d_ptexbasestep = (s >> 16) + (t >> 16) * r_affinetridesc.skinwidth;
+	d_sfracbasestep = s & 0xFFFF;
+	d_tfracbasestep = t & 0xFFFF;
+	d_lightbasestep = D_WrapStep (r_lstepy, working_lstepx, ubasestep);
+	d_zibasestep = D_WrapStep (r_zistepy, r_zistepx, ubasestep);
+
+	s = D_WrapStep (r_sstepy, r_sstepx, d_countextrastep);
+	t = D_WrapStep (r_tstepy, r_tstepx, d_countextrastep);
+	d_ptexextrastep = (s >> 16) + (t >> 16) * r_affinetridesc.skinwidth;
+	d_sfracextrastep = s & 0xFFFF;
+	d_tfracextrastep = t & 0xFFFF;
+	d_lightextrastep = D_WrapStep (d_lightbasestep, working_lstepx, 1);
+	d_ziextrastep = D_WrapStep (d_zibasestep, r_zistepx, 1);
+}
+
 /*
 ===================
 D_PolysetScanLeftEdge
@@ -488,8 +534,8 @@ static void D_PolysetScanLeftEdge (int height)
 				d_ptex += r_affinetridesc.skinwidth;
 				d_tfrac &= 0xFFFF;
 			}
-			d_light += d_lightextrastep;
-			d_zi += d_ziextrastep;
+			d_light = D_WrapStep (d_light, d_lightextrastep, 1);
+			d_zi = D_WrapStep (d_zi, d_ziextrastep, 1);
 			errorterm -= erroradjustdown;
 		}
 		else
@@ -507,8 +553,8 @@ static void D_PolysetScanLeftEdge (int height)
 				d_ptex += r_affinetridesc.skinwidth;
 				d_tfrac &= 0xFFFF;
 			}
-			d_light += d_lightbasestep;
-			d_zi += d_zibasestep;
+			d_light = D_WrapStep (d_light, d_lightbasestep, 1);
+			d_zi = D_WrapStep (d_zi, d_zibasestep, 1);
 		}
 	} while (--height);
 }
@@ -579,30 +625,31 @@ static void D_PolysetCalcGradients (int skinw)
 // very visible, overflow is very unlikely, because of ambient lighting
 	t0 = (float)(r_p0[4] - r_p2[4]);
 	t1 = (float)(r_p1[4] - r_p2[4]);
-	r_lstepx = (int)
-			ceil((t1 * p01_minus_p21 - t0 * p11_minus_p21) * xstepdenominv);
-	r_lstepy = (int)
-			ceil((t1 * p00_minus_p20 - t0 * p10_minus_p20) * ystepdenominv);
+	r_lstepx = R_SaturateInt (
+			ceil((t1 * p01_minus_p21 - t0 * p11_minus_p21) * xstepdenominv));
+	r_lstepy = R_SaturateInt (
+			ceil((t1 * p00_minus_p20 - t0 * p10_minus_p20) * ystepdenominv));
 
+	// a sliver's steps can be past an int's range: saturated
 	t0 = (float)(r_p0[2] - r_p2[2]);
 	t1 = (float)(r_p1[2] - r_p2[2]);
-	r_sstepx = (int)((t1 * p01_minus_p21 - t0 * p11_minus_p21) *
+	r_sstepx = R_SaturateInt ((t1 * p01_minus_p21 - t0 * p11_minus_p21) *
 			xstepdenominv);
-	r_sstepy = (int)((t1 * p00_minus_p20 - t0* p10_minus_p20) *
+	r_sstepy = R_SaturateInt ((t1 * p00_minus_p20 - t0* p10_minus_p20) *
 			ystepdenominv);
 
 	t0 = (float)(r_p0[3] - r_p2[3]);
 	t1 = (float)(r_p1[3] - r_p2[3]);
-	r_tstepx = (int)((t1 * p01_minus_p21 - t0 * p11_minus_p21) *
+	r_tstepx = R_SaturateInt ((t1 * p01_minus_p21 - t0 * p11_minus_p21) *
 			xstepdenominv);
-	r_tstepy = (int)((t1 * p00_minus_p20 - t0 * p10_minus_p20) *
+	r_tstepy = R_SaturateInt ((t1 * p00_minus_p20 - t0 * p10_minus_p20) *
 			ystepdenominv);
 
 	t0 = (float)(r_p0[5] - r_p2[5]);
 	t1 = (float)(r_p1[5] - r_p2[5]);
-	r_zistepx = (int)((t1 * p01_minus_p21 - t0 * p11_minus_p21) *
+	r_zistepx = R_SaturateInt ((t1 * p01_minus_p21 - t0 * p11_minus_p21) *
 			xstepdenominv);
-	r_zistepy = (int)((t1 * p00_minus_p20 - t0 * p10_minus_p20) *
+	r_zistepy = R_SaturateInt ((t1 * p00_minus_p20 - t0 * p10_minus_p20) *
 			ystepdenominv);
 
 	a_sstepxfrac = r_sstepx & 0xFFFF;
@@ -666,7 +713,7 @@ static void D_RasterizeAliasPolySmooth (void)
 {
 	int				initialleftheight, initialrightheight;
 	int				*plefttop, *prighttop, *pleftbottom, *prightbottom;
-	int				working_lstepx, originalcount;
+	int				originalcount;
 
 	plefttop = pedgetable->pleftedgevert0;
 	prighttop = pedgetable->prightedgevert0;
@@ -712,32 +759,7 @@ static void D_RasterizeAliasPolySmooth (void)
 	d_pdest = d_viewbuffer + ystart * screenwidth + plefttop[0];
 	d_pz = d_pzbuffer + ystart * d_zwidth + plefttop[0];
 
-// TODO: can reuse partial expressions here
-
-// for negative steps in x along left edge, bias toward overflow rather than
-// underflow (sort of turning the floor () we did in the gradient calcs into
-// ceil (), but plus a little bit)
-	if (ubasestep < 0)
-		working_lstepx = r_lstepx - 1;
-	else
-		working_lstepx = r_lstepx;
-
-	d_countextrastep = ubasestep + 1;
-	d_ptexbasestep = ((r_sstepy + r_sstepx * ubasestep) >> 16) +
-			((r_tstepy + r_tstepx * ubasestep) >> 16) *
-			r_affinetridesc.skinwidth;
-	d_sfracbasestep = (r_sstepy + r_sstepx * ubasestep) & 0xFFFF;
-	d_tfracbasestep = (r_tstepy + r_tstepx * ubasestep) & 0xFFFF;
-	d_lightbasestep = r_lstepy + working_lstepx * ubasestep;
-	d_zibasestep = r_zistepy + r_zistepx * ubasestep;
-
-	d_ptexextrastep = ((r_sstepy + r_sstepx * d_countextrastep) >> 16) +
-			((r_tstepy + r_tstepx * d_countextrastep) >> 16) *
-			r_affinetridesc.skinwidth;
-	d_sfracextrastep = (r_sstepy + r_sstepx*d_countextrastep) & 0xFFFF;
-	d_tfracextrastep = (r_tstepy + r_tstepx*d_countextrastep) & 0xFFFF;
-	d_lightextrastep = d_lightbasestep + working_lstepx;
-	d_ziextrastep = d_zibasestep + r_zistepx;
+	D_PolysetSetUpLeftEdgeSteps ();
 
 	D_PolysetScanLeftEdge (initialleftheight);
 
@@ -774,27 +796,7 @@ static void D_RasterizeAliasPolySmooth (void)
 		d_pzextrastep = d_pzbasestep + 1;
 		d_pz = d_pzbuffer + ystart * d_zwidth + plefttop[0];
 
-		if (ubasestep < 0)
-			working_lstepx = r_lstepx - 1;
-		else
-			working_lstepx = r_lstepx;
-
-		d_countextrastep = ubasestep + 1;
-		d_ptexbasestep = ((r_sstepy + r_sstepx * ubasestep) >> 16) +
-				((r_tstepy + r_tstepx * ubasestep) >> 16) *
-				r_affinetridesc.skinwidth;
-		d_sfracbasestep = (r_sstepy + r_sstepx * ubasestep) & 0xFFFF;
-		d_tfracbasestep = (r_tstepy + r_tstepx * ubasestep) & 0xFFFF;
-		d_lightbasestep = r_lstepy + working_lstepx * ubasestep;
-		d_zibasestep = r_zistepy + r_zistepx * ubasestep;
-
-		d_ptexextrastep = ((r_sstepy + r_sstepx * d_countextrastep) >> 16) +
-				((r_tstepy + r_tstepx * d_countextrastep) >> 16) *
-				r_affinetridesc.skinwidth;
-		d_sfracextrastep = (r_sstepy+r_sstepx*d_countextrastep) & 0xFFFF;
-		d_tfracextrastep = (r_tstepy+r_tstepx*d_countextrastep) & 0xFFFF;
-		d_lightextrastep = d_lightbasestep + working_lstepx;
-		d_ziextrastep = d_zibasestep + r_zistepx;
+		D_PolysetSetUpLeftEdgeSteps ();
 
 		D_PolysetScanLeftEdge (height);
 	}

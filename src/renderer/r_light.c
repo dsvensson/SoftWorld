@@ -66,7 +66,7 @@ DYNAMIC LIGHTS
 R_MarkLights
 =============
 */
-void R_MarkLights (dlight_t *light, int bit, mnode_t *node)
+void R_MarkLights (dlight_t *light, unsigned bit, mnode_t *node)
 {
 	mplane_t	*splitplane;
 	float		dist;
@@ -125,7 +125,7 @@ void R_PushDlights (void)
 	{
 		if (l->die < r_scene.time || !l->radius)
 			continue;
-		R_MarkLights ( l, 1<<i, r_scene.worldmodel->nodes );
+		R_MarkLights ( l, 1u<<i, r_scene.worldmodel->nodes );
 	}
 }
 

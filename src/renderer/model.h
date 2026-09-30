@@ -112,7 +112,7 @@ typedef struct msurface_s
 	const void	*fenceentity;	// and for which entity
 
 	int			dlightframe;
-	int			dlightbits;
+	unsigned	dlightbits;			// a bit a dynamic light (MAX_DLIGHTS of them)
 
 	mplane_t	*plane;
 	int			flags;

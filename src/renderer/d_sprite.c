@@ -365,10 +365,11 @@ static void D_SpriteCalculateGradients (void)
 
 	TransformVector (modelorg, p_temp1);
 
-	sadjust = ((fixed16_t)(DotProduct (p_temp1, p_saxis) * 0x10000 + 0.5)) -
-			(-(cachewidth >> 1) << 16);
-	tadjust = ((fixed16_t)(DotProduct (p_temp1, p_taxis) * 0x10000 + 0.5)) -
-			(-(sprite_height >> 1) << 16);
+	// half the sprite added (id subtracted it negated, a negative shifted left)
+	sadjust = ((fixed16_t)(DotProduct (p_temp1, p_saxis) * 0x10000 + 0.5)) +
+			((cachewidth >> 1) << 16);
+	tadjust = ((fixed16_t)(DotProduct (p_temp1, p_taxis) * 0x10000 + 0.5)) +
+			((sprite_height >> 1) << 16);
 
 // -1 (-epsilon) so we never wander off the edge of the texture
 	bbextents = (cachewidth << 16) - 1;
