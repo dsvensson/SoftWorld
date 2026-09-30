@@ -749,3 +749,88 @@ bool	QC_BuiltinNumber (qc_numbering_t numbering, const char *name, uint32_t *num
 uint32_t	QC_NumKnownBuiltins (qc_numbering_t numbering);
 bool		QC_KnownBuiltin (qc_numbering_t numbering, uint32_t i, const char **name, uint32_t *number,
 				bool *numbered);
+
+/*
+==============================================================================
+
+CALLING QUAKEC
+
+==============================================================================
+*/
+
+// Calls a QuakeC function or a builtin with up to 8 arguments, its result in
+// *ret (if not NULL). Builtins may call it too (re-entrantly); they read their
+// arguments first and set their result after, as the parameter and return
+// slots are shared. False on an error (QC_LastError), after which the VM is
+// fine to use.
+bool		QC_Call (qcvm_t *vm, qc_func_t f, int argc, const qc_value_t *args, qc_value_t *ret);
+
+// the same with the main progs' self set to an entity, and restored after
+bool		QC_CallAs (qcvm_t *vm, qc_ent_t self, qc_func_t f, int argc, const qc_value_t *args, qc_value_t *ret);
+
+// A function of the main progs, or of progs pr, by name, as QuakeC sees it
+// now: a function-typed global of that name gives its current value (0 if
+// QuakeC cleared it), else the function of that name; 0 if none.
+qc_func_t	QC_FindFunction (const qcvm_t *vm, const char *name);
+qc_func_t	QC_FindFunctionIn (const qcvm_t *vm, uint32_t pr, const char *name);
+
+// statement tracing (traceon): each statement goes to the host's trace first
+void		QC_SetTrace (qcvm_t *vm, bool on);
+bool		QC_IsTracing (const qcvm_t *vm);
+
+// A builtin of the loaded progs that no registered builtin satisfies: calling
+// it fails. With reachable, only those the code calls.
+typedef struct
+{
+	qc_func_t	function;
+	uint32_t	number;			// 0 for those bound by name
+	const char	*name;
+} qc_unbound_t;
+
+// fills up to max of them and returns how many there are
+uint32_t	QC_UnboundBuiltins (const qcvm_t *vm, bool reachable, qc_unbound_t *out, uint32_t max);
+bool		QC_IsBuiltinBound (const qcvm_t *vm, qc_func_t f);
+
+// After the host longjmps out of a call (from a builtin or a callback), puts
+// the VM back as if no QuakeC ran: frames unwound, locals restored.
+void		QC_Abandon (qcvm_t *vm);
+
+/*
+------------------------------------------------------------------------------
+inside builtins
+
+Arguments and results are the PARM and RETURN slots of the progs whose code
+called the builtin.
+------------------------------------------------------------------------------
+*/
+
+int			QC_Argc (const qcvm_t *vm);
+qc_value_t	QC_ArgValue (const qcvm_t *vm, int i);		// zero past the eighth
+float		QC_ArgFloat (const qcvm_t *vm, int i);
+int32_t		QC_ArgInt (const qcvm_t *vm, int i);
+uint32_t	QC_ArgWord (const qcvm_t *vm, int i);		// any raw word: entity, string, pointer...
+void		QC_ArgVector (const qcvm_t *vm, int i, float out[3]);
+const char	*QC_ArgString (qcvm_t *vm, int i);			// "" for null or invalid; see QC_String
+
+void		QC_ReturnValue (qcvm_t *vm, qc_value_t v);
+void		QC_ReturnFloat (qcvm_t *vm, float f);
+void		QC_ReturnInt (qcvm_t *vm, int32_t i);
+void		QC_ReturnWord (qcvm_t *vm, uint32_t u);
+void		QC_ReturnVector (qcvm_t *vm, const float v[3]);
+// new text as a temp string; false (for the builtin to return) past the limits
+bool		QC_ReturnString (qcvm_t *vm, const char *text, size_t len);
+
+// the builtin running: what QuakeC called, its number (0 by name) and name
+qc_func_t	QC_BuiltinFunction (const qcvm_t *vm, uint32_t *number, const char **name);
+
+// Fails the builtin, for it to return: QC_Error is FTE's builtin error (only a
+// warning, and a zero result, in developer mode); QC_HostError always fails.
+bool		QC_Error (qcvm_t *vm, const char *fmt, ...);
+bool		QC_HostError (qcvm_t *vm, const char *fmt, ...);
+
+// Unwinds QuakeC to the host's nearest call, which then returns ret as if the
+// function it called had: FTE's abort
+bool		QC_Abort (qcvm_t *vm, qc_value_t ret);
+
+// a warning with the current backtrace, for the host's warning callback
+void		QC_Warning (qcvm_t *vm, const char *fmt, ...);

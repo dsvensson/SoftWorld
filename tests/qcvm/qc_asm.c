@@ -572,7 +572,13 @@ qc_progs_t *QA_Load (const qc_asm_t *a, qc_format_t format)
 qcvm_t *QA_CreateVM (const qc_asm_t *a, const qc_config_t *config, const qc_builtins_t *builtins,
 	const qc_host_t *host, void *ctx)
 {
-	qc_progs_t	*progs = QA_Load (a, QC_FORMAT_FTE16);
+	return QA_CreateVMAs (a, QC_FORMAT_FTE16, config, builtins, host, ctx);
+}
+
+qcvm_t *QA_CreateVMAs (const qc_asm_t *a, qc_format_t format, const qc_config_t *config,
+	const qc_builtins_t *builtins, const qc_host_t *host, void *ctx)
+{
+	qc_progs_t	*progs = QA_Load (a, format);
 	qc_error_t	error;
 	qcvm_t		*vm;
 	char		text[256];

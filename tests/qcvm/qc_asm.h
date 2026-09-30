@@ -112,3 +112,5 @@ qc_progs_t	*QA_Load (const qc_asm_t *a, qc_format_t format);
 // (the CSQC defaults, no builtins, no host); fails the test run if it can't
 qcvm_t		*QA_CreateVM (const qc_asm_t *a, const qc_config_t *config, const qc_builtins_t *builtins,
 				const qc_host_t *host, void *ctx);
+qcvm_t		*QA_CreateVMAs (const qc_asm_t *a, qc_format_t format, const qc_config_t *config,
+				const qc_builtins_t *builtins, const qc_host_t *host, void *ctx);

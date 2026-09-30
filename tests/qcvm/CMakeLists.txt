@@ -24,3 +24,8 @@ add_test(NAME qc_loader COMMAND test_qc_loader)
 sw_add_program(test_qc_memory test_qc_memory.c)
 target_link_libraries(test_qc_memory PRIVATE qc_testsupport)
 add_test(NAME qc_memory COMMAND test_qc_memory)
+
+# test_qc_opcodes runs every opcode, in 16- and 32-bit statements.
+sw_add_program(test_qc_opcodes test_qc_opcodes.c)
+target_link_libraries(test_qc_opcodes PRIVATE qc_testsupport)
+add_test(NAME qc_opcodes COMMAND test_qc_opcodes)

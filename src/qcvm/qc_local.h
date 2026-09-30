@@ -645,6 +645,7 @@ struct qcvm_s
 	uint32_t			numspawn_defaults;
 
 	qc_std_t			*std;
+	bool				aborting;		// the builtin returning false called QC_Abort
 	bool				has_abort_ret;
 	uint32_t			abort_ret[3];
 	qc_sharedtable_t	shared;
@@ -702,3 +703,47 @@ void		QC_MarkThreads (qcvm_t *vm, uint8_t *marks);
 bool	QC_InitProgState (qcvm_t *vm, qc_progstate_t *ps, qc_progs_t *p, uint32_t sbase, uint32_t gbase);
 void	QC_FixupGlobals (qcvm_t *vm, const qc_progs_t *p, uint32_t gbase, uint32_t prnum);
 bool	QC_RegisterShared (qcvm_t *vm, uint32_t pr);
+
+/*
+==============================================================================
+
+THE INTERPRETER
+
+==============================================================================
+*/
+
+// why the interpreter loop stopped
+typedef enum
+{
+	QC_EXIT_RETURNED,		// the function entered at the exit depth returned
+	QC_EXIT_BUILTIN,		// a builtin to call; execution resumes after the call
+	QC_EXIT_STATEOP,		// an animation opcode; execution resumes after it
+	QC_EXIT_TRACE,			// tracing: the statement at x.pc runs next
+	QC_EXIT_BUDGET,			// the budget is spent: the statement at x.pc had no effect
+	QC_EXIT_FAULT			// an error (vm->error)
+} qc_exitkind_t;
+
+typedef struct
+{
+	qc_exitkind_t	kind;
+	uint32_t		slot;		// QC_EXIT_BUILTIN
+	qc_func_t		func;
+	qc_stateop_t	op;			// QC_EXIT_STATEOP
+} qc_exit_t;
+
+// runs until the frames are back at exit_depth, a builtin must be called, or a fault
+qc_exit_t	QC_Run (qcvm_t *vm, uint32_t exit_depth, uint32_t *budget);
+
+bool		QC_Enter (qcvm_t *vm, uint32_t prnum, uint32_t index, uint32_t resume_pc);
+void		QC_Leave (qcvm_t *vm);
+void		QC_Unwind (qcvm_t *vm, uint32_t depth);
+void		QC_SwitchProgs (qcvm_t *vm, uint32_t from, uint32_t to, bool in);
+uint32_t	QC_Rand15 (qcvm_t *vm);
+bool		QC_StringsEqual (qcvm_t *vm, uint32_t a, uint32_t b);
+bool		QC_PtrRead (qcvm_t *vm, uint32_t base, uint32_t offset, void *out, uint32_t n);
+bool		QC_PtrWrite (qcvm_t *vm, uint32_t base, uint32_t offset, const void *bytes, uint32_t n);
+bool		QC_MissingBuiltin (qcvm_t *vm, qc_func_t f);
+
+// the words of the current progs' PARM slot i (zero past the eighth), and RETURN
+void		QC_ArgRaw (const qcvm_t *vm, int i, uint32_t out[3]);
+void		QC_ReturnRaw (qcvm_t *vm, const uint32_t w[3]);
