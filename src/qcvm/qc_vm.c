@@ -85,8 +85,7 @@ const qc_fieldentry_t *QC_FieldEntry (const qcvm_t *vm, const char *name)
 	return &vm->fields.entries[i];
 }
 
-// the words of a field of a type; unknown types take one
-static uint32_t QC_FieldWordsOf (uint32_t type)
+uint32_t QC_FieldWordsOf (uint32_t type)
 {
 	int	words = QC_TypeWords (type);
 
@@ -414,6 +413,7 @@ static void QC_FreeCore (qcvm_t *vm)
 	QC_MapClear (&vm->shared.by_name);
 	vm->shared = (qc_sharedtable_t){0};
 	QC_FlushWarnings (vm);
+	QC_FreeThreads (vm);
 	for (i = 0 ; i < QC_STRING_COPIES ; i++)
 	{
 		free (vm->copies[i]);
@@ -739,9 +739,14 @@ GLOBALS AND FIELDS
 
 bool QC_FindGlobal (const qcvm_t *vm, const char *name, uint32_t *word, uint32_t *type)
 {
-	const qc_def_t	*d = QC_GlobalDefRaw (vm->main, name);
+	return QC_FindGlobalIn (vm, 0, name, word, type);
+}
 
-	if (!d)
+bool QC_FindGlobalIn (const qcvm_t *vm, uint32_t pr, const char *name, uint32_t *word, uint32_t *type)
+{
+	const qc_def_t	*d;
+
+	if (pr >= vm->numprogs || !(d = QC_GlobalDefRaw (vm->progs[pr].progs, name)))
 		return false;
 	if (word)
 		*word = d->ofs;
@@ -752,7 +757,12 @@ bool QC_FindGlobal (const qcvm_t *vm, const char *name, uint32_t *word, uint32_t
 
 qc_word_t *QC_Globals (qcvm_t *vm)
 {
-	return (qc_word_t *)(vm->mem.s.base + vm->progs[0].gbase);
+	return QC_GlobalsIn (vm, 0);
+}
+
+qc_word_t *QC_GlobalsIn (qcvm_t *vm, uint32_t pr)
+{
+	return pr < vm->numprogs ? (qc_word_t *)(vm->mem.s.base + vm->progs[pr].gbase) : NULL;
 }
 
 uint32_t QC_NumGlobals (const qcvm_t *vm)

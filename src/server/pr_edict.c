@@ -156,6 +156,31 @@ static bool PR_IsServer (void *ctx)
 	return true;
 }
 
+// another progs for addprogs, from the game directory
+static qc_progs_t *PR_LoadAddon (void *ctx, const char *name)
+{
+	byte			*data;
+	int				size;
+	qc_progs_t		*p;
+	qc_loaderror_t	lerr;
+	char			text[1024];
+
+	(void)ctx;
+	if (!*name || strstr (name, "..") || *name == '/' || *name == '\\' || strchr (name, ':'))
+	{
+		Con_Printf ("addprogs: refusing %s\n", name);
+		return NULL;
+	}
+	data = FS_LoadFile (name, &size);
+	if (!data)
+		return NULL;
+	p = QC_LoadProgs (data, (size_t)size, &lerr);
+	Mem_Free (data);
+	if (!p)
+		Con_Printf ("%s: %s\n", name, QC_LoadErrorText (&lerr, text, sizeof(text)));
+	return p;
+}
+
 static const qc_host_t	pr_host = {
 	.warning = PR_Warning,
 	.print = PR_Print,
@@ -167,6 +192,7 @@ static const qc_host_t	pr_host = {
 	.cvar_set = PR_CvarSet,
 	.check_command = PR_CheckCommand,
 	.is_server = PR_IsServer,
+	.load_progs = PR_LoadAddon,
 	.trace = PR_Trace,
 	.on_spawn = PR_OnSpawn,
 	.on_remove = PR_OnRemove,
@@ -206,6 +232,38 @@ void PR_ExecuteProgram (func_t fnum)
 	QC_SetTime (pr.vm, sv.time);
 	if (!QC_Call (pr.vm, (qc_func_t)fnum, 0, NULL, NULL))
 		PR_RunError ();
+}
+
+/*
+============
+PR_RunThreads
+
+Wakes the QuakeC threads (sleep, fork) whose time has come, as FTE's server
+does after StartFrame
+============
+*/
+void PR_RunThreads (void)
+{
+	if (!pr.vm || !QC_SleepingThreads (pr.vm))
+		return;
+	QC_SetTime (pr.vm, sv.time);
+	if (!QC_RunThreads (pr.vm, NULL))
+		PR_RunError ();
+}
+
+/*
+============
+PR_CvarChanged
+
+The autocvars that follow a cvar (FTE's PR_AutoCvar)
+============
+*/
+static void PR_CvarChanged (cvar_t *var)
+{
+	char	text[1024];
+
+	if (pr.vm && !QC_SyncAutocvar (pr.vm, var->name))
+		Con_Printf ("autocvar_%s: %s\n", var->name, QC_ErrorText (QC_LastError (pr.vm), text, sizeof(text)));
 }
 
 /*
@@ -1023,6 +1081,8 @@ void PR_LoadProgs (void)
 		SV_Error ("PR_LoadProgs: no memory for %i entities", MAX_EDICTS);
 	if (pr_profiling)
 		QC_SetProfiling (pr.vm, true);
+	if (!QC_SyncAutocvars (pr.vm))
+		SV_Error ("qwprogs.dat: %s", QC_ErrorText (QC_LastError (pr.vm), text, sizeof(text)));
 
 	pr.global_struct = (globalvars_t *)QC_Globals (pr.vm);
 	pr.globals = (float *)pr.global_struct;
@@ -1056,6 +1116,7 @@ void PR_Init (void)
 	if (!pr.builtins)
 		Sys_Error ("PR_Init: out of memory");
 	PR_InitBuiltins (pr.builtins);
+	Cvar_AddChangeHook (PR_CvarChanged);
 
 	Cmd_AddCommand ("edict", ED_PrintEdict_f, "Prints the fields of an entity of the running map. "
 		"Usage: edict <number>");

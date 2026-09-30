@@ -654,7 +654,7 @@ struct qcvm_s
 	qc_sharedtable_t	shared;
 	uint32_t			entry_depth;	// frame depth the innermost execution returns at
 	qc_thread_t			*threads;
-	uint32_t			numthreads;
+	uint32_t			numthreads, threadsize;
 
 	qc_error_t			error;
 
@@ -695,6 +695,7 @@ static inline uint32_t QC_GBase (const qcvm_t *vm)
 
 const qc_fieldentry_t	*QC_FieldEntry (const qcvm_t *vm, const char *name);
 bool	QC_AddFieldEntry (qc_fieldtable_t *t, const char *name, uint32_t type, uint32_t ofs);
+uint32_t	QC_FieldWordsOf (uint32_t type);	// the words of a field of a type (unknown: 1)
 
 void	QC_ApplySpawnDefaults (qcvm_t *vm, uint32_t e);
 
@@ -702,6 +703,12 @@ void	QC_ApplySpawnDefaults (qcvm_t *vm, uint32_t e);
 uint32_t	QC_CollectNow (qcvm_t *vm);
 // marks the temp strings the sleeping threads' snapshots refer to
 void		QC_MarkThreads (qcvm_t *vm, uint8_t *marks);
+void		QC_FreeThreads (qcvm_t *vm);
+
+// Suspends a copy of the running QuakeC thread until time advances by delay;
+// on waking, the suspending call returns resume. *suspended is false when no
+// QuakeC runs. False (vm->error) past the thread limits.
+bool		QC_Suspend (qcvm_t *vm, float delay, const uint32_t resume[3], bool *suspended);
 
 bool	QC_InitProgState (qcvm_t *vm, qc_progstate_t *ps, qc_progs_t *p, uint32_t sbase, uint32_t gbase);
 void	QC_FixupGlobals (qcvm_t *vm, const qc_progs_t *p, uint32_t gbase, uint32_t prnum);
@@ -736,6 +743,11 @@ typedef struct
 
 // runs until the frames are back at exit_depth, a builtin must be called, or a fault
 qc_exit_t	QC_Run (qcvm_t *vm, uint32_t exit_depth, uint32_t *budget);
+
+// a host call's budgets: the instructions its nested calls share, and the deadline
+void		QC_StartBudgets (qcvm_t *vm);
+// runs the interpreter until the frames are back at exit_depth
+bool		QC_Execute (qcvm_t *vm, uint32_t exit_depth);
 
 bool		QC_Enter (qcvm_t *vm, uint32_t prnum, uint32_t index, uint32_t resume_pc);
 void		QC_Leave (qcvm_t *vm);

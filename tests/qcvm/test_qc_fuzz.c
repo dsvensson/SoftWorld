@@ -232,6 +232,7 @@ static void RunAll (qcvm_t *vm, uint32_t numfuncs, uint32_t arg)
 	{
 		snprintf (name, sizeof(name), "f%u", i);
 		QC_Call (vm, QC_FindFunction (vm, name), 2, args, NULL);
+		QC_RunThreads (vm, NULL);
 	}
 }
 
@@ -301,7 +302,7 @@ static qt_text_t Outcome (qc_progs_t *p, const qc_builtins_t *b, uint32_t numfun
 	qcvm_t		*vm = QC_Create (p, b, config, &host, &r, NULL);
 	qc_value_t	args[2] = {QC_ValWord (arg), QC_ValVector (1, 2, 3)}, ret;
 	char		name[16], text[2048];
-	uint32_t	i, self, end, at;
+	uint32_t	i, self, end, at, ran;
 	uint8_t		byte;
 	qc_ent_t	e;
 	bool		ok;
@@ -318,6 +319,15 @@ static qt_text_t Outcome (qc_progs_t *p, const qc_builtins_t *b, uint32_t numfun
 		ok = QC_Call (vm, QC_FindFunction (vm, name), 2, args, &ret);
 		if (ok)
 			snprintf (text, sizeof(text), "ok %08x %08x %08x\n", ret.w[0], ret.w[1], ret.w[2]);
+		else
+		{
+			QC_ErrorText (QC_LastError (vm), text, sizeof(text));
+			QT_TextAppend (&r.log, text);
+			QC_BacktraceText (&QC_LastError (vm)->backtrace, text, sizeof(text));
+		}
+		QT_TextAppend (&r.log, text);
+		if (QC_RunThreads (vm, &ran))
+			snprintf (text, sizeof(text), "threads ok %u\n", ran);
 		else
 		{
 			QC_ErrorText (QC_LastError (vm), text, sizeof(text));
@@ -500,6 +510,7 @@ static void TestStandardBuiltins (qc_numbering_t numbering, uint64_t cases)
 			if (!QC_BuiltinsAt (b, pick, &name, &number, &numbered))
 				continue;
 			QC_Call (vm, QC_FindFunction (vm, name), argc, args, NULL);
+			QC_RunThreads (vm, NULL);
 		}
 		QC_CollectGarbage (vm);
 		QC_Destroy (vm);

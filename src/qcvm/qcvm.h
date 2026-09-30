@@ -622,6 +622,10 @@ bool		QC_FindGlobal (const qcvm_t *vm, const char *name, uint32_t *word, uint32_
 qc_word_t	*QC_Globals (qcvm_t *vm);	// the main progs' globals
 uint32_t	QC_NumGlobals (const qcvm_t *vm);
 
+// the same of progs pr (NULL and false past those loaded)
+bool		QC_FindGlobalIn (const qcvm_t *vm, uint32_t pr, const char *name, uint32_t *word, uint32_t *type);
+qc_word_t	*QC_GlobalsIn (qcvm_t *vm, uint32_t pr);
+
 // a field by name: its word offset in an entity, and type
 bool		QC_FindField (const qcvm_t *vm, const char *name, uint32_t *ofs, uint32_t *type);
 
@@ -834,6 +838,51 @@ typedef struct
 // fills up to max of them and returns how many there are
 uint32_t	QC_UnboundBuiltins (const qcvm_t *vm, bool reachable, qc_unbound_t *out, uint32_t max);
 bool		QC_IsBuiltinBound (const qcvm_t *vm, qc_func_t f);
+
+/*
+------------------------------------------------------------------------------
+multiprogs
+
+Further progs in one VM (FTE_MULTIPROGS: addprogs, CSQC add-ons). Each keeps
+its own globals, PARM and RETURN slots included; function values carry the
+progs number in their top byte. Entity fields are unified by name, and new
+ones take the room each entity reserves (field_reserve_bytes). Globals flagged
+as shared, and the configuration's shared_globals, are copied between progs
+whenever execution passes from one to another.
+------------------------------------------------------------------------------
+*/
+
+// Loads another progs (taking a reference) and gives its number: its
+// functions become callable, its fields are unified with those known, its
+// extern (bodyless) functions are linked to those other progs define, and its
+// init(float prevprogs) runs. False (QC_LastError) when the progs limit, the
+// address space for progs or the fields' room runs out (nothing is added), or
+// with init's error (the progs stays loaded).
+bool		QC_AddProgs (qcvm_t *vm, qc_progs_t *progs, uint32_t *prnum);
+uint32_t	QC_NumProgs (const qcvm_t *vm);		// 1 and those added
+qc_progs_t	*QC_LoadedProgs (const qcvm_t *vm, uint32_t pr);	// NULL past them
+
+/*
+------------------------------------------------------------------------------
+threads and autocvars
+------------------------------------------------------------------------------
+*/
+
+// Resumes the sleeping QuakeC threads (sleep, fork) whose wake time has come
+// by the main progs' time global, in wake order; *ran (if not NULL) gets how
+// many ran. Call it once a frame, when no QuakeC runs. False with the first
+// error a thread raised (those not yet resumed stay asleep).
+bool		QC_RunThreads (qcvm_t *vm, uint32_t *ran);
+uint32_t	QC_SleepingThreads (const qcvm_t *vm);
+
+// Copies the host's cvars (cvar_string) into every progs' autocvars, the
+// autocvar_<name> globals, parsed by type: floats as atof, integers as atoi,
+// vectors as stov, strings as temp strings. Those of cvars the host lacks keep
+// their value (the progs' default until set). FTE does it when a progs loads
+// and whenever a cvar changes; QC_SyncAutocvar does it for one cvar. False
+// when out of memory.
+bool		QC_SyncAutocvars (qcvm_t *vm);
+bool		QC_SyncAutocvar (qcvm_t *vm, const char *cvar);
 
 // After the host longjmps out of a call (from a builtin or a callback), puts
 // the VM back as if no QuakeC ran: frames unwound, locals restored.

@@ -924,6 +924,7 @@ void SV_Physics (void)
 	pr.global_struct->frametime = (float)sv.frametime;
 
 	SV_ProgStartFrame ();
+	PR_RunThreads ();
 
 //
 // treat each object in turn

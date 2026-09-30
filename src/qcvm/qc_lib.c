@@ -46,9 +46,9 @@ qc_builtins_t *QC_BuiltinsStandard (qc_numbering_t numbering)
 		return NULL;
 	if (!QC_RegisterConvert (b) || !QC_RegisterDigest (b) || !QC_RegisterEntity (b) || !QC_RegisterFormat (b)
 		|| !QC_RegisterHash (b) || !QC_RegisterHostcalls (b) || !QC_RegisterIntrospect (b) || !QC_RegisterJson (b)
-		|| !QC_RegisterMath (b) || !QC_RegisterMemory (b)
+		|| !QC_RegisterMath (b) || !QC_RegisterMemory (b) || !QC_RegisterProgs (b)
 		|| !QC_RegisterReflect (b) || !QC_RegisterStrbuf (b) || !QC_RegisterStrftime (b) || !QC_RegisterString (b)
-		|| !QC_RegisterTime (b) || !QC_RegisterTokenize (b) || !QC_RegisterVector (b))
+		|| !QC_RegisterThreads (b) || !QC_RegisterTime (b) || !QC_RegisterTokenize (b) || !QC_RegisterVector (b))
 	{
 		QC_BuiltinsFree (b);
 		return NULL;
@@ -93,6 +93,8 @@ static const char *const qc_extensions[] = {
 	"EXT_BITSHIFT",
 	"FTE_CALLTIMEOFDAY",
 	"FTE_MEMALLOC",
+	"FTE_MULTIPROGS",
+	"FTE_MULTITHREADED",
 	"FTE_QC_CHECKCOMMAND",
 	"FTE_QC_CROSSPRODUCT",
 	"FTE_QC_DIGEST_SHA1",

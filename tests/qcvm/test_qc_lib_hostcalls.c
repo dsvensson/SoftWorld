@@ -127,7 +127,72 @@ static void TestExtensionsCommandsAndFlags (void)
 	QH_Free (h);
 }
 
-// later: autocvars_follow_the_hosts_cvars (autocvars, Phase 14l)
+static void AutocvarGlobals (qc_asm_t *a, void *ctx)
+{
+	uint32_t	zero[3] = {0, 0, 0};
+
+	(void)ctx;
+	QA_Global1 (a, "autocvar_f", QC_EV_FLOAT, QC_FloatBits (2.5f));
+	QA_Global1 (a, "autocvar_i", QC_EV_INTEGER, 3);
+	QA_Global (a, "autocvar_v", QC_EV_VECTOR, zero, 3);
+	QA_Global1 (a, "autocvar_s", QC_EV_STRING, QA_String (a, "default"));
+	QA_Global1 (a, "autocvar_unset", QC_EV_FLOAT, QC_FloatBits (7.0f));
+}
+
+static qc_word_t *Global (qh_t *h, const char *name)
+{
+	uint32_t	word = 0;
+
+	QT_CHECK (QC_FindGlobal (h->vm, name, &word, NULL));
+	return &QC_Globals (h->vm)[word];
+}
+
+// QC_SyncAutocvars copies the host's cvars into autocvar_* globals, parsed by
+// type; cvars the host lacks keep the progs' default, and syncing again picks
+// up changes
+static void TestAutocvarsFollowTheHostsCvars (void)
+{
+	qh_t		*h = QH_New (QC_NUMBERING_CSQC, NULL, AutocvarGlobals, NULL);
+	qc_word_t	*v;
+
+	QH_SetCvar (h, "f", "0.25x");
+	QH_SetCvar (h, "i", " -12abc");
+	QH_SetCvar (h, "v", "'1 2 3'");
+	QH_SetCvar (h, "s", "hello");
+	QT_CHECK (QC_SyncAutocvars (h->vm));
+	QT_EQ_F (Global (h, "autocvar_f")->f, 0.25);
+	QT_EQ_I (Global (h, "autocvar_i")->i, -12);
+	v = Global (h, "autocvar_v");
+	QT_EQ_F (v[0].f, 1);
+	QT_EQ_F (v[1].f, 2);
+	QT_EQ_F (v[2].f, 3);
+	QT_EQ_S (QC_String (h->vm, Global (h, "autocvar_s")->u), "hello");
+	QT_EQ_F (Global (h, "autocvar_unset")->f, 7);
+
+	// a changed cvar is picked up by the next sync; the string survives collections
+	QH_SetCvar (h, "f", "9");
+	QT_CHECK (QC_SyncAutocvars (h->vm));
+	QC_CollectGarbage (h->vm);
+	QT_EQ_F (Global (h, "autocvar_f")->f, 9);
+	QT_EQ_S (QC_String (h->vm, Global (h, "autocvar_s")->u), "hello");
+
+	// QC_SyncAutocvar updates one cvar's autocvar only
+	QH_SetCvar (h, "f", "4");
+	QH_SetCvar (h, "i", "5");
+	QH_SetCvar (h, "s", "bye");
+	QT_CHECK (QC_SyncAutocvar (h->vm, "i"));
+	QT_EQ_I (Global (h, "autocvar_i")->i, 5);
+	QT_EQ_F (Global (h, "autocvar_f")->f, 9);
+	QT_EQ_S (QC_String (h->vm, Global (h, "autocvar_s")->u), "hello");
+	QT_CHECK (QC_SyncAutocvar (h->vm, "s"));
+	QT_EQ_S (QC_String (h->vm, Global (h, "autocvar_s")->u), "bye");
+	QT_EQ_F (Global (h, "autocvar_f")->f, 9);
+	// a cvar with no autocvar, or one the host lacks, changes nothing
+	QT_CHECK (QC_SyncAutocvar (h->vm, "nothing"));
+	QT_CHECK (QC_SyncAutocvar (h->vm, "unset"));
+	QT_EQ_F (Global (h, "autocvar_unset")->f, 7);
+	QH_Free (h);
+}
 
 int main (void)
 {
@@ -137,5 +202,6 @@ int main (void)
 	TestCvars ();
 	TestRegistercvar ();
 	TestExtensionsCommandsAndFlags ();
+	TestAutocvarsFollowTheHostsCvars ();
 	return QT_Finish ("lib_hostcalls", "the builtins the host answers forward to it");
 }

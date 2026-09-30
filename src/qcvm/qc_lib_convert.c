@@ -195,9 +195,7 @@ static bool QC_Stof (qcvm_t *vm)
 	return true;
 }
 
-// FTE's stov: an optional leading ', then up to three numbers apart by spaces or
-// tabs; a ' or something not a number ends it
-static void QC_ParseVector (const char *s, float out[3])
+void QC_ParseVector (const char *s, float out[3])
 {
 	size_t	i = s[0] == '\'', used;
 	int		k;

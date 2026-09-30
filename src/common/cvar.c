@@ -109,6 +109,9 @@ void Cvar_ListMatches (const char *partial, void (*match) (void *ctx, const char
 static cvar_info_hook_t	cvar_userinfo_hook;		// the client's
 static cvar_info_hook_t	cvar_serverinfo_hook;	// the server's
 
+#define MAX_CHANGE_HOOKS	4
+static cvar_change_hook_t	cvar_change_hooks[MAX_CHANGE_HOOKS];
+
 /*
 ============
 Cvar_SetUserinfoHook / Cvar_SetServerinfoHook
@@ -128,12 +131,36 @@ void Cvar_SetServerinfoHook (cvar_info_hook_t hook)
 
 /*
 ============
+Cvar_AddChangeHook
+
+Called after any cvar changes; adding one twice adds it once
+============
+*/
+void Cvar_AddChangeHook (cvar_change_hook_t hook)
+{
+	int		i;
+
+	for (i = 0 ; i < MAX_CHANGE_HOOKS ; i++)
+		if (cvar_change_hooks[i] == hook)
+			return;
+	for (i = 0 ; i < MAX_CHANGE_HOOKS ; i++)
+		if (!cvar_change_hooks[i])
+		{
+			cvar_change_hooks[i] = hook;
+			return;
+		}
+	Sys_Error ("Cvar_AddChangeHook: too many hooks");
+}
+
+/*
+============
 Cvar_Set
 ============
 */
 void Cvar_Set (char *var_name, char *value)
 {
 	cvar_t	*var;
+	int		i;
 	
 	var = Cvar_FindVar (var_name);
 	if (!var)
@@ -152,6 +179,9 @@ void Cvar_Set (char *var_name, char *value)
 	var->string = Mem_Alloc (strlen(value)+1);
 	Q_strcpy (var->string, value);
 	var->value = Q_atof (var->string);
+
+	for (i = 0 ; i < MAX_CHANGE_HOOKS && cvar_change_hooks[i] ; i++)
+		cvar_change_hooks[i] (var);
 }
 
 /*

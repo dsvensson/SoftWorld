@@ -84,6 +84,7 @@ void PR_Init (void);
 void PR_ResetStack (void);	// after an error left QuakeC running
 
 void PR_ExecuteProgram (func_t fnum);
+void PR_RunThreads (void);
 void PR_LoadProgs (void);
 void PR_FreeProgs (void);			// the VM gone, until the next map
 void PR_ClearLightstyles (void);	// PF_lightstyle's copies

@@ -40,11 +40,13 @@ bool	QC_RegisterIntrospect (qc_builtins_t *b);
 bool	QC_RegisterJson (qc_builtins_t *b);
 bool	QC_RegisterMath (qc_builtins_t *b);
 bool	QC_RegisterMemory (qc_builtins_t *b);
+bool	QC_RegisterProgs (qc_builtins_t *b);
 bool	QC_RegisterReflect (qc_builtins_t *b);
 bool	QC_RegisterString (qc_builtins_t *b);
 bool	QC_RegisterStrbuf (qc_builtins_t *b);
 bool	QC_RegisterStrftime (qc_builtins_t *b);
 bool	QC_RegisterTime (qc_builtins_t *b);
+bool	QC_RegisterThreads (qc_builtins_t *b);
 bool	QC_RegisterTokenize (qc_builtins_t *b);
 bool	QC_RegisterVector (qc_builtins_t *b);
 
@@ -223,6 +225,10 @@ bool	QC_IsCSpace (int c);				// isspace in the C locale
 double	QC_Strtod (const char *s, size_t *used);
 int64_t	QC_Strtol (const char *s, uint32_t base);		// a 64-bit long, saturating
 uint64_t	QC_Strtoul (const char *s, uint32_t base);	// ULONG_MAX on overflow
+
+// FTE's stov: an optional leading ', then up to three numbers apart by spaces or
+// tabs; a ' or something not a number ends it
+void	QC_ParseVector (const char *s, float out[3]);
 
 /*
 ==============================================================================

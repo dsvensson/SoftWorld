@@ -100,3 +100,30 @@ target_compile_definitions(test_qc_fixtures PRIVATE
 add_dependencies(test_qc_fixtures qc_fixtures)
 add_test(NAME qc_fixtures COMMAND test_qc_fixtures)
 set_tests_properties(qc_fixtures PROPERTIES SKIP_RETURN_CODE 77)
+
+# test_qc_multiprogs loads further progs into a VM: linking, calls between
+# progs, shared globals, fields unified by name, relocated strings, and the
+# limits.
+sw_add_program(test_qc_multiprogs test_qc_multiprogs.c)
+target_link_libraries(test_qc_multiprogs PRIVATE qc_testsupport)
+add_test(NAME qc_multiprogs COMMAND test_qc_multiprogs)
+
+# test_qc_threads runs QuakeC threads (sleep, fork) resumed by QC_RunThreads,
+# with qc/threads.qc compiled by fteqcc when there is one.
+set(qc_threads_dat "")
+if(SW_FTEQCC)
+	set(qc_threads_dat "${QC_FIXTURE_DIR}/threads-fte.dat")
+	add_custom_command(OUTPUT "${qc_threads_dat}"
+		COMMAND "${CMAKE_COMMAND}" "-DFTEQCC=${SW_FTEQCC}" "-DSRC=${CMAKE_CURRENT_SOURCE_DIR}/qc"
+			-DFIXTURE=threads.qc -DFLAGS=-Tfte "-DOUT=${qc_threads_dat}" -DRUNNER=OFF
+			-P "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
+		DEPENDS qc/threads.qc "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
+		COMMENT "Compiling threads.qc for fte")
+endif()
+add_custom_target(qc_threads_fixture DEPENDS ${qc_threads_dat})
+sw_add_program(test_qc_threads test_qc_threads.c)
+target_link_libraries(test_qc_threads PRIVATE qc_testsupport)
+target_compile_definitions(test_qc_threads PRIVATE QT_THREADS_DAT="${qc_threads_dat}")
+add_dependencies(test_qc_threads qc_threads_fixture)
+add_test(NAME qc_threads COMMAND test_qc_threads)
+set_tests_properties(qc_threads PROPERTIES SKIP_RETURN_CODE 77)

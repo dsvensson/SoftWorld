@@ -96,6 +96,11 @@ void 	Cvar_Set (char *var_name, char *value);
 typedef void (*cvar_info_hook_t) (char *name, char *value);
 void	Cvar_SetUserinfoHook (cvar_info_hook_t hook);
 void	Cvar_SetServerinfoHook (cvar_info_hook_t hook);
+
+// called after any cvar changes (QuakeC's autocvars follow them); the server and
+// the client each add theirs
+typedef void (*cvar_change_hook_t) (cvar_t *var);
+void	Cvar_AddChangeHook (cvar_change_hook_t hook);
 // equivelant to "<name> <variable>" typed at the console
 
 void	Cvar_SetValue (char *var_name, float value);

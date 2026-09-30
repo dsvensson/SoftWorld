@@ -33,8 +33,7 @@ static double QC_HostClock (const qcvm_t *vm)
 	return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
 }
 
-// the budgets of a host call: the instructions nested calls share, and the deadline
-static void QC_StartBudgets (qcvm_t *vm)
+void QC_StartBudgets (qcvm_t *vm)
 {
 	vm->budget = vm->config.limits.runaway;
 	vm->has_deadline = vm->config.limits.deadline > 0;
@@ -446,8 +445,7 @@ static bool QC_ExecuteInner (qcvm_t *vm, uint32_t exit_depth)
 	}
 }
 
-// runs the interpreter until the frames are back at exit_depth
-static bool QC_Execute (qcvm_t *vm, uint32_t exit_depth)
+bool QC_Execute (qcvm_t *vm, uint32_t exit_depth)
 {
 	uint32_t	saved = vm->entry_depth;
 	bool		ok;
