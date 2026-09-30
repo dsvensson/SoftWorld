@@ -284,7 +284,8 @@ skipwhite:
 	}
 	
 
-// handle quoted strings specially
+// handle quoted strings specially; a token longer than com_token holds is
+// cut short, and a string the text ends in leaves the text at its end
 	if (c == '\"')
 	{
 		data++;
@@ -294,19 +295,19 @@ skipwhite:
 			if (c=='\"' || !c)
 			{
 				com_token[len] = 0;
-				return data;
+				return c ? data : data - 1;
 			}
-			com_token[len] = (char)c;
-			len++;
+			if (len < (int)sizeof(com_token) - 1)
+				com_token[len++] = (char)c;
 		}
 	}
 
 // parse a regular word
 	do
 	{
-		com_token[len] = (char)c;
+		if (len < (int)sizeof(com_token) - 1)
+			com_token[len++] = (char)c;
 		data++;
-		len++;
 		c = *data;
 	} while (c>32);
 	

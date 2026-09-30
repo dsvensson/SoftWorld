@@ -178,9 +178,19 @@ void Cbuf_Execute (void)
 				break;
 		}
 			
-				
-		memcpy (line, text, i);
-		line[i] = 0;
+
+		// a longer line is cut short, not copied over the stack
+		if (i < (int)sizeof(line))
+		{
+			memcpy (line, text, (size_t)i);
+			line[i] = 0;
+		}
+		else
+		{
+			Con_Printf ("Command line over %d characters, cut short\n", (int)sizeof(line) - 1);
+			memcpy (line, text, sizeof(line) - 1);
+			line[sizeof(line) - 1] = 0;
+		}
 		
 // delete the text from the command buffer and move remaining commands down
 // this is necessary because commands (exec, alias) can insert data at the
@@ -192,7 +202,7 @@ void Cbuf_Execute (void)
 		{
 			i++;
 			cmd_text.cursize -= i;
-			Q_memcpy (text, text+i, cmd_text.cursize);
+			memmove (text, text+i, (size_t)cmd_text.cursize);
 		}
 
 // execute the command line
