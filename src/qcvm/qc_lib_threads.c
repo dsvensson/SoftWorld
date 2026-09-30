@@ -10,7 +10,7 @@
 // called returning 0); the thread carries on after the call when it wakes.
 static bool QC_Sleep (qcvm_t *vm)
 {
-	static const uint32_t	zero[3];
+	static const uint32_t	zero[3] = {0, 0, 0};
 	bool					suspended;
 
 	if (!QC_Suspend (vm, QC_ArgFloat (vm, 0), zero, &suspended))

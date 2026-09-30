@@ -421,7 +421,7 @@ uint8_t *QA_Build (const qc_asm_t *a, qc_format_t format, size_t *size)
 	uint32_t	ofs_globals, ofs_bodyless = 0, magic;
 	size_t		i, words = v7 ? 23 : 15;
 	int			k;
-	static const uint8_t	zero[92];
+	static const uint8_t	zero[92] = {0};
 
 	QA_Put (&o, zero, words * 4);
 

@@ -24,7 +24,7 @@ static W U (uint32_t x)			{ return (W){{x, 0, 0}}; }
 static W L (int64_t x)			{ return (W){{(uint32_t)(uint64_t)x, (uint32_t)((uint64_t)x >> 32), 0}}; }
 static W D (double x)			{ uint64_t b = QC_DoubleBits (x); return (W){{(uint32_t)b, (uint32_t)(b >> 32), 0}}; }
 static W Words (uint32_t x, uint32_t y, uint32_t z)	{ return (W){{x, y, z}}; }
-static const W	marks = {{MARK, MARK, MARK}}, zero3;
+static const W	marks = {{MARK, MARK, MARK}}, zero3 = {{0, 0, 0}};
 
 static uint32_t FB (bool b)		{ return b ? QC_FloatBits (1) : 0; }
 static uint32_t FL (float x)	{ return QC_FloatBits (x); }
@@ -129,7 +129,7 @@ static void Report (uint32_t op)
 }
 
 // the first words of C after op A B
-static void CheckC (uint32_t op, W a, W b, const uint32_t *want, int n)
+static void CheckC (uint32_t op, W a, W b, W want, int n)
 {
 	out_t	out = Run (op, a, b, marks);
 	int		k;
@@ -137,15 +137,15 @@ static void CheckC (uint32_t op, W a, W b, const uint32_t *want, int n)
 	if (!QT_CHECK (!out.failed))
 		Report (op);
 	for (k = 0 ; k < n ; k++)
-		if (!QT_EQ_U (out.c.w[k], want[k]))
+		if (!QT_EQ_U (out.c.w[k], want.w[k]))
 			Report (op);
 }
-#define C1(op, a, b, w0)		CheckC ((op), (a), (b), (const uint32_t[]){(w0)}, 1)
-#define C2(op, a, b, want)		CheckC ((op), (a), (b), (want).w, 2)
-#define C3(op, a, b, want)		CheckC ((op), (a), (b), (want).w, 3)
+#define C1(op, a, b, w0)		CheckC ((op), (a), (b), Words ((w0), 0, 0), 1)
+#define C2(op, a, b, want)		CheckC ((op), (a), (b), (want), 2)
+#define C3(op, a, b, want)		CheckC ((op), (a), (b), (want), 3)
 
 // the first words of B after op A B (stores)
-static void CheckB (uint32_t op, W a, const uint32_t *want, int n)
+static void CheckB (uint32_t op, W a, W want, int n)
 {
 	out_t	out = Run (op, a, marks, zero3);
 	int		k;
@@ -153,8 +153,19 @@ static void CheckB (uint32_t op, W a, const uint32_t *want, int n)
 	if (!QT_CHECK (!out.failed))
 		Report (op);
 	for (k = 0 ; k < n ; k++)
-		if (!QT_EQ_U (out.b.w[k], want[k]))
+		if (!QT_EQ_U (out.b.w[k], want.w[k]))
 			Report (op);
+}
+
+// the first word of C, or of B, a run left: taken from a copy, as MSVC doesn't
+// index the arrays of a struct a function returns (C4223)
+static uint32_t C0 (out_t out)	{ return out.c.w[0]; }
+static uint32_t B0 (out_t out)	{ return out.b.w[0]; }
+
+// n words at got are want's
+static bool SameWords (const uint32_t *got, W want, int n)
+{
+	return !memcmp (got, want.w, (size_t)n * sizeof(uint32_t));
 }
 
 // op A B C faults
@@ -217,7 +228,7 @@ static void InternStrings (qc_asm_t *a)
 
 static uint32_t S (uint32_t op, uint32_t a, uint32_t b)
 {
-	return RunWith (op, U (a), U (b), marks, InternStrings).c.w[0];
+	return C0 (RunWith (op, U (a), U (b), marks, InternStrings));
 }
 
 static void Strings (void)
@@ -322,7 +333,7 @@ static void Branches (void)
 	QA_Emit (a, QOP_STORE_F, one, gc, 0);
 	end = QA_Emit (a, QOP_DONE, 0, 0, 0);
 	QA_PatchJump (a, g, 0, end);
-	QT_EQ_U (Exec (a).c.w[0], 0);
+	QT_EQ_U (C0 (Exec (a)), 0);
 	QA_Free (a);
 }
 
@@ -333,12 +344,12 @@ static void Stores (void)
 	size_t					i;
 
 	for (i = 0 ; i < sizeof(ops) / sizeof(ops[0]) ; i++)
-		CheckB (ops[i], U (42), (const uint32_t[]){42, MARK, MARK}, 3);
-	CheckB (QOP_STORE_V, V (1, 2, 3), V (1, 2, 3).w, 3);
-	CheckB (QOP_STORE_I64, Words (1, 2, 3), (const uint32_t[]){1, 2, MARK}, 3);
-	CheckB (QOP_STORE_IF, I (-3), (const uint32_t[]){FL (-3)}, 1);
-	CheckB (QOP_STORE_FI, F (-3.9f), (const uint32_t[]){(uint32_t)-3}, 1);
-	CheckB (QOP_STORE_FI, F (NAN), (const uint32_t[]){(uint32_t)INT32_MIN}, 1);
+		CheckB (ops[i], U (42), Words (42, MARK, MARK), 3);
+	CheckB (QOP_STORE_V, V (1, 2, 3), V (1, 2, 3), 3);
+	CheckB (QOP_STORE_I64, Words (1, 2, 3), Words (1, 2, MARK), 3);
+	CheckB (QOP_STORE_IF, I (-3), Words (FL (-3), 0, 0), 1);
+	CheckB (QOP_STORE_FI, F (-3.9f), Words ((uint32_t)-3, 0, 0), 1);
+	CheckB (QOP_STORE_FI, F (NAN), Words ((uint32_t)INT32_MIN, 0, 0), 1);
 }
 
 /*
@@ -442,7 +453,7 @@ static void Entities (void)
 	size_t		i;
 
 	for (i = 0 ; i < sizeof(loads) / sizeof(loads[0]) ; i++)
-		if (!QT_EQ_U (EntityCase (loads[i], U (1), zero3, marks, LoadField, NULL).c.w[0], 100))
+		if (!QT_EQ_U (C0 (EntityCase (loads[i], U (1), zero3, marks, LoadField, NULL)), 100))
 			Report (loads[i]);
 	out = EntityCase (QOP_LOAD_V, U (1), zero3, marks, LoadField, NULL);
 	QT_CHECK (out.c.w[0] == 101 && out.c.w[1] == 102 && out.c.w[2] == 103);
@@ -550,17 +561,17 @@ static void Pointers (void)
 	QA_Free (a);
 	QT_CHECK (!out.failed && out.a.w[0] == 30 && out.b.w[0] == 40 && out.c.w[0] == 2);
 
-	QT_EQ_U (Sized ((sized_t){QOP_LOADP_U8, 0, 1}, 0x88776655u).c.w[0], 0x66);
-	QT_EQ_U (Sized ((sized_t){QOP_LOADP_I8, 0, 3}, 0x88776655u).c.w[0], 0xFFFFFF88u);
-	QT_EQ_U (Sized ((sized_t){QOP_LOADP_U16, 0, 1}, 0x88776655u).c.w[0], 0x8877);
-	QT_EQ_U (Sized ((sized_t){QOP_LOADP_I16, 0, 1}, 0x88776655u).c.w[0], 0xFFFF8877u);
-	QT_EQ_U (Sized ((sized_t){QOP_STOREP_I8, 0xAB, 2}, 0x11111111u).b.w[0], 0x11AB1111u);
-	QT_EQ_U (Sized ((sized_t){QOP_STOREP_I16, 0xBEEF, 1}, 0x11111111u).b.w[0], 0xBEEF1111u);
-	QT_EQ_U (Sized ((sized_t){QOP_STOREP_C, FL (65), 0}, 0x11111111u).b.w[0], 0x11111141u);
-	QT_EQ_U (Sized ((sized_t){QOP_STOREP_IF, 3, 0}, 0).b.w[0], FL (3));
-	QT_EQ_U (Sized ((sized_t){QOP_STOREP_FI, FL (-2.5f), 0}, 0).b.w[0], (uint32_t)-2);
-	QT_EQ_U (Sized ((sized_t){QOP_LOADP_ITOF, 0, 99}, 7).c.w[0], FL (7));
-	QT_EQ_U (Sized ((sized_t){QOP_LOADP_FTOI, 0, 99}, FL (7.9f)).c.w[0], 7);
+	QT_EQ_U (C0 (Sized ((sized_t){QOP_LOADP_U8, 0, 1}, 0x88776655u)), 0x66);
+	QT_EQ_U (C0 (Sized ((sized_t){QOP_LOADP_I8, 0, 3}, 0x88776655u)), 0xFFFFFF88u);
+	QT_EQ_U (C0 (Sized ((sized_t){QOP_LOADP_U16, 0, 1}, 0x88776655u)), 0x8877);
+	QT_EQ_U (C0 (Sized ((sized_t){QOP_LOADP_I16, 0, 1}, 0x88776655u)), 0xFFFF8877u);
+	QT_EQ_U (B0 (Sized ((sized_t){QOP_STOREP_I8, 0xAB, 2}, 0x11111111u)), 0x11AB1111u);
+	QT_EQ_U (B0 (Sized ((sized_t){QOP_STOREP_I16, 0xBEEF, 1}, 0x11111111u)), 0xBEEF1111u);
+	QT_EQ_U (B0 (Sized ((sized_t){QOP_STOREP_C, FL (65), 0}, 0x11111111u)), 0x11111141u);
+	QT_EQ_U (B0 (Sized ((sized_t){QOP_STOREP_IF, 3, 0}, 0)), FL (3));
+	QT_EQ_U (B0 (Sized ((sized_t){QOP_STOREP_FI, FL (-2.5f), 0}, 0)), (uint32_t)-2);
+	QT_EQ_U (C0 (Sized ((sized_t){QOP_LOADP_ITOF, 0, 99}, 7)), FL (7));
+	QT_EQ_U (C0 (Sized ((sized_t){QOP_LOADP_FTOI, 0, 99}, FL (7.9f))), 7);
 
 	// vector, 64-bit and the other word forms through pointers
 	a = QA_New ();
@@ -659,28 +670,30 @@ static void Compound (void)
 	// the global forms update B and leave C alone
 	out = Run (QOP_MULSTORE_F, F (3), F (4), marks);
 	QT_CHECK (out.b.w[0] == FL (12) && out.c.w[0] == MARK);
-	QT_EQ_U (Run (QOP_DIVSTORE_F, F (4), F (2), marks).b.w[0], FL (0.5f));
-	QT_EQ_U (Run (QOP_ADDSTORE_F, F (4), F (2), marks).b.w[0], FL (6));
-	QT_EQ_U (Run (QOP_SUBSTORE_F, F (4), F (2), marks).b.w[0], FL (-2));
+	QT_EQ_U (B0 (Run (QOP_DIVSTORE_F, F (4), F (2), marks)), FL (0.5f));
+	QT_EQ_U (B0 (Run (QOP_ADDSTORE_F, F (4), F (2), marks)), FL (6));
+	QT_EQ_U (B0 (Run (QOP_SUBSTORE_F, F (4), F (2), marks)), FL (-2));
 	out = Run (QOP_MULSTORE_VF, F (2), V (1, 2, 3), marks);
-	QT_CHECK (!memcmp (out.b.w, V (2, 4, 6).w, 12));
+	QT_CHECK (SameWords (out.b.w, V (2, 4, 6), 3));
 	out = Run (QOP_ADDSTORE_V, V (1, 1, 1), V (1, 2, 3), marks);
-	QT_CHECK (!memcmp (out.b.w, V (2, 3, 4).w, 12));
+	QT_CHECK (SameWords (out.b.w, V (2, 3, 4), 3));
 	out = Run (QOP_SUBSTORE_V, V (1, 1, 1), V (1, 2, 3), marks);
-	QT_CHECK (!memcmp (out.b.w, V (0, 1, 2).w, 12));
-	QT_EQ_U (Run (QOP_BITSETSTORE_F, F (1), F (4), marks).b.w[0], FL (5));
-	QT_EQ_U (Run (QOP_BITCLRSTORE_F, F (1), F (5), marks).b.w[0], FL (4));
+	QT_CHECK (SameWords (out.b.w, V (0, 1, 2), 3));
+	QT_EQ_U (B0 (Run (QOP_BITSETSTORE_F, F (1), F (4), marks)), FL (5));
+	QT_EQ_U (B0 (Run (QOP_BITCLRSTORE_F, F (1), F (5), marks)), FL (4));
 
 	// through pointers
 	out = CompoundThrough (QOP_MULSTOREP_F, F (3), F (4));
 	QT_CHECK (out.a.w[0] == FL (12) && out.c.w[0] == FL (12));
-	QT_EQ_U (CompoundThrough (QOP_DIVSTOREP_F, F (2), F (4)).c.w[0], FL (2));
-	QT_EQ_U (CompoundThrough (QOP_ADDSTOREP_F, F (2), F (4)).c.w[0], FL (6));
-	QT_EQ_U (CompoundThrough (QOP_SUBSTOREP_F, F (2), F (4)).c.w[0], FL (2));
+	QT_EQ_U (C0 (CompoundThrough (QOP_DIVSTOREP_F, F (2), F (4))), FL (2));
+	QT_EQ_U (C0 (CompoundThrough (QOP_ADDSTOREP_F, F (2), F (4))), FL (6));
+	QT_EQ_U (C0 (CompoundThrough (QOP_SUBSTOREP_F, F (2), F (4))), FL (2));
 	out = CompoundThrough (QOP_MULSTOREP_VF, F (2), V (1, 2, 3));
-	QT_CHECK (!memcmp (out.a.w, V (2, 4, 6).w, 12) && !memcmp (out.c.w, V (2, 4, 6).w, 12));
-	QT_CHECK (!memcmp (CompoundThrough (QOP_ADDSTOREP_V, V (1, 1, 1), V (1, 2, 3)).c.w, V (2, 3, 4).w, 12));
-	QT_CHECK (!memcmp (CompoundThrough (QOP_SUBSTOREP_V, V (1, 1, 1), V (1, 2, 3)).c.w, V (0, 1, 2).w, 12));
+	QT_CHECK (SameWords (out.a.w, V (2, 4, 6), 3) && SameWords (out.c.w, V (2, 4, 6), 3));
+	out = CompoundThrough (QOP_ADDSTOREP_V, V (1, 1, 1), V (1, 2, 3));
+	QT_CHECK (SameWords (out.c.w, V (2, 3, 4), 3));
+	out = CompoundThrough (QOP_SUBSTOREP_V, V (1, 1, 1), V (1, 2, 3));
+	QT_CHECK (SameWords (out.c.w, V (0, 1, 2), 3));
 	out = CompoundThrough (QOP_BITSETSTOREP_F, F (1), F (4));
 	QT_CHECK (out.a.w[0] == FL (5) && out.c.w[0] == MARK);
 	out = CompoundThrough (QOP_BITCLRSTOREP_F, F (1), F (5));
@@ -688,7 +701,7 @@ static void Compound (void)
 
 	// interleaved when C is A, as fteqcc emits it: C[k] is written before A[k+1] is read
 	pa = QA_New ();
-	target = QA_Alloc (pa, 3, V (1, 2, 3).w, 3);
+	target = QA_Alloc (pa, 3, (const uint32_t[]){FL (1), FL (2), FL (3)}, 3);
 	ga = Global (pa, "A", V (10, 10, 10));
 	gb = Global (pa, "B", zero3);
 	Global (pa, "C", zero3);
@@ -697,7 +710,8 @@ static void Compound (void)
 	QA_Emit (pa, QOP_GLOBALADDRESS, target, zero, gb);
 	QA_Emit (pa, QOP_ADDSTOREP_V, ga, gb, ga);
 	QA_Emit (pa, QOP_DONE, 0, 0, 0);
-	QT_CHECK (!memcmp (Exec (pa).a.w, V (11, 12, 13).w, 12));
+	out = Exec (pa);
+	QT_CHECK (SameWords (out.a.w, V (11, 12, 13), 3));
 	QA_Free (pa);
 	// an invalid pointer is fatal
 	Fault (QOP_ADDSTOREP_F, F (1), U (0x7FFF0000u), U (0), QC_ERR_BAD_POINTER_WRITE, 0x7FFF0000);
@@ -836,9 +850,9 @@ static void Random (void)
 
 	for (i = 0 ; i < 50 ; i++)
 	{
-		QT_CHECK (Within (Run (QOP_RAND0, zero3, zero3, zero3).c.w[0], 0, 1, false));
-		QT_CHECK (Within (Run (QOP_RAND1, F (10), zero3, zero3).c.w[0], 0, 10, false));
-		QT_CHECK (Within (Run (QOP_RAND2, F (5), F (7), zero3).c.w[0], 5, 7, false));
+		QT_CHECK (Within (C0 (Run (QOP_RAND0, zero3, zero3, zero3)), 0, 1, false));
+		QT_CHECK (Within (C0 (Run (QOP_RAND1, F (10), zero3, zero3)), 0, 10, false));
+		QT_CHECK (Within (C0 (Run (QOP_RAND2, F (5), F (7), zero3)), 5, 7, false));
 		out = Run (QOP_RANDV0, zero3, zero3, zero3);
 		for (k = 0 ; k < 3 ; k++)
 			QT_CHECK (Within (out.c.w[k], 0, 1, true));
@@ -989,7 +1003,7 @@ static void Calls (void)
 				Report (op);
 			for (k = 1, sum = 0 ; k <= n ; k++)
 				sum += (float)k;
-			if (!QT_CHECK (!memcmp (out.ret.w, V (sum, 10.0f * (float)n, 100.0f * (float)n).w, 12)))
+			if (!QT_CHECK (SameWords (out.ret.w, V (sum, 10.0f * (float)n, 100.0f * (float)n), 3)))
 				Report (op);
 		}
 	Cover (QOP_RETURN);
@@ -1158,7 +1172,7 @@ static void GlobalsIndexed (void)
 	size_t		i;
 
 	for (i = 0 ; i < sizeof(loads) / sizeof(loads[0]) ; i++)
-		if (!QT_EQ_U (ArrayCase (loads[i], 2, &arr).c.w[0], 33))
+		if (!QT_EQ_U (C0 (ArrayCase (loads[i], 2, &arr)), 33))
 			Report (loads[i]);
 	out = ArrayCase (QOP_LOADA_V, 1, &arr);
 	QT_CHECK (out.c.w[0] == 22 && out.c.w[1] == 33 && out.c.w[2] == 44);
@@ -1168,7 +1182,7 @@ static void GlobalsIndexed (void)
 	QT_CHECK (out.failed && out.err == QC_ERR_ARRAY_INDEX && out.value == (int64_t)arr - 100);
 
 	for (i = 0 ; i < sizeof(gloads) / sizeof(gloads[0]) ; i++)
-		if (!QT_EQ_U (GCase (gloads[i]).c.w[0], 7))
+		if (!QT_EQ_U (C0 (GCase (gloads[i])), 7))
 			Report (gloads[i]);
 	out = GCase (QOP_GLOAD_V);
 	QT_CHECK (out.c.w[0] == 7 && out.c.w[1] == 8 && out.c.w[2] == 9);
@@ -1289,7 +1303,7 @@ static void Bitfields (void)
 	C1 (QOP_BITEXTEND_I, U (0x00000700), desc, 7);
 	C1 (QOP_BITEXTEND_U, U (0x00000F00), desc, 15);
 	C1 (QOP_BITEXTEND_U, U (UINT32_MAX), U (0), 0);
-	QT_EQ_U (Run (QOP_BITCOPY_I, U (0x5), desc, U (UINT32_MAX)).c.w[0], 0xFFFFF5FFu);
+	QT_EQ_U (C0 (Run (QOP_BITCOPY_I, U (0x5), desc, U (UINT32_MAX))), 0xFFFFF5FFu);
 }
 
 // every opcode test, in one format; small shrinks the local stack, which moves

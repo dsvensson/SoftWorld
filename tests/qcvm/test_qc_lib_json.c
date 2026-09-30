@@ -441,7 +441,7 @@ static void TestTokenSoupParsesConsistently (void)
 		text[0] = 0;
 		parts = QT_RandBelow (&rng, 48);
 		for (i = 0 ; i < parts ; i++)
-			strcat (text, tokens[QT_RandBelow (&rng, sizeof(tokens) / sizeof(tokens[0]))]);
+			strcat (text, tokens[QT_RandBelow (&rng, (uint32_t)(sizeof(tokens) / sizeof(tokens[0])))]);
 		h = Harness ();
 		root = Parse (h, text);
 		if (root && !QT_CHECK (Walk (h, root, 0) >= 1))

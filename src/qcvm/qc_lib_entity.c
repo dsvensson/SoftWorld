@@ -364,7 +364,7 @@ static bool QC_FindList (qcvm_t *vm)
 {
 	uint32_t		f = QC_ArgWord (vm, 0), want[3], words, e, w[3], k;
 	int32_t			type = QC_Argc (vm) > 2 ? QC_ArgInt (vm, 2) : 1;
-	static const uint32_t	zero[3];
+	static const uint32_t	zero[3] = {0, 0, 0};
 	qc_entlist_t	l = {0};
 	const char		*text;
 	char			*wanttext;

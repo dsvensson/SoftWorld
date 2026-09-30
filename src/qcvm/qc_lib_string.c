@@ -313,11 +313,11 @@ static uint8_t QC_ConvAlpha (uint8_t b, uint8_t casebase, uint8_t colourbase, in
 	{
 	case 1:		colour = 0; break;
 	case 2:		colour = 0x80; break;
-	case 5:		colour = i % 2 == 0 ? 0x80 : 0; break;
-	case 6:		colour = i % 2 != 0 ? 0x80 : 0; break;
+	case 5:		colour = (uint8_t)(i % 2 == 0 ? 0x80 : 0); break;
+	case 6:		colour = (uint8_t)(i % 2 != 0 ? 0x80 : 0); break;
 	default:	colour = colourbase; break;
 	}
-	c = ccase == 1 ? 'a' : ccase == 2 ? 'A' : casebase;
+	c = (uint8_t)(ccase == 1 ? 'a' : ccase == 2 ? 'A' : casebase);
 	return (uint8_t)(letter + c + colour);
 }
 

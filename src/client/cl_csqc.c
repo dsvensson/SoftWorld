@@ -102,36 +102,36 @@ static void CSQC_Localcmd (void *ctx, const char *text)
 	Cbuf_AddText ((char *)text);
 }
 
-static float CSQC_CvarFloat (void *ctx, const char *name)
+static float CSQC_CvarFloat (void *ctx, const char *varname)
 {
 	(void)ctx;
-	return Cvar_VariableValue ((char *)name);
+	return Cvar_VariableValue ((char *)varname);
 }
 
-static const char *CSQC_CvarString (void *ctx, const char *name)
+static const char *CSQC_CvarString (void *ctx, const char *varname)
 {
-	cvar_t	*var = Cvar_FindVar ((char *)name);
+	cvar_t	*var = Cvar_FindVar ((char *)varname);
 
 	(void)ctx;
 	return var ? var->string : NULL;
 }
 
-static void CSQC_CvarSet (void *ctx, const char *name, const char *value)
+static void CSQC_CvarSet (void *ctx, const char *varname, const char *value)
 {
 	(void)ctx;
-	if (Cvar_FindVar ((char *)name))
-		Cvar_Set ((char *)name, (char *)value);
+	if (Cvar_FindVar ((char *)varname))
+		Cvar_Set ((char *)varname, (char *)value);
 }
 
 // checkcommand: 1 a command, 2 an alias, 3 a cvar
-static uint32_t CSQC_CheckCommand (void *ctx, const char *name)
+static uint32_t CSQC_CheckCommand (void *ctx, const char *cmd)
 {
 	(void)ctx;
-	if (Cmd_Exists ((char *)name))
+	if (Cmd_Exists ((char *)cmd))
 		return 1;
-	if (Cmd_AliasExists (name))
+	if (Cmd_AliasExists (cmd))
 		return 2;
-	return Cvar_FindVar ((char *)name) ? 3 : 0;
+	return Cvar_FindVar ((char *)cmd) ? 3 : 0;
 }
 
 // a command QuakeC registered: its whole line goes to CSQC_ConsoleCommand
@@ -155,24 +155,24 @@ static void CSQC_ConsoleCommand_f (void)
 
 // registercommand: a console command for CSQC_ConsoleCommand, unless the name
 // is taken
-static void CSQC_RegisterCommand (void *ctx, const char *name)
+static void CSQC_RegisterCommand (void *ctx, const char *cmd)
 {
 	char	*copy;
 	int		i;
 
 	(void)ctx;
-	if (!*name || Cmd_Exists ((char *)name) || Cvar_FindVar ((char *)name) || Cmd_AliasExists (name))
+	if (!*cmd || Cmd_Exists ((char *)cmd) || Cvar_FindVar ((char *)cmd) || Cmd_AliasExists (cmd))
 		return;
 	for (i = 0 ; i < csqc.numcommands ; i++)
-		if (!strcmp (csqc.commands[i], name))
+		if (!strcmp (csqc.commands[i], cmd))
 			return;
 	if (csqc.numcommands == (int)(sizeof(csqc.commands) / sizeof(csqc.commands[0])))
 	{
-		Con_Printf ("CSQC: too many commands, %s left out\n", name);
+		Con_Printf ("CSQC: too many commands, %s left out\n", cmd);
 		return;
 	}
-	copy = Mem_Alloc (strlen (name) + 1);
-	strcpy (copy, name);
+	copy = Mem_Alloc (strlen (cmd) + 1);
+	strcpy (copy, cmd);
 	csqc.commands[csqc.numcommands++] = copy;
 	Cmd_AddCommand (copy, CSQC_ConsoleCommand_f, "A command of the client-side QuakeC.");
 }
@@ -180,7 +180,7 @@ static void CSQC_RegisterCommand (void *ctx, const char *name)
 static float CSQC_IsDemo (void *ctx)
 {
 	(void)ctx;
-	return cls.demoplayback ? cls.mvdplayback ? 2 : 1 : 0;
+	return cls.demoplayback ? cls.mvdplayback ? 2.0f : 1.0f : 0.0f;
 }
 
 static bool CSQC_IsServer (void *ctx)
@@ -190,7 +190,7 @@ static bool CSQC_IsServer (void *ctx)
 }
 
 // another progs for addprogs, from the game directory
-static qc_progs_t *CSQC_LoadAddon (void *ctx, const char *name)
+static qc_progs_t *CSQC_LoadAddon (void *ctx, const char *file)
 {
 	byte			*data;
 	int				size;
@@ -199,18 +199,18 @@ static qc_progs_t *CSQC_LoadAddon (void *ctx, const char *name)
 	char			text[1024];
 
 	(void)ctx;
-	if (!*name || strstr (name, "..") || *name == '/' || *name == '\\' || strchr (name, ':'))
+	if (!*file || strstr (file, "..") || *file == '/' || *file == '\\' || strchr (file, ':'))
 	{
-		Con_Printf ("addprogs: refusing %s\n", name);
+		Con_Printf ("addprogs: refusing %s\n", file);
 		return NULL;
 	}
-	data = FS_LoadFile (name, &size);
+	data = FS_LoadFile (file, &size);
 	if (!data)
 		return NULL;
 	p = QC_LoadProgs (data, (size_t)size, &lerr);
 	Mem_Free (data);
 	if (!p)
-		Con_Printf ("%s: %s\n", name, QC_LoadErrorText (&lerr, text, sizeof(text)));
+		Con_Printf ("%s: %s\n", file, QC_LoadErrorText (&lerr, text, sizeof(text)));
 	return p;
 }
 
@@ -539,11 +539,11 @@ csprogsvers (unless it came from a pack or the client runs the server), so
 demos play with it later. The file (Mem_Free it) and where it came from.
 =================
 */
-static byte *CSQC_FindMainProgs (const char *name, unsigned checksum, size_t checksize, int *size, char *found,
+static byte *CSQC_FindMainProgs (const char *file, unsigned checksum, size_t checksize, int *size, char *found,
 	size_t foundsize)
 {
 	char		cached[MAX_QPATH];
-	const char	*loose = *name ? name : "csprogs.dat";
+	const char	*loose = *file ? file : "csprogs.dat";
 	byte		*data;
 
 	snprintf (cached, sizeof(cached), "csprogsvers/%x.dat", checksum);
@@ -589,7 +589,7 @@ bool CSQC_CheckDownload (const char *csprogsname, unsigned checksum, size_t chec
 }
 
 // a progs from its file's bytes (freed), with the line numbers beside it
-static qc_progs_t *CSQC_LoadProgs (const char *name, byte *data, int size)
+static qc_progs_t *CSQC_LoadProgs (const char *file, byte *data, int size)
 {
 	qc_loaderror_t		lerr;
 	qc_progs_t			*p = QC_LoadProgs (data, (size_t)size, &lerr);
@@ -602,14 +602,14 @@ static qc_progs_t *CSQC_LoadProgs (const char *name, byte *data, int size)
 	Mem_Free (data);
 	if (!p)
 	{
-		Con_Printf ("%s: %s\n", name, QC_LoadErrorText (&lerr, text, sizeof(text)));
+		Con_Printf ("%s: %s\n", file, QC_LoadErrorText (&lerr, text, sizeof(text)));
 		return NULL;
 	}
 	notes = QC_ProgsNotes (p, &count);
 	for (n = 0 ; n < count ; n++)
-		Con_DPrintf ("%s: %s\n", name, QC_LoadNoteText (&notes[n], text, sizeof(text)));
+		Con_DPrintf ("%s: %s\n", file, QC_LoadNoteText (&notes[n], text, sizeof(text)));
 
-	COM_StripExtension ((char *)name, lnoname);
+	COM_StripExtension ((char *)file, lnoname);
 	Q_strncatz (lnoname, ".lno", sizeof(lnoname));
 	if ((lno = FS_LoadFile (lnoname, &lnosize)))
 	{
@@ -644,13 +644,13 @@ static void CSQC_Failed (void)
 }
 
 // an entry point, in the csprogs or else the add-on (FTE's PR_ANY)
-static qc_func_t CSQC_Entry (const char *name)
+static qc_func_t CSQC_Entry (const char *entry)
 {
 	uint32_t	pr;
 	qc_func_t	f;
 
 	for (pr = 0 ; pr < QC_NumProgs (csqc.vm) ; pr++)
-		if ((f = QC_FindFunctionIn (csqc.vm, pr, name)))
+		if ((f = QC_FindFunctionIn (csqc.vm, pr, entry)))
 			return f;
 	return 0;
 }
@@ -673,34 +673,34 @@ static bool CSQC_Call (qc_func_t f, int argc, const qc_value_t *args)
 }
 
 // a float global of the csprogs, if it has one
-static void CSQC_SetFloat (const char *name, float value)
+static void CSQC_SetFloat (const char *global, float value)
 {
 	uint32_t	word, type;
 
-	if (QC_FindGlobal (csqc.vm, name, &word, &type) && type == QC_EV_FLOAT)
+	if (QC_FindGlobal (csqc.vm, global, &word, &type) && type == QC_EV_FLOAT)
 		QC_Globals (csqc.vm)[word].f = value;
 }
 
-static void CSQC_SetString (const char *name, const char *text)
+static void CSQC_SetString (const char *global, const char *text)
 {
 	uint32_t	word, type;
 
-	if (QC_FindGlobal (csqc.vm, name, &word, &type) && type == QC_EV_STRING)
+	if (QC_FindGlobal (csqc.vm, global, &word, &type) && type == QC_EV_STRING)
 		QC_Globals (csqc.vm)[word].u = QC_Intern (csqc.vm, text, strlen (text));
 }
 
 // a field of the world, if the progs has it
-static void CSQC_SetWorldField (const char *name, uint32_t want, uint32_t value)
+static void CSQC_SetWorldField (const char *field, uint32_t want, qc_value_t value)
 {
 	uint32_t	ofs, type;
 
-	if (QC_FindField (csqc.vm, name, &ofs, &type) && type == want)
-		QC_SetField (csqc.vm, 0, ofs, 1, &value);
+	if (QC_FindField (csqc.vm, field, &ofs, &type) && type == want)
+		QC_SetField (csqc.vm, 0, ofs, 1, value.w);
 }
 
 // init(float prevprogs) and initents(float prevprogs) of each progs, as FTE
 // calls them
-static bool CSQC_CallEach (const char *name, uint32_t from)
+static bool CSQC_CallEach (const char *entry, uint32_t from)
 {
 	uint32_t	pr;
 	qc_value_t	arg;
@@ -708,7 +708,7 @@ static bool CSQC_CallEach (const char *name, uint32_t from)
 	for (pr = from ; csqc.vm && pr < QC_NumProgs (csqc.vm) ; pr++)
 	{
 		arg = QC_ValFloat ((float)pr - 1);
-		if (!CSQC_Call (QC_FindFunctionIn (csqc.vm, pr, name), 1, &arg))
+		if (!CSQC_Call (QC_FindFunctionIn (csqc.vm, pr, entry), 1, &arg))
 			return false;
 	}
 	return csqc.vm != NULL;
@@ -846,12 +846,12 @@ bool CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t
 		return false;
 
 	// what FTE sets before CSQC_Init
-	CSQC_SetWorldField ("message", QC_EV_STRING, QC_Intern (csqc.vm, cl.levelname, strlen (cl.levelname)));
+	CSQC_SetWorldField ("message", QC_EV_STRING, QC_ValWord (QC_Intern (csqc.vm, cl.levelname, strlen (cl.levelname))));
 	s = Info_ValueForKey (cl.serverinfo, "map");
 	CSQC_SetString ("mapname", *s ? s : *cl.model_name[1] ? cl.model_name[1] : "unknown");
 	CSQC_SetFloat ("deathmatch", (float)atoi (Info_ValueForKey (cl.serverinfo, "deathmatch")));
 	CSQC_SetFloat ("coop", !atoi (Info_ValueForKey (cl.serverinfo, "deathmatch"))
-		&& atoi (Info_ValueForKey (cl.serverinfo, "maxclients")) > 1);
+		&& atoi (Info_ValueForKey (cl.serverinfo, "maxclients")) > 1 ? 1.0f : 0.0f);
 	CSQC_SetFloat ("maxclients", MAX_CLIENTS);
 	CSQC_SetFloat ("player_localnum", (float)cl.playernum);
 	CSQC_SetFloat ("player_localentnum", (float)(cl.playernum + 1));
@@ -882,9 +882,9 @@ void CSQC_WorldLoaded (void)
 	csqc.worldloaded = true;
 
 	QC_SetProtected (csqc.vm, 0, false);
-	CSQC_SetWorldField ("solid", QC_EV_FLOAT, QC_ValFloat (SOLID_BSP).w[0]);
-	CSQC_SetWorldField ("modelindex", QC_EV_FLOAT, QC_ValFloat (1).w[0]);
-	CSQC_SetWorldField ("model", QC_EV_STRING, QC_HostString (csqc.vm, cl.model_name[1]));
+	CSQC_SetWorldField ("solid", QC_EV_FLOAT, QC_ValFloat (SOLID_BSP));
+	CSQC_SetWorldField ("modelindex", QC_EV_FLOAT, QC_ValFloat (1));
+	CSQC_SetWorldField ("model", QC_EV_STRING, QC_ValWord (QC_HostString (csqc.vm, cl.model_name[1])));
 
 	csqc.entitydata = cl.map ? CM_EntityString (cl.map) : NULL;
 	CSQC_Call (CSQC_Entry ("CSQC_WorldLoaded"), 0, NULL);

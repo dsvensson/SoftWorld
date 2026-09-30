@@ -260,7 +260,7 @@ static uint32_t QC_StringCompare (qcvm_t *vm, uint32_t op, uint32_t a, uint32_t 
 // or static string handle as the base reads inside that string (zeros past it).
 bool QC_PtrRead (qcvm_t *vm, uint32_t base, uint32_t offset, void *out, uint32_t n)
 {
-	uint32_t		addr = base + offset, size, i;
+	uint32_t		addr = base + offset, size = 0, i;
 	qc_loc_t		loc = QC_Locate (&vm->mem, addr, n);
 	const uint8_t	*data = NULL;
 	uint8_t			*o = out;

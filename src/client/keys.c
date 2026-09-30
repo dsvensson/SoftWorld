@@ -391,9 +391,9 @@ static void Key_WriteWord (const word_t *w, const char *text, size_t len, bool w
 // the candidate the cycle is on, written in place
 static void Key_WriteCycle (void)
 {
-	const char	*name = key_cycle.c.names[key_cycle.index];
+	const char	*candidate = key_cycle.c.names[key_cycle.index];
 
-	Key_WriteWord (&key_cycle.word, name, strlen (name), false);
+	Key_WriteWord (&key_cycle.word, candidate, strlen (candidate), false);
 	Q_strncpyz (key_cycle.line, KEY_LINE, sizeof(key_cycle.line));
 	key_cycle.linepos = key_input.linepos;
 }
@@ -563,22 +563,22 @@ static const char *Key_SuggestedName (void)
 
 const char *Key_Suggestion (void)
 {
-	const char	*name = Key_SuggestedName ();
+	const char	*suggested = Key_SuggestedName ();
 	char		*line = KEY_LINE;
 
-	return name ? name + strlen (line + (line[1] == '/' || line[1] == '\\' ? 2 : 1)) : NULL;
+	return suggested ? suggested + strlen (line + (line[1] == '/' || line[1] == '\\' ? 2 : 1)) : NULL;
 }
 
 // the suggestion taken: the name written in place of what is typed
 static bool Key_AcceptSuggestion (void)
 {
-	const char	*name = Key_SuggestedName ();
+	const char	*suggested = Key_SuggestedName ();
 	char		*line = KEY_LINE;
 	int			cmd = line[1] == '/' || line[1] == '\\' ? 2 : 1;
 
-	if (!name)
+	if (!suggested)
 		return false;
-	Q_strncpyz (line + cmd, name, (size_t)(MAXCMDLINE - cmd));
+	Q_strncpyz (line + cmd, suggested, (size_t)(MAXCMDLINE - cmd));
 	key_input.linepos = (int)strlen (line);
 	return true;
 }

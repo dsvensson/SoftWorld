@@ -375,17 +375,20 @@ qc_value_t QH_Raw (qh_t *h, const char *name, int argc, const qc_value_t *args)
 
 float QH_Float (qh_t *h, const char *name, int argc, const qc_value_t *args)
 {
-	return QC_BitsFloat (QH_Raw (h, name, argc, args).w[0]);
+	return QC_BitsFloat (QH_Word (h, name, argc, args));
 }
 
 int32_t QH_Int (qh_t *h, const char *name, int argc, const qc_value_t *args)
 {
-	return (int32_t)QH_Raw (h, name, argc, args).w[0];
+	return (int32_t)QH_Word (h, name, argc, args);
 }
 
+// (the result copied: MSVC doesn't index the array of a returned struct)
 uint32_t QH_Word (qh_t *h, const char *name, int argc, const qc_value_t *args)
 {
-	return QH_Raw (h, name, argc, args).w[0];
+	qc_value_t	v = QH_Raw (h, name, argc, args);
+
+	return v.w[0];
 }
 
 void QH_Vector (qh_t *h, float out[3], const char *name, int argc, const qc_value_t *args)

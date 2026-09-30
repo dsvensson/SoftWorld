@@ -26,7 +26,7 @@ static uint16_t QC_Crc16 (const char *data, size_t len, bool lowercase)
 	{
 		b = (uint8_t)data[i];
 		if (lowercase && b >= 'A' && b <= 'Z')
-			b += 32;
+			b = (uint8_t)(b + 32);
 		crc ^= (uint16_t)(b << 8);
 		for (bit = 0 ; bit < 8 ; bit++)
 			crc = crc & 0x8000 ? (uint16_t)((crc << 1) ^ 0x1021) : (uint16_t)(crc << 1);

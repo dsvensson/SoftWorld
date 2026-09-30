@@ -289,7 +289,7 @@ bool QC_LibReturnSink (qcvm_t *vm, qc_sink_t *s)
 
 bool QC_LibSoftError (qcvm_t *vm, const char *fmt, ...)
 {
-	static const uint32_t	zero[3];
+	static const uint32_t	zero[3] = {0, 0, 0};
 	char					text[1024];
 	va_list					args;
 

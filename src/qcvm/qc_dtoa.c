@@ -400,7 +400,7 @@ static void QC_Emit (qc_sink_t *s, const qc_pieces_t *p, const qc_spec_t *spec, 
 static size_t QC_ExponentSuffix (int64_t x, bool upper, char *out)
 {
 	return (size_t)snprintf (out, 32, "%c%c%02llu", upper ? 'E' : 'e', x < 0 ? '-' : '+',
-		(unsigned long long)(x < 0 ? -(uint64_t)x : (uint64_t)x));
+		(unsigned long long)(x < 0 ? 0 - (uint64_t)x : (uint64_t)x));
 }
 
 void QC_FormatFloat (qc_sink_t *s, double v, char conv, const qc_spec_t *spec)

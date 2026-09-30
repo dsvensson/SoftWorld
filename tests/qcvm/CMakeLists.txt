@@ -123,9 +123,14 @@ endif()
 add_custom_target(qc_threads_fixture DEPENDS ${qc_threads_dat})
 sw_add_program(test_qc_threads test_qc_threads.c)
 target_link_libraries(test_qc_threads PRIVATE qc_testsupport)
-target_compile_definitions(test_qc_threads PRIVATE QT_THREADS_DAT="${qc_threads_dat}")
 add_dependencies(test_qc_threads qc_threads_fixture)
-add_test(NAME qc_threads COMMAND test_qc_threads)
+# the fixture's path as an argument: a compiled-in one made the check for it
+# constant, which MSVC warns about
+if(SW_FTEQCC)
+	add_test(NAME qc_threads COMMAND test_qc_threads "${qc_threads_dat}")
+else()
+	add_test(NAME qc_threads COMMAND test_qc_threads)
+endif()
 set_tests_properties(qc_threads PROPERTIES SKIP_RETURN_CODE 77)
 
 # test_qc_csprogs runs KTX's csprogs.dat, named by QCVM_CSPROGS, against a stub

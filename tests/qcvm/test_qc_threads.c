@@ -118,6 +118,9 @@ static void TestResumedThreadsDoNotLeakReturnValues (void)
 	QA_Free (a);
 }
 
+// the compiled threads.qc, named on the command line ("" without fteqcc)
+static const char	*threads_dat = "";
+
 static qcvm_t *FixtureVM (const qc_builtins_t *b, const qc_config_t *config)
 {
 	qc_progs_t	*p;
@@ -125,7 +128,7 @@ static qcvm_t *FixtureVM (const qc_builtins_t *b, const qc_config_t *config)
 	uint8_t		*data;
 	size_t		size;
 
-	data = QT_LoadFile (QT_THREADS_DAT, &size);
+	data = QT_LoadFile (threads_dat, &size);
 	if (!QT_CHECK (data != NULL))
 		return NULL;
 	p = QC_LoadProgs (data, size, NULL);
@@ -194,10 +197,12 @@ static void TestThreadMemoryIsLimited (void)
 	QC_BuiltinsFree (b);
 }
 
-int main (void)
+int main (int argc, char **argv)
 {
+	if (argc > 1)
+		threads_dat = argv[1];
 	TestResumedThreadsDoNotLeakReturnValues ();
-	if (*QT_THREADS_DAT)
+	if (*threads_dat)
 	{
 		TestSleepForkAndNestedSleeps ();
 		TestThreadMemoryIsLimited ();

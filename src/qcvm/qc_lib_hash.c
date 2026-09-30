@@ -379,7 +379,7 @@ static bool QC_HashGet (qcvm_t *vm)
 // entry (of any type) and returns its value, or zero
 static bool QC_HashDelete (qcvm_t *vm)
 {
-	static const uint32_t	zero[3];
+	static const uint32_t	zero[3] = {0, 0, 0};
 	qc_hashtable_t			*t;
 	int32_t					handle;
 	const char				*key;
@@ -419,7 +419,7 @@ static qc_hashentry_t *QC_EntryAt (qc_hashtable_t *t, uint32_t n)
 // entry in enumeration order (unspecified, and changed by adds and deletes), or null
 static bool QC_HashGetkey (qcvm_t *vm)
 {
-	static const uint32_t	zero[3];
+	static const uint32_t	zero[3] = {0, 0, 0};
 	qc_hashtable_t			*t;
 	int32_t					handle, index;
 	qc_hashentry_t			*e;

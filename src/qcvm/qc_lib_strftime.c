@@ -100,9 +100,9 @@ static void QC_DirText (const qc_directive_t *d, qc_sink_t *out, const char *s, 
 	{
 		c = s[i];
 		if (upper && c >= 'a' && c <= 'z')
-			c -= 32;
+			c = (char)(c - 32);
 		else if (lower && c >= 'A' && c <= 'Z')
-			c += 32;
+			c = (char)(c + 32);
 		QC_SinkPush (out, c);
 	}
 }

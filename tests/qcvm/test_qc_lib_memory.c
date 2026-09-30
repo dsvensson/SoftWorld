@@ -55,7 +55,7 @@ static bool Bytes (qh_t *h, uint32_t p, const void *want, size_t n, int line)
 }
 #define BYTES(h, p, want, n)	Bytes ((h), (p), (want), (n), __LINE__)
 
-static const uint8_t	zeros[64];
+static const uint8_t	zeros[64] = {0};
 
 static void Write (qh_t *h, uint32_t p, const void *data, size_t n)
 {

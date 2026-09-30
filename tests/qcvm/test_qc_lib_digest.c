@@ -135,7 +135,7 @@ static void TestDigestHexVectors (void)
 
 static void BufSetup (qc_asm_t *a, void *ctx)
 {
-	static const uint32_t	zeros[8];
+	static const uint32_t	zeros[8] = {0};
 
 	(void)ctx;
 	QA_Global (a, "buf", QC_EV_FLOAT, zeros, 8);

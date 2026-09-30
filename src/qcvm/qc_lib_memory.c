@@ -157,7 +157,7 @@ static int32_t QC_OptInt (const qcvm_t *vm, int i)
 
 static void QC_ReturnZero (qcvm_t *vm)
 {
-	static const uint32_t	zero[3];
+	static const uint32_t	zero[3] = {0, 0, 0};
 
 	QC_ReturnRaw (vm, zero);
 }

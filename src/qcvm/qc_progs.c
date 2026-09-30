@@ -202,7 +202,7 @@ static bool QC_Has16BitStatements (qc_format_t format)
 // if they lie outside the file; an empty section is fine anywhere
 static const uint8_t *QC_Section (loader_t *l, uint32_t ofs, uint32_t count, size_t size, const char *name)
 {
-	static const uint8_t	empty[1];
+	static const uint8_t	empty[1] = {0};
 	uint64_t				len, end;
 
 	if (!count)

@@ -99,7 +99,9 @@ qc_value_t QC_ArgValue (const qcvm_t *vm, int i)
 
 uint32_t QC_ArgWord (const qcvm_t *vm, int i)
 {
-	return QC_ArgValue (vm, i).w[0];
+	qc_value_t	v = QC_ArgValue (vm, i);
+
+	return v.w[0];
 }
 
 float QC_ArgFloat (const qcvm_t *vm, int i)
@@ -245,7 +247,7 @@ THE OUTER LOOP
 static qc_flow_t QC_RunBuiltin (qcvm_t *vm, uint32_t slot, qc_func_t func, uint32_t exit_depth)
 {
 	qc_builtin_t	f = QC_BuiltinSlot (vm->builtins, slot);
-	static const uint32_t	zero[3];
+	static const uint32_t	zero[3] = {0, 0, 0};
 	char			text[1024];
 
 	if (!f)

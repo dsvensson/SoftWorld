@@ -499,11 +499,13 @@ static void TestExternBuiltinsReachOtherProgs (void)
 	// the main progs has no such global
 	args[0] = QC_ValFloat (0);
 	args[1] = Str (vm, "greeting");
-	QT_EQ_U (CallNamed (vm, "externvalue", 2, args).w[0], 0);
+	r = CallNamed (vm, "externvalue", 2, args);
+	QT_EQ_U (r.w[0], 0);
 	// a function by name
 	args[0] = QC_ValFloat (1);
 	args[1] = Str (vm, "addon_twice");
-	QT_EQ_U (CallNamed (vm, "externvalue", 2, args).w[0], QC_FindFunctionIn (vm, 1, "addon_twice"));
+	r = CallNamed (vm, "externvalue", 2, args);
+	QT_EQ_U (r.w[0], QC_FindFunctionIn (vm, 1, "addon_twice"));
 
 	// externset writes them; &name gives an address QuakeC pointers can use
 	args[0] = QC_ValFloat (1);

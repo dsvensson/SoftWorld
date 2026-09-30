@@ -791,7 +791,7 @@ static bool B_DynamiclightAdd (qcvm_t *vm)
 
 static bool B_Getproperty (qcvm_t *vm)
 {
-	static const float	zero[3];
+	static const float	zero[3] = {0, 0, 0};
 
 	QC_ReturnVector (vm, QC_ArgFloat (vm, 0) == VF_ORIGIN ? ENGINE (vm)->view_origin : zero);
 	return true;
@@ -1257,7 +1257,7 @@ bool CSE_EntUpdate (cse_client_t *c, uint16_t entnum, cse_msg_t *msg)
 	c->host.netlen = msg->len;
 	c->host.netpos = 0;
 	*msg = (cse_msg_t){0};
-	arg = QC_ValFloat (isnew ? 1 : 0);
+	arg = QC_ValFloat (isnew ? 1.0f : 0.0f);
 	ok = QC_CallAs (c->vm, e, CSE_Func (c, "CSQC_Ent_Update"), 1, &arg, NULL);
 	if (ok)
 	{
