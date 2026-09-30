@@ -1204,7 +1204,7 @@ static void SV_ListIP_f (void)
 	Con_Printf ("Filter list:\n");
 	for (i=0 ; i<numipfilters ; i++)
 	{
-		*(unsigned *)b = ipfilters[i].compare;
+		memcpy (b, &ipfilters[i].compare, 4);
 		Con_Printf ("%3i.%3i.%3i.%3i\n", b[0], b[1], b[2], b[3]);
 	}
 }
@@ -1234,7 +1234,7 @@ static void SV_WriteIP_f (void)
 	
 	for (i=0 ; i<numipfilters ; i++)
 	{
-		*(unsigned *)b = ipfilters[i].compare;
+		memcpy (b, &ipfilters[i].compare, 4);
 		fprintf (f, "addip %i.%i.%i.%i\n", b[0], b[1], b[2], b[3]);
 	}
 	

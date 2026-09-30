@@ -261,6 +261,11 @@ static bool CL_GetDemoMessage (void)
 		for (i=0 ; i<3 ; i++)
 		{
 			r = (int)fread (&f, 4, 1, cls.demofile);
+			if (r != 1)
+			{
+				CL_StopPlayback ();
+				return 0;
+			}
 			cl.viewangles[i] = LittleFloat (f);
 		}
 		break;

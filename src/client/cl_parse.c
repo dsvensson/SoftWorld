@@ -801,7 +801,9 @@ CL_ParseBaseline
 static void CL_ParseBaseline (entity_state_t *es)
 {
 	int			i;
-	
+
+	// what it doesn't send (alpha, colormod) is as a delta from nothing leaves it
+	*es = (entity_state_t){0};
 	es->modelindex = MSG_ReadByte ();
 	es->frame = MSG_ReadByte ();
 	es->colormap = MSG_ReadByte();

@@ -842,9 +842,9 @@ static void TestKtxCsprogs (void)
 		if (lno)
 		{
 			QT_CHECK (QC_AttachLineNumbers (p, lno, lnosize, NULL));
-			QT_CHECK (QC_ProgsFunctionIndex (p, "CSQC_Init", &index) && QC_ProgsFunction (p, index, &fn)
-				&& fn.kind == QC_FUNC_QUAKEC);
-			QT_CHECK (QC_ProgsSourceLine (p, fn.entry, &line) && line > 0);
+			if (QT_CHECK (QC_ProgsFunctionIndex (p, "CSQC_Init", &index) && QC_ProgsFunction (p, index, &fn)
+				&& fn.kind == QC_FUNC_QUAKEC))
+				QT_CHECK (QC_ProgsSourceLine (p, fn.entry, &line) && line > 0);
 			free (lno);
 		}
 	}

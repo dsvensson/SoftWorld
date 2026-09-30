@@ -281,16 +281,20 @@ static int COM_filelength (FILE *f)
 static int COM_FileOpenRead (char *path, FILE **hndl)
 {
 	FILE	*f;
+	int		len;
 
+	*hndl = NULL;
 	f = fopen(path, "rb");
 	if (!f)
-	{
-		*hndl = NULL;
+		return -1;
+	len = COM_filelength(f);
+	if (len < 0)
+	{	// not a file that can be read (a directory)
+		fclose (f);
 		return -1;
 	}
 	*hndl = f;
-	
-	return COM_filelength(f);
+	return len;
 }
 
 /*

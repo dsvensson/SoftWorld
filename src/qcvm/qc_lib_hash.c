@@ -454,7 +454,7 @@ static bool QC_HashGetcb (qcvm_t *vm)
 		return true;
 	if (QC_Argc (vm) > 2 && !(key = QC_LibDup (QC_ArgString (vm, 2))))
 		return QC_Fail (vm, QC_ERR_OUT_OF_MEMORY, QC_RES_HASH_TABLES, NULL);
-	for (i = 0 ; (e = QC_EntryAt (t, i)) ; i++)
+	for (i = 0 ; QC_EntryAt (t, i) ; i++)
 		count++;
 	if (count && !(snap = calloc (count, sizeof(*snap))))
 		ok = QC_Fail (vm, QC_ERR_OUT_OF_MEMORY, QC_RES_HASH_TABLES, NULL);
