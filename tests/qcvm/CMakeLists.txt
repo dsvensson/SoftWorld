@@ -29,3 +29,16 @@ add_test(NAME qc_memory COMMAND test_qc_memory)
 sw_add_program(test_qc_opcodes test_qc_opcodes.c)
 target_link_libraries(test_qc_opcodes PRIVATE qc_testsupport)
 add_test(NAME qc_opcodes COMMAND test_qc_opcodes)
+
+# test_qc_vm checks calls, builtins, re-entrancy, errors and their backtraces,
+# the limits, abort, tracing, the animation opcodes, and a longjmp out of the VM.
+sw_add_program(test_qc_vm test_qc_vm.c)
+target_link_libraries(test_qc_vm PRIVATE qc_testsupport)
+add_test(NAME qc_vm COMMAND test_qc_vm)
+
+# test_qc_fuzz runs random programs (QC_FUZZ_ITERS of them, 256 by default),
+# which must not harm the VM, and checks the interpreter against its tracing
+# instance and against a budget handed out in chunks.
+sw_add_program(test_qc_fuzz test_qc_fuzz.c)
+target_link_libraries(test_qc_fuzz PRIVATE qc_testsupport)
+add_test(NAME qc_fuzz COMMAND test_qc_fuzz)
