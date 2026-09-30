@@ -313,7 +313,7 @@ Larger attenuations will drop off.  (max 4 attenuation)
 
 ==================
 */  
-void SV_StartSound (edict_t *entity, int channel, char *sample, int volume,
+void SV_StartSound (edict_t *entity, int channel, const char *sample, int volume,
     float attenuation)
 {       
     int         sound_num;
@@ -599,7 +599,6 @@ static void SV_UpdateToReliableMessages (void)
 {
 	int			i, j;
 	client_t *client;
-	eval_t *val;
 	edict_t *ent;
 
 // check for changes to be sent over the reliable streams to all clients
@@ -629,15 +628,13 @@ static void SV_UpdateToReliableMessages (void)
 		// maxspeed/entgravity changes
 		ent = host_client->edict;
 
-		val = GetEdictFieldValue(ent, "gravity");
-		if (val && host_client->entgravity != val->_float) {
-			host_client->entgravity = val->_float;
+		if (pr.fofs_gravity && host_client->entgravity != E_FLOAT(ent, pr.fofs_gravity)) {
+			host_client->entgravity = E_FLOAT(ent, pr.fofs_gravity);
 			ClientReliableWrite_Begin(host_client, svc_entgravity, 5);
 			ClientReliableWrite_Float(host_client, host_client->entgravity);
 		}
-		val = GetEdictFieldValue(ent, "maxspeed");
-		if (val && host_client->maxspeed != val->_float) {
-			host_client->maxspeed = val->_float;
+		if (pr.fofs_maxspeed && host_client->maxspeed != E_FLOAT(ent, pr.fofs_maxspeed)) {
+			host_client->maxspeed = E_FLOAT(ent, pr.fofs_maxspeed);
 			ClientReliableWrite_Begin(host_client, svc_maxspeed, 5);
 			ClientReliableWrite_Float(host_client, host_client->maxspeed);
 		}

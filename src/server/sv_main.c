@@ -214,6 +214,9 @@ void SV_Kill (void)
 	}
 
 	PR_ResetStack ();
+	PR_FreeProgs ();
+	sv.edicts = NULL;
+	sv.num_edicts = 0;
 	sv.state = ss_dead;
 	if (sv.map)
 		CM_FreeMap (sv.map);

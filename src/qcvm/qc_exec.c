@@ -435,7 +435,7 @@ THE LOOP
 
 qc_exit_t QC_Run (qcvm_t *vm, uint32_t exit_depth, uint32_t *budget)
 {
-	if (vm->trace)
+	if (vm->trace || vm->profiling)
 		return QC_RunTraced (vm, exit_depth, budget);
 	vm->traced = false;
 	return QC_RunPlain (vm, exit_depth, budget);

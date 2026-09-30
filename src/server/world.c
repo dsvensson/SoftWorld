@@ -44,6 +44,20 @@ typedef struct
 
 /*
 ================
+SV_EntityModel
+
+The brush model an entity's modelindex names, or NULL
+================
+*/
+cmodel_t *SV_EntityModel (edict_t *ent)
+{
+	int		i = QC_FloatToInt (ent->v.modelindex);
+
+	return i >= 0 && i < MAX_MODELS ? sv.models[i] : NULL;
+}
+
+/*
+================
 SV_HullForEntity
 
 Returns a hull that can be used for testing or clipping an object of mins/maxs
@@ -65,7 +79,7 @@ static hull_t *SV_HullForEntity (edict_t *ent, vec3_t mins, vec3_t maxs, vec3_t 
 		if (ent->v.movetype != MOVETYPE_PUSH)
 			SV_Error ("SOLID_BSP without MOVETYPE_PUSH");
 
-		model = sv.models[ (int)ent->v.modelindex ];
+		model = SV_EntityModel (ent);
 
 		if (!model)
 			SV_Error ("MOVETYPE_PUSH with a non bsp model");

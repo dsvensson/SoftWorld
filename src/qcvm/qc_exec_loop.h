@@ -19,6 +19,9 @@ static qc_exit_t QC_LOOP_NAME (qcvm_t *vm, uint32_t exit_depth, uint32_t *budget
 	uint32_t				gb, ng, count, pc, a, b, c;
 	uint8_t					*fields;
 	uint32_t				shift, field_bytes, num_edicts;
+#if QC_LOOP_TRACED
+	uint64_t				*profile;
+#endif
 
 #define U32(o)	(*(uint32_t *)(S + (o)))
 #define I32(o)	(*(int32_t *)(S + (o)))
@@ -75,17 +78,22 @@ reload:
 	shift = vm->mem.shift;
 	field_bytes = vm->mem.field_bytes;
 	num_edicts = vm->mem.num_edicts;
+#if QC_LOOP_TRACED
+	profile = vm->profiling ? ps->profile : NULL;
+#endif
 
 	for ( ; ; pc++)
 	{
 #if QC_LOOP_TRACED
-		if (!vm->traced)
+		if (vm->trace && !vm->traced)
 		{
 			vm->traced = true;
 			vm->x.pc = pc;
 			return QC_ExitOf (QC_EXIT_TRACE);
 		}
 		vm->traced = false;
+		if (profile)
+			profile[vm->x.func]++;
 #endif
 		if (pc > count)
 			FAULT (QC_ERR_JUMP_OUT_OF_RANGE, 0);

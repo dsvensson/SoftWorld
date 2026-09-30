@@ -52,6 +52,8 @@ void SV_UnlinkEdict (edict_t *ent);
 // so it doesn't clip against itself
 // flags ent->v.modified
 
+struct cmodel_s *SV_EntityModel (edict_t *ent);	// its modelindex's brush model, or NULL
+
 void SV_LinkEdict (edict_t *ent, bool touch_triggers);
 // Needs to be called any time an entity changes origin, mins, maxs, or solid
 // flags ent->v.modified

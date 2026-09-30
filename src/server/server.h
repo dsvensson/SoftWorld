@@ -434,12 +434,14 @@ void SV_LogPrint (const char *msg);
 info_charset_t SV_InfoCharset (void);
 void SV_SendServerInfoChange (char *key, char *value);
 
-int SV_ModelIndex (char *name);
+int SV_ModelIndex (const char *name);
+char *SV_LevelString (const char *s);		// a copy for the level's life
 
 bool SV_CheckBottom (edict_t *ent);
 bool SV_movestep (edict_t *ent, vec3_t move, bool relink);
 
-void SV_MoveToGoal (void);
+bool SV_MoveToGoal (qcvm_t *vm);		// the movetogoal builtin
+void SV_ChangeYaw (edict_t *ent);
 
 
 void SV_InitOperatorCommands (void);
@@ -472,7 +474,7 @@ void SV_SetMoveVars(void);
 void SV_SendClientMessages (void);
 
 void SV_Multicast (vec3_t origin, int to);
-void SV_StartSound (edict_t *entity, int channel, char *sample, int volume,
+void SV_StartSound (edict_t *entity, int channel, const char *sample, int volume,
     float attenuation);
 void SV_ClientPrintf (client_t *cl, int level, char *fmt, ...);
 void SV_BroadcastPrintf (int level, char *fmt, ...);
@@ -533,7 +535,7 @@ void ClientReliableWrite_Float(client_t *cl, float f);
 void ClientReliableWrite_Coord(client_t *cl, float f);
 void ClientReliableWrite_Long(client_t *cl, int c);
 void ClientReliableWrite_Short(client_t *cl, int c);
-void ClientReliableWrite_String(client_t *cl, char *s);
+void ClientReliableWrite_String(client_t *cl, const char *s);
 void ClientReliableWrite_SZ(client_t *cl, void *data, int len);
 
 

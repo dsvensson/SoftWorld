@@ -251,6 +251,22 @@ qc_value_t	QC_ValInt (int32_t i);
 qc_value_t	QC_ValVector (float x, float y, float z);
 qc_value_t	QC_ValWord (uint32_t u);			// an entity, string, function or pointer
 
+// (int)f as x86 makes it, on every platform: toward zero, and INT32_MIN for NaN
+// and anything out of range (where C leaves the conversion undefined)
+static inline int32_t QC_FloatToInt (float f)
+{
+	if (!(f >= -2147483648.0f && f < 2147483648.0f))
+		return INT32_MIN;
+	return (int32_t)f;
+}
+
+static inline int32_t QC_DoubleToInt (double d)
+{
+	if (!(d > -2147483649.0 && d < 2147483648.0))
+		return INT32_MIN;
+	return (int32_t)d;
+}
+
 /*
 ==============================================================================
 
@@ -642,6 +658,11 @@ uint32_t	QC_EdictShift (const qcvm_t *vm);
 uint32_t	QC_NumEdicts (const qcvm_t *vm);	// slots allocated so far, the world included
 uint32_t	QC_MaxEdicts (const qcvm_t *vm);
 
+// Commits the memory of the first count blocks now (else it is committed as
+// slots are first spawned into), for a host that reaches any block below
+// count directly; they read as zero until spawned into.
+bool		QC_CommitEdicts (qcvm_t *vm, uint32_t count);
+
 // allocates an entity as FTE does (reusing a slot freed over half a second
 // ago, or in the first two seconds, else a new one, else any free one), its
 // fields zeroed and defaulted; false with QC_ERR_NO_FREE_EDICTS when all are used
@@ -778,6 +799,13 @@ qc_func_t	QC_FindFunctionIn (const qcvm_t *vm, uint32_t pr, const char *name);
 void		QC_SetTrace (qcvm_t *vm, bool on);
 bool		QC_IsTracing (const qcvm_t *vm);
 
+// Counts the statements each function runs (the interpreter is slower while
+// it does). QC_Profile gives progs pr's counts, one per function (NULL if
+// never counted); QC_ClearProfile starts them over.
+void			QC_SetProfiling (qcvm_t *vm, bool on);
+const uint64_t	*QC_Profile (const qcvm_t *vm, uint32_t pr, uint32_t *count);
+void			QC_ClearProfile (qcvm_t *vm);
+
 // A builtin of the loaded progs that no registered builtin satisfies: calling
 // it fails. With reachable, only those the code calls.
 typedef struct
@@ -822,6 +850,10 @@ bool		QC_ReturnString (qcvm_t *vm, const char *text, size_t len);
 
 // the builtin running: what QuakeC called, its number (0 by name) and name
 qc_func_t	QC_BuiltinFunction (const qcvm_t *vm, uint32_t *number, const char **name);
+
+// the name of the QuakeC function running, or that called the builtin running
+// ("" if none)
+const char	*QC_CallerName (const qcvm_t *vm);
 
 // Fails the builtin, for it to return: QC_Error is FTE's builtin error (only a
 // warning, and a zero result, in developer mode); QC_HostError always fails.

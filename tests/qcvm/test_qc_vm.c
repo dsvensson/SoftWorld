@@ -1158,6 +1158,122 @@ static void TestBigPrograms (void)
 	QA_Free (a);
 }
 
+// the QuakeC function a builtin was called from
+static bool B_Caller (qcvm_t *vm)
+{
+	host_t	*h = Host (vm);
+
+	snprintf (h->log, sizeof(h->log), "%s", QC_CallerName (vm));
+	return true;
+}
+
+// the statements each function ran, counted while profiling (tracing or not),
+// and the caller's name as a builtin sees it
+static void TestProfileAndCaller (void)
+{
+	qc_asm_t		*a = QA_New ();
+	qc_builtins_t	*b = Builtins1 (1, "caller", B_Caller);
+	uint32_t		one, caller_g, helper_g, count = 0, mainf, helperf;
+	qa_func_t		helper, f;
+	host_t			h = {0};
+	qcvm_t			*vm;
+	const uint64_t	*counts;
+	int				pass;
+
+	one = QA_Float (a, 1);
+	caller_g = QA_Global1 (a, "caller_g", QC_EV_FUNCTION, QA_Builtin (a, "caller", 1, 0));
+	helper = QA_Function (a, "helper", NULL, 0, 1);
+	QA_Emit (a, QOP_ADD_F, one, one, QA_Local (helper, 0));
+	QA_Emit (a, QOP_CALL0, caller_g, 0, 0);
+	QA_Emit (a, QOP_RETURN, QA_Local (helper, 0), 0, 0);
+	helper_g = QA_Global1 (a, "helper_g", QC_EV_FUNCTION, helper.index);
+	f = QA_Function (a, "main", NULL, 0, 1);
+	QA_Emit (a, QOP_ADD_F, one, one, QA_Local (f, 0));
+	QA_Emit (a, QOP_CALL0, helper_g, 0, 0);
+	QA_Emit (a, QOP_CALL0, helper_g, 0, 0);
+	QA_Emit (a, QOP_DONE, 0, 0, 0);
+	vm = MakeVM (a, b, &h);
+	mainf = QC_FUNC_INDEX (Func (vm, "main"));
+	helperf = QC_FUNC_INDEX (Func (vm, "helper"));
+
+	QT_EQ_S (QC_CallerName (vm), "");
+	QT_CHECK (QC_Call (vm, Func (vm, "main"), 0, NULL, NULL));
+	QT_EQ_S (h.log, "helper");
+	QT_CHECK (QC_Profile (vm, 0, &count) == NULL);		// never counted
+	QT_CHECK (QC_Profile (vm, 1, &count) == NULL);		// no such progs
+
+	// main runs 4 statements, helper 3 each time; tracing changes nothing
+	QC_SetProfiling (vm, true);
+	for (pass = 0 ; pass < 2 ; pass++)
+	{
+		QC_SetTrace (vm, pass == 1);
+		QT_CHECK (QC_Call (vm, Func (vm, "main"), 0, NULL, NULL));
+		counts = QC_Profile (vm, 0, &count);
+		if (QT_CHECK (counts != NULL))
+		{
+			QT_EQ_U (count, QC_ProgsNumFunctions (QC_MainProgs (vm)));
+			QT_EQ_U (counts[mainf], 4);
+			QT_EQ_U (counts[helperf], 6);
+			QT_EQ_U (counts[0], 0);
+		}
+		QC_ClearProfile (vm);
+		QT_EQ_U (counts ? counts[mainf] + counts[helperf] : 1, 0);
+	}
+	QC_SetTrace (vm, false);
+	QT_EQ_S (h.log, "helper");
+
+	// off: the counts stay as they are
+	QC_SetProfiling (vm, false);
+	QT_CHECK (QC_Call (vm, Func (vm, "main"), 0, NULL, NULL));
+	counts = QC_Profile (vm, 0, &count);
+	QT_CHECK (counts && counts[mainf] == 0 && counts[helperf] == 0);
+	QC_Destroy (vm);
+	QC_BuiltinsFree (b);
+	QA_Free (a);
+}
+
+// a host that reaches blocks it hasn't spawned into commits them first
+static void TestCommitEdicts (void)
+{
+	qc_asm_t	*a = QA_New ();
+	host_t		h = {0};
+	qcvm_t		*vm;
+	uint8_t		*last;
+	uint32_t	max;
+	qc_ent_t	e;
+
+	QA_Field (a, "health", QC_EV_FLOAT, NULL);
+	vm = MakeVM (a, NULL, &h);
+	max = QC_MaxEdicts (vm);
+	QT_CHECK (QC_CommitEdicts (vm, max + 5));		// as many as there can be
+	last = QC_Edicts (vm) + ((size_t)(max - 1) << QC_EdictShift (vm));
+	QT_EQ_U (last[0], 0);
+	last[0] = 1;
+	QT_EQ_U (QC_NumEdicts (vm), 1);					// nothing spawned
+	QT_CHECK (QC_Spawn (vm, &e) && e == 1);
+	QC_Destroy (vm);
+	QA_Free (a);
+}
+
+// float and double to int as x86 converts them
+static void TestConversions (void)
+{
+	QT_EQ_I (QC_FloatToInt (2.9f), 2);
+	QT_EQ_I (QC_FloatToInt (-2.9f), -2);
+	QT_EQ_I (QC_FloatToInt (-2147483648.0f), INT32_MIN);
+	QT_EQ_I (QC_FloatToInt (2147483520.0f), 2147483520);
+	QT_EQ_I (QC_FloatToInt (2147483648.0f), INT32_MIN);
+	QT_EQ_I (QC_FloatToInt (-2147483904.0f), INT32_MIN);
+	QT_EQ_I (QC_FloatToInt (QC_BitsFloat (0x7FC00000)), INT32_MIN);		// NaN
+	QT_EQ_I (QC_FloatToInt (QC_BitsFloat (0xFF800000)), INT32_MIN);		// -inf
+	QT_EQ_I (QC_DoubleToInt (0.9999999), 0);
+	QT_EQ_I (QC_DoubleToInt (2147483647.9), INT32_MAX);
+	QT_EQ_I (QC_DoubleToInt (-2147483648.9), INT32_MIN);
+	QT_EQ_I (QC_DoubleToInt (2147483648.0), INT32_MIN);
+	QT_EQ_I (QC_DoubleToInt (-2147483649.0), INT32_MIN);
+	QT_EQ_I (QC_DoubleToInt (QC_BitsDouble (0x7FF8000000000000ull)), INT32_MIN);
+}
+
 int main (void)
 {
 	TestAdd ();
@@ -1182,5 +1298,8 @@ int main (void)
 	TestDeadline ();
 	TestHooks ();
 	TestBigPrograms ();
+	TestProfileAndCaller ();
+	TestCommitEdicts ();
+	TestConversions ();
 	return QT_Finish ("vm", "calls, builtins, errors, limits and the rest behave");
 }

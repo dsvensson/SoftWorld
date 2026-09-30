@@ -428,11 +428,11 @@ A client's edict, fresh for a player or a spectator
 static void SV_SetUpClientEdict (client_t *cl)
 {
 	edict_t	*ent;
-	eval_t	*val;
 
 	ent = cl->edict;
 
-	memset (&ent->v, 0, pr.progs->entityfields * 4);
+	QC_ClaimEdict (pr.vm, (qc_ent_t)NUM_FOR_EDICT(ent));	// in case QuakeC removed it
+	memset (&ent->v, 0, QC_FieldWords (pr.vm) * 4);
 	ent->alpha = 0;
 	memset (ent->colormod, 0, sizeof(ent->colormod));
 	ent->v.colormap = (float)NUM_FOR_EDICT(ent);
@@ -440,13 +440,11 @@ static void SV_SetUpClientEdict (client_t *cl)
 	ent->v.netname = PR_SetString(cl->name);
 
 	cl->entgravity = 1.0;
-	val = GetEdictFieldValue(ent, "gravity");
-	if (val)
-		val->_float = 1.0;
+	if (pr.fofs_gravity)
+		E_FLOAT(ent, pr.fofs_gravity) = 1.0;
 	cl->maxspeed = sv_maxspeed.value;
-	val = GetEdictFieldValue(ent, "maxspeed");
-	if (val)
-		val->_float = sv_maxspeed.value;
+	if (pr.fofs_maxspeed)
+		E_FLOAT(ent, pr.fofs_maxspeed) = sv_maxspeed.value;
 }
 
 /*
@@ -1584,6 +1582,7 @@ static void AddLinksToPmove ( areanode_t *node )
 	int			pl;
 	int			i;
 	physent_t	*pe;
+	cmodel_t	*model;
 
 	pl = EDICT_TO_PROG(sv_player);
 
@@ -1608,6 +1607,9 @@ static void AddLinksToPmove ( areanode_t *node )
 					break;
 			if (i != 3)
 				continue;
+			model = check->v.solid == SOLID_BSP ? SV_EntityModel (check) : NULL;
+			if (check->v.solid == SOLID_BSP && !model)
+				continue;		// no brush model to collide with
 			if (sv_pmove.numphysent == MAX_PHYSENTS)
 				return;
 			pe = &sv_pmove.physents[sv_pmove.numphysent];
@@ -1616,7 +1618,7 @@ static void AddLinksToPmove ( areanode_t *node )
 			VectorCopy (check->v.origin, pe->origin);
 			pe->info = NUM_FOR_EDICT(check);
 			if (check->v.solid == SOLID_BSP)
-				pe->model = sv.models[(int)(check->v.modelindex)];
+				pe->model = model;
 			else
 			{
 				pe->model = NULL;
@@ -1695,19 +1697,16 @@ static void SV_TurnMove (client_t *cl, usercmd_t *move)
 int SV_NoteFixangle (client_t *cl)
 {
 	edict_t	*ent = cl->edict;
-	eval_t	*val;
 	float	ahead;
 
-	val = GetEdictFieldValue (ent, "teleported");
-	if (val)
+	if (pr.fofs_teleported)
 	{
-		cl->teleported = val->_int != 0;
-		val->_int = 0;
+		cl->teleported = E_INT(ent, pr.fofs_teleported) != 0;
+		E_INT(ent, pr.fofs_teleported) = 0;
 	}
 	else
 	{
-		val = GetEdictFieldValue (ent, "teleport_time");
-		ahead = val ? val->_float - (float)sv.time : 0;
+		ahead = pr.fofs_teleport_time ? E_FLOAT(ent, pr.fofs_teleport_time) - (float)sv.time : 0;
 		cl->teleported = ahead > 0.45f && ahead < 0.75f;
 	}
 	cl->teleport_outgoing = cl->netchan.outgoing_sequence;

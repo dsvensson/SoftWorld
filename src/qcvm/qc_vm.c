@@ -184,6 +184,7 @@ static void QC_FreeProgState (qc_progstate_t *ps)
 	free (ps->funcs);
 	free (ps->copies);
 	free (ps->shared);
+	free (ps->profile);
 	*ps = (qc_progstate_t){0};
 }
 
@@ -904,6 +905,13 @@ uint32_t QC_NumEdicts (const qcvm_t *vm)
 uint32_t QC_MaxEdicts (const qcvm_t *vm)
 {
 	return vm->mem.max_edicts;
+}
+
+bool QC_CommitEdicts (qcvm_t *vm, uint32_t count)
+{
+	if (count > vm->mem.max_edicts)
+		count = vm->mem.max_edicts;
+	return QC_RegionCommit (&vm->mem.e, (size_t)count << vm->mem.shift);
 }
 
 // a slot as FTE picks one: the first free one freed more than half a second

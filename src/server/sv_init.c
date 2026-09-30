@@ -32,7 +32,7 @@ SV_ModelIndex
 
 ================
 */
-int SV_ModelIndex (char *name)
+int SV_ModelIndex (const char *name)
 {
 	int		i;
 	
@@ -45,6 +45,22 @@ int SV_ModelIndex (char *name)
 	if (i==MAX_MODELS || !sv.model_precache[i])
 		SV_Error ("SV_ModelIndex: model %s not precached", name);
 	return i;
+}
+
+/*
+================
+SV_LevelString
+
+A copy of text, for as long as the level lasts
+================
+*/
+char *SV_LevelString (const char *s)
+{
+	size_t	len = strlen (s) + 1;
+	char	*copy = Arena_Alloc (&sv_level_arena, len);
+
+	memcpy (copy, s, len);
+	return copy;
 }
 
 /*
@@ -392,13 +408,12 @@ void SV_SpawnServer (char *server)
 	// which determines how big each edict is
 	PR_LoadProgs ();
 
-	// allocate edicts
-	sv.edicts = Arena_Alloc (&sv_level_arena, (size_t)MAX_EDICTS*pr.edict_size);
-	
-	// leave slots at start for clients only
+	// the VM's entities, of which the slots at the start are the clients'
+	sv.edicts = (edict_t *)QC_Edicts (pr.vm);
 	sv.num_edicts = MAX_CLIENTS+1;
 	for (i=0 ; i<MAX_CLIENTS ; i++)
 	{
+		QC_ClaimEdict (pr.vm, (qc_ent_t)(i+1));
 		ent = EDICT_NUM(i+1);
 		svs.clients[i].edict = ent;
 //ZOID - make sure we update frags right
@@ -428,9 +443,9 @@ void SV_SpawnServer (char *server)
 	//
 	SV_ClearWorld ();
 	
-	sv.sound_precache[0] = pr.strings;
+	sv.sound_precache[0] = "";
 
-	sv.model_precache[0] = pr.strings;
+	sv.model_precache[0] = "";
 	sv.model_precache[1] = sv.modelname;
 	sv.models[1] = sv.worldmodel;
 	for (i=1 ; i<CM_NumInlineModels (sv.map) ; i++)
@@ -474,6 +489,8 @@ void SV_SpawnServer (char *server)
 	// all spawning is completed, any further precache statements
 	// or prog writes to the signon message are errors
 	sv.state = ss_active;
+	// and QuakeC's writes to the world are skipped, with a warning
+	QC_SetProtected (pr.vm, 0, true);
 	
 	// run two frames to allow everything to settle
 	sv.frametime = 0.1;

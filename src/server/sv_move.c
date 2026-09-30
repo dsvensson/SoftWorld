@@ -229,14 +229,13 @@ facing it.
 
 ======================
 */
-void PF_changeyaw (void);
 static bool SV_StepDirection (edict_t *ent, float yaw, float dist)
 {
 	vec3_t		move, oldorigin;
 	float		delta;
 	
 	ent->v.ideal_yaw = yaw;
-	PF_changeyaw();
+	SV_ChangeYaw (ent);
 	
 	yaw = (float)(yaw*Q_PI*2 / 360);
 	move[0] = (float)(cos(yaw)*dist);
@@ -390,24 +389,24 @@ SV_MoveToGoal
 
 ======================
 */
-void SV_MoveToGoal (void)
+bool SV_MoveToGoal (qcvm_t *vm)
 {
 	edict_t		*ent, *goal;
 	float		dist;
 	
 	ent = PROG_TO_EDICT(pr.global_struct->self);
 	goal = PROG_TO_EDICT(ent->v.goalentity);
-	dist = G_FLOAT(OFS_PARM0);
+	dist = QC_ArgFloat (vm, 0);
 
 	if ( !( (int)ent->v.flags & (FL_ONGROUND|FL_FLY|FL_SWIM) ) )
 	{
-		G_FLOAT(OFS_RETURN) = 0;
-		return;
+		QC_ReturnFloat (vm, 0);
+		return true;
 	}
 
 // if the next step hits the enemy, return immediately
 	if ( PROG_TO_EDICT(ent->v.enemy) != sv.edicts &&  SV_CloseEnough (ent, goal, dist) )
-		return;
+		return true;
 
 // bump around...
 	if ( (rand()&3)==1 ||
@@ -415,5 +414,6 @@ void SV_MoveToGoal (void)
 	{
 		SV_NewChaseDir (ent, goal, dist);
 	}
+	return true;
 }
 

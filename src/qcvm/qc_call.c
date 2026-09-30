@@ -661,6 +661,47 @@ bool QC_IsTracing (const qcvm_t *vm)
 	return vm->trace;
 }
 
+void QC_SetProfiling (qcvm_t *vm, bool on)
+{
+	uint32_t	i;
+
+	for (i = 0 ; on && i < vm->numprogs ; i++)
+		if (!vm->progs[i].profile)
+		{
+			vm->progs[i].profile = calloc ((size_t)vm->progs[i].progs->numfunctions + 1, sizeof(uint64_t));
+			if (!vm->progs[i].profile)
+				on = false;
+		}
+	vm->profiling = on;
+}
+
+const uint64_t *QC_Profile (const qcvm_t *vm, uint32_t pr, uint32_t *count)
+{
+	if (pr >= vm->numprogs)
+		return NULL;
+	*count = vm->progs[pr].progs->numfunctions;
+	return vm->progs[pr].profile;
+}
+
+void QC_ClearProfile (qcvm_t *vm)
+{
+	uint32_t	i;
+
+	for (i = 0 ; i < vm->numprogs ; i++)
+		if (vm->progs[i].profile)
+			memset (vm->progs[i].profile, 0, (size_t)vm->progs[i].progs->numfunctions * sizeof(uint64_t));
+}
+
+const char *QC_CallerName (const qcvm_t *vm)
+{
+	const qc_progs_t	*p;
+
+	if (vm->x.func == QC_NO_FUNCTION || vm->x.prnum >= vm->numprogs)
+		return "";
+	p = vm->progs[vm->x.prnum].progs;
+	return vm->x.func < p->numfunctions ? QC_Cstr (p, p->functions[vm->x.func].name) : "";
+}
+
 bool QC_IsBuiltinBound (const qcvm_t *vm, qc_func_t f)
 {
 	uint32_t	pr = QC_FUNC_PROGS (f), index = QC_FUNC_INDEX (f);

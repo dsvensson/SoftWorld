@@ -35,7 +35,7 @@ typedef struct sizebuf_s
 } sizebuf_t;
 
 void	SZ_Clear (sizebuf_t *buf);
-void	SZ_Write (sizebuf_t *buf, void *data, int length);
+void	SZ_Write (sizebuf_t *buf, const void *data, int length);
 void	SZ_Print (sizebuf_t *buf, char *data);	// strcats onto the sizebuf
 
 struct usercmd_s;
@@ -48,7 +48,7 @@ void	MSG_WriteByte (sizebuf_t *sb, int c);
 void	MSG_WriteShort (sizebuf_t *sb, int c);
 void	MSG_WriteLong (sizebuf_t *sb, int c);
 void	MSG_WriteFloat (sizebuf_t *sb, float f);
-void	MSG_WriteString (sizebuf_t *sb, char *s);
+void	MSG_WriteString (sizebuf_t *sb, const char *s);
 // coordinates and angles in the buffer's encoding; entity and player origins
 // as floats with MVD_PEXT1_FLOATCOORDS
 void	MSG_WriteCoord (sizebuf_t *sb, float f);

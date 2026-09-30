@@ -405,7 +405,7 @@ static void SV_Status_f (void)
 	Con_Printf ("net address      : %s\n",NET_AdrToString (NET_SocketAddress (NS_SERVER)));
 	Con_Printf ("cpu utilization  : %3i%%\n",(int)cpu);
 	Con_Printf ("avg response time: %i ms\n",(int)avg);
-	Con_Printf ("packets/frame    : %5.2f (%d)\n", pak, pr.num_prstr);
+	Con_Printf ("packets/frame    : %5.2f\n", pak);
 	
 // min fps lat drp
 	if (svs.redirected != RD_NONE) {

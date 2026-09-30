@@ -560,6 +560,7 @@ typedef struct
 	qc_statehandles_t	state;
 	qc_sharedglobal_t	*shared;		// one per slot of the VM's shared table
 	uint32_t			numshared;
+	uint64_t			*profile;		// statements each function ran, or NULL
 } qc_progstate_t;
 
 typedef struct
@@ -638,6 +639,7 @@ struct qcvm_s
 
 	bool				trace;
 	bool				traced;			// the statement at x.pc was reported and runs next
+	bool				profiling;		// counting statements (progs' profile)
 
 	qc_fieldfill_t		*remove_clears;
 	uint32_t			numremove_clears;
