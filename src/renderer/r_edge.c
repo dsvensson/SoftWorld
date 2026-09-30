@@ -32,7 +32,10 @@ surf_t	*surfaces, *surface_p, *surf_max;
 // pointer is greater than another one, it should be drawn in front
 // surfaces[1] is the background, and is used as the active surface stack
 
-edge_t	**newedges;		// by scan line
+// the edges starting on each scan line, unsorted: leading edges and trailing
+// edges each the most recent first (R_SortNewEdges sorts them at the scan)
+edge_t	**newedges;
+edge_t	**newtrailers;
 edge_t	**removeedges;
 static espan_t	*basespans;		// room for r_maxspans
 static int		r_maxspans;
@@ -121,9 +124,11 @@ spans are drawn and the room reused when they run out
 void R_SetEdgeSize (int width, int height)
 {
 	Mem_Free (newedges);
+	Mem_Free (newtrailers);
 	Mem_Free (removeedges);
 	Mem_Free (basespans);
 	newedges = Mem_Calloc ((size_t)height, sizeof(*newedges));
+	newtrailers = Mem_Calloc ((size_t)height, sizeof(*newtrailers));
 	removeedges = Mem_Calloc ((size_t)height, sizeof(*removeedges));
 	r_maxspans = width * 4 > MINSPANS ? width * 4 : MINSPANS;
 	basespans = Mem_Alloc ((size_t)r_maxspans * sizeof(*basespans));
@@ -163,11 +168,104 @@ void R_BeginEdgeFrame (void)
 // FIXME: set with memset
 	for (v=r_refdef.vrect.y ; v<r_refdef.vrectbottom ; v++)
 	{
-		newedges[v] = removeedges[v] = NULL;
+		newedges[v] = newtrailers[v] = removeedges[v] = NULL;
 	}
 }
 
 
+
+/*
+==============
+R_MergeEdges
+
+Two lists sorted on u as one; at the same u, a's edges come first
+==============
+*/
+static edge_t *R_MergeEdges (edge_t *a, edge_t *b)
+{
+	edge_t	head, *tail;
+
+	tail = &head;
+	while (a && b)
+	{
+		if (b->u < a->u)
+		{
+			tail->next = b;
+			tail = b;
+			b = b->next;
+		}
+		else
+		{
+			tail->next = a;
+			tail = a;
+			a = a->next;
+		}
+	}
+	tail->next = a ? a : b;
+	return head.next;
+}
+
+/*
+==============
+R_SortEdges
+
+A list sorted on u, keeping the order of edges at the same u: a merge sort,
+where bins[i] holds 2^i edges that came before those of the lower bins
+==============
+*/
+static edge_t *R_SortEdges (edge_t *list)
+{
+	edge_t	*bins[32], *carry, *next;
+	int		i, top;
+
+	top = 0;
+	for ( ; list ; list = next)
+	{
+		next = list->next;
+		list->next = NULL;
+		carry = list;
+		for (i=0 ; i<top && bins[i] ; i++)
+		{
+			carry = R_MergeEdges (bins[i], carry);
+			bins[i] = NULL;
+		}
+		bins[i] = carry;
+		if (i == top)
+			top++;
+	}
+
+	carry = NULL;
+	for (i=0 ; i<top ; i++)
+	{
+		if (bins[i])
+			carry = carry ? R_MergeEdges (bins[i], carry) : bins[i];
+	}
+	return carry;
+}
+
+/*
+==============
+R_SortNewEdges
+
+The edges starting on a scan line, sorted on u. At the same u, leading edges
+come before trailing ones, the leading edges the most recent first and the
+trailing edges the earliest first: the order id's sorted insertion as each was
+emitted gave them, which the spans depend on.
+==============
+*/
+static edge_t *R_SortNewEdges (int v)
+{
+	edge_t	*trailers, *edge, *next;
+
+	trailers = NULL;		// in the order emitted
+	for (edge = newtrailers[v] ; edge ; edge = next)
+	{
+		next = edge->next;
+		edge->next = trailers;
+		trailers = edge;
+	}
+	return R_MergeEdges (R_SortEdges (newedges[v]), R_SortEdges (trailers));
+}
 
 /*
 ==============
@@ -655,7 +753,7 @@ static void R_GenerateSpansBackward (void)
 R_ScanEdges
 
 Input: 
-newedges[] array
+newedges[] and newtrailers[] arrays
 	this has links to edges, which have links to surfaces
 
 Output:
@@ -713,10 +811,8 @@ void R_ScanEdges (void)
 	// mark that the head (background start) span is pre-included
 		surfaces[1].spanstate = 1;
 
-		if (newedges[iv])
-		{
-			R_InsertNewEdges (newedges[iv], edge_head.next);
-		}
+		if (newedges[iv] || newtrailers[iv])
+			R_InsertNewEdges (R_SortNewEdges (iv), edge_head.next);
 
 		(*pdrawfunc) ();
 
@@ -751,8 +847,8 @@ void R_ScanEdges (void)
 // mark that the head (background start) span is pre-included
 	surfaces[1].spanstate = 1;
 
-	if (newedges[iv])
-		R_InsertNewEdges (newedges[iv], edge_head.next);
+	if (newedges[iv] || newtrailers[iv])
+		R_InsertNewEdges (R_SortNewEdges (iv), edge_head.next);
 
 	(*pdrawfunc) ();
 

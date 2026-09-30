@@ -336,7 +336,8 @@ extern int		r_amodels_drawn;
 extern int		r_numallocatededges;
 extern edge_t	*r_edges, *edge_p, *edge_max;
 
-extern	edge_t	**newedges;
+extern	edge_t	**newedges;		// leading edges by scan line, unsorted
+extern	edge_t	**newtrailers;	// trailing edges
 extern	edge_t	**removeedges;
 
 void R_SetEdgeSize (int width, int height);

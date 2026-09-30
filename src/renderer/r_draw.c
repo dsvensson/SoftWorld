@@ -76,8 +76,7 @@ R_EmitEdge
 */
 static void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 {
-	edge_t	*edge, *pcheck;
-	int64_t	u_check;
+	edge_t	*edge;
 	float	u, u_step;
 	vec3_t	local, transformed;
 	float	*world;
@@ -222,25 +221,17 @@ static void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	if (edge->u > r_refdef.vrectright_adj_shift20)
 		edge->u = r_refdef.vrectright_adj_shift20;
 
-//
-// sort the edge in normally
-//
-	u_check = edge->u;
-	if (edge->surfs[0])
-		u_check++;	// sort trailers after leaders
-
-	if (!newedges[v] || newedges[v]->u >= u_check)
+// sorted on u when its scan line is reached (R_SortNewEdges); a leading edge
+// may be given a trailing surface later, so the kind is kept by the list
+	if (side == 0)
 	{
-		edge->next = newedges[v];
-		newedges[v] = edge;
+		edge->next = newtrailers[v];
+		newtrailers[v] = edge;
 	}
 	else
 	{
-		pcheck = newedges[v];
-		while (pcheck->next && pcheck->next->u < u_check)
-			pcheck = pcheck->next;
-		edge->next = pcheck->next;
-		pcheck->next = edge;
+		edge->next = newedges[v];
+		newedges[v] = edge;
 	}
 
 	edge->nextremove = removeedges[v2];
