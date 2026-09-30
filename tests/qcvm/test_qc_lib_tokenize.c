@@ -346,7 +346,7 @@ static void TestTokenListsAreBounded (void)
 		printf ("  %g tokens\n", (double)m);
 	// replacing the list gives its storage back: the whole budget is there again
 	QT_EQ_F (QH_Float (h, "tokenize", ARGS (QH_S (h, "x y"))), 2);
-	// later: hash_createtab(64) fits in the whole budget (Phase 14j)
+	QT_CHECK (QH_Float (h, "hash_createtab", ARGS (F (64))) > 0);
 	free (commas);
 	free (letters);
 	QH_Free (h);

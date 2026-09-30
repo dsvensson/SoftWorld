@@ -33,11 +33,14 @@ bool	QC_LibRegister (qc_builtins_t *b, const qc_libentry_t *table, size_t count)
 bool	QC_RegisterConvert (qc_builtins_t *b);
 bool	QC_RegisterEntity (qc_builtins_t *b);
 bool	QC_RegisterFormat (qc_builtins_t *b);
+bool	QC_RegisterHash (qc_builtins_t *b);
 bool	QC_RegisterHostcalls (qc_builtins_t *b);
 bool	QC_RegisterIntrospect (qc_builtins_t *b);
 bool	QC_RegisterMath (qc_builtins_t *b);
+bool	QC_RegisterMemory (qc_builtins_t *b);
 bool	QC_RegisterReflect (qc_builtins_t *b);
 bool	QC_RegisterString (qc_builtins_t *b);
+bool	QC_RegisterStrbuf (qc_builtins_t *b);
 bool	QC_RegisterStrftime (qc_builtins_t *b);
 bool	QC_RegisterTime (qc_builtins_t *b);
 bool	QC_RegisterTokenize (qc_builtins_t *b);
@@ -59,17 +62,24 @@ typedef struct
 	size_t		start, end;
 } qc_token_t;
 
+typedef struct qc_hashtables_s qc_hashtables_t;	// qc_lib_hash.c
+typedef struct qc_strbufs_s qc_strbufs_t;		// qc_lib_strbuf.c
+
 struct qc_std_s
 {
-	qc_token_t	*tokens;			// the token list (FTE keeps one a process, this one a VM)
-	uint32_t	numtokens;
-	size_t		token_bytes;		// what the list is charged
-	size_t		container_bytes;	// charged against limits.container_bytes
+	qc_token_t		*tokens;			// the token list (FTE keeps one a process, this one a VM)
+	uint32_t		numtokens;
+	size_t			token_bytes;		// what the list is charged
+	qc_hashtables_t	*hash;
+	qc_strbufs_t	*bufs;
+	size_t			container_bytes;	// charged against limits.container_bytes
 };
 
 // the VM's library state, made when first needed; NULL after an out-of-memory error
 qc_std_t	*QC_LibState (qcvm_t *vm);
 void		QC_LibFreeTokens (qc_std_t *std);
+void		QC_LibFreeHash (qc_std_t *std);
+void		QC_LibFreeBufs (qc_std_t *std);
 
 // Charges n bytes of containers (token lists, hash tables, string buffers)
 // against limits.container_bytes; false (charging nothing) past it
@@ -255,6 +265,21 @@ STRINGS (qc_lib_string.c, qc_lib_format.c)
 
 ==============================================================================
 */
+
+// a malloc'd copy, or NULL
+char	*QC_LibDup (const char *s);
+
+// n bytes equal but for ASCII case
+bool	QC_LibEqualFold (const char *a, const char *b, size_t n);
+
+// FTE's wildcmp: ? any byte, * any run of bytes but / and \, letters in either case
+bool	QC_WildCompare (const char *pattern, const char *s, size_t len);
+
+// base64 (+, / and = padding); decoding as FTE's: - and _ taken for + and /,
+// control characters skipped, at most cap bytes (QC_Base64Capacity's estimate)
+void	QC_Base64Encode (qc_sink_t *out, const uint8_t *data, size_t len);
+void	QC_Base64Decode (qc_sink_t *out, const char *s, size_t len, size_t cap);
+size_t	QC_Base64Capacity (size_t len);
 
 // the first needle in haystack (an empty one at 0), or -1; linear time for long needles
 int64_t	QC_Find (const char *haystack, size_t hlen, const char *needle, size_t nlen);

@@ -399,26 +399,6 @@ static bool QC_Strpad (qcvm_t *vm)
 	return QC_LibReturnSink (vm, &s);
 }
 
-// n bytes equal but for ASCII case
-static bool QC_EqualFold (const char *a, const char *b, size_t n)
-{
-	size_t	i;
-	int		x, y;
-
-	for (i = 0 ; i < n ; i++)
-	{
-		x = (uint8_t)a[i];
-		y = (uint8_t)b[i];
-		if (x >= 'A' && x <= 'Z')
-			x += 32;
-		if (y >= 'A' && y <= 'Z')
-			y += 32;
-		if (x != y)
-			return false;
-	}
-	return true;
-}
-
 static bool QC_IsTrimSpace (char c)
 {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r';
@@ -464,7 +444,7 @@ static bool QC_ReplaceAll (qcvm_t *vm, bool ignorecase)
 		limit = 4094 - rlen;
 		while (i < len && s.len < limit)
 		{
-			hit = len - i >= slen && (ignorecase ? QC_EqualFold (subject + i, search, slen)
+			hit = len - i >= slen && (ignorecase ? QC_LibEqualFold (subject + i, search, slen)
 				: !memcmp (subject + i, search, slen));
 			if (hit)
 			{

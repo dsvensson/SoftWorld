@@ -44,9 +44,10 @@ qc_builtins_t *QC_BuiltinsStandard (qc_numbering_t numbering)
 
 	if (!b)
 		return NULL;
-	if (!QC_RegisterConvert (b) || !QC_RegisterEntity (b) || !QC_RegisterFormat (b) || !QC_RegisterHostcalls (b)
-		|| !QC_RegisterIntrospect (b) || !QC_RegisterMath (b) || !QC_RegisterReflect (b) || !QC_RegisterStrftime (b)
-		|| !QC_RegisterString (b) || !QC_RegisterTime (b) || !QC_RegisterTokenize (b) || !QC_RegisterVector (b))
+	if (!QC_RegisterConvert (b) || !QC_RegisterEntity (b) || !QC_RegisterFormat (b) || !QC_RegisterHash (b)
+		|| !QC_RegisterHostcalls (b) || !QC_RegisterIntrospect (b) || !QC_RegisterMath (b) || !QC_RegisterMemory (b)
+		|| !QC_RegisterReflect (b) || !QC_RegisterStrbuf (b) || !QC_RegisterStrftime (b) || !QC_RegisterString (b)
+		|| !QC_RegisterTime (b) || !QC_RegisterTokenize (b) || !QC_RegisterVector (b))
 	{
 		QC_BuiltinsFree (b);
 		return NULL;
@@ -76,6 +77,7 @@ static const char *const qc_extensions[] = {
 	"DP_QC_SINCOSSQRTPOW",
 	"DP_QC_SPRINTF",
 	"DP_QC_STRFTIME",
+	"DP_QC_STRINGBUFFERS",
 	"DP_QC_STRINGCOLORFUNCTIONS",
 	"DP_QC_STRING_CASE_FUNCTIONS",
 	"DP_QC_STRREPLACE",
@@ -87,8 +89,10 @@ static const char *const qc_extensions[] = {
 	"DP_SV_PRINT",
 	"EXT_BITSHIFT",
 	"FTE_CALLTIMEOFDAY",
+	"FTE_MEMALLOC",
 	"FTE_QC_CHECKCOMMAND",
 	"FTE_QC_CROSSPRODUCT",
+	"FTE_QC_HASHTABLES",
 	"FTE_QC_INTCONV",
 	"FTE_STRINGS",
 	"ZQ_QC_STRINGS",
@@ -135,6 +139,8 @@ void QC_LibFreeState (qcvm_t *vm)
 	if (!vm->std)
 		return;
 	QC_LibFreeTokens (vm->std);
+	QC_LibFreeHash (vm->std);
+	QC_LibFreeBufs (vm->std);
 	free (vm->std);
 	vm->std = NULL;
 }
@@ -188,6 +194,35 @@ char *QC_LibConcat (qcvm_t *vm, int from, size_t *len)
 	if (len)
 		*len = s.len;
 	return out;
+}
+
+char *QC_LibDup (const char *s)
+{
+	size_t	len = strlen (s) + 1;
+	char	*copy = malloc (len);
+
+	if (copy)
+		memcpy (copy, s, len);
+	return copy;
+}
+
+bool QC_LibEqualFold (const char *a, const char *b, size_t n)
+{
+	size_t	i;
+	int		x, y;
+
+	for (i = 0 ; i < n ; i++)
+	{
+		x = (uint8_t)a[i];
+		y = (uint8_t)b[i];
+		if (x >= 'A' && x <= 'Z')
+			x += 32;
+		if (y >= 'A' && y <= 'Z')
+			y += 32;
+		if (x != y)
+			return false;
+	}
+	return true;
 }
 
 int32_t QC_LibArgInt (const qcvm_t *vm, int i)
