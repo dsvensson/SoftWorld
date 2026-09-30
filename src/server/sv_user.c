@@ -1034,6 +1034,9 @@ static void SV_BeginDownload_f(void)
 		&& (strncmp (name, "progs/", 6) || allow_download_models.value)
 		&& (strncmp (name, "sound/", 6) || allow_download_sounds.value)
 		&& (strncmp (name, "maps/", 5) || allow_download_maps.value);
+	// the client-side progs at the game directory's root, as FTE and mvdsv allow
+	if (allow_download.value && !strcmp (name, "csprogs.dat"))
+		allowed = true;
 	if (!allowed)
 	{
 		SV_DownloadFailed (host_client, name, -2);

@@ -49,6 +49,9 @@ static cvar_t	spectator_password = {.name = "spectator_password", .string = "",	
 	.description = "Password spectators must give as their spectator userinfo key; empty or \"none\" for none. "
 		"Sets needpass in the serverinfo."};
 
+cvar_t	sv_csqc_progname = {.name = "sv_csqc_progname", .string = "csprogs.dat",
+	.description = "The client-side QuakeC (CSQC) the server offers from the game directory, published with "
+		"its checksum and size in the serverinfo; empty for none."};
 cvar_t	allow_download = {.name = "allow_download", .string = "1",
 	.description = "Lets clients download the files they lack from the server; 0 turns off all downloads.",
 	.values = (const cvar_value_t[]){{"0", "No downloads"}, {"1", "Downloads, as the allow_download_ cvars permit"},
@@ -1577,6 +1580,7 @@ static void SV_InitLocal (void)
 
 	Cvar_RegisterVariable (&filterban);
 	
+	Cvar_RegisterVariable (&sv_csqc_progname);
 	Cvar_RegisterVariable (&allow_download);
 	Cvar_RegisterVariable (&allow_download_skins);
 	Cvar_RegisterVariable (&allow_download_models);

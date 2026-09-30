@@ -355,6 +355,35 @@ clients along with it.
 This is only called from the SV_Map_f() function.
 ================
 */
+/*
+================
+SV_PublishCsprogs
+
+The client-side progs the server offers, as FTE's server does: the checksum
+(the folded MD4) and size of sv_csqc_progname in the serverinfo, and its name
+when it isn't csprogs.dat; none of them without the file
+================
+*/
+static void SV_PublishCsprogs (void)
+{
+	const char	*name = sv_csqc_progname.string;
+	byte		*data = *name ? FS_LoadFile (name, NULL) : NULL;
+	int			size = com_filesize;
+	char		checksum[32], length[32];
+
+	*checksum = *length = 0;
+	if (data)
+	{
+		snprintf (checksum, sizeof(checksum), "0x%x", Com_BlockChecksum (data, size));
+		snprintf (length, sizeof(length), "0x%x", (unsigned)size);
+		Mem_Free (data);
+	}
+	Info_SetValueForStarKey (svs.info, "*csprogs", checksum, MAX_SERVERINFO_STRING, SV_InfoCharset ());
+	Info_SetValueForStarKey (svs.info, "*csprogssize", length, MAX_SERVERINFO_STRING, SV_InfoCharset ());
+	Info_SetValueForStarKey (svs.info, "*csprogsname", data && strcmp (name, "csprogs.dat") ? name : "",
+		MAX_SERVERINFO_STRING, SV_InfoCharset ());
+}
+
 void SV_SpawnServer (char *server)
 {
 	edict_t		*ent;
@@ -407,6 +436,7 @@ void SV_SpawnServer (char *server)
 	// load progs to get entity field count
 	// which determines how big each edict is
 	PR_LoadProgs ();
+	SV_PublishCsprogs ();
 
 	// the VM's entities, of which the slots at the start are the clients'
 	sv.edicts = (edict_t *)QC_Edicts (pr.vm);
