@@ -259,6 +259,30 @@ static void VWepModel_NextDownload (void)
 
 /*
 =================
+CL_StartCSQC
+
+The csprogs the serverinfo offers, as FTE starts it before the models load:
+any csprogs will do in a demo or with the server's anycsqc
+=================
+*/
+static void CL_StartCSQC (void)
+{
+	char		*s = Info_ValueForKey (cl.serverinfo, "*csprogs"), *end;
+	unsigned	checksum = (unsigned)strtoul (s, &end, 0);
+	size_t		size = strtoul (Info_ValueForKey (cl.serverinfo, "*csprogssize"), NULL, 0);
+	bool		anycsqc = atoi (Info_ValueForKey (cl.serverinfo, "anycsqc")) || cls.demoplayback;
+
+	if (*end)
+	{
+		Con_Printf ("The serverinfo's *csprogs is corrupt\n");
+		anycsqc = true;
+		checksum = 0;
+	}
+	CSQC_Init (anycsqc, *s ? Info_ValueForKey (cl.serverinfo, "*csprogsname") : NULL, checksum, size);
+}
+
+/*
+=================
 Model_NextDownload
 =================
 */
@@ -285,6 +309,8 @@ static void Model_NextDownload (void)
 		if (!CL_CheckOrDownloadFile(s))
 			return;		// started a download
 	}
+
+	CL_StartCSQC ();
 
 	for (i=1 ; i<MAX_MODELS ; i++)
 	{
@@ -327,10 +353,42 @@ static void Model_NextDownload (void)
 	cl.worldmodel = cl.model_precache[1];
 	r_scene.worldmodel = cl.worldmodel;
 	R_NewMap ();
+	CSQC_WorldLoaded ();
 
 	// done with the model list: the visible weapons', then the static signon
 	cls.downloadnumber = 0;
 	VWepModel_NextDownload ();
+}
+
+/*
+=================
+Csprogs_NextDownload
+
+Before the sounds, the csprogs the server offers, as FTE downloads it: the
+server's csprogs.dat saved as csprogsvers/<checksum>.dat, unless a matching
+one is here, CSQC is off, or the client runs the server
+=================
+*/
+static void Sound_NextDownload (void);
+
+static void Csprogs_NextDownload (void)
+{
+	char		*s = Info_ValueForKey (cl.serverinfo, "*csprogs"), *end;
+	unsigned	checksum = (unsigned)strtoul (s, &end, 0);
+	size_t		size = strtoul (Info_ValueForKey (cl.serverinfo, "*csprogssize"), NULL, 0);
+
+	cls.downloadtype = dl_csprogs;
+	if (cls.downloadnumber == 0 && *s && !*end && !cl_nocsqc.value && !cls.demoplayback && !SV_Active ()
+		&& !CSQC_CheckDownload (Info_ValueForKey (cl.serverinfo, "*csprogsname"), checksum, size))
+	{
+		if (!cl_download_csprogs.value)
+			Con_Printf ("Not downloading csprogs.dat: %s is off\n", cl_download_csprogs.name);
+		else if (!CL_CheckOrDownloadFileAs ("csprogs.dat", va ("csprogsvers/%x.dat", checksum)))
+			return;		// started a download
+	}
+
+	cls.downloadnumber = 0;
+	Sound_NextDownload ();
 }
 
 /*
@@ -399,6 +457,9 @@ void CL_RequestNextDownload (void)
 		break;
 	case dl_vwep_model:
 		VWepModel_NextDownload ();
+		break;
+	case dl_csprogs:
+		Csprogs_NextDownload ();
 		break;
 	case dl_none:
 	default:
@@ -504,6 +565,8 @@ static void CL_ParseServerData (void)
 	unsigned	fteext2;
 	
 	Con_DPrintf ("Serverdata packet received.\n");
+	// the next map's serverinfo brings it back
+	CSQC_Shutdown ();
 //
 // wipe the client_state_t struct
 //
@@ -677,8 +740,7 @@ static void CL_ParseSoundlist (bool shortstart)
 	}
 
 	cls.downloadnumber = 0;
-	cls.downloadtype = dl_sound;
-	Sound_NextDownload ();
+	Csprogs_NextDownload ();
 }
 
 /*

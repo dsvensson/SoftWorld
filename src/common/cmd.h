@@ -71,6 +71,7 @@ typedef void (*xcommand_t) (void);
 void	Cmd_Init (void);
 
 void	Cmd_AddCommand (char *cmd_name, xcommand_t function, const char *description);
+void	Cmd_RemoveCommand (const char *cmd_name);
 // called by the init functions of other parts of the program to
 // register commands and functions to call for them, with what the command
 // does and its arguments, for apropos.

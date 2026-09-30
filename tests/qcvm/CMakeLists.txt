@@ -127,3 +127,12 @@ target_compile_definitions(test_qc_threads PRIVATE QT_THREADS_DAT="${qc_threads_
 add_dependencies(test_qc_threads qc_threads_fixture)
 add_test(NAME qc_threads COMMAND test_qc_threads)
 set_tests_properties(qc_threads PROPERTIES SKIP_RETURN_CODE 77)
+
+# test_qc_csprogs runs KTX's csprogs.dat, named by QCVM_CSPROGS, against a stub
+# CSQC engine (qc_csqc_engine.c): initialisation, entity updates, a thousand
+# predicted frames of fire, sound suppression and error reporting. Without
+# QCVM_CSPROGS it is skipped.
+sw_add_program(test_qc_csprogs test_qc_csprogs.c qc_csqc_engine.c)
+target_link_libraries(test_qc_csprogs PRIVATE qc_testsupport)
+add_test(NAME qc_csprogs COMMAND test_qc_csprogs)
+set_tests_properties(qc_csprogs PROPERTIES SKIP_RETURN_CODE 77)

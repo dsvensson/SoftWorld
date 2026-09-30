@@ -274,10 +274,11 @@ Asks the server for a file. It goes to a temp name, renamed when it is
 complete, so an interrupted download leaves no runt file.
 ================
 */
-static void CL_BeginDownload (const char *file)
+static void CL_BeginDownload (const char *file, const char *local)
 {
 	Q_strncpyz (cls.downloadname, file, sizeof(cls.downloadname));
-	COM_StripExtension (cls.downloadname, cls.downloadtempname);
+	Q_strncpyz (cls.downloadlocalname, local, sizeof(cls.downloadlocalname));
+	COM_StripExtension (cls.downloadlocalname, cls.downloadtempname);
 	Q_strncatz (cls.downloadtempname, ".tmp", sizeof(cls.downloadtempname));
 
 	dl.awaiting = true;
@@ -398,7 +399,7 @@ static void CL_FinishDownload (void)
 	cls.downloadpercent = 0;
 
 	CL_DownloadPath (cls.downloadtempname, oldn, sizeof(oldn));
-	CL_DownloadPath (cls.downloadname, newn, sizeof(newn));
+	CL_DownloadPath (cls.downloadlocalname, newn, sizeof(newn));
 	remove (newn);
 	if (rename (oldn, newn))
 		Con_Printf ("failed to rename %s\n", oldn);
@@ -429,15 +430,27 @@ to start a download from the server.
 */
 bool	CL_CheckOrDownloadFile (char *filename)
 {
+	return CL_CheckOrDownloadFileAs (filename, filename);
+}
+
+/*
+=================
+CL_CheckOrDownloadFileAs
+
+The same, saving the server's file remote as local
+=================
+*/
+bool	CL_CheckOrDownloadFileAs (const char *remote, const char *local)
+{
 	FILE	*f;
 
-	if (strstr (filename, ".."))
+	if (strstr (remote, "..") || strstr (local, ".."))
 	{
 		Con_Printf ("Refusing to download a path with ..\n");
 		return true;
 	}
 
-	COM_FOpenFile (filename, &f);
+	COM_FOpenFile (local, &f);
 	if (f)
 	{	// it exists, no need to download
 		fclose (f);
@@ -446,15 +459,15 @@ bool	CL_CheckOrDownloadFile (char *filename)
 
 	//ZOID - can't download when recording
 	if (cls.demorecording) {
-		Con_Printf("Unable to download %s in record mode.\n", filename);
+		Con_Printf("Unable to download %s in record mode.\n", remote);
 		return true;
 	}
 	//ZOID - can't download when playback
 	if (cls.demoplayback)
 		return true;
 
-	// before printing: filename may be va()'s buffer, which printing reuses
-	CL_BeginDownload (filename);
+	// before printing: the names may be va()'s buffer, which printing reuses
+	CL_BeginDownload (remote, local);
 	Con_Printf ("Downloading %s...\n", cls.downloadname);
 	cls.downloadnumber++;
 
@@ -487,7 +500,7 @@ void CL_Download_f (void)
 	}
 
 	cls.downloadtype = dl_single;
-	CL_BeginDownload (Cmd_Argv(1));
+	CL_BeginDownload (Cmd_Argv(1), Cmd_Argv(1));
 }
 
 /*

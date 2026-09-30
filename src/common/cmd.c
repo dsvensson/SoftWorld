@@ -578,6 +578,27 @@ void	Cmd_AddCommand (char *cmd_name, xcommand_t function, const char *descriptio
 
 /*
 ============
+Cmd_RemoveCommand
+
+For commands that come and go (client-side QuakeC's); the name stays the
+caller's
+============
+*/
+void	Cmd_RemoveCommand (const char *cmd_name)
+{
+	cmd_function_t	**link, *cmd;
+
+	for (link = &cmd_functions ; (cmd = *link) ; link = &cmd->next)
+		if (!Q_strcmp (cmd_name, cmd->name))
+		{
+			*link = cmd->next;
+			Mem_Free (cmd);
+			return;
+		}
+}
+
+/*
+============
 Cmd_Exists
 ============
 */

@@ -155,6 +155,7 @@ typedef enum {
 	dl_sound,
 	dl_skin,
 	dl_vwep_model,
+	dl_csprogs,
 	dl_single
 } dltype_t;		// download type
 
@@ -182,7 +183,8 @@ typedef struct
 
 	FILE		*download;		// file transfer from server
 	char		downloadtempname[MAX_OSPATH];
-	char		downloadname[MAX_OSPATH];
+	char		downloadname[MAX_OSPATH];		// the server's name for it
+	char		downloadlocalname[MAX_OSPATH];	// where it goes
 	int			downloadnumber;
 	dltype_t	downloadtype;
 	int			downloadpercent;
@@ -533,9 +535,24 @@ void CL_StartUpload (byte *data, int size);
 void CL_StopUpload(void);
 
 //
+// cl_csqc.c: client-side QuakeC's files and lifecycle (the networking comes later)
+//
+extern	cvar_t	cl_nocsqc, cl_download_csprogs;
+void	CSQC_RegisterVariables (void);
+// the csprogs the server offers (csprogsname NULL: none), before the models
+// load; whether CSQC runs
+bool	CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t size);
+void	CSQC_WorldLoaded (void);	// after the world model
+void	CSQC_Shutdown (void);		// at serverdata, disconnect and quit
+bool	CSQC_Inited (void);
+// a matching csprogs is here already (none needs downloading)
+bool	CSQC_CheckDownload (const char *csprogsname, unsigned checksum, size_t size);
+
+//
 // cl_download.c
 //
 bool CL_CheckOrDownloadFile (char *filename);
+bool CL_CheckOrDownloadFileAs (const char *remote, const char *local);	// saved under another name
 void CL_Download_f (void);
 void CL_ParseDownload (void);
 bool CL_ParseChunkPacket (void);		// an out-of-band chunk

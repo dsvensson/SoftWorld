@@ -458,6 +458,7 @@ void CL_Disconnect (void)
 	CL_StopDownload ();
 	CL_StopUpload();
 	CL_QTVStop ();
+	CSQC_Shutdown ();
 
 }
 
@@ -1263,6 +1264,7 @@ static void CL_InitLocal (void)
 	Cvar_RegisterVariable (&cl_maxfps);
 	Cvar_RegisterVariable (&cl_timeout);
 	Cvar_RegisterVariable (&cl_pext_chunkeddownloads);
+	CSQC_RegisterVariables ();
 	Cvar_RegisterVariable (&lookspring);
 	Cvar_RegisterVariable (&lookstrafe);
 	Cvar_RegisterVariable (&sensitivity);
@@ -1691,6 +1693,7 @@ CL_Shutdown
 */
 void CL_Shutdown (void)
 {
+	CSQC_Shutdown ();
 	CL_WriteConfiguration ();
 	S_Shutdown ();
 	IN_Shutdown ();
