@@ -80,6 +80,7 @@ void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture);
 int D_SurfaceMipLevel (msurface_t *surface, int miplevel);
 
 void D_DrawSkyScans (espan_t *pspan);
+void D_DrawSkyboxScans (espan_t *pspan);
 
 extern byte		*d_turbsource;	// the 64x64 texture of a turbulent surface
 

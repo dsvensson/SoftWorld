@@ -209,6 +209,7 @@ typedef enum
 {
 	DS_SOLID,			// one color
 	DS_SKY,
+	DS_SKYBOX,
 	DS_TURB,			// a liquid, from its texture
 	DS_CACHED			// from its surface cache block
 } dsdraw_t;
@@ -256,9 +257,14 @@ static bool D_PrepareSurface (surf_t *s, dsjob_t *job)
 
 	if (s->flags & SURF_DRAWSKY)
 	{
-		if (!r_skymade)
-			R_MakeSky ();
-		job->draw = DS_SKY;
+		if (r_skyfaces)
+			job->draw = DS_SKYBOX;
+		else
+		{
+			if (!r_skymade)
+				R_MakeSky ();
+			job->draw = DS_SKY;
+		}
 	}
 	else if (s->flags & SURF_DRAWBACKGROUND)
 	{
@@ -345,6 +351,9 @@ static void D_DrawJob (void *ctx, int index)
 		break;
 	case DS_SKY:
 		D_DrawSkyScans (spans);
+		break;
+	case DS_SKYBOX:
+		D_DrawSkyboxScans (spans);
 		break;
 	case DS_TURB:
 		Turbulent8 (spans, &job->map, job->turb);

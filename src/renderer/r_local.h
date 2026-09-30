@@ -107,6 +107,32 @@ unsigned	R_LightCode (double light);
 void R_SetFullbrightScale (float scale);
 void R_BuildMips (texture_t *tx, bool fence);
 
+// r_image.c
+byte	*R_LoadTGA (const char *path, int *width, int *height);
+pixel_t	R_RGBA8Pixel (const byte *rgba);
+void	R_ImagePixels (const byte *rgba, int w, int h, pixel_t *out, int outw, int outh, bool cutout);
+
+// r_worldspawn.c: what the map's worldspawn entity says
+typedef struct
+{
+	char	sky[MAX_QPATH];		// the skybox's name
+	char	fog[128];			// as r_fog has it
+	float	skyfog;
+	bool	hasskyfog;
+} worldspawn_t;
+
+extern worldspawn_t	r_worldspawn;
+void R_ParseWorldspawn (char *entities);
+
+// r_skybox.c: the skybox's faces, rt bk lf ft up dn, each r_skyboxsize square;
+// NULL to draw the sky's texture
+#define SKYBOX_FACES	6
+
+extern pixel_t	*r_skyfaces;
+extern int		r_skyboxsize;
+void R_SkyboxInit (void);
+void R_CheckSkybox (bool reload);
+
 // r_lightdata.c
 typedef struct
 {

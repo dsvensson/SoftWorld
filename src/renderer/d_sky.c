@@ -137,3 +137,128 @@ void D_DrawSkyScans (espan_t *pspan)
 	} while ((pspan = pspan->pnext) != NULL);
 }
 
+
+
+/*
+===============================================================================
+
+SKYBOX
+
+===============================================================================
+*/
+
+#define SKYBOX_SPAN		16		// pixels between exact texel coordinates
+
+/*
+=================
+D_SkyboxTexel
+
+Where direction d meets the skybox: the face it returns (rt bk lf ft up dn),
+and s and t across it from the face's top left, 16.16 texels
+=================
+*/
+static int D_SkyboxTexel (const float d[3], int *s, int *t)
+{
+	float	ax = fabsf (d[0]), ay = fabsf (d[1]), az = fabsf (d[2]);
+	float	sc, tc, m, half = (float)r_skyboxsize * 32768.0f;
+	int		face, si, ti, max = r_skyboxsize * 0x10000 - 1;
+
+	if (ax >= ay && ax >= az)
+	{
+		m = ax;
+		face = d[0] > 0 ? 0 : 2;
+		sc = d[0] > 0 ? -d[1] : d[1];
+		tc = -d[2];
+	}
+	else if (ay >= az)
+	{
+		m = ay;
+		face = d[1] > 0 ? 1 : 3;
+		sc = d[1] > 0 ? d[0] : -d[0];
+		tc = -d[2];
+	}
+	else
+	{
+		m = az;
+		face = d[2] > 0 ? 4 : 5;
+		sc = -d[1];
+		tc = d[2] > 0 ? d[0] : -d[0];
+	}
+	// -1 .. 1 across the face is 0 .. size
+	m = half / m;
+	si = (int)(sc * m + half);
+	ti = (int)(tc * m + half);
+	*s = si < 0 ? 0 : si > max ? max : si;
+	*t = ti < 0 ? 0 : ti > max ? max : ti;
+	return face;
+}
+
+/*
+=================
+D_DrawSkyboxScans
+
+Spans of the sky as the skybox is seen through them. A face's part of the
+screen is convex, so where the pixels SKYBOX_SPAN apart both see one face,
+all those between do, and its texel coordinates are stepped between theirs.
+=================
+*/
+void D_DrawSkyboxScans (espan_t *pspan)
+{
+	float			origin[3], du[3], dv[3], d[3];
+	int				i, c, u, n, count, size = r_skyboxsize;
+	int				face, s, t, facenext, snext, tnext, sstep, tstep;
+	pixel_t			*pdest;
+	const pixel_t	*texels;
+
+	// the direction pixel (u, v) looks in is origin + u*du + v*dv
+	for (c=0 ; c<3 ; c++)
+	{
+		du[c] = xscaleinv * vright[c];
+		dv[c] = -yscaleinv * vup[c];
+		origin[c] = vpn[c] - xcenter * du[c] - ycenter * dv[c];
+	}
+
+	do
+	{
+		pdest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
+		u = pspan->u;
+		count = pspan->count;
+		for (c=0 ; c<3 ; c++)
+			d[c] = origin[c] + (float)u * du[c] + (float)pspan->v * dv[c];
+		face = D_SkyboxTexel (d, &s, &t);
+
+		while (count > 0)
+		{
+			n = count < SKYBOX_SPAN ? count : SKYBOX_SPAN;
+			for (c=0 ; c<3 ; c++)
+				d[c] = origin[c] + (float)(u + n) * du[c] + (float)pspan->v * dv[c];
+			facenext = D_SkyboxTexel (d, &snext, &tnext);
+
+			if (facenext == face)
+			{
+				texels = r_skyfaces + (size_t)face * size * size;
+				sstep = (snext - s) / n;
+				tstep = (tnext - t) / n;
+				for (i=0 ; i<n ; i++, s += sstep, t += tstep)
+					*pdest++ = texels[(t >> 16) * size + (s >> 16)];
+			}
+			else
+			{
+				// a seam: each pixel exactly
+				for (i=0 ; i<n ; i++)
+				{
+					for (c=0 ; c<3 ; c++)
+						d[c] = origin[c] + (float)(u + i) * du[c] + (float)pspan->v * dv[c];
+					face = D_SkyboxTexel (d, &s, &t);
+					*pdest++ = r_skyfaces[((size_t)face * size + (size_t)(t >> 16)) * size + (size_t)(s >> 16)];
+				}
+			}
+
+			u += n;
+			count -= n;
+			face = facenext;
+			s = snext;
+			t = tnext;
+		}
+	} while ((pspan = pspan->pnext) != NULL);
+}

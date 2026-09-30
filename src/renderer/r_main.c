@@ -289,6 +289,7 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_clearcolor);
 	Cvar_RegisterVariable (&r_waterwarp);
 	R_LightDataInit ();
+	R_SkyboxInit ();
 	Cvar_RegisterVariable (&r_lightmode);
 	Cvar_RegisterVariable (&r_profile);
 	Cvar_RegisterVariable (&r_threads);
@@ -590,6 +591,8 @@ void R_NewMap (void)
 	r_viewleaf = NULL;
 	R_ClearParticles ();
 	R_CheckLiquidVis ();
+	R_ParseWorldspawn (r_scene.worldmodel->entities);
+	R_CheckSkybox (true);
 
 	r_maxedgesseen = 0;
 	r_maxsurfsseen = 0;
@@ -1299,6 +1302,7 @@ void R_RenderView (void)
 		r_time1 = (float)Sys_DoubleTime ();
 
 	R_CheckLightSettings ();
+	R_CheckSkybox (false);
 	R_CheckThreads ();
 	R_SetupFrame ();
 
