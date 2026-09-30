@@ -222,10 +222,12 @@ static void D_ScanLeftEdge (emitpoint_t *pverts, int nump, sspan_t *spans)
 			du = pnext->u - pvert->u;
 			dv = pnext->v - pvert->v;
 			slope = du / dv;
-			u_step = (int)(slope * 0x10000);
+			// a nearly level edge's slope is past an int's range: saturated,
+			// and the steps wrap
+			u_step = R_SaturateInt (slope * 0x10000);
 		// adjust u to ceil the integer portion
-			u = (int)((pvert->u + (slope * (vtop - pvert->v))) * 0x10000) +
-					(0x10000 - 1);
+			u = (int)((unsigned)R_SaturateInt ((pvert->u + (slope * (vtop - pvert->v))) * 0x10000) +
+					(0x10000 - 1));
 			itop = (int)vtop;
 			ibottom = (int)vbottom;
 
@@ -233,7 +235,7 @@ static void D_ScanLeftEdge (emitpoint_t *pverts, int nump, sspan_t *spans)
 			{
 				pspan->u = u >> 16;
 				pspan->v = v;
-				u += u_step;
+				u = (int)((unsigned)u + (unsigned)u_step);
 				pspan++;
 			}
 		}
@@ -302,17 +304,18 @@ static void D_ScanRightEdge (emitpoint_t *pverts, int nump, sspan_t *spans)
 			du = unext - uvert;
 			dv = vnext - vvert;
 			slope = du / dv;
-			u_step = (int)(slope * 0x10000);
+			// as the left edge's
+			u_step = R_SaturateInt (slope * 0x10000);
 		// adjust u to ceil the integer portion
-			u = (int)((uvert + (slope * (vtop - vvert))) * 0x10000) +
-					(0x10000 - 1);
+			u = (int)((unsigned)R_SaturateInt ((uvert + (slope * (vtop - vvert))) * 0x10000) +
+					(0x10000 - 1));
 			itop = (int)vtop;
 			ibottom = (int)vbottom;
 
 			for (v=itop ; v<ibottom ; v++)
 			{
 				pspan->count = (u >> 16) - pspan->u;
-				u += u_step;
+				u = (int)((unsigned)u + (unsigned)u_step);
 				pspan++;
 			}
 		}
