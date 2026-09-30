@@ -1,6 +1,6 @@
-# The QuakeC VM's tests share an assembler that writes every progs format, and
-# checks (qc_testsupport).
-sw_add_module(qc_testsupport qc_asm.c qc_test.c)
+# The QuakeC VM's tests share an assembler that writes every progs format,
+# checks, and a harness that calls builtins by name (qc_testsupport).
+sw_add_module(qc_testsupport qc_asm.c qc_harness.c qc_test.c)
 target_link_libraries(qc_testsupport PUBLIC sw_qcvm)
 if(WIN32)
 	target_link_libraries(qc_testsupport PUBLIC sw_platform_win)
@@ -42,6 +42,14 @@ add_test(NAME qc_vm COMMAND test_qc_vm)
 sw_add_program(test_qc_fuzz test_qc_fuzz.c)
 target_link_libraries(test_qc_fuzz PRIVATE qc_testsupport)
 add_test(NAME qc_fuzz COMMAND test_qc_fuzz)
+
+# test_qc_lib_<area> test the standard builtins of an area through the harness:
+# the ports of qcvm-rs's tests/all/builtins_misc and builtins_strings.
+foreach(area IN ITEMS convert dtoa entity hostcalls introspect math reflect time vector)
+	sw_add_program(test_qc_lib_${area} test_qc_lib_${area}.c)
+	target_link_libraries(test_qc_lib_${area} PRIVATE qc_testsupport)
+	add_test(NAME qc_lib_${area} COMMAND test_qc_lib_${area})
+endforeach()
 
 # test_qc_fixtures runs the QuakeC fixtures in qc/, each compiled with fteqcc for
 # the targets it is meant for, with the builtins of FTE's standalone runner

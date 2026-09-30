@@ -190,6 +190,41 @@ void QC_BuiltinsRemove (qc_builtins_t *b, const char *name)
 	}
 }
 
+// the entry at slot index if it's still registered (removed ones keep their slot)
+static const qc_bentry_t *QC_LiveEntry (const qc_builtins_t *b, uint32_t index)
+{
+	const qc_bentry_t	*e = b->entries[index];
+	uint32_t			at;
+
+	return QC_MapGet (&b->by_name, e->name, strlen (e->name), &at) && at == index ? e : NULL;
+}
+
+uint32_t QC_BuiltinsCount (const qc_builtins_t *b)
+{
+	uint32_t	i, n = 0;
+
+	for (i = 0 ; i < b->count ; i++)
+		n += QC_LiveEntry (b, i) != NULL;
+	return n;
+}
+
+bool QC_BuiltinsAt (const qc_builtins_t *b, uint32_t i, const char **name, uint32_t *number, bool *numbered)
+{
+	const qc_bentry_t	*e = NULL;
+	uint32_t			index, bound;
+
+	for (index = 0 ; index < b->count ; index++)
+		if ((e = QC_LiveEntry (b, index)) && !i--)
+			break;
+	if (index == b->count)
+		return false;
+	*name = e->name;
+	// bound by number only if the number is still the entry's
+	*numbered = e->numbered && QC_NumberBound (b, e->number, &bound) && bound == index;
+	*number = *numbered ? e->number : 0;
+	return true;
+}
+
 bool QC_BuiltinsContains (const qc_builtins_t *b, const char *name)
 {
 	return QC_MapGet (&b->by_name, name, strlen (name), NULL);

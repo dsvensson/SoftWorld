@@ -765,6 +765,22 @@ qc_builtin_t	QC_BuiltinsFind (const qc_builtins_t *b, const char *name);
 // FTE's number of a builtin, if it has one
 bool	QC_BuiltinNumber (qc_numbering_t numbering, const char *name, uint32_t *number);
 
+// the registered builtins, in the order they were registered: how many, and the
+// i-th one's name and the number it is bound to (*numbered false for those
+// bound by name only)
+uint32_t	QC_BuiltinsCount (const qc_builtins_t *b);
+bool		QC_BuiltinsAt (const qc_builtins_t *b, uint32_t i, const char **name, uint32_t *number,
+				bool *numbered);
+
+// The standard builtins, numbered for numbering: every builtin FTE provides
+// that needs no engine (NULL when out of memory). A host adds its own and
+// replaces or removes any of them.
+qc_builtins_t	*QC_BuiltinsStandard (qc_numbering_t numbering);
+
+// whether the standard builtins implement an extension completely: what
+// checkextension answers for a host without check_extension
+bool	QC_StandardExtension (const char *name);
+
 // every builtin FTE declares for a numbering: numbered ones, then those bound
 // by name (*numbered false)
 uint32_t	QC_NumKnownBuiltins (qc_numbering_t numbering);

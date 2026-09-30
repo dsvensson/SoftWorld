@@ -15,6 +15,7 @@
 #include "qc_local.h"
 #include "qc_test.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,9 +67,10 @@ static bool B_GC (qcvm_t *vm)
 	return true;
 }
 
+// the standard builtins, and these in place of the first four
 static qc_builtins_t *FuzzBuiltins (void)
 {
-	qc_builtins_t	*b = QC_BuiltinsCreate (QC_NUMBERING_CSQC);
+	qc_builtins_t	*b = QC_BuiltinsStandard (QC_NUMBERING_CSQC);
 
 	QC_BuiltinsSetNumbered (b, 1, "spawn", B_Spawn);
 	QC_BuiltinsSetNumbered (b, 2, "temp", B_Temp);
@@ -383,6 +385,129 @@ static void TestTracedAgrees (uint64_t cases)
 	QC_BuiltinsFree (b);
 }
 
+/*
+==============================================================================
+
+THE STANDARD BUILTINS WITH HOSTILE ARGUMENTS
+
+==============================================================================
+*/
+
+// a progs declaring every builtin of a registry (by number where it's bound to
+// one, else by name), with the globals and fields the standard builtins look up
+static qc_progs_t *BuiltinProgs (const qc_builtins_t *b)
+{
+	static const struct
+	{
+		const char	*name;
+		uint32_t	type;
+	} fields[] = {{"origin", QC_EV_VECTOR}, {"mins", QC_EV_VECTOR}, {"maxs", QC_EV_VECTOR},
+		{"angles", QC_EV_VECTOR}, {"gravitydir", QC_EV_VECTOR}, {"solid", QC_EV_FLOAT}, {"flags", QC_EV_FLOAT},
+		{"ideal_yaw", QC_EV_FLOAT}, {"yaw_speed", QC_EV_FLOAT}, {"idealpitch", QC_EV_FLOAT},
+		{"pitch_speed", QC_EV_FLOAT}, {"health", QC_EV_FLOAT}, {"chain", QC_EV_ENTITY},
+		{"classname", QC_EV_STRING}, {"think", QC_EV_FUNCTION}};
+	static const char	*strings[] = {"", "hello world", "a\\b\\c", "{\"k\": [1, 2.5, \"x\"]}", "%s %d %v %c", "MD5"};
+	static const char	*views[3] = {"v_forward", "v_right", "v_up"};
+	static const uint8_t	sizes[2] = {1, 1};
+	qc_asm_t			*a = QA_New ();
+	const char			*name;
+	char				ref[256];
+	uint32_t			i, number, f;
+	bool				numbered;
+	qa_func_t			cb;
+	qc_progs_t			*p;
+
+	QA_Global (a, "self", QC_EV_ENTITY, NULL, 0);
+	QA_Global (a, "other", QC_EV_ENTITY, NULL, 0);
+	QA_Global (a, "time", QC_EV_FLOAT, NULL, 0);
+	for (i = 0 ; i < 3 ; i++)
+		QA_Global (a, views[i], QC_EV_VECTOR, NULL, 0);
+	for (i = 0 ; i < sizeof(fields) / sizeof(fields[0]) ; i++)
+		QA_Field (a, fields[i].name, fields[i].type, NULL);
+	for (i = 0 ; i < sizeof(strings) / sizeof(strings[0]) ; i++)
+		QA_String (a, strings[i]);
+	for (i = 0 ; QC_BuiltinsAt (b, i, &name, &number, &numbered) ; i++)
+	{
+		f = QA_Builtin (a, name, numbered ? number : 0, -1);
+		snprintf (ref, sizeof(ref), "%s_ref", name);
+		QA_Global1 (a, ref, QC_EV_FUNCTION, f);
+	}
+	cb = QA_Function (a, "callback", sizes, 2, 1);
+	QA_Emit (a, QOP_ADD_F, QA_Local (cb, 0), QA_Local (cb, 1), QA_Local (cb, 2));
+	QA_Emit (a, QOP_RETURN, QA_Local (cb, 2), 0, 0);
+	p = QA_Load (a, QC_FORMAT_FTE16);
+	QA_Free (a);
+	return p;
+}
+
+// an argument word: floats ordinary and extreme, string references (the
+// program's, temps, statics, invalid ones), entities, pointers, any bits
+static uint32_t ArgWord (void)
+{
+	static const float		specials[8] = {NAN, INFINITY, -INFINITY, 3.0e9f, -3.0e9f, 1.0e20f, 1.17549435e-38f, -0.0f};
+	static const uint32_t	words[4] = {0xFFFFFFFF, 0x7FFFFFFF, 0x40000000, 1u << 24};
+
+	switch (QT_RandBelow (&rng, 7))
+	{
+	case 0:		return QC_FloatBits (-10.0f + 310.0f * (float)QT_RandBelow (&rng, 1u << 24) / (float)(1u << 24));
+	case 1:		return QC_FloatBits (specials[QT_RandBelow (&rng, 8)]);
+	case 2:		return QT_RandBelow (&rng, 64);
+	case 3:		return 0x80000000u | QT_RandBelow (&rng, 8);
+	case 4:		return 0xC0000000u | QT_RandBelow (&rng, 4);
+	case 5:		return words[QT_RandBelow (&rng, 4)];
+	default:	return (uint32_t)QT_Rand (&rng);
+	}
+}
+
+// random calls of every standard builtin with hostile arguments must not harm
+// the VM or the host
+static void TestStandardBuiltins (qc_numbering_t numbering, uint64_t cases)
+{
+	static const char	*temps[4] = {"temp one", "", "t\xC3\xA9mp", "^1red ^7white"};
+	qc_builtins_t		*b = QC_BuiltinsStandard (numbering);
+	qc_progs_t			*p = BuiltinProgs (b);
+	uint32_t			count = QC_BuiltinsCount (b), calls, i, k, pick, number;
+	qc_config_t			config;
+	qc_value_t			args[8];
+	const char			*name;
+	bool				numbered;
+	qcvm_t				*vm;
+	qc_ent_t			e;
+	uint64_t			n;
+	int					argc;
+
+	QC_DefaultConfig (&config, QC_CSQC);
+	config.limits.runaway = 100000;
+	config.limits.heap_bytes = 1u << 22;
+	config.developer = true;
+	for (n = 0 ; n < cases ; n++)
+	{
+		vm = QC_Create (p, b, &config, NULL, NULL, NULL);
+		if (!QT_CHECK (vm != NULL))
+			break;
+		for (i = 0 ; i < 3 ; i++)
+			QC_Spawn (vm, &e);
+		for (i = 0 ; i < 4 ; i++)
+			QC_TempString (vm, temps[i], strlen (temps[i]));
+		QC_Intern (vm, "interned", 8);
+		calls = 1 + QT_RandBelow (&rng, 23);
+		for (i = 0 ; i < calls ; i++)
+		{
+			pick = QT_RandBelow (&rng, count);
+			argc = (int)QT_RandBelow (&rng, 9);
+			for (k = 0 ; k < 8 ; k++)
+				args[k] = (qc_value_t){{ArgWord (), ArgWord (), ArgWord ()}};
+			if (!QC_BuiltinsAt (b, pick, &name, &number, &numbered))
+				continue;
+			QC_Call (vm, QC_FindFunction (vm, name), argc, args, NULL);
+		}
+		QC_CollectGarbage (vm);
+		QC_Destroy (vm);
+	}
+	QC_ReleaseProgs (p);
+	QC_BuiltinsFree (b);
+}
+
 int main (void)
 {
 	uint64_t	cases = QT_EnvNumber ("QC_FUZZ_ITERS", 256);
@@ -390,5 +515,9 @@ int main (void)
 	rng = QT_EnvNumber ("QC_FUZZ_SEED", 0xF022);
 	TestRandomStatements (cases);
 	TestTracedAgrees (cases);
-	return QT_Finish ("fuzz", "random programs run without harm, traced or not");
+	// each case makes a VM with every builtin declared: a quarter as many
+	TestStandardBuiltins (QC_NUMBERING_CSQC, (cases + 3) / 4);
+	TestStandardBuiltins (QC_NUMBERING_SSQC, (cases + 3) / 4);
+	TestStandardBuiltins (QC_NUMBERING_MENU, (cases + 3) / 4);
+	return QT_Finish ("fuzz", "random programs and hostile builtin calls run without harm, traced or not");
 }
