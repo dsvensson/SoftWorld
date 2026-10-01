@@ -176,7 +176,7 @@ Worth knowing:
 | `r_externaltextures` | TGA files in `textures/<map>/` or `textures/` in place of the map's textures, truecolor (1, the default); walls take them in `r_lightmode 1` |
 | `r_skybox` | a skybox in place of the sky's texture: `<name>rt.tga` and the other five faces in `env/` or `gfx/env/`; empty (the default) for the one the map's worldspawn names |
 | `r_fog`, `r_fog_usemap`, `r_skyfog` | fog: the map's, from its worldspawn's `fog` key (`r_fog_usemap 0` leaves it out), with `r_fog`'s over it, as FTE's `fog` command takes it (`"density red green blue"`; 0 is no fog); how far the sky takes the fog's color |
-| `r_threads` | threads drawing the view; 0 (the default) one a core, at most 8 |
+| `r_threads` | threads drawing the view, each walking the world in a band of it; 0 (the default) one a core, at most 8 |
 | `r_lerpframes`, `r_lerpmuzzlehack` | models' animation frames blend into each other (1, the default), as in ezQuake; the view model's muzzle flash appears at once rather than blending in from behind the view |
 | `gamma`, `vid_contrast` | the view's gamma and contrast; the HUD keeps its own |
 | `vid_hdr`, `vid_hdr_paperwhite` | HDR output on an HDR display; SDR white's brightness in nits (on macOS 0, the default, is the system's white, and nits are over a white of 100; on Linux 0 is the compositor's) |

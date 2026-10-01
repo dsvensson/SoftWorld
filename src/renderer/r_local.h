@@ -178,7 +178,7 @@ void R_DrawFences (void);
 // translucent surfaces and alias models: blended in after the models, back to
 // front; alpha is of 256
 int R_EntityAlpha (const entity_t *ent);
-int R_SurfaceAlpha (const msurface_t *surf);
+int R_SurfaceAlpha (const entity_t *ent, const msurface_t *surf);
 void R_AddTranslucent (msurface_t *surf, int alpha);
 void R_AddTranslucentModel (model_t *model);
 void R_AddTranslucentEntity (entity_t *ent);
@@ -269,8 +269,148 @@ typedef struct clipplane_s
 extern	clipplane_t	view_clipplanes[4];
 
 //=============================================================================
+// the bands of the view
+//
+// The edge pipeline draws the view in horizontal bands, on the worker threads
+// at once (r_band.c): each walks the world and the brush entities, clipping to
+// the view as a whole and keeping what falls on its scan lines, and scans
+// those lines into the spans of its surfaces. A band has everything the
+// pipeline changes while it runs; what they share is only read, and the
+// spans are drawn after all have run. A band's lines come out as they would
+// with one band for the view.
 
-void R_RenderWorld (void);
+#define MAX_BANDS		64
+
+// r_edgestarts of an edge none of the band's lines has
+#define EDGE_OUTSIDE	0xFFFFFFFFu
+
+typedef struct
+{
+	msurface_t	*surf;
+	entity_t	*entity;
+	int			alpha;				// of 256: below is translucent, 256 a fence
+} rafter_t;
+
+typedef struct rband_s
+{
+	int			top, bottom;		// the scan lines, bottom not included
+
+// the view, in the space of the model being drawn
+	vec3_t		modelorg, vpn, vright, vup;
+	clipplane_t	clipplanes[4];		// the view's edges, which faces are clipped to
+	mplane_t	cullplanes[2];		// above and below the lines (world space): what
+									//  is wholly beyond them isn't the band's
+	int			cullindexes[2][6];	// as pfrustum_indexes, for cullplanes
+	int			cullflags;			// 16 and 32 for those it has: where it doesn't
+									//  reach the view's top and bottom
+	entity_t	*entity;			// being drawn
+	bool		insubmodel;			// a brush entity
+	mvertex_t	*vertbase;			// its model's vertexes
+	vec3_t		entorigin;
+	float		entity_rotation[3][3];
+	int			clipflags;			// the clip planes a brush entity needs
+
+// the world walk (sized for world, R_BandWorld)
+	model_t		*world;
+	byte		*surfvisible;		// a bit per world surface, set by the leaves walked
+	int			*leafkeys;			// each leaf's key this frame, for brush models in it
+	unsigned	*edgecache;			// each world edge's offset into edges, or
+									//  FULLY_CLIPPED_CACHED and the pass
+	unsigned	pass;				// counts the band's runs
+	float		*edgenearzi;		// a FULLY_CLIPPED_CACHED edge's 1/z: a face's
+									//  nearzi is the same whatever it met first
+	int			currentkey, currentbkey;
+
+// a brush entity's polygons clipped through the world (r_bsp.c)
+	mvertex_t	*bverts;
+	bedge_t		*bedges;
+	int			numbverts, numbedges, maxbverts, maxbedges;
+	mvertex_t	*frontenter, *frontexit;
+	bool		makeclippededge;
+
+// a face's edges being clipped and emitted (r_draw.c)
+	medge_t		*pedge;
+	medge_t		tedge;				// a dummy, for the edge caching to write to
+	unsigned	cacheoffset;
+	float		cachenearzi;		// with cacheoffset FULLY_CLIPPED_CACHED
+	bool		leftclipped, rightclipped, makeleftedge, makerightedge, nearzionly;
+	mvertex_t	leftenter, leftexit, rightenter, rightexit;
+	bool		emitted;
+	float		nearzi;
+	float		u1, v1, lzi1;
+	int			ceilv1;
+	bool		lastvertvalid;
+
+// the edges and surfaces made (r_edge.c)
+	edge_t		*edges, *edge_p, *edge_max;
+	uint32_t	*edgestarts;		// by edge: the line it starts on (above the band
+									//  for one it starts on its first) times two, plus
+									//  one for a trailing edge; or EDGE_OUTSIDE
+	int			maxedges;
+	surf_t		*surfmem;			// surfaces points one before it
+	surf_t		*surfaces, *surface_p, *surf_max;
+	int			maxsurfs;
+	edge_t		**removeedges;		// by line: the edges that end there
+	uint32_t	*sortededges, *sortbuffer;	// indices into edges (R_SortNewEdges)
+	int			maxsortededges;
+	int			*linestart;			// by line: where its edges start in sortededges
+	int			*columnstart;
+	int			height, width;		// of the lines and columns these are for
+
+// the scan (r_edge.c)
+	espan_t		*spans, *span_p, *max_span_p;
+	int			maxspans;
+	edge_t		edge_head, edge_tail, edge_aftertail, edge_sentinel;
+	int			edge_head_u_shift20, edge_tail_u_shift20;
+	int			current_iv;
+	float		fv;
+	int			bmodelactive;
+
+// the fences and translucent surfaces met, drawn after the world (r_fence.c)
+	rafter_t	*afters;
+	int			numafters, maxafters;
+
+// what ran out of room: the band is drawn again with more (r_band.c)
+	bool		outofedges, outofsurfaces, outofspans, outofbmodel, outofafters;
+
+	int			faceclip, polycount;	// counts, for r_speeds
+	double		time;				// the last run took, in seconds
+} rband_t;
+
+// TransformVector in the band's view
+static inline void R_BandTransform (const rband_t *b, const vec3_t in, vec3_t out)
+{
+	out[0] = DotProduct (in, b->vright);
+	out[1] = DotProduct (in, b->vup);
+	out[2] = DotProduct (in, b->vpn);
+}
+
+void R_RenderWorld (rband_t *b);
+void R_DrawBEntities (rband_t *b);
+void R_RotateBandBmodel (rband_t *b);
+void R_TransformBandFrustum (rband_t *b);
+void R_RenderFace (rband_t *b, msurface_t *fa, int clipflags);
+void R_RenderBmodelFace (rband_t *b, bedge_t *pedges, msurface_t *psurf);
+void R_DrawSubmodelPolygons (rband_t *b, model_t *pmodel, int clipflags);
+void R_DrawSolidClippedSubmodelPolygons (rband_t *b, model_t *pmodel);
+void R_BeginEdgeFrame (rband_t *b);
+void R_ScanEdges (rband_t *b);
+void D_DrawSurfaces (rband_t *bands, int numbands);
+int R_BmodelCheckBBox (const entity_t *ent, const float *minmaxs, const rband_t *b);
+void R_BandWorldView (rband_t *b);
+bool R_GrowBandBModelClip (rband_t *b);
+void R_AddAfter (rband_t *b, msurface_t *surf, int alpha);
+void R_MergeAfters (void);
+
+extern rband_t	r_bands[MAX_BANDS];
+extern int		r_numbands;
+
+void R_SetEdgeSize (int width, int height);
+void R_SetBandRoom (int numedges, int numsurfs);
+void R_RunBands (int numbands);
+
+void R_StoreStaticEntities (void);
+void R_MarkEfragNodes (mleaf_t *leaf);
 
 //=============================================================================
 
@@ -286,33 +426,11 @@ extern	int		r_visframecount;
 //=============================================================================
 
 
-
-
-//
-// current entity info
-//
-extern	bool		insubmodel;
-extern	vec3_t			r_worldmodelorg;
-
-
 void R_DrawSprite (void);
-void R_RenderFace (msurface_t *fa, int clipflags);
-void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf);
-void R_TransformFrustum (void);
 void R_SetSkyFrame (void);
 texture_t *R_TextureAnimation (texture_t *base);
 
-
-void R_DrawSubmodelPolygons (model_t *pmodel, int clipflags);
-void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel);
-
 void R_AliasDrawModel (alight_t *plighting);
-void R_BeginEdgeFrame (void);
-void R_ScanEdges (void);
-void D_DrawSurfaces (void);
-
-
-extern void R_RotateBmodel (void);
 
 extern int	c_faceclip;
 extern int	r_polycount;
@@ -329,15 +447,7 @@ extern int			ubasestep, errorterm, erroradjustup, erroradjustdown;
 extern fixed16_t	sadjust, tadjust;
 extern fixed16_t	bbextents, bbextentt;
 
-#define MAXBVERTINDEXES	1000	// new clipped vertices when clipping bmodels
-								//  to the world BSP
-extern mvertex_t	*r_ptverts, *r_ptvertsmax;
-
 extern vec3_t			sbaseaxis[3], tbaseaxis[3];
-
-
-extern int		r_currentkey;
-extern int		r_currentbkey;
 
 //=========================================================
 // Alias models
@@ -371,30 +481,14 @@ void R_ClearParticles (void);
 void R_ReadPointFile_f (void);
 
 extern int		r_amodels_drawn;
-extern int		r_numallocatededges;
-extern edge_t	*r_edges, *edge_p, *edge_max;
 
-extern	uint32_t	*r_edgestarts;	// the line each edge starts on, and its kind
-extern	edge_t	**removeedges;
-
-void R_SetEdgeSize (int width, int height);
 void R_SetWarpTable (int size);
 
 extern	int	screenwidth;
 
-// FIXME: make stack vars when debugging done
-extern int		r_bmodelactive;
-
 extern float		aliasxscale, aliasyscale, aliasxcenter, aliasycenter;
 extern float		r_aliastransition, r_resfudge;
 
-extern int		r_outofsurfaces;
-extern int		r_outofedges;
-extern bool		r_outofbmodel;		// a brush entity's clipping ran out of room
-bool	R_GrowBModelClip (void);
-
-extern mvertex_t	*r_pcurrentvertbase;
-extern int			r_maxvalidedgeoffset;
 
 void R_AliasClipTriangle (mtriangle_t *ptri);
 
@@ -412,7 +506,6 @@ extern mleaf_t	*r_viewleaf, *r_oldviewleaf;
 
 extern vec3_t	r_emins, r_emaxs;
 extern mnode_t	*r_pefragtopnode;
-extern int		r_clipflags;
 extern int		r_dlightframecount;
 
 void R_StoreEfrags (efrag_t **ppefrag);

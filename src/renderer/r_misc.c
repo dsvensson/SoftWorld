@@ -255,6 +255,34 @@ void R_TransformFrustum (void)
 
 
 /*
+===================
+R_TransformBandFrustum
+
+R_TransformFrustum for a band's view
+===================
+*/
+void R_TransformBandFrustum (rband_t *b)
+{
+	int		i;
+	vec3_t	v, v2;
+	
+	for (i=0 ; i<4 ; i++)
+	{
+		v[0] = screenedge[i].normal[2];
+		v[1] = -screenedge[i].normal[0];
+		v[2] = screenedge[i].normal[1];
+
+		v2[0] = v[1]*b->vright[0] + v[2]*b->vup[0] + v[0]*b->vpn[0];
+		v2[1] = v[1]*b->vright[1] + v[2]*b->vup[1] + v[0]*b->vpn[1];
+		v2[2] = v[1]*b->vright[2] + v[2]*b->vup[2] + v[0]*b->vpn[2];
+
+		VectorCopy (v2, b->clipplanes[i].normal);
+
+		b->clipplanes[i].dist = DotProduct (b->modelorg, v2);
+	}
+}
+
+/*
 ================
 TransformVector
 ================
@@ -307,31 +335,38 @@ R_SetupFrame
 */
 void R_SetupFrame (void)
 {
-	int				edgecount;
+	int				i, count, room;
 
 // don't allow cheats in multiplayer
 r_fullbright.value = 0;
 r_ambient.value = 0;
 r_drawflat.value = 0;
 
+// the last frame's, of all its bands
 	if (r_numsurfs.value)
 	{
-		if ((surface_p - surfaces) > r_maxsurfsseen)
-			r_maxsurfsseen = (int)(surface_p - surfaces);
+		for (i = count = room = 0 ; i<r_numbands ; i++)
+		{
+			count += (int)(r_bands[i].surface_p - r_bands[i].surfaces);
+			room += r_bands[i].maxsurfs;
+		}
+		if (count > r_maxsurfsseen)
+			r_maxsurfsseen = count;
 
-		Con_Printf ("Used %d of %d surfs; %d max\n", surface_p - surfaces,
-				surf_max - surfaces, r_maxsurfsseen);
+		Con_Printf ("Used %d of %d surfs; %d max\n", count, room, r_maxsurfsseen);
 	}
 
 	if (r_numedges.value)
 	{
-		edgecount = (int)(edge_p - r_edges);
+		for (i = count = room = 0 ; i<r_numbands ; i++)
+		{
+			count += (int)(r_bands[i].edge_p - r_bands[i].edges);
+			room += r_bands[i].maxedges;
+		}
+		if (count > r_maxedgesseen)
+			r_maxedgesseen = count;
 
-		if (edgecount > r_maxedgesseen)
-			r_maxedgesseen = edgecount;
-
-		Con_Printf ("Used %d of %d edges; %d max\n", edgecount,
-				r_numallocatededges, r_maxedgesseen);
+		Con_Printf ("Used %d of %d edges; %d max\n", count, room, r_maxedgesseen);
 	}
 
 	r_refdef.ambientlight = (int)r_ambient.value;
@@ -387,8 +422,6 @@ r_drawflat.value = 0;
 	r_drawnpolycount = 0;
 	r_wholepolycount = 0;
 	r_amodels_drawn = 0;
-	r_outofsurfaces = 0;
-	r_outofedges = 0;
 
 	D_SetupFrame ();
 }

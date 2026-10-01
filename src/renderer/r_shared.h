@@ -95,10 +95,7 @@ typedef struct surf_s
 	int			pad[2];				// to 64 bytes
 } surf_t;
 
-extern	surf_t	*surfaces, *surface_p, *surf_max;
-
-// surfaces are generated in back to front order by the bsp, so if a surf
-// pointer is greater than another one, it should be drawn in front
+// a band's surfaces are generated in front to back order by the bsp;
 // surfaces[1] is the background, and is used as the active surface stack.
 // surfaces[0] is a dummy, because index 0 is used to indicate no surface
 //  attached to an edge_t

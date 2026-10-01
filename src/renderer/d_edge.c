@@ -390,12 +390,13 @@ static void D_DrawBatch (void)
 ==============
 D_DrawSurfaces
 
-The surfaces' spans the edge scan has gathered
+The surfaces' spans the bands' scans have gathered
 ==============
 */
-void D_DrawSurfaces (void)
+void D_DrawSurfaces (rband_t *bands, int numbands)
 {
 	surf_t			*s;
+	rband_t			*b;
 	double			prof = R_ProfStart ();
 
 	currententity = &r_worldentity;
@@ -405,36 +406,42 @@ void D_DrawSurfaces (void)
 // TODO: could preset a lot of this at mode set time
 	if (r_drawflat.value)
 	{
-		for (s = &surfaces[1] ; s<surface_p ; s++)
+		for (b = bands ; b<bands + numbands ; b++)
 		{
-			simd_texmap_t	map = {.ziorigin = s->d_ziorigin, .zistepu = s->d_zistepu, .zistepv = s->d_zistepv};
+			for (s = &b->surfaces[1] ; s<b->surface_p ; s++)
+			{
+				simd_texmap_t	map = {.ziorigin = s->d_ziorigin, .zistepu = s->d_zistepu, .zistepv = s->d_zistepv};
 
-			if (!s->spans)
-				continue;
+				if (!s->spans)
+					continue;
 
-			D_DrawSolidSurface (s, (int)((intptr_t)s->data & 0xFF));
-			D_DrawZSpans (s->spans, &map);
+				D_DrawSolidSurface (s, (int)((intptr_t)s->data & 0xFF));
+				D_DrawZSpans (s->spans, &map);
+			}
 		}
 		R_ProfEnd (PROF_DRAW, prof);
 		return;
 	}
 
 	D_BeginSurfaceBatch ();
-	for (s = &surfaces[1] ; s<surface_p ; s++)
+	for (b = bands ; b<bands + numbands ; b++)
 	{
-		if (!s->spans)
-			continue;
-
-		r_drawnpolycount++;
-		if (d_numjobs == d_maxjobs)
+		for (s = &b->surfaces[1] ; s<b->surface_p ; s++)
 		{
-			d_maxjobs = d_maxjobs ? d_maxjobs * 2 : 256;
-			d_jobs = Mem_Realloc (d_jobs, (size_t)d_maxjobs * sizeof(*d_jobs));
-			d_builds = Mem_Realloc (d_builds, (size_t)d_maxjobs * sizeof(*d_builds));
+			if (!s->spans)
+				continue;
+
+			r_drawnpolycount++;
+			if (d_numjobs == d_maxjobs)
+			{
+				d_maxjobs = d_maxjobs ? d_maxjobs * 2 : 256;
+				d_jobs = Mem_Realloc (d_jobs, (size_t)d_maxjobs * sizeof(*d_jobs));
+				d_builds = Mem_Realloc (d_builds, (size_t)d_maxjobs * sizeof(*d_builds));
+			}
+			while (!D_PrepareSurface (s, &d_jobs[d_numjobs]))
+				D_DrawBatch ();
+			d_numjobs++;
 		}
-		while (!D_PrepareSurface (s, &d_jobs[d_numjobs]))
-			D_DrawBatch ();
-		d_numjobs++;
 	}
 	D_DrawBatch ();
 	R_ProfEnd (PROF_DRAW, prof);

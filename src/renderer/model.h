@@ -96,11 +96,9 @@ typedef struct texture_s
 #define SURF_SLIME			0x200		// r_*alpha
 #define SURF_TELE			0x400
 
-// !!! if this is changed, it must be changed in asm_draw.h too !!!
 typedef struct
 {
 	unsigned	v[2];
-	unsigned	cachededgeoffset;
 } medge_t;
 
 typedef struct
@@ -125,6 +123,7 @@ typedef struct msurface_s
 
 	int			firstedge;	// look up in model->surfedges[], negative numbers
 	int			numedges;	// are backwards edges
+	float		minmaxs[6];	// its vertexes' bounds, as a node's
 	
 // surface generation data
 	struct surfcache_s	*cachespots[MIPLEVELS];
@@ -156,6 +155,7 @@ typedef struct mnode_s
 	float		minmaxs[6];		// for bounding box culling
 
 	struct mnode_s	*parent;
+	bool		efragged;		// a static entity is in it or a leaf under it
 
 // node specific
 	mplane_t	*plane;
@@ -176,6 +176,7 @@ typedef struct mleaf_s
 	float		minmaxs[6];		// for bounding box culling
 
 	struct mnode_s	*parent;
+	bool		efragged;		// a static entity is in it or a leaf under it
 
 // leaf specific
 	byte		*compressed_vis;
@@ -344,6 +345,7 @@ typedef struct model_s
 
 	int			numleafs;		// number of visible leafs, not counting 0
 	mleaf_t		*leafs;
+	int			numloadedleafs;	// all of leafs, the submodels' too
 
 	int			numvertexes;
 	mvertex_t	*vertexes;

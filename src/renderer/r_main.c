@@ -28,23 +28,16 @@ static void	R_InitTurb (void);
 static vec3_t		viewlightvec;
 static alight_t	r_viewlighting = {.ambientlight = 128, .shadelight = 192, .plightvec = viewlightvec, .color = {1, 1, 1}};
 float		r_time1;
-int			r_numallocatededges;
 bool	r_recursiveaffinetriangles = true;
 float		r_aliasuvscale = 1.0;
-int			r_outofsurfaces;
-int			r_outofedges;
 
 bool	r_dowarp, r_dowarpold, r_viewchanged;
 vrect_t	r_viewrect;		// where the client wants the view on screen
 float	r_viewaspect;
 
-mvertex_t	*r_pcurrentvertbase;
-
 int			c_surf;
 int r_maxsurfsseen, r_maxedgesseen;
-static int r_cnumsurfs;
-static surf_t	*r_surfaces_mem;	// heap block behind surfaces (which points one element into it)
-int			r_clipflags;
+static int	r_numthreads;		// the worker threads and this one (R_CheckThreads)
 
 pixel_t		*r_warpbuffer;
 
@@ -135,6 +128,9 @@ static cvar_t	r_profile = {.name = "r_profile", .string = "0",
 static cvar_t	r_threads = {.name = "r_threads", .string = "0", .archive = true,
 	.description = "Threads drawing the view, this one included; 0 is one a core, at most 8."};
 #define R_AUTO_THREADS	8		// the most r_threads 0 picks: more drew no faster (Ryzen 7950X)
+static cvar_t	r_bandcount = {.name = "r_bands", .string = "0",
+	.description = "Horizontal bands the view is split into, the world walked and scanned in each apart, "
+		"on the threads at once; 0 is one a thread, 1 the whole view at once."};
 static void R_Profile_f (void);
 cvar_t	r_lightmode = {.name = "r_lightmode", .string = "1", .archive = true,
 	.description = "How the world and models are lit.",
@@ -201,7 +197,8 @@ static cvar_t	r_reportsurfout = {.name = "r_reportsurfout", .string = "0",
 	.description = "Prints how many surfaces a frame was short of; frames short of any are drawn again "
 		"with more, so it prints nothing."};
 static cvar_t	r_maxsurfs = {.name = "r_maxsurfs", .string = "0",
-	.description = "How many surfaces a map starts with, 1000 at least; a frame that needs more doubles them."};
+	.description = "How many surfaces each band of the view starts a map with, 1000 at least; "
+		"a band that needs more doubles them."};
 cvar_t	r_numsurfs = {.name = "r_numsurfs", .string = "0",
 	.description = "Prints each frame how many surfaces the last one used, of how many, and the most since "
 		"the map loaded.",
@@ -210,7 +207,8 @@ static cvar_t	r_reportedgeout = {.name = "r_reportedgeout", .string = "0",
 	.description = "Prints how many edges a frame was short of; frames short of any are drawn again "
 		"with more, so it prints nothing."};
 static cvar_t	r_maxedges = {.name = "r_maxedges", .string = "0",
-	.description = "How many edges a map starts with, 2000 at least; a frame that needs more doubles them."};
+	.description = "How many edges each band of the view starts a map with, 2000 at least; "
+		"a band that needs more doubles them."};
 cvar_t	r_numedges = {.name = "r_numedges", .string = "0",
 	.description = "Prints each frame how many edges the last one used, of how many, and the most since "
 		"the map loaded.",
@@ -290,6 +288,7 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_lightmode);
 	Cvar_RegisterVariable (&r_profile);
 	Cvar_RegisterVariable (&r_threads);
+	Cvar_RegisterVariable (&r_bandcount);
 	Cmd_AddCommand ("r_profile_show", R_Profile_f,
 		"Prints each drawing stage's average microseconds a frame since it last printed (needs r_profile 1), "
 		"and starts counting again.");
@@ -338,37 +337,6 @@ void R_Init (void)
 }
 
 r_scene_t	r_scene;
-
-/*
-===============
-R_AllocEdges
-
-The edges and surfaces of a frame; R_EdgeDrawing grows them when a frame
-needs more
-===============
-*/
-static void R_AllocEdges (int numedges, int numsurfs)
-{
-	if (numedges < MINEDGES)
-		numedges = MINEDGES;
-	if (numsurfs < MINSURFACES)
-		numsurfs = MINSURFACES;
-
-	Mem_Free (r_edges);
-	Mem_Free (r_edgestarts);
-	r_numallocatededges = numedges;
-	r_edges = Mem_Calloc ((size_t)r_numallocatededges, sizeof(edge_t));
-	r_edgestarts = Mem_Alloc ((size_t)r_numallocatededges * sizeof(*r_edgestarts));
-
-	Mem_Free (r_surfaces_mem);
-	r_cnumsurfs = numsurfs;
-	r_surfaces_mem = Mem_Calloc ((size_t)r_cnumsurfs, sizeof(surf_t));
-	surf_max = &r_surfaces_mem[r_cnumsurfs];
-// surface 0 doesn't really exist; it's just a dummy because index 0
-// is used to indicate no edge attached to surface
-	surfaces = r_surfaces_mem - 1;
-	surface_p = surfaces;
-}
 
 /*
 ===============
@@ -484,15 +452,14 @@ The worker threads r_threads asks for
 */
 static void R_CheckThreads (void)
 {
-	static int	threads;
 	int			wanted = (int)r_threads.value;
 
 	if (wanted <= 0)
 		wanted = Sys_NumCores () < R_AUTO_THREADS ? Sys_NumCores () : R_AUTO_THREADS;
-	if (wanted == threads)
+	if (wanted == r_numthreads)
 		return;
-	threads = wanted;
-	Sys_SetWorkers (threads - 1);
+	r_numthreads = wanted;
+	Sys_SetWorkers (r_numthreads - 1);
 }
 
 static void R_CheckLightSettings (void)
@@ -583,9 +550,13 @@ void R_NewMap (void)
 	r_worldentity.model = r_scene.worldmodel;
 
 // clear out efrags in case the level hasn't been reloaded
-// FIXME: is this one short?
-	for (i=0 ; i<r_scene.worldmodel->numleafs ; i++)
+	for (i=0 ; i<r_scene.worldmodel->numloadedleafs ; i++)
+	{
 		r_scene.worldmodel->leafs[i].efrags = NULL;
+		r_scene.worldmodel->leafs[i].efragged = false;
+	}
+	for (i=0 ; i<r_scene.worldmodel->numnodes ; i++)
+		r_scene.worldmodel->nodes[i].efragged = false;
 		 	
 	r_viewleaf = NULL;
 	R_ClearParticles ();
@@ -596,7 +567,7 @@ void R_NewMap (void)
 	r_maxedgesseen = 0;
 	r_maxsurfsseen = 0;
 
-	R_AllocEdges ((int)r_maxedges.value, (int)r_maxsurfs.value);
+	R_SetBandRoom ((int)r_maxedges.value, (int)r_maxsurfs.value);
 
 	r_dowarpold = false;
 	r_viewchanged = false;
@@ -786,21 +757,21 @@ int R_EntityAlpha (const entity_t *ent)
 =============
 R_SurfaceAlpha
 
-How opaque a surface of currententity is drawn, of 256: the entity's alpha,
+How opaque a surface of ent is drawn, of 256: the entity's alpha,
 and a liquid's r_*alpha where the map sees through it (liquids of brush
 models don't fill leafs of their own and always may)
 =============
 */
-int R_SurfaceAlpha (const msurface_t *surf)
+int R_SurfaceAlpha (const entity_t *ent, const msurface_t *surf)
 {
 	float	alpha;
 	int		a;
 
 	if (surf->flags & (SURF_DRAWSKY | SURF_DRAWBACKGROUND))
 		return 256;
-	alpha = R_EntityAlpha (currententity) / 256.0f;
+	alpha = R_EntityAlpha (ent) / 256.0f;
 	if ((surf->flags & SURF_DRAWTURB) &&
-		(currententity != &r_worldentity || r_novis.value || (r_liquidvis & R_LiquidKind (surf->flags))))
+		(ent != &r_worldentity || r_novis.value || (r_liquidvis & R_LiquidKind (surf->flags))))
 	{
 		if (surf->flags & SURF_LAVA)
 			alpha *= r_lavaalpha.value;
@@ -1018,256 +989,175 @@ static void R_DrawViewModel (void)
 
 /*
 =============
-R_BmodelCheckBBox
+R_BrushEntityBounds
 =============
 */
-static int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
+static void R_BrushEntityBounds (const entity_t *ent, float minmaxs[6])
 {
-	int			i, *pindex, clipflags;
-	vec3_t		acceptpt, rejectpt;
-	double		d;
+	int		j;
 
-	clipflags = 0;
-
-	if (currententity->angles[0] || currententity->angles[1]
-		|| currententity->angles[2])
+	for (j=0 ; j<3 ; j++)
 	{
-		for (i=0 ; i<4 ; i++)
-		{
-			d = DotProduct (currententity->origin, view_clipplanes[i].normal);
-			d -= view_clipplanes[i].dist;
-
-			if (d <= -clmodel->radius)
-				return BMODEL_FULLY_CLIPPED;
-
-			if (d <= clmodel->radius)
-				clipflags |= (1<<i);
-		}
+		minmaxs[j] = ent->origin[j] + ent->model->mins[j];
+		minmaxs[3+j] = ent->origin[j] + ent->model->maxs[j];
 	}
-	else
-	{
-		for (i=0 ; i<4 ; i++)
-		{
-		// generate accept and reject points
-		// FIXME: do with fast look-ups or integer tests based on the sign bit
-		// of the floating point values
-
-			pindex = pfrustum_indexes[i];
-
-			rejectpt[0] = minmaxs[pindex[0]];
-			rejectpt[1] = minmaxs[pindex[1]];
-			rejectpt[2] = minmaxs[pindex[2]];
-			
-			d = DotProduct (rejectpt, view_clipplanes[i].normal);
-			d -= view_clipplanes[i].dist;
-
-			if (d <= 0)
-				return BMODEL_FULLY_CLIPPED;
-
-			acceptpt[0] = minmaxs[pindex[3+0]];
-			acceptpt[1] = minmaxs[pindex[3+1]];
-			acceptpt[2] = minmaxs[pindex[3+2]];
-
-			d = DotProduct (acceptpt, view_clipplanes[i].normal);
-			d -= view_clipplanes[i].dist;
-
-			if (d <= 0)
-				clipflags |= (1<<i);
-		}
-	}
-
-	return clipflags;
 }
-
 
 /*
 =============
-R_DrawBEntitiesOnList
+R_PrepareBrushEntities
+
+The brush entities the bands draw, before they run: those in the view and
+opaque are given the node or leaf they're under, the rest none
 =============
 */
-static void R_DrawBEntitiesOnList (void)
+static void R_PrepareBrushEntities (void)
 {
-	int			i, j, k, clipflags;
-	vec3_t		oldorigin;
+	int			i, j;
+	entity_t	*ent;
+	float		minmaxs[6];
+
+	for (i=0 ; i<(*r_scene.numvisedicts) ; i++)
+	{
+		ent = &r_scene.visedicts[i];
+		if (ent->model->type != mod_brush)
+			continue;
+
+		ent->topnode = NULL;
+		if (!r_drawentities.value || R_EntityAlpha (ent) < 256)
+			continue;
+		R_BrushEntityBounds (ent, minmaxs);
+		if (R_BmodelCheckBBox (ent, minmaxs, NULL) == BMODEL_FULLY_CLIPPED)
+			continue;
+
+		r_pefragtopnode = NULL;
+		for (j=0 ; j<3 ; j++)
+		{
+			r_emins[j] = minmaxs[j];
+			r_emaxs[j] = minmaxs[3+j];
+		}
+		R_SplitEntityOnNode2 (r_scene.worldmodel->nodes);
+		ent->topnode = r_pefragtopnode;
+	}
+}
+
+/*
+=============
+R_FinishBrushEntities
+
+The rest of the brush entities in the view, after the bands: the dynamic
+lights on their faces, and the translucent ones' faces sorted with the other
+translucent things
+=============
+*/
+static void R_FinishBrushEntities (void)
+{
+	int			i, k;
 	model_t		*clmodel;
 	float		minmaxs[6];
 
 	if (!r_drawentities.value)
 		return;
 
-	VectorCopy (modelorg, oldorigin);
-	insubmodel = true;
 	r_dlightframecount = r_framecount;
 
 	for (i=0 ; i<(*r_scene.numvisedicts) ; i++)
 	{
 		currententity = &r_scene.visedicts[i];
+		if (currententity->model->type != mod_brush)
+			continue;
 
-		switch (currententity->model->type)
+		currententity->topnode = NULL;
+		clmodel = currententity->model;
+		R_BrushEntityBounds (currententity, minmaxs);
+		if (R_BmodelCheckBBox (currententity, minmaxs, NULL) == BMODEL_FULLY_CLIPPED)
+			continue;
+
+		VectorCopy (currententity->origin, r_entorigin);
+		VectorSubtract (r_origin, r_entorigin, modelorg);
+		R_RotateBmodel ();
+
+	// calculate dynamic lighting for bmodel if it's not an
+	// instanced model
+		if (clmodel->firstmodelsurface != 0)
 		{
-		case mod_brush:
-
-			clmodel = currententity->model;
-
-		// see if the bounding box lets us trivially reject, also sets
-		// trivial accept status
-			for (j=0 ; j<3 ; j++)
+			for (k=0 ; k<MAX_DLIGHTS ; k++)
 			{
-				minmaxs[j] = currententity->origin[j] +
-						clmodel->mins[j];
-				minmaxs[3+j] = currententity->origin[j] +
-						clmodel->maxs[j];
+				if ((r_scene.dlights[k].die < r_scene.time) ||
+					(!r_scene.dlights[k].radius))
+				{
+					continue;
+				}
+
+				R_MarkLights (&r_scene.dlights[k], 1u<<k,
+					clmodel->nodes + clmodel->firstnode);
 			}
-
-			clipflags = R_BmodelCheckBBox (clmodel, minmaxs);
-
-			if (clipflags != BMODEL_FULLY_CLIPPED)
-			{
-				VectorCopy (currententity->origin, r_entorigin);
-				VectorSubtract (r_origin, r_entorigin, modelorg);
-			// FIXME: is this needed?
-				VectorCopy (modelorg, r_worldmodelorg);
-		
-				r_pcurrentvertbase = clmodel->vertexes;
-		
-			// FIXME: stop transforming twice
-				R_RotateBmodel ();
-
-			// calculate dynamic lighting for bmodel if it's not an
-			// instanced model
-				if (clmodel->firstmodelsurface != 0)
-				{
-					for (k=0 ; k<MAX_DLIGHTS ; k++)
-					{
-						if ((r_scene.dlights[k].die < r_scene.time) ||
-							(!r_scene.dlights[k].radius))
-						{
-							continue;
-						}
-
-						R_MarkLights (&r_scene.dlights[k], 1u<<k,
-							clmodel->nodes + clmodel->firstnode);
-					}
-				}
-
-			// a translucent one is drawn after the models, blended, its faces
-			// sorted with the other translucent things
-				if (R_EntityAlpha (currententity) < 256)
-				{
-					R_AddTranslucentModel (clmodel);
-				}
-				else
-				{
-					r_pefragtopnode = NULL;
-
-					for (j=0 ; j<3 ; j++)
-					{
-						r_emins[j] = minmaxs[j];
-						r_emaxs[j] = minmaxs[3+j];
-					}
-
-					R_SplitEntityOnNode2 (r_scene.worldmodel->nodes);
-
-					if (r_pefragtopnode)
-					{
-						currententity->topnode = r_pefragtopnode;
-	
-						if (r_pefragtopnode->contents >= 0)
-						{
-						// not a leaf; has to be clipped to the world BSP
-							r_clipflags = clipflags;
-							R_DrawSolidClippedSubmodelPolygons (clmodel);
-						}
-						else
-						{
-						// falls entirely in one leaf, so we just put all the
-						// edges in the edge list and let 1/z sorting handle
-						// drawing order
-							R_DrawSubmodelPolygons (clmodel, clipflags);
-						}
-	
-						currententity->topnode = NULL;
-					}
-				}
-
-			// put back world rotation and frustum clipping		
-			// FIXME: R_RotateBmodel should just work off base_vxx
-				VectorCopy (base_vpn, vpn);
-				VectorCopy (base_vup, vup);
-				VectorCopy (base_vright, vright);
-				VectorCopy (base_modelorg, modelorg);
-				VectorCopy (oldorigin, modelorg);
-				R_TransformFrustum ();
-			}
-
-			break;
-
-		default:
-			break;
 		}
+
+	// a translucent one is drawn after the models, blended, its faces
+	// sorted with the other translucent things
+		if (R_EntityAlpha (currententity) < 256)
+			R_AddTranslucentModel (clmodel);
+
+	// put back world rotation and frustum clipping		
+		VectorCopy (base_vpn, vpn);
+		VectorCopy (base_vup, vup);
+		VectorCopy (base_vright, vright);
+		VectorCopy (r_origin, modelorg);
+		R_TransformFrustum ();
 	}
 
-	insubmodel = false;
+	currententity = &r_worldentity;
 }
+
+
+
+
+
+
+
+
+
+
 
 
 /*
 ================
 R_EdgeDrawing
+
+The world and the brush entities, in the view's bands on the worker threads,
+then their spans drawn and the fences on them
 ================
 */
 static void R_EdgeDrawing (void)
 {
 	double	prof;
-
-	if (!r_edges)
-		R_AllocEdges (MINEDGES, MINSURFACES);
-
-// nothing is drawn until the spans are scanned, so a frame that runs out
-// of edges or surfaces is built again with more
-	while (1)
-	{
-		r_outofsurfaces = 0;
-		r_outofedges = 0;
-		r_outofbmodel = false;
-
-		R_BeginEdgeFrame ();
-		R_ClearFences ();
-		prof = R_ProfStart ();
-
-		if (r_dspeeds.value)
-		{
-			rw_time1 = (float)Sys_DoubleTime ();
-		}
-
-		R_RenderWorld ();
-
-		if (r_dspeeds.value)
-		{
-			rw_time2 = (float)Sys_DoubleTime ();
-			db_time1 = rw_time2;
-		}
-
-		R_DrawBEntitiesOnList ();
-		R_ProfEnd (PROF_EDGES, prof);
-
-		if (r_outofbmodel && !R_GrowBModelClip ())
-			r_outofbmodel = false;		// drawn without what doesn't fit
-		if (!r_outofsurfaces && !r_outofedges && !r_outofbmodel)
-			break;
-		if (r_outofsurfaces || r_outofedges)
-			R_AllocEdges (r_outofedges ? r_numallocatededges * 2 : r_numallocatededges,
-				r_outofsurfaces ? r_cnumsurfs * 2 : r_cnumsurfs);
-	}
+	int		numbands;
 
 	if (r_dspeeds.value)
 	{
-		db_time2 = (float)Sys_DoubleTime ();
-		se_time1 = db_time2;
+		rw_time1 = (float)Sys_DoubleTime ();
 	}
 
 	prof = R_ProfStart ();
-	R_ScanEdges ();
+	R_StoreStaticEntities ();
+	R_PrepareBrushEntities ();
+	numbands = (int)r_bandcount.value;
+	if (numbands <= 0)
+		numbands = r_numthreads;		// they take as long as each other (R_LayOutBands)
+	R_RunBands (numbands);
+	R_ProfEnd (PROF_EDGES, prof);
+
+	if (r_dspeeds.value)
+	{
+		rw_time2 = (float)Sys_DoubleTime ();
+		db_time1 = db_time2 = se_time1 = rw_time2;
+	}
+
+	prof = R_ProfStart ();
+	R_FinishBrushEntities ();
+	R_MergeAfters ();
+	D_DrawSurfaces (r_bands, r_numbands);
 	R_DrawFences ();
 	R_ProfEnd (PROF_SPANS, prof);
 }
@@ -1376,12 +1266,6 @@ void R_RenderView (void)
 
 	if (r_dspeeds.value)
 		R_PrintDSpeeds ();
-
-	if (r_reportsurfout.value && r_outofsurfaces)
-		Con_Printf ("Short %d surfaces\n", r_outofsurfaces);
-
-	if (r_reportedgeout.value && r_outofedges)
-		Con_Printf ("Short roughly %d edges\n", r_outofedges * 2 / 3);
 
 // back to high floating-point precision
 }

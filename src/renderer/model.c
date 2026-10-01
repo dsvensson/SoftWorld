@@ -769,7 +769,8 @@ static bool Mod_LoadTexinfo (void)
 CalcSurfaceExtents
 
 Fills in s->texturemins[] and s->extents[], and the texture coordinates'
-range in mins and maxs; rounded as the light tools round them
+range in mins and maxs; rounded as the light tools round them. And the
+surface's bounds, s->minmaxs.
 ================
 */
 static bool CalcSurfaceExtents (msurface_t *s, double mins[2], double maxs[2])
@@ -781,6 +782,11 @@ static bool CalcSurfaceExtents (msurface_t *s, double mins[2], double maxs[2])
 
 	mins[0] = mins[1] = 1e30;
 	maxs[0] = maxs[1] = -1e30;
+	for (j=0 ; j<3 ; j++)
+	{
+		s->minmaxs[j] = 1e30f;
+		s->minmaxs[3+j] = -1e30f;
+	}
 
 	tex = s->texinfo;
 
@@ -791,6 +797,14 @@ static bool CalcSurfaceExtents (msurface_t *s, double mins[2], double maxs[2])
 			v = &loadmodel->vertexes[loadmodel->edges[e].v[0]];
 		else
 			v = &loadmodel->vertexes[loadmodel->edges[-e].v[1]];
+
+		for (j=0 ; j<3 ; j++)
+		{
+			if (v->position[j] < s->minmaxs[j])
+				s->minmaxs[j] = v->position[j];
+			if (v->position[j] > s->minmaxs[3+j])
+				s->minmaxs[3+j] = v->position[j];
+		}
 
 		for (j=0 ; j<2 ; j++)
 		{
@@ -1013,6 +1027,7 @@ static bool Mod_LoadLeafs (void)
 	out = Mod_Alloc ((size_t)count * sizeof(*out));
 	loadmodel->leafs = out;
 	loadmodel->numleafs = count;
+	loadmodel->numloadedleafs = count;
 
 	for (i=0 ; i<count ; i++, out++)
 	{

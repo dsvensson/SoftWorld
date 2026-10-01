@@ -82,6 +82,22 @@ static entity_t	*r_addent;
 
 /*
 ===================
+R_MarkEfragNodes
+
+A leaf that has static entities now, and the nodes above it, for
+R_StoreStaticEntities to find
+===================
+*/
+void R_MarkEfragNodes (mleaf_t *leaf)
+{
+	mnode_t	*node;
+
+	for (node = (mnode_t *)leaf ; node && !node->efragged ; node = node->parent)
+		node->efragged = true;
+}
+
+/*
+===================
 R_SplitEntityOnNode
 ===================
 */
@@ -120,6 +136,7 @@ static void R_SplitEntityOnNode (mnode_t *node)
 		ef->leaf = leaf;
 		ef->leafnext = leaf->efrags;
 		leaf->efrags = ef;
+		R_MarkEfragNodes (leaf);
 			
 		return;
 	}
@@ -265,3 +282,101 @@ void R_StoreEfrags (efrag_t **ppefrag)
 }
 
 
+/*
+================
+R_StoreStaticEntitiesNode
+
+The walk of R_RecursiveWorldNode over the view, where there are static
+entities: stored in the order it meets them
+================
+*/
+static void R_StoreStaticEntitiesNode (mnode_t *node, int clipflags)
+{
+	int			i, side, *pindex;
+	vec3_t		acceptpt, rejectpt;
+	mplane_t	*plane;
+	double		d, dot;
+
+	if (!node->efragged)
+		return;
+
+	if (node->contents == CONTENTS_SOLID)
+		return;		// solid
+
+	if (node->visframe != r_visframecount)
+		return;
+
+// cull the clipping planes if not trivial accept
+	if (clipflags)
+	{
+		for (i=0 ; i<4 ; i++)
+		{
+			if (! (clipflags & (1<<i)) )
+				continue;	// don't need to clip against it
+
+			pindex = pfrustum_indexes[i];
+
+			rejectpt[0] = (float)node->minmaxs[pindex[0]];
+			rejectpt[1] = (float)node->minmaxs[pindex[1]];
+			rejectpt[2] = (float)node->minmaxs[pindex[2]];
+			
+			d = DotProduct (rejectpt, view_clipplanes[i].normal);
+			d -= view_clipplanes[i].dist;
+
+			if (d <= 0)
+				return;
+
+			acceptpt[0] = (float)node->minmaxs[pindex[3+0]];
+			acceptpt[1] = (float)node->minmaxs[pindex[3+1]];
+			acceptpt[2] = (float)node->minmaxs[pindex[3+2]];
+
+			d = DotProduct (acceptpt, view_clipplanes[i].normal);
+			d -= view_clipplanes[i].dist;
+
+			if (d >= 0)
+				clipflags &= ~(1<<i);	// node is entirely on screen
+		}
+	}
+
+	if (node->contents < 0)
+	{
+		R_StoreEfrags (&((mleaf_t *)node)->efrags);
+		return;
+	}
+
+// front side first
+	plane = node->plane;
+
+	switch (plane->type)
+	{
+	case PLANE_X:
+		dot = r_origin[0] - plane->dist;
+		break;
+	case PLANE_Y:
+		dot = r_origin[1] - plane->dist;
+		break;
+	case PLANE_Z:
+		dot = r_origin[2] - plane->dist;
+		break;
+	default:
+		dot = DotProduct (r_origin, plane->normal) - plane->dist;
+		break;
+	}
+
+	side = dot >= 0 ? 0 : 1;
+	R_StoreStaticEntitiesNode (node->children[side], clipflags);
+	R_StoreStaticEntitiesNode (node->children[!side], clipflags);
+}
+
+/*
+================
+R_StoreStaticEntities
+
+The static entities in the leaves of the view, added to the visible entities
+in the order the world's walk meets them, before the bands walk it
+================
+*/
+void R_StoreStaticEntities (void)
+{
+	R_StoreStaticEntitiesNode (r_scene.worldmodel->nodes, 15);
+}

@@ -94,6 +94,56 @@ void R_AddFence (msurface_t *surf)
 
 /*
 ================
+R_AddAfter
+
+A fence or translucent surface a band met, of its entity: R_MergeAfters adds
+them to the lists when the bands have run
+================
+*/
+void R_AddAfter (rband_t *b, msurface_t *surf, int alpha)
+{
+	rafter_t	*after;
+
+	if (b->numafters == b->maxafters)
+	{
+		b->outofafters = true;
+		return;
+	}
+	after = &b->afters[b->numafters++];
+	after->surf = surf;
+	after->entity = b->entity;
+	after->alpha = alpha;
+}
+
+/*
+================
+R_MergeAfters
+
+The fences and translucent surfaces the bands met, each once
+================
+*/
+void R_MergeAfters (void)
+{
+	rband_t		*b;
+	rafter_t	*after;
+
+	R_ClearFences ();
+	for (b = r_bands ; b<r_bands + r_numbands ; b++)
+	{
+		for (after = b->afters ; after<b->afters + b->numafters ; after++)
+		{
+			currententity = after->entity;
+			if (after->alpha < 256)
+				R_AddTranslucent (after->surf, after->alpha);
+			else
+				R_AddFence (after->surf);
+		}
+	}
+	currententity = &r_worldentity;
+}
+
+/*
+================
 R_ClipFence
 
 The part of a polygon on the front of a clipping plane
@@ -350,7 +400,7 @@ void R_AddTranslucentModel (model_t *model)
 		if (((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
 			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)))
 		{
-			alpha = R_SurfaceAlpha (psurf);
+			alpha = R_SurfaceAlpha (currententity, psurf);
 			if (alpha < 256)
 				R_AddTranslucent (psurf, alpha);
 		}
