@@ -74,8 +74,10 @@ double	Sys_DoubleTime (void);
 unsigned	Sys_Seed (void);
 
 // sleeps until Sys_DoubleTime () reaches time, or until input or a network packet
-// arrives; may return early, so callers recheck what they wait for
-void	Sys_WaitUntil (double time);
+// arrives; may return early, so callers recheck what they wait for. exact (a
+// frame's pacing) spins the end of the wait to come back on time; otherwise
+// it may come back as late as the system's timer wakes (a server's frames)
+void	Sys_WaitUntil (double time, bool exact);
 
 // a line typed on the dedicated server console, or NULL
 char	*Sys_ConsoleInput (void);

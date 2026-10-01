@@ -503,9 +503,10 @@ int Sys_MacMain (int argc, char **argv)
 			oldtime = newtime;
 
 			// handle what arrived meanwhile, then sleep until the next frame is due,
-			// unless input or a packet comes first
+			// unless input or a packet comes first; due from when this frame began,
+			// as host.realtime was then
 			Sys_SendKeyEvents ();
-			Sys_WaitUntil (Sys_DoubleTime () + Host_FrameWait ());
+			Sys_WaitUntil (newtime + Host_FrameWait (), true);
 		}
 	}
 }

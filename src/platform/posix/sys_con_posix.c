@@ -237,8 +237,9 @@ int Sys_ConsoleMain (int argc, char **argv)
 	oldtime = Sys_DoubleTime () - 0.1;
 	while (1)
 	{
-	// sleep until physics is due, a packet arrives or something is typed
-		Sys_WaitUntil (Sys_DoubleTime () + Host_FrameWait ());
+	// sleep until physics is due, a packet arrives or something is typed; due
+	// from when the last frame began, as host.realtime was then
+		Sys_WaitUntil (oldtime + Host_FrameWait (), false);
 
 	// find time passed since last cycle
 		newtime = Sys_DoubleTime ();

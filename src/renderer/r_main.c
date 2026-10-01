@@ -360,6 +360,13 @@ static double	r_profsince;		// when the first frame counted began
 static int64_t	r_profn[PROFN_COUNT];
 static int		r_profthrash;		// frames the surface cache ran out in
 
+// the time from one frame to the next: how even the pacing is
+static struct
+{
+	double	last, sum, sumsq, min, max;
+	int		count;
+} r_profgap;
+
 double R_ProfStart (void)
 {
 	return r_profile.value ? Sys_DoubleTime () : 0;
@@ -389,7 +396,7 @@ static void R_Profile_f (void)
 {
 	static const char	*names[PROF_COUNT] = {"edges", "spans", "draw", "surfcache", "models", "fog", "viewmodel",
 		"particles", "warp", "2d", "present"};
-	double	frame, staged;
+	double	frame, staged, mean;
 	int		i;
 
 	if (!r_profframes)
@@ -414,6 +421,13 @@ static void R_Profile_f (void)
 	Con_Printf ("  %-10s %8.1f a frame\n", "batches", (double)r_profn[PROFN_BATCHES] / r_profframes);
 	Con_Printf ("  %-10s %8.1f%% of frames drew the 2D layer again\n", "hud",
 		100.0 * (double)r_profn[PROFN_HUD] / r_profframes);
+	if (r_profgap.count > 1)
+	{
+		mean = r_profgap.sum / r_profgap.count;
+		Con_Printf ("  %-10s %8.1f us between frames, deviating %.1f, %.1f to %.1f\n", "pacing", mean * 1e6,
+			sqrt (fmax (r_profgap.sumsq / r_profgap.count - mean * mean, 0)) * 1e6, r_profgap.min * 1e6,
+			r_profgap.max * 1e6);
+	}
 	memset (r_prof, 0, sizeof(r_prof));
 	memset (r_profn, 0, sizeof(r_profn));
 	r_profframes = 0;
@@ -1172,12 +1186,28 @@ r_refdef must be set before the first call
 */
 void R_RenderView (void)
 {
-	double	prof;
+	double	prof, now, gap;
 
 	if (r_profile.value)
 	{
+		now = Sys_DoubleTime ();
 		if (!r_profframes)
-			r_profsince = Sys_DoubleTime ();
+		{
+			r_profsince = now;
+			memset (&r_profgap, 0, sizeof(r_profgap));
+		}
+		else
+		{
+			gap = now - r_profgap.last;
+			if (!r_profgap.count || gap < r_profgap.min)
+				r_profgap.min = gap;
+			if (gap > r_profgap.max)
+				r_profgap.max = gap;
+			r_profgap.sum += gap;
+			r_profgap.sumsq += gap * gap;
+			r_profgap.count++;
+		}
+		r_profgap.last = now;
 		r_profframes++;
 	}
 	if (r_timegraph.value || r_speeds.value || r_dspeeds.value)

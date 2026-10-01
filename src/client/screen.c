@@ -539,9 +539,10 @@ static void SCR_DrawFPS (void)
 	if (!show_fps.value)
 		return;
 
+	// the frames over the time they took: the span is a second and part of a frame
 	t = Sys_DoubleTime();
 	if ((t - lastframetime) >= 1.0) {
-		lastfps = cls.fps_count;
+		lastfps = (int)(cls.fps_count / (t - lastframetime) + 0.5);
 		cls.fps_count = 0;
 		lastframetime = t;
 	}

@@ -136,6 +136,7 @@ static double			connect_time = -1;		// for connection retransmits
 
 
 static double		oldrealtime;			// last frame run
+static double		nextframe;				// when the next frame is due, at cl_maxfps
 
 
 static cvar_t	host_speeds = {.name = "host_speeds", .string = "0",			// set for running times
@@ -1539,7 +1540,7 @@ Seconds until CL_Frame will draw the next frame
 double CL_FrameWait (void)
 {
 	double	wait;
-	float	fps;
+	float	fps, idlefps = 0;
 
 	fps = CL_MaxFPS ();
 	if (cls.timedemo)
@@ -1548,13 +1549,16 @@ double CL_FrameWait (void)
 // yield the CPU when nobody watches: a little while not the focus,
 // more when minimized or paused
 	if ((VID_IsMinimized () || (cl.paused && !VID_IsActive ())) && (!fps || fps > 20))
-		fps = 20;
+		idlefps = 20;
 	else if (!VID_IsActive () && (!fps || fps > 50))
-		fps = 50;
-	if (!fps)
-		return 0;
+		idlefps = 50;
 
-	wait = oldrealtime + 1.0 / fps - host.realtime;
+	if (idlefps)
+		wait = oldrealtime + 1.0 / idlefps - host.realtime;
+	else if (fps)
+		wait = nextframe - host.realtime;
+	else
+		return 0;
 	return wait > 0 ? wait : 0;
 }
 
@@ -1576,12 +1580,19 @@ void CL_Frame (void)
 	bool		repredict;
 
 	if (oldrealtime > host.realtime)
-		oldrealtime = 0;
+		oldrealtime = nextframe = 0;
 
 	fps = CL_MaxFPS ();
 
-	if (!cls.timedemo && fps && host.realtime - oldrealtime < 1.0/fps)
+	if (!cls.timedemo && fps && host.realtime < nextframe)
 		return;			// framerate is too high
+	// the next frame is due a frame on from when this one was due, not from
+	// when it came, so late wakes don't add up and the rate is cl_maxfps's;
+	// more than a frame late (a load, a hitch) starts over from now
+	if (fps && host.realtime - nextframe < 1.0 / fps)
+		nextframe += 1.0 / fps;
+	else
+		nextframe = host.realtime + (fps ? 1.0 / fps : 0);
 	// a timedemo draws as fast as it can: no cl_maxfps (above), no vsync
 	VID_SetUnpaced (cls.timedemo);
 

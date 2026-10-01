@@ -94,18 +94,24 @@ void Sys_DebugLog (char *file, char *fmt, ...)
 Sys_WaitUntil
 
 Waits on the program's events (Sys_WaitEvents: the registered fds, and the
-window's). The last quarter millisecond is spun: the timer wakes tens of
-microseconds late (macOS's critical timer about 60, at worst 130 on an idle
-machine).
+window's). An exact wait spins the last quarter millisecond: the timer wakes
+tens of microseconds late (macOS's critical timer about 60, at worst 130 on an
+idle machine).
 ================
 */
-void Sys_WaitUntil (double time)
+void Sys_WaitUntil (double time, bool exact)
 {
 	double	wait;
 
 	wait = time - Sys_DoubleTime ();
 	if (wait <= 0)
 		return;
+
+	if (!exact)
+	{
+		Sys_WaitEvents (time);
+		return;
+	}
 
 	if (wait > 0.0005 && Sys_WaitEvents (time - 0.00025))
 		return;		// woken by input or a packet

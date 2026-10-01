@@ -180,27 +180,35 @@ void Sys_RemoveWaitHandle (HANDLE handle)
 	}
 }
 
+// how late the timer has woken lately, at worst: an exact wait sets it that
+// much early and spins the rest. Windows wakes high-resolution timers on the
+// system timer's ticks, a half millisecond late as a rule and a whole one at
+// times; this rises at once to a wake later than it and sinks a thousandth a
+// wait, settling just over what the timer does on this machine
+static double	sys_timerlate = 0.0005;
+
 /*
 ================
 Sys_WaitUntil
 
 Waits on a high-resolution waitable timer, window messages and the registered
-handles. The last fraction of a millisecond is spun, since the timer can
-overshoot by about that much.
+handles; an exact wait sets the timer sys_timerlate early and spins the rest
 ================
 */
-void Sys_WaitUntil (double time)
+void Sys_WaitUntil (double time, bool exact)
 {
 	HANDLE			handles[MAX_WAIT_HANDLES + 1];
 	LARGE_INTEGER	due;
-	double			wait;
+	double			wait, early, late;
 	int				i;
 
 	wait = time - Sys_DoubleTime ();
 	if (wait <= 0)
 		return;
 
-	if (wait > 0.0008)
+	// a timer for less than the timer's own lateness and a bit is all spun
+	early = exact ? sys_timerlate : 0;
+	if (wait > early + 0.0002)
 	{
 		if (!sys_timer)
 		{
@@ -210,7 +218,7 @@ void Sys_WaitUntil (double time)
 			if (!sys_timer)
 				Sys_Error ("Couldn't create a waitable timer");
 		}
-		due.QuadPart = -(LONGLONG)((wait - 0.0005) * 1e7);	// relative, in 100 ns
+		due.QuadPart = -(LONGLONG)((wait - early) * 1e7);	// relative, in 100 ns
 		SetWaitableTimer (sys_timer, &due, 0, NULL, NULL, FALSE);
 
 		handles[0] = sys_timer;
@@ -219,8 +227,20 @@ void Sys_WaitUntil (double time)
 		if (MsgWaitForMultipleObjectsEx ((DWORD)sys_numwaithandles + 1, handles, INFINITE,
 			QS_ALLINPUT, MWMO_INPUTAVAILABLE) != WAIT_OBJECT_0)
 			return;		// woken by input or a packet
+
+		if (!exact)
+			return;
+		// a little over the latest wake, up to 2 ms (a busy machine's worst
+		// isn't the timer's); never under a fifth of a millisecond
+		late = Sys_DoubleTime () - (time - early);
+		if (late > sys_timerlate)
+			sys_timerlate = late + 0.00005 < 0.002 ? late + 0.00005 : 0.002;
+		else if (sys_timerlate * 0.999 > 0.0002)
+			sys_timerlate *= 0.999;
 	}
 
+	if (!exact)
+		return;
 	while (Sys_DoubleTime () < time)
 		YieldProcessor ();
 }
