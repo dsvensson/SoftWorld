@@ -12,6 +12,10 @@ elseif(SW_ARCH MATCHES "^x86-64-v[34]$")
 	list(APPEND SW_CPU_CHECK_SOURCES cpu/cpuid_gnu.c)
 endif()
 
+# the programs with a client sandboxed: macOS's App Sandbox, a Windows AppContainer
+# (its Release builds); the game directory is one the player chooses
+option(SW_SANDBOX "The programs with a client run sandboxed, in a game directory the player chooses" ON)
+
 # the services of macOS and Linux (posix/), over what each system has
 set(SW_POSIX_SOURCES
 	posix/sys_posix.c posix/sys_memory_posix.c posix/sys_workers_posix.c posix/net_udp_posix.c posix/net_tcp_posix.c)
@@ -45,9 +49,12 @@ if(WIN32)
 	sw_add_module(sw_platform_gui
 		vid_common.c
 		win/sys_win_gui.c win/vid_d3d11.c win/in_rawinput.c win/in_xinput.c win/snd_wasapi.c
-		"${SW_SHADER_DIR}/present_vs.h" "${SW_SHADER_DIR}/present_ps.h")
+		"${SW_SHADER_DIR}/present_vs.h" "${SW_SHADER_DIR}/present_ps.h"
+		# the AppContainer's launcher, but in Debug builds (a debugger sees the game)
+		$<IF:$<AND:$<BOOL:${SW_SANDBOX}>,$<NOT:$<CONFIG:Debug>>>,win/sys_win_sandbox.c,win/sys_win_nosandbox.c>)
 	target_include_directories(sw_platform_gui PRIVATE "${SW_SHADER_DIR}" . win)
-	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_win d3d11 dxgi dxguid ole32 avrt xinput)
+	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_win d3d11 dxgi dxguid ole32 avrt xinput
+		userenv oleaut32 shell32 advapi32)
 
 	# the console of the dedicated server
 	sw_add_module(sw_platform_con
@@ -64,14 +71,6 @@ if(WIN32)
 			win/softworld.rc win/softworld.manifest
 			$<TARGET_OBJECTS:sw_entry_gui>)
 		target_link_libraries(${target} PRIVATE sw_platform_gui)
-		# in the App Sandbox: the game directory is one the player chooses
-		if(SW_SANDBOX)
-			add_custom_command(TARGET ${target} POST_BUILD
-				COMMAND codesign --force --sign - --entitlements "${CMAKE_CURRENT_SOURCE_DIR}/mac/softworld.entitlements"
-					"$<TARGET_BUNDLE_DIR:${target}>"
-				COMMENT "Signing ${target}.app for the App Sandbox"
-				VERBATIM)
-		endif()
 	endforeach()
 	target_link_libraries(softworld PRIVATE sw_server)
 	target_link_libraries(softworld-client PRIVATE sw_server_null)
@@ -111,8 +110,6 @@ elseif(APPLE)
 		posix/sys_con_posix.c)
 	target_include_directories(sw_platform_con PRIVATE .)
 	target_link_libraries(sw_platform_con PUBLIC sw_platform_posix)
-
-	option(SW_SANDBOX "The applications run in the App Sandbox, in a game directory the player chooses" ON)
 
 	# the shaders, compiled at build time and carried inside the programs
 	include(metal)

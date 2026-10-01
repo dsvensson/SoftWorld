@@ -145,6 +145,22 @@ softworld-server -basedir ~/Games/Quake -port 27500 +map dm4
 chosen (and what is in it). The dedicated server isn't sandboxed. Configure with
 `-DSW_SANDBOX=OFF` for applications without the sandbox, which take `-basedir` anywhere.
 
+On Windows `softworld.exe` and `softworld-client.exe` run in an AppContainer, Windows' sandbox,
+in Release builds (Debug builds run without it, so a debugger sees the game). The program
+started is a launcher that starts itself again inside the sandbox as the game; ending the
+launcher ends the game. Without `-basedir`, the first start asks for the Quake directory and
+the next ones remember it; `sys_forget_sandbox` forgets it, and the next start asks again.
+A directory `-basedir` names is let in as it is, without asking. Letting the sandbox into a
+directory gives it a place in the permissions of everything in it, and in the places its links
+lead to: some seconds for a large directory, once. A file moved (not copied) into it from
+elsewhere on the drive keeps its own permissions, and the game says it can't open it; forgetting
+the directory and choosing it again lets the sandbox into all of it again.
+
+The first start also asks whether to let the sandbox reach this computer's own addresses (a
+server or QTV proxy on 127.0.0.1, or a client here joining the game's server) and players in
+through the firewall, which takes an administrator once (a UAC prompt). Without it the sandboxed
+game reaches only other computers. `-DSW_SANDBOX=OFF` builds the programs without the sandbox.
+
 On Linux the client runs on the GPU the compositor draws with, which reads the frame where the
 renderer drew it (an integrated GPU; a GPU of its own memory gets a copy), and tells at start
 what the compositor offers for latency and HDR. `vid_info` tells it all again, with how long

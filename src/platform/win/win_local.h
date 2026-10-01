@@ -29,6 +29,13 @@ extern	HINSTANCE	global_hInstance;
 extern	HWND		mainwindow;
 extern	bool		ActiveApp, Minimized;
 
+// sys_win_sandbox.c (or sys_win_nosandbox.c): the AppContainer. Sys_SandboxLaunch
+// runs first: outside the container it starts the program again inside it as
+// the game, waits, gives its exit code and is true; false when this process is
+// the game. Sys_SandboxInit after Host_Init: sys_forget_sandbox
+bool	Sys_SandboxLaunch (const char *cmdline, int *code);
+void	Sys_SandboxInit (void);
+
 // sys_win.c: extra handles Sys_WaitUntil wakes up for (console input, sockets)
 void	Sys_AddWaitHandle (HANDLE handle);
 void	Sys_RemoveWaitHandle (HANDLE handle);

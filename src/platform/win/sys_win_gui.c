@@ -155,8 +155,13 @@ int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, [[maybe_unused]] int nCmd
 	double			time, oldtime, newtime;
 	static	char	cwd[1024];
 	size_t			len;
+	int				code;
 
 	global_hInstance = hInstance;
+
+	// outside the sandbox this is the launcher, and the game a process of its own
+	if (Sys_SandboxLaunch (lpCmdLine, &code))
+		return code;
 
 	if (!GetCurrentDirectory (sizeof(cwd), cwd))
 		Sys_Error ("Couldn't determine current directory");
@@ -206,6 +211,7 @@ int Sys_WinMain (HINSTANCE hInstance, LPSTR lpCmdLine, [[maybe_unused]] int nCmd
 
 	Sys_Printf ("Host_Init\n");
 	Host_Init (&parms);
+	Sys_SandboxInit ();
 
 	oldtime = Sys_DoubleTime ();
 
