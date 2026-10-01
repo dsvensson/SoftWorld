@@ -43,6 +43,8 @@ static float			entity_rotation[3][3];
 #define MIN_BMODEL_EDGES	1000
 #define MAX_BMODEL_EDGES	(1 << 20)
 
+static inline bool R_BandCullsBox (const rband_t *b, const float *minmaxs, const vec3_t offset, int clipflags);
+
 
 //===========================================================================
 
@@ -432,6 +434,11 @@ void R_DrawSolidClippedSubmodelPolygons (rband_t *b, model_t *pmodel)
 		// clockwise winding
 		// FIXME: if edges and vertices get caches, these assignments must move
 		// outside the loop, and overflow checking must be done here
+		// a face of an entity that isn't turned is culled as the world's
+			if (b->cullflags && !b->entity->angles[0] && !b->entity->angles[1] && !b->entity->angles[2]
+				&& R_BandCullsBox (b, psurf->minmaxs, b->entorigin, b->cullflags))
+				continue;
+
 			b->numbverts = b->numbedges = 0;
 			if (psurf->numedges > b->maxbedges)
 			{
@@ -514,14 +521,16 @@ void R_DrawSubmodelPolygons (rband_t *b, model_t *pmodel, int clipflags)
 
 /*
 ================
-R_BandCullsFace
+R_BandCullsBox
 
-Whether a face on a node crossing the band's cull planes (in clipflags) is
-wholly beyond one: none of its edges can have a line of the band. Faces are
-small beside the nodes above them, so most a band would clip are culled here.
+Whether a box, minmaxs as a node's moved by offset, is wholly beyond one of
+the band's cull planes in clipflags: none of it can be on the band's lines.
+Faces are small beside the nodes above them, so most a band would clip are
+culled here. (Not a brush model's pieces by the nodes they're clipped into: a
+node's bounds are its world's, which an entity can be outside of.)
 ================
 */
-static inline bool R_BandCullsFace (const rband_t *b, const msurface_t *surf, int clipflags)
+static inline bool R_BandCullsBox (const rband_t *b, const float *minmaxs, const vec3_t offset, int clipflags)
 {
 	int			i;
 	const int	*pindex;
@@ -532,9 +541,9 @@ static inline bool R_BandCullsFace (const rband_t *b, const msurface_t *surf, in
 		if (!(clipflags & (16 << i)))
 			continue;
 		pindex = b->cullindexes[i];
-		rejectpt[0] = surf->minmaxs[pindex[0]];
-		rejectpt[1] = surf->minmaxs[pindex[1]];
-		rejectpt[2] = surf->minmaxs[pindex[2]];
+		rejectpt[0] = minmaxs[pindex[0]] + offset[0];
+		rejectpt[1] = minmaxs[pindex[1]] + offset[1];
+		rejectpt[2] = minmaxs[pindex[2]] + offset[2];
 		if (DotProduct (rejectpt, b->cullplanes[i].normal) - b->cullplanes[i].dist <= 0)
 			return true;
 	}
@@ -671,7 +680,7 @@ static void R_RecursiveWorldNode (rband_t *b, mnode_t *node, int clipflags)
 				{
 					if ((surf->flags & SURF_PLANEBACK) &&
 						(b->surfvisible[n >> 3] & (1 << (n & 7))) &&
-						!((clipflags & 48) && R_BandCullsFace (b, surf, clipflags)))
+						!((clipflags & 48) && R_BandCullsBox (b, surf->minmaxs, vec3_origin, clipflags)))
 					{
 						R_RenderFace (b, surf, clipflags);
 					}
@@ -686,7 +695,7 @@ static void R_RecursiveWorldNode (rband_t *b, mnode_t *node, int clipflags)
 				{
 					if (!(surf->flags & SURF_PLANEBACK) &&
 						(b->surfvisible[n >> 3] & (1 << (n & 7))) &&
-						!((clipflags & 48) && R_BandCullsFace (b, surf, clipflags)))
+						!((clipflags & 48) && R_BandCullsBox (b, surf->minmaxs, vec3_origin, clipflags)))
 					{
 						R_RenderFace (b, surf, clipflags);
 					}
