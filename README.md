@@ -6,10 +6,10 @@ server, and the protocol extensions today's servers and clients speak.
 
 - **Renderer:** software only, drawing 32-bit HDR pixels. The render size is 320×200 times a
   whole number, presented through Direct3D 11 on Windows, Metal 4 on macOS and Vulkan on
-  Linux (Wayland); on macOS and Linux the renderer draws straight into memory the GPU reads (HDR
-  output on HDR displays, all three). Colored lighting (`.lit`, BSPX), BSP2 maps, translucency,
-  skyboxes, fog and TGA textures from the map's worldspawn and files, and AVX-512, AVX2 and NEON
-  kernels.
+  Linux (Wayland), with HDR output on HDR displays. The renderer draws straight into memory the
+  GPU reads, or on Windows (and a Linux GPU of its own memory) the GPU copies from: the CPU
+  copies nothing. Colored lighting (`.lit`, BSPX), BSP2 maps, translucency, skyboxes, fog and
+  TGA textures from the map's worldspawn and files, and AVX-512, AVX2 and NEON kernels.
 - **Network:** the FTE, MVD1 and ZQuake extensions (float coordinates, 2048 entities, 4096
   models, chunked downloads, …), mvdsv's player movement and its `pm_` keys.
 - **Demos:** QWD and MVD playback, MVD seeking (`demo_jump`), QTV (`qtvplay`), item timers.
