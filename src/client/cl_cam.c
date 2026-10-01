@@ -54,7 +54,6 @@ static cvar_t cl_chasecam = {.name = "cl_chasecam", .string = "0",
 //cvar_t cl_camera_maxpitch = {.name = "cl_camera_maxpitch", .string = "10"};
 //cvar_t cl_camera_maxyaw = {.name = "cl_camera_maxyaw", .string = "30"};
 
-static bool cam_forceview;
 static double cam_lastviewtime;
 
 static int spec_track = 0; // player# of who we are tracking
@@ -143,7 +142,6 @@ static void Cam_Lock(int playernum)
 	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
 	MSG_WriteString (&cls.netchan.message, st);
 	spec_track = playernum;
-	cam_forceview = true;
 	locked = false;
 }
 

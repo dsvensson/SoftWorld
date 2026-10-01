@@ -23,7 +23,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "arena.h"
 #include "args.h"
 #include "cmd.h"
-#include "crc.h"
 #include "cvar.h"
 #include "mem.h"
 #include "print.h"
@@ -42,18 +41,11 @@ static cvar_t	registered = {.name = "registered", .string = "0",
 	.description = "Whether the registered game's data (gfx/pop.lmp) was found; set at startup, read by the game code.",
 	.values = (const cvar_value_t[]){{"0", "Shareware data"}, {"1", "Registered data"}, {0}}};
 
-static bool	com_modified;	// set true if using non-id files
-
 static int		static_registered = 1;	// only for startup check, then set
 
 
 static void COM_InitFilesystem (const char *basedir);
 static void COM_Path_f (void);
-
-
-// if a packfile directory differs from this, it is assumed to be hacked
-#define	PAK0_COUNT		339
-#define	PAK0_CRC		52883
 
 
 char	gamedirfile[MAX_OSPATH];
@@ -690,7 +682,6 @@ static pack_t *COM_LoadPackFile (char *packfile)
 	pack_t			*pack;
 	FILE			*packhandle;
 	dpackfile_t		*info;
-	unsigned short		crc;
 
 	if (COM_FileOpenRead (packfile, &packhandle) == -1)
 		return NULL;
@@ -706,20 +697,12 @@ static pack_t *COM_LoadPackFile (char *packfile)
 		Sys_Error ("%s has a bad directory", packfile);
 	numpackfiles = header.dirlen / (int)sizeof(dpackfile_t);
 
-	if (numpackfiles != PAK0_COUNT)
-		com_modified = true;	// not the original file
-
 	newfiles = Mem_Calloc ((size_t)numpackfiles, sizeof(packfile_t));
 	info = Mem_Alloc ((size_t)header.dirlen + 1);
 
 	fseek (packhandle, header.dirofs, SEEK_SET);
 	if (fread (info, 1, (size_t)header.dirlen, packhandle) != (size_t)header.dirlen)
 		Sys_Error ("%s: couldn't read the directory", packfile);
-
-// crc the directory to check for modifications
-	crc = CRC_Block((byte *)info, header.dirlen);
-	if (crc != PAK0_CRC)
-		com_modified = true;
 
 // parse the directory
 	for (i=0 ; i<numpackfiles ; i++)

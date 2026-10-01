@@ -28,7 +28,6 @@ thread_local drawsurf_t	r_drawsurf;
 
 static thread_local int				lightleft, blocksize, sourcetstep;
 static thread_local int				lightright, lightleftstep, lightrightstep, blockdivshift;
-static thread_local unsigned		blockdivmask;
 static thread_local pixel_t			*prowdestbase;
 static thread_local const byte		*pbasesource;
 static thread_local int				surfrowpixels;
@@ -549,7 +548,6 @@ int R_DrawSurface (void)
 
 	blockdivshift = r_lightshift - r_drawsurf.surfmip;
 	blocksize = 1 << blockdivshift;
-	blockdivmask = (1 << blockdivshift) - 1;
 
 	r_lightwidth = r_lightgrid[0];
 

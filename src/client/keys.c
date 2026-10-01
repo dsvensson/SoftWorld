@@ -26,7 +26,6 @@ key up events are sent even if in console mode
 
 
 static int		shift_down=false;
-static int		key_lastpress;
 
 static int		history_line=0;
 
@@ -1179,7 +1178,6 @@ void Key_Event (int key, bool down)
 	if (!down)
 		key_repeats[key] = 0;
 
-	key_lastpress = key;
 	key_count++;
 	if (key_count <= 0)
 	{

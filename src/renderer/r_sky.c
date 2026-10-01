@@ -27,7 +27,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 static int		iskyspeed = 8;
 static int		iskyspeed2 = 2;
 float skyspeed;
-static float skyspeed2;
 
 float		skytime;
 
@@ -159,7 +158,6 @@ void R_SetSkyFrame (void)
 	float	temp;
 
 	skyspeed = (float)iskyspeed;
-	skyspeed2 = (float)iskyspeed2;
 
 	g = GreatestCommonDivisor (iskyspeed, iskyspeed2);
 	s1 = iskyspeed / g;

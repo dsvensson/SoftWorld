@@ -92,8 +92,6 @@ static const char *CL_SvcName (int cmd)
 	return svc_strings[cmd];
 }
 
-static int	oldparsecountmod;
-
 
 //=============================================================================
 
@@ -993,8 +991,6 @@ static void CL_ParseClientdata (void)
 	frame_t		*frame;
 
 // calculate simulated time of message
-	oldparsecountmod = cl.parsecountmod;
-
 	i = cls.netchan.incoming_acknowledged;
 	cl.parsecount = i;
 	i &= UPDATE_MASK;
@@ -1320,7 +1316,6 @@ static void CL_ChatText (const char *in, char *out, size_t size)
 	out[len] = 0;
 }
 
-static int	received_framecount;
 static int	projectiles_frame;
 void CL_ParseServerMessage (void)
 {
@@ -1330,7 +1325,6 @@ void CL_ParseServerMessage (void)
 	int			i, j;
 	float		f;
 
-	received_framecount = cls.framecount;
 	cl.last_servermessage = host.realtime;
 	// an MVD's frame is several messages: its nails are cleared once
 	if (!cls.mvdplayback || cls.netchan.incoming_acknowledged != projectiles_frame)

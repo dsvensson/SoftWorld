@@ -786,7 +786,6 @@ static void M_Help_Key (int key)
 //=============================================================================
 /* QUIT MENU */
 
-static int		msgNumber;
 static int		m_quit_prevstate;
 static bool	wasInMenus;
 
@@ -799,7 +798,6 @@ void M_Menu_Quit_f (void)
 	m_quit_prevstate = m_state;
 	m_state = m_quit;
 	m_entersound = true;
-	msgNumber = rand()&7;
 }
 
 

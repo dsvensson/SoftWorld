@@ -25,7 +25,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define STAT_MINUS		10	// num frame for '-' stats digit
 static qpic_t		*sb_nums[2][11];
-static qpic_t		*sb_colon, *sb_slash;
 static qpic_t		*sb_ibar;
 static qpic_t		*sb_sbar;
 static qpic_t		*sb_scorebar;
@@ -124,9 +123,6 @@ void Sbar_Init (void)
 
 	sb_nums[0][10] = Draw_PicFromWad ("num_minus");
 	sb_nums[1][10] = Draw_PicFromWad ("anum_minus");
-
-	sb_colon = Draw_PicFromWad ("num_colon");
-	sb_slash = Draw_PicFromWad ("num_slash");
 
 	sb_weapons[0][0] = Draw_PicFromWad ("inv_shotgun");
 	sb_weapons[0][1] = Draw_PicFromWad ("inv_sshotgun");

@@ -506,7 +506,6 @@ name checkclient (void)
 =================
 */
 #define	MAX_CHECK	16
-static int c_invis, c_notvis;
 static bool PF_checkclient (qcvm_t *vm)
 {
 	edict_t	*ent, *self;
@@ -534,13 +533,11 @@ static bool PF_checkclient (qcvm_t *vm)
 	l = CM_Leafnum (sv.map, CM_PointInLeaf (sv.map, view)) - 1;
 	if ( (l<0) || !(sv.checkpvs[l>>3] & (1<<(l&7)) ) )
 	{
-c_notvis++;
 		PF_ReturnEdict (vm, sv.edicts);
 		return true;
 	}
 
 // might be able to see it
-c_invis++;
 	PF_ReturnEdict (vm, ent);
 	return true;
 }
