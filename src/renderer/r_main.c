@@ -1155,8 +1155,8 @@ static void R_EdgeDrawing (void)
 	}
 
 	prof = R_ProfStart ();
+	R_MergeAfters ();				// the lists start with what the bands met
 	R_FinishBrushEntities ();
-	R_MergeAfters ();
 	D_DrawSurfaces (r_bands, r_numbands);
 	R_DrawFences ();
 	R_ProfEnd (PROF_SPANS, prof);
