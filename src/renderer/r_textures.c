@@ -133,6 +133,44 @@ static void R_AllocMips (pixel_t *mips[MIPLEVELS], int width, int height, struct
 
 /*
 ===============
+R_BuildTexturePixels
+
+The map's texels of a wall's texture as pixels (texture_t pixels), each
+fullbright one in pixelglow too, and their mip levels averaged in linear light
+===============
+*/
+void R_BuildTexturePixels (texture_t *tx, struct arena_s *arena)
+{
+	const byte	*index = (const byte *)tx + tx->offsets[0];
+	int			i, width = (int)tx->width, height = (int)tx->height;
+	bool		fence = tx->name[0] == '{', bright = false;
+
+	if (tx->name[0] == '*' || !Q_strncmp (tx->name, "sky", 3))
+		return;		// drawn from their bytes
+
+	R_AllocMips (tx->pixels, width, height, arena);
+	for (i = 0 ; i < width * height ; i++)
+	{
+		if (fence && index[i] == 255)
+			tx->pixels[0][i] = d_pal30[255] | PIXEL_TRANSPARENT;
+		else
+		{
+			tx->pixels[0][i] = d_pal30[index[i]];
+			bright |= d_fullbright[index[i]];
+		}
+	}
+	R_BuildPixelMips (tx->pixels, width, height, fence);
+	if (!bright)
+		return;
+
+	R_AllocMips (tx->pixelglow, width, height, arena);
+	for (i = 0 ; i < width * height ; i++)
+		tx->pixelglow[0][i] = d_fullbright[index[i]] && !(fence && index[i] == 255) ? d_pal30[index[i]] : 0;
+	R_BuildPixelMips (tx->pixelglow, width, height, false);
+}
+
+/*
+===============
 R_LoadTextureOverride
 
 A texture's TGA file, if there is one, into tx->rgb and its fullbright light

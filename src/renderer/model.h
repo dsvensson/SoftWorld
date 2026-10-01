@@ -82,6 +82,12 @@ typedef struct texture_s
 	// there is none.
 	pixel_t		*rgb[MIPLEVELS];
 	pixel_t		*glow[MIPLEVELS];		// their fullbright light, NULL for none
+	// the map's own texels as pixels, for walls in r_lightmode 1: mip levels
+	// averaged in linear light, the fullbright light apart from the colors, so
+	// a small light fades with its share of a texel rather than going out.
+	// NULL for skies and liquids; pixelglow NULL without fullbright colors.
+	pixel_t		*pixels[MIPLEVELS];
+	pixel_t		*pixelglow[MIPLEVELS];
 } texture_t;
 
 

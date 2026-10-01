@@ -451,6 +451,7 @@ static bool Mod_LoadTextures (void)
 		}
 		memcpy ((byte *)tx + tx->offsets[0], lump + ofs + mt.offsets[0], (size_t)mt.width * mt.height);
 		R_BuildMips (tx, tx->name[0] == '{');
+		R_BuildTexturePixels (tx, loadmodel->arena);
 		R_LoadTextureOverride (tx, loadmodel->name, loadmodel->arena);
 
 		if (!Q_strncmp (tx->name, "sky", 3))

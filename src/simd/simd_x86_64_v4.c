@@ -530,5 +530,29 @@ void Simd_V4_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint
 void Simd_V4_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
 	const int light[3], const int step[3], int count)
 {
-	Simd_Scalar_LitRowRGB30 (dest, src, glow, glowscale, light, step, count);
+	const __m512i	channel = _mm512_set1_epi32 (1023), gs = _mm512_set1_epi32 (glowscale);
+	__mmask16		lanes;
+	__m512i			pix, gl, rev, out, l, c, f;
+	int				j, k;
+
+	for (j = 0 ; j < count ; j += 16)
+	{
+		lanes = Simd_V4_Lanes (count - j);
+		pix = _mm512_maskz_loadu_epi32 (lanes, src + j);
+		gl = glow ? _mm512_maskz_loadu_epi32 (lanes, glow + j) : _mm512_setzero_si512 ();
+		rev = _mm512_sub_epi32 (_mm512_set1_epi32 (count - 1 - j), Simd_V4_Iota ());
+		out = _mm512_setzero_si512 ();
+		for (k = 0 ; k < 3 ; k++)
+		{
+			__m128i	shift = _mm_cvtsi32_si128 (10 * k);
+
+			l = _mm512_add_epi32 (_mm512_set1_epi32 (light[k]), _mm512_mullo_epi32 (rev, _mm512_set1_epi32 (step[k])));
+			l = _mm512_max_epi32 (l, _mm512_setzero_si512 ());
+			c = _mm512_srli_epi32 (_mm512_mullo_epi32 (_mm512_and_si512 (_mm512_srl_epi32 (pix, shift), channel), l), 15);
+			f = _mm512_srli_epi32 (_mm512_mullo_epi32 (_mm512_and_si512 (_mm512_srl_epi32 (gl, shift), channel), gs), 15);
+			c = _mm512_min_epu32 (_mm512_max_epu32 (c, f), channel);
+			out = _mm512_or_si512 (out, _mm512_sll_epi32 (c, shift));
+		}
+		_mm512_mask_storeu_epi32 (dest + j, lanes, out);
+	}
 }

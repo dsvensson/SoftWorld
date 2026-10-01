@@ -119,6 +119,7 @@ pixel_t	R_AveragePixels (const pixel_t *p, int n);
 extern cvar_t	r_externaltextures;
 void R_TexturesInit (void);
 void R_LoadTextureOverride (texture_t *tx, const char *modelname, struct arena_s *arena);
+void R_BuildTexturePixels (texture_t *tx, struct arena_s *arena);
 
 // the texels to draw tx with in place of its own, or NULL
 static inline const pixel_t *R_TextureOverride (const texture_t *tx, int mip)

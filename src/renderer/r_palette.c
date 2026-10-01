@@ -158,8 +158,10 @@ static byte R_NearestColor (int r, int g, int b, bool fullbright, bool no255)
 R_BuildMips
 
 Mip levels 1 to 3 of a texture from the level above: each texel the average
-of four, as the nearest palette color. Mostly fullbright blocks stay
-fullbright; in a fence, a block half cut out or more stays cut out.
+of four, as the nearest palette color, for the colormap of r_lightmode 0. A
+block with a fullbright color stays fullbright, the average of those, as id's
+tools made the levels, so lights stay lit far off; in a fence, a block half
+cut out or more stays cut out.
 ===============
 */
 void R_BuildMips (texture_t *tx, bool fence)
@@ -199,7 +201,7 @@ void R_BuildMips (texture_t *tx, bool fence)
 					continue;
 				}
 
-				bright = nbright * 2 > n;
+				bright = nbright > 0;
 				sum[0] = sum[1] = sum[2] = 0;
 				n = 0;
 				for (i = 0 ; i < 4 ; i++)

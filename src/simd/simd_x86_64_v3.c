@@ -512,5 +512,28 @@ void Simd_V3_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint
 void Simd_V3_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
 	const int light[3], const int step[3], int count)
 {
-	Simd_Scalar_LitRowRGB30 (dest, src, glow, glowscale, light, step, count);
+	const __m256i	channel = _mm256_set1_epi32 (1023), gs = _mm256_set1_epi32 (glowscale);
+	__m256i			lanes, pix, gl, rev, out, l, c, f;
+	int				j, k;
+
+	for (j = 0 ; j < count ; j += 8)
+	{
+		lanes = Simd_V3_Lanes (count - j);
+		pix = _mm256_maskload_epi32 ((const int *)(src + j), lanes);
+		gl = glow ? _mm256_maskload_epi32 ((const int *)(glow + j), lanes) : _mm256_setzero_si256 ();
+		rev = _mm256_sub_epi32 (_mm256_set1_epi32 (count - 1 - j), Simd_V3_Iota ());
+		out = _mm256_setzero_si256 ();
+		for (k = 0 ; k < 3 ; k++)
+		{
+			__m128i	shift = _mm_cvtsi32_si128 (10 * k);
+
+			l = _mm256_add_epi32 (_mm256_set1_epi32 (light[k]), _mm256_mullo_epi32 (rev, _mm256_set1_epi32 (step[k])));
+			l = _mm256_max_epi32 (l, _mm256_setzero_si256 ());
+			c = _mm256_srli_epi32 (_mm256_mullo_epi32 (_mm256_and_si256 (_mm256_srl_epi32 (pix, shift), channel), l), 15);
+			f = _mm256_srli_epi32 (_mm256_mullo_epi32 (_mm256_and_si256 (_mm256_srl_epi32 (gl, shift), channel), gs), 15);
+			c = _mm256_min_epu32 (_mm256_max_epu32 (c, f), channel);
+			out = _mm256_or_si256 (out, _mm256_sll_epi32 (c, shift));
+		}
+		Simd_V3_Store (dest + j, out, count - j);
+	}
 }
