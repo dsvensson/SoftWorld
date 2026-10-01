@@ -31,18 +31,6 @@ int			ubasestep, errorterm, erroradjustup, erroradjustdown;
 static vec3_t		transformed_modelorg;
 
 /*
-==============
-D_DrawPoly
-
-==============
-*/
-void D_DrawPoly (void)
-{
-// this driver takes spans, not polygons
-}
-
-
-/*
 =============
 D_MipLevelForScale
 =============

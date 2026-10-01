@@ -54,17 +54,6 @@ typedef struct particle_s
 
 #define PARTICLE_Z_CLIP	8.0
 
-typedef struct polyvert_s {
-	float	u, v, zi, s, t;
-} polyvert_t;
-
-typedef struct polydesc_s {
-	int			numverts;
-	float		nearzi;
-	msurface_t	*pcurrentface;
-	polyvert_t	*pverts;
-} polydesc_t;
-
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!
 typedef struct finalvert_s {
 	int		v[6];		// u, v, s, t, l, 1/z
@@ -117,13 +106,6 @@ extern cvar_t	r_drawflat;
 extern int		d_spanpixcount;
 extern int		r_framecount;		// sequence # of current frame since Quake
 									//  started
-extern bool	r_drawpolys;		// 1 if driver wants clipped polygons
-									//  rather than a span list
-extern bool	r_drawculledpolys;	// 1 if driver wants clipped polygons that
-									//  have been culled by the edge list
-extern bool	r_worldpolysbacktofront;	// 1 if driver wants polygons
-											//  delivered back to front rather
-											//  than front to back
 extern bool	r_recursiveaffinetriangles;	// true if a driver wants to use
 											//  recursive triangular subdivison
 											//  and vertex drawing via
@@ -149,7 +131,6 @@ extern vec3_t	r_pright, r_pup, r_ppn;
 void D_PolysetDraw (void);
 void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts);
 void D_DrawParticle (particle_t *pparticle);
-void D_DrawPoly (void);
 void D_DrawSprite (void);
 void D_DrawSurfaces (void);
 void D_EndParticles (void);

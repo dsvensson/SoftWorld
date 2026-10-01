@@ -29,9 +29,6 @@ static vec3_t		viewlightvec;
 static alight_t	r_viewlighting = {.ambientlight = 128, .shadelight = 192, .plightvec = viewlightvec, .color = {1, 1, 1}};
 float		r_time1;
 int			r_numallocatededges;
-bool	r_drawpolys;
-bool	r_drawculledpolys;
-bool	r_worldpolysbacktofront;
 bool	r_recursiveaffinetriangles = true;
 float		r_aliasuvscale = 1.0;
 int			r_outofsurfaces;
@@ -41,8 +38,6 @@ bool	r_dowarp, r_dowarpold, r_viewchanged;
 vrect_t	r_viewrect;		// where the client wants the view on screen
 float	r_viewaspect;
 
-int			numbtofpolys;
-btofpoly_t	*pbtofpolys;
 mvertex_t	*r_pcurrentvertbase;
 
 int			c_surf;
@@ -1160,13 +1155,6 @@ static void R_DrawBEntitiesOnList (void)
 				if (R_EntityAlpha (currententity) < 256)
 				{
 					R_AddTranslucentModel (clmodel);
-				}
-			// if the driver wants polygons, deliver those. Z-buffering is on
-			// at this point, so no clipping to the world tree is needed, just
-			// frustum clipping
-				else if (r_drawpolys | r_drawculledpolys)
-				{
-					R_ZDrawSubmodelPolys (clmodel);
 				}
 				else
 				{

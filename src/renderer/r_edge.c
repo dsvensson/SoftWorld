@@ -57,8 +57,6 @@ static int	current_iv;
 
 static int	edge_head_u_shift20, edge_tail_u_shift20;	// in whole pixels
 
-static void (*pdrawfunc)(void);
-
 static edge_t	edge_head;
 static edge_t	edge_tail;
 static edge_t	edge_aftertail;
@@ -66,58 +64,11 @@ static edge_t	edge_sentinel;
 
 static float	fv;
 
-static void R_GenerateSpans (void);
-static void R_GenerateSpansBackward (void);
-
 static void R_LeadingEdge (edge_t *edge);
-static void R_LeadingEdgeBackwards (edge_t *edge);
 static void R_TrailingEdge (surf_t *surf, edge_t *edge);
 
 
 //=============================================================================
-
-
-/*
-==============
-R_DrawCulledPolys
-==============
-*/
-static void R_DrawCulledPolys (void)
-{
-	surf_t			*s;
-	msurface_t		*pface;
-
-	currententity = &r_worldentity;
-
-	if (r_worldpolysbacktofront)
-	{
-		for (s=surface_p-1 ; s>&surfaces[1] ; s--)
-		{
-			if (!s->spans)
-				continue;
-
-			if (!(s->flags & SURF_DRAWBACKGROUND))
-			{
-				pface = (msurface_t *)s->data;
-				R_RenderPoly (pface, 15);
-			}
-		}
-	}
-	else
-	{
-		for (s = &surfaces[1] ; s<surface_p ; s++)
-		{
-			if (!s->spans)
-				continue;
-
-			if (!(s->flags & SURF_DRAWBACKGROUND))
-			{
-				pface = (msurface_t *)s->data;
-				R_RenderPoly (pface, 15);
-			}
-		}
-	}
-}
 
 
 /*
@@ -160,18 +111,8 @@ void R_BeginEdgeFrame (void)
 	surfaces[1].flags = SURF_DRAWBACKGROUND;
 
 // put the background behind everything in the world
-	if (r_draworder.value)
-	{
-		pdrawfunc = R_GenerateSpansBackward;
-		surfaces[1].key = 0;
-		r_currentkey = 1;
-	}
-	else
-	{
-		pdrawfunc = R_GenerateSpans;
-		surfaces[1].key = 0x7FFFFFFF;
-		r_currentkey = 0;
-	}
+	surfaces[1].key = 0x7FFFFFFF;
+	r_currentkey = 0;
 
 // FIXME: set with memset
 	for (v=r_refdef.vrect.y ; v<r_refdef.vrectbottom ; v++)
@@ -455,86 +396,6 @@ static void R_CleanupSpan (void)
 
 /*
 ==============
-R_LeadingEdgeBackwards
-==============
-*/
-static void R_LeadingEdgeBackwards (edge_t *edge)
-{
-	espan_t			*span;
-	surf_t			*surf, *surf2;
-	int				iu;
-
-// it's adding a new surface in, so find the correct place
-	surf = &surfaces[edge->surfs[1]];
-
-// don't start a span if this is an inverted span, with the end
-// edge preceding the start edge (that is, we've already seen the
-// end edge)
-	if (++surf->spanstate == 1)
-	{
-		surf2 = surfaces[1].next;
-
-		if (surf->key > surf2->key)
-			goto newtop;
-
-	// if it's two surfaces on the same plane, the one that's already
-	// active is in front, so keep going unless it's a bmodel
-		if (surf->insubmodel && (surf->key == surf2->key))
-		{
-		// must be two bmodels in the same leaf; don't care, because they'll
-		// never be farthest anyway
-			goto newtop;
-		}
-
-continue_search:
-
-		do
-		{
-			surf2 = surf2->next;
-		} while (surf->key < surf2->key);
-
-		if (surf->key == surf2->key)
-		{
-		// if it's two surfaces on the same plane, the one that's already
-		// active is in front, so keep going unless it's a bmodel
-			if (!surf->insubmodel)
-				goto continue_search;
-
-		// must be two bmodels in the same leaf; don't care which is really
-		// in front, because they'll never be farthest anyway
-		}
-
-		goto gotposition;
-
-newtop:
-	// emit a span (obscures current top)
-		iu = (int)(edge->u >> 20);
-
-		if (iu > surf2->last_u)
-		{
-			span = span_p++;
-			span->u = surf2->last_u;
-			span->count = iu - span->u;
-			span->v = current_iv;
-			span->pnext = surf2->spans;
-			surf2->spans = span;
-		}
-
-		// set last_u on the new span
-		surf->last_u = iu;
-				
-gotposition:
-	// insert before surf2
-		surf->next = surf2;
-		surf->prev = surf2->prev;
-		surf2->prev->next = surf;
-		surf2->prev = surf;
-	}
-}
-
-
-/*
-==============
 R_TrailingEdge
 ==============
 */
@@ -744,35 +605,6 @@ static void R_GenerateSpans (void)
 
 /*
 ==============
-R_GenerateSpansBackward
-==============
-*/
-static void R_GenerateSpansBackward (void)
-{
-	edge_t			*edge;
-
-	r_bmodelactive = 0;
-
-// clear active surfaces to just the background surface
-	surfaces[1].next = surfaces[1].prev = &surfaces[1];
-	surfaces[1].last_u = edge_head_u_shift20;
-
-// generate spans
-	for (edge=edge_head.next ; edge != &edge_tail; edge=edge->next)
-	{			
-		if (edge->surfs[0])
-			R_TrailingEdge (&surfaces[edge->surfs[0]], edge);
-
-		if (edge->surfs[1])
-			R_LeadingEdgeBackwards (edge);
-	}
-
-	R_CleanupSpan ();
-}
-
-
-/*
-==============
 R_ScanEdges
 
 Input: 
@@ -840,16 +672,13 @@ void R_ScanEdges (void)
 			R_InsertNewEdges (&r_sortededges[r_linestart[iv]], r_linestart[iv + 1] - r_linestart[iv],
 				edge_head.next);
 
-		(*pdrawfunc) ();
+		R_GenerateSpans ();
 
 	// flush the span list if we can't be sure we have enough spans left for
 	// the next scan
 		if (span_p > max_span_p)
 		{
-			if (r_drawculledpolys)
-				R_DrawCulledPolys ();
-			else
-				D_DrawSurfaces ();
+			D_DrawSurfaces ();
 
 		// clear the surface span pointers
 			for (s = &surfaces[1] ; s<surface_p ; s++)
@@ -877,13 +706,10 @@ void R_ScanEdges (void)
 		R_InsertNewEdges (&r_sortededges[r_linestart[iv]], r_linestart[iv + 1] - r_linestart[iv],
 			edge_head.next);
 
-	(*pdrawfunc) ();
+	R_GenerateSpans ();
 
 // draw whatever's left in the span list
-	if (r_drawculledpolys)
-		R_DrawCulledPolys ();
-	else
-		D_DrawSurfaces ();
+	D_DrawSurfaces ();
 }
 
 

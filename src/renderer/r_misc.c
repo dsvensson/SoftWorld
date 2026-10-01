@@ -310,7 +310,6 @@ void R_SetupFrame (void)
 	int				edgecount;
 
 // don't allow cheats in multiplayer
-r_draworder.value = 0;
 r_fullbright.value = 0;
 r_ambient.value = 0;
 r_drawflat.value = 0;
@@ -340,15 +339,9 @@ r_drawflat.value = 0;
 	if (r_refdef.ambientlight < 0)
 		r_refdef.ambientlight = 0;
 
-//	if (!sv.active)
-	r_draworder.value = 0;	// don't let cheaters look behind walls
-		
-	
 	R_AnimateLight ();
 
 	r_framecount++;
-
-	numbtofpolys = 0;
 
 // debugging
 
