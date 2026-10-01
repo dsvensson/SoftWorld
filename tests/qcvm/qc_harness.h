@@ -87,8 +87,11 @@ qc_func_t	QH_Func (qh_t *h, const char *name);
 #define W(x)		QC_ValWord (x)
 qc_value_t	QH_S (qh_t *h, const char *text);		// a new temp string
 
-// an argument list: a count and the values
-#define ARGS(...)	(int)(sizeof ((qc_value_t[]){__VA_ARGS__}) / sizeof (qc_value_t)), (qc_value_t[]){__VA_ARGS__}
+// an argument list: a count and the values. Counted by the preprocessor: MSVC
+// makes a compound literal in sizeof a temporary it then warns is unused.
+#define QH_COUNT_(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, n, ...)	n
+#define QH_COUNT(...)	QH_COUNT_ (__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+#define ARGS(...)	QH_COUNT (__VA_ARGS__), (qc_value_t[]){__VA_ARGS__}
 #define NOARGS		0, NULL
 
 // Calls a builtin (or function) by name: false with the VM's error

@@ -23,7 +23,7 @@ static qh_t *WithCharset (bool utf8, qc_charscheme_t scheme)
 	QC_DefaultConfig (&config, QC_CSQC);
 	config.utf8 = utf8;
 	config.charscheme = scheme;
-	return QH_New (QC_NUMBERING_CSQC, &config, QH_Named, extra);
+	return QH_New (QC_NUMBERING_CSQC, &config, QH_Named, (void *)extra);
 }
 
 // every combination of the settings, and whether characters count as UTF-8

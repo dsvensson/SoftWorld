@@ -24,7 +24,7 @@ static void Setup (qc_asm_t *a, void *ctx)
 	QA_Global1 (a, "scratch", QC_EV_FLOAT, QC_FloatBits (1.0f));
 	QA_Function (a, "monster_think", NULL, 0, 0);
 	QA_Emit (a, QOP_DONE, 0, 0, 0);
-	QH_Named (a, named);
+	QH_Named (a, (void *)named);
 }
 
 static qh_t *Harness (void)

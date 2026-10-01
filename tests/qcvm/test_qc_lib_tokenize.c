@@ -19,7 +19,7 @@ static qh_t *Harness (void)
 	qc_config_t	config;
 
 	QC_DefaultConfig (&config, QC_CSQC);
-	return QH_New (QC_NUMBERING_CSQC, &config, QH_Named, extra);
+	return QH_New (QC_NUMBERING_CSQC, &config, QH_Named, (void *)extra);
 }
 
 // the same, with a container budget
@@ -29,7 +29,7 @@ static qh_t *Budgeted (size_t bytes)
 
 	QC_DefaultConfig (&config, QC_CSQC);
 	config.limits.container_bytes = bytes;
-	return QH_New (QC_NUMBERING_CSQC, &config, QH_Named, extra);
+	return QH_New (QC_NUMBERING_CSQC, &config, QH_Named, (void *)extra);
 }
 
 #define MAX_TOKS	16

@@ -18,7 +18,7 @@ static qh_t *Harness (void)
 	QC_DefaultConfig (&config, QC_CSQC);
 	config.utf8 = false;
 	config.charscheme = QC_CHARS_QUAKE;
-	return QH_New (QC_NUMBERING_CSQC, &config, QH_Named, extra);
+	return QH_New (QC_NUMBERING_CSQC, &config, QH_Named, (void *)extra);
 }
 
 // ftos prints the float's exact value to FTE's digits
@@ -219,9 +219,9 @@ static void TestStof (void)
 		if (!QT_EQ_U (QC_FloatBits (QH_Float (h, "stof", ARGS (QH_S (h, cases[i].text)))),
 			QC_FloatBits (cases[i].want)))
 			printf ("  stof(\"%s\")\n", cases[i].text);
-	QT_CHECK (isnan (QH_Float (h, "stof", ARGS (QH_S (h, "nan")))));
-	QT_CHECK (isnan (QH_Float (h, "stof", ARGS (QH_S (h, "NaN(123)")))));
-	QT_CHECK (signbit (QH_Float (h, "stof", ARGS (QH_S (h, "-nan")))));
+	QT_CHECK (QT_IsNan (QH_Float (h, "stof", ARGS (QH_S (h, "nan")))));
+	QT_CHECK (QT_IsNan (QH_Float (h, "stof", ARGS (QH_S (h, "NaN(123)")))));
+	QT_CHECK (QT_SignBit (QH_Float (h, "stof", ARGS (QH_S (h, "-nan")))));
 	// double rounding as C does it: the decimal to double (1 + 2^-24, a float
 	// tie), then to float (ties to even), not straight to float (which rounds up)
 	QT_EQ_F (QH_Float (h, "stof", ARGS (QH_S (h, "1.00000005960464477539062500001"))), 1);

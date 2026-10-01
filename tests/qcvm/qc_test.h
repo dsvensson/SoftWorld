@@ -48,3 +48,8 @@ typedef struct
 void	QT_TextAppend (qt_text_t *t, const char *s);
 void	QT_TextFree (qt_text_t *t);
 bool	QT_Contains (const char *haystack, const char *needle);
+
+// isnan and signbit as functions: MSVC's macros put their argument in sizeof,
+// where a call's compound literal (ARGS) is a temporary it warns is unused
+bool	QT_IsNan (double x);
+bool	QT_SignBit (double x);

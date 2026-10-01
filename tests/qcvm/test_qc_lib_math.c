@@ -11,7 +11,7 @@ static const char	*extra[] = {"anglesub", NULL};
 
 static qh_t *Harness (void)
 {
-	return QH_New (QC_NUMBERING_CSQC, NULL, QH_Named, extra);
+	return QH_New (QC_NUMBERING_CSQC, NULL, QH_Named, (void *)extra);
 }
 
 static uint32_t Bits (float f)
@@ -40,8 +40,8 @@ static void TestTranscendental (void)
 			printf ("  %s(%g)\n", cases[i].name, (double)cases[i].x);
 	QT_EQ_F (QH_Float (h, "sin", ARGS (F (0))), 0);
 	QT_EQ_F (QH_Float (h, "sqrt", ARGS (F (16))), 4);
-	QT_CHECK (isnan (QH_Float (h, "sqrt", ARGS (F (-1)))));
-	QT_CHECK (isnan (QH_Float (h, "asin", ARGS (F (2)))));
+	QT_CHECK (QT_IsNan (QH_Float (h, "sqrt", ARGS (F (-1)))));
+	QT_CHECK (QT_IsNan (QH_Float (h, "asin", ARGS (F (2)))));
 	QT_EQ_F (QH_Float (h, "atan2", ARGS (F (1), F (1))), (float)(3.14159265358979323846 / 4));
 	QT_EQ_F (QH_Float (h, "atan2", ARGS (F (1), F (0))), (float)(3.14159265358979323846 / 2));
 	QT_EQ_F (QH_Float (h, "pow", ARGS (F (2), F (10))), 1024);
@@ -81,7 +81,7 @@ static void TestBoundMinMax (void)
 	QT_EQ_F (QH_Float (h, "bound", ARGS (F (0), F (11), F (10))), 10);
 	// the maximum wins over the minimum, and a NaN value passes through
 	QT_EQ_F (QH_Float (h, "bound", ARGS (F (10), F (5), F (0))), 0);
-	QT_CHECK (isnan (QH_Float (h, "bound", ARGS (F (0), F (NAN), F (10)))));
+	QT_CHECK (QT_IsNan (QH_Float (h, "bound", ARGS (F (0), F (NAN), F (10)))));
 
 	QT_EQ_F (QH_Float (h, "min", ARGS (F (3), F (2))), 2);
 	QT_EQ_F (QH_Float (h, "max", ARGS (F (3), F (2))), 3);
@@ -94,8 +94,8 @@ static void TestBoundMinMax (void)
 	// NaNs and ties follow the comparisons: a < b ? a : b for two arguments, and
 	// only strictly smaller values replace the first for more
 	QT_EQ_F (QH_Float (h, "min", ARGS (F (NAN), F (1))), 1);
-	QT_CHECK (isnan (QH_Float (h, "min", ARGS (F (1), F (NAN)))));
-	QT_CHECK (isnan (QH_Float (h, "min", ARGS (F (NAN), F (1), F (2)))));
+	QT_CHECK (QT_IsNan (QH_Float (h, "min", ARGS (F (1), F (NAN)))));
+	QT_CHECK (QT_IsNan (QH_Float (h, "min", ARGS (F (NAN), F (1), F (2)))));
 	QT_EQ_U (Bits (QH_Float (h, "min", ARGS (F (-0.0f), F (0)))), 0);
 	QT_EQ_U (Bits (QH_Float (h, "min", ARGS (F (-0.0f), F (0), F (1)))), Bits (-0.0f));
 	QT_EQ_F (QH_Float (h, "max", ARGS (F (NAN), F (1))), 1);
@@ -167,7 +167,7 @@ static void TestAnglemod (void)
 		if (!QT_EQ_U (Bits (QH_Float (h, "anglemod", ARGS (F (cases[i][0])))), Bits (cases[i][1])))
 			printf ("  anglemod(%g)\n", (double)cases[i][0]);
 	QT_EQ_U (Bits (QH_Float (h, "anglemod", ARGS (F (-0.0f)))), Bits (-0.0f));
-	QT_CHECK (isnan (QH_Float (h, "anglemod", ARGS (F (NAN)))));
+	QT_CHECK (QT_IsNan (QH_Float (h, "anglemod", ARGS (F (NAN)))));
 	// FTE loops forever on huge values; the remainder is exact
 	r = QH_Float (h, "anglemod", ARGS (F (1e10f)));
 	QT_CHECK (r >= 0 && r < 360);

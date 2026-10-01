@@ -19,7 +19,7 @@ static qh_t *Harness (void)
 	QC_DefaultConfig (&config, QC_CSQC);
 	config.utf8 = false;
 	config.charscheme = QC_CHARS_QUAKE;
-	return QH_New (QC_NUMBERING_CSQC, &config, QH_Named, extra);
+	return QH_New (QC_NUMBERING_CSQC, &config, QH_Named, (void *)extra);
 }
 
 // digest_hex's text of one argument, NULL for null

@@ -2,6 +2,7 @@
 
 #include "qc_test.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -150,6 +151,16 @@ void QT_TextFree (qt_text_t *t)
 bool QT_Contains (const char *haystack, const char *needle)
 {
 	return haystack && strstr (haystack, needle) != NULL;
+}
+
+bool QT_IsNan (double x)
+{
+	return isnan (x);
+}
+
+bool QT_SignBit (double x)
+{
+	return signbit (x);
 }
 
 // what the platform's memory functions need of the program

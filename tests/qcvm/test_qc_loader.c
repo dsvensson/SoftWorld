@@ -791,7 +791,7 @@ static void TestKtxCsprogs (void)
 	uint8_t			*data, *lno;
 	size_t			size, lnosize;
 	qc_progs_t		*p;
-	qc_funcinfo_t	fn;
+	qc_funcinfo_t	fn = {0};
 	qc_definfo_t	def;
 	qt_text_t		text = {0};
 	uint32_t		count, i, index, line, qc = 0;

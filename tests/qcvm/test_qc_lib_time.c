@@ -16,7 +16,7 @@ static void Setup (qc_asm_t *a, void *ctx)
 	qa_func_t				f;
 
 	(void)ctx;
-	QH_Named (a, named);
+	QH_Named (a, (void *)named);
 	for (k = 0 ; k < 6 ; k++)
 		globals[k] = QA_Global (a, parts[k], QC_EV_FLOAT, NULL, 0);
 	text = QA_Global (a, "t_text", QC_EV_STRING, NULL, 0);
