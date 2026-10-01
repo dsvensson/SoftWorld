@@ -156,6 +156,27 @@ void R_RotateBmodel (void)
 
 /*
 ================
+R_EntityViewVectors
+
+The view's vectors in a brush entity's model space, as R_RotateBmodel turns
+them, for a thread that can't turn the view itself
+================
+*/
+void R_EntityViewVectors (const entity_t *ent, vec3_t right, vec3_t up, vec3_t forward)
+{
+	float	rotation[3][3];
+
+	R_EntityRotation (ent, rotation);
+	VectorCopy (base_vright, right);
+	VectorCopy (base_vup, up);
+	VectorCopy (base_vpn, forward);
+	R_EntityRotate (rotation, right);
+	R_EntityRotate (rotation, up);
+	R_EntityRotate (rotation, forward);
+}
+
+/*
+================
 R_RotateBandBmodel
 
 The band's view into its entity's model space

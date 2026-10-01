@@ -79,51 +79,88 @@ static void D_DrawSolidSurface (surf_t *surf, int color)
 
 /*
 ==============
-D_CalcGradients
+D_FaceTexmap
+
+A face's texture mapping at a mip level into map, seen with the view's right,
+up and forward vectors in its model's space from transformed_org (the view's
+origin in the face's model, transformed); map's 1/z is left as it is. Any
+thread may.
 ==============
 */
-static void D_CalcGradients (msurface_t *pface)
+static void D_FaceTexmap (simd_texmap_t *map, const msurface_t *pface, int mip, const vec3_t transformed_org,
+	const vec3_t right, const vec3_t up, const vec3_t forward)
 {
 	float		mipscale;
 	vec3_t		p_temp1;
 	vec3_t		p_saxis, p_taxis;
 	float		t;
 
-	mipscale = 1.0f / (float)(1 << miplevel);
+	mipscale = 1.0f / (float)(1 << mip);
 
-	TransformVector (pface->texinfo->vecs[0], p_saxis);
-	TransformVector (pface->texinfo->vecs[1], p_taxis);
+	p_saxis[0] = DotProduct (pface->texinfo->vecs[0], right);
+	p_saxis[1] = DotProduct (pface->texinfo->vecs[0], up);
+	p_saxis[2] = DotProduct (pface->texinfo->vecs[0], forward);
+	p_taxis[0] = DotProduct (pface->texinfo->vecs[1], right);
+	p_taxis[1] = DotProduct (pface->texinfo->vecs[1], up);
+	p_taxis[2] = DotProduct (pface->texinfo->vecs[1], forward);
 
 	t = xscaleinv * mipscale;
-	d_sdivzstepu = p_saxis[0] * t;
-	d_tdivzstepu = p_taxis[0] * t;
+	map->sdivzstepu = p_saxis[0] * t;
+	map->tdivzstepu = p_taxis[0] * t;
 
 	t = yscaleinv * mipscale;
-	d_sdivzstepv = -p_saxis[1] * t;
-	d_tdivzstepv = -p_taxis[1] * t;
+	map->sdivzstepv = -p_saxis[1] * t;
+	map->tdivzstepv = -p_taxis[1] * t;
 
-	d_sdivzorigin = p_saxis[2] * mipscale - xcenter * d_sdivzstepu -
-			ycenter * d_sdivzstepv;
-	d_tdivzorigin = p_taxis[2] * mipscale - xcenter * d_tdivzstepu -
-			ycenter * d_tdivzstepv;
+	map->sdivzorigin = p_saxis[2] * mipscale - xcenter * map->sdivzstepu -
+			ycenter * map->sdivzstepv;
+	map->tdivzorigin = p_taxis[2] * mipscale - xcenter * map->tdivzstepu -
+			ycenter * map->tdivzstepv;
 
-	VectorScale (transformed_modelorg, mipscale, p_temp1);
+	p_temp1[0] = transformed_org[0] * mipscale;
+	p_temp1[1] = transformed_org[1] * mipscale;
+	p_temp1[2] = transformed_org[2] * mipscale;
 
 	t = 0x10000*mipscale;
 	// the terms are 16.16 texture coordinates and can pass 32 bits (texture
 	// coordinates beyond +-32768); their sum is relative to the surface
-	sadjust = (fixed16_t)(((int64_t)(DotProduct (p_temp1, p_saxis) * 0x10000 + 0.5)) -
-			(((int64_t)pface->texturemins[0] * 0x10000) >> miplevel)
+	map->sadjust = (fixed16_t)(((int64_t)(DotProduct (p_temp1, p_saxis) * 0x10000 + 0.5)) -
+			(((int64_t)pface->texturemins[0] * 0x10000) >> mip)
 			+ pface->texinfo->vecs[0][3]*t);
-	tadjust = (fixed16_t)(((int64_t)(DotProduct (p_temp1, p_taxis) * 0x10000 + 0.5)) -
-			(((int64_t)pface->texturemins[1] * 0x10000) >> miplevel)
+	map->tadjust = (fixed16_t)(((int64_t)(DotProduct (p_temp1, p_taxis) * 0x10000 + 0.5)) -
+			(((int64_t)pface->texturemins[1] * 0x10000) >> mip)
 			+ pface->texinfo->vecs[1][3]*t);
 
 //
 // -1 (-epsilon) so we never wander off the edge of the texture
 //
-	bbextents = ((pface->extents[0] << 16) >> miplevel) - 1;
-	bbextentt = ((pface->extents[1] << 16) >> miplevel) - 1;
+	map->sextent = ((pface->extents[0] << 16) >> mip) - 1;
+	map->textent = ((pface->extents[1] << 16) >> mip) - 1;
+}
+
+
+/*
+==============
+D_CalcGradients
+
+D_FaceTexmap in the drawing globals, for miplevel and the view as it is
+==============
+*/
+static void D_CalcGradients (msurface_t *pface)
+{
+	simd_texmap_t	map;
+
+	D_FaceTexmap (&map, pface, miplevel, transformed_modelorg, vright, vup, vpn);
+	d_sdivzstepu = map.sdivzstepu;
+	d_tdivzstepu = map.tdivzstepu;
+	d_sdivzstepv = map.sdivzstepv;
+	d_tdivzstepv = map.tdivzstepv;
+	d_sdivzorigin = map.sdivzorigin;
+	d_tdivzorigin = map.tdivzorigin;
+	sadjust = map.sadjust;
+	tadjust = map.tadjust;
+	bbextents = map.sextent;
+	bbextentt = map.textent;
 }
 
 
@@ -184,12 +221,12 @@ void D_DrawTranslucentFace (msurface_t *surf, const vec3_t transformed_org, emit
 
 THE SURFACES OF A FRAME
 
-Drawn in batches: the surfaces whose spans the edge scan has gathered are
-prepared one by one on this thread (mip level, texture mapping, cache block,
-and a rotated brush model's view), then the cache blocks that must be drawn
-are drawn, and then the surfaces' spans, both spread over the worker threads.
-Each pixel is in the spans of one surface only, so the order the surfaces are
-drawn in makes no difference.
+The surfaces whose spans the bands' scans have gathered are prepared as jobs
+spread over the worker threads (how to draw, mip level, texture mapping, in
+a brush model's turned view), then given their cache blocks on this thread,
+and drawn in batches: the cache blocks that must be drawn first, and then the
+surfaces' spans, both spread over the workers. Each pixel is in the spans of
+one surface only, so the order the surfaces are drawn in makes no difference.
 
 ===============================================================================
 */
@@ -220,105 +257,90 @@ typedef struct
 	int				texels;			// drawn into the block
 } dsjob_t;
 
-static dsjob_t	*d_jobs;			// the batch
-static int		*d_builds;			// the jobs whose blocks are drawn first
+static dsjob_t	*d_jobs;			// a surface with spans each
+static surf_t	**d_drawn;			// those surfaces
+static int		*d_builds;			// the jobs of a batch whose blocks are drawn first
 static int		d_numjobs, d_maxjobs;
 static vec3_t	world_transformed_modelorg;
 
+#define D_PREPARE_JOBS	128			// prepared by a thread at a time
+
 /*
 ==============
-D_PrepareSurface
+D_PrepareJob
 
-A surface with spans as a job of the batch. Returns false if an earlier job
-of the batch has the cache block it needs, or the room for it: the batch is
-drawn first, and the surface prepared again in the next.
+A surface with spans as a job, but for its cache block: on any thread, so
+the view isn't turned for a brush model's surface, but its vectors worked out
 ==============
 */
-static bool D_PrepareSurface (surf_t *s, dsjob_t *job)
+static void D_PrepareJob (dsjob_t *job, surf_t *s)
 {
 	msurface_t	*pface = s->data;
-	vec3_t		local_modelorg;
-	cacheprep_t	prep = CACHE_READY;
+	vec3_t		local, transformed_org, right, up, forward;
+	int			mip;
 
-	*job = (dsjob_t){.surf = s};
-	d_zistepu = s->d_zistepu;
-	d_zistepv = s->d_zistepv;
-	d_ziorigin = s->d_ziorigin;
+	*job = (dsjob_t){.surf = s, .entity = s->entity};
+	job->map.ziorigin = s->d_ziorigin;
+	job->map.zistepu = s->d_zistepu;
+	job->map.zistepv = s->d_zistepv;
 
 	if (s->flags & SURF_DRAWSKY)
 	{
-		if (r_skyfaces)
-			job->draw = DS_SKYBOX;
-		else
-		{
-			if (!r_skymade)
-				R_MakeSky ();
-			job->draw = DS_SKY;
-		}
+		job->draw = r_skyfaces ? DS_SKYBOX : DS_SKY;
+		return;
 	}
-	else if (s->flags & SURF_DRAWBACKGROUND)
+	if (s->flags & SURF_DRAWBACKGROUND)
 	{
 	// the background is infinitely far: 1/z is 0
-		d_zistepu = 0;
-		d_zistepv = 0;
-		d_ziorigin = 0;
+		job->map.zistepu = 0;
+		job->map.zistepv = 0;
+		job->map.ziorigin = 0;
 		job->draw = DS_SOLID;
 		job->color = (int)r_clearcolor.value & 0xFF;
+		return;
+	}
+
+	if (s->insubmodel)
+	{
+		VectorSubtract (r_origin, s->entity->origin, local);
+		TransformVector (local, transformed_org);
+		R_EntityViewVectors (s->entity, right, up, forward);
 	}
 	else
 	{
-		if (s->insubmodel)
-		{
-		// FIXME: we don't want to do all this for every polygon!
-		// TODO: store once at start of frame
-			currententity = s->entity;	//FIXME: make this passed in to
-										// R_RotateBmodel ()
-			VectorSubtract (r_origin, currententity->origin, local_modelorg);
-			TransformVector (local_modelorg, transformed_modelorg);
-
-			R_RotateBmodel ();	// FIXME: don't mess with the frustum,
-								// make entity passed in
-		}
-
-		if (s->flags & SURF_DRAWTURB)
-		{
-			miplevel = 0;
-			job->draw = DS_TURB;
-			job->turb = (byte *)pface->texinfo->texture + pface->texinfo->texture->offsets[0];
-			job->turb30 = R_TextureOverride (pface->texinfo->texture, 0);
-		}
-		else
-		{
-			miplevel = D_MipLevelForScale (s->nearzi * scale_for_mip * pface->texinfo->mipadjust);
-			miplevel = D_SurfaceMipLevel (pface, miplevel);
-			prep = D_PrepareCacheSurface (pface, miplevel, &job->cache, &job->buildsurf);
-			job->draw = DS_CACHED;
-			job->face = pface;
-			job->entity = currententity;
-			job->miplevel = miplevel;
-			job->build = prep == CACHE_DRAW;
-		}
-		D_CalcGradients (pface);
-
-		if (s->insubmodel)
-		{
-		//
-		// restore the old drawing state
-		// FIXME: we don't want to do this every time!
-		// TODO: speed up
-		//
-			VectorCopy (world_transformed_modelorg, transformed_modelorg);
-			VectorCopy (base_vpn, vpn);
-			VectorCopy (base_vup, vup);
-			VectorCopy (base_vright, vright);
-			VectorCopy (base_modelorg, modelorg);
-			R_TransformFrustum ();
-			currententity = &r_worldentity;
-		}
+		VectorCopy (world_transformed_modelorg, transformed_org);
+		VectorCopy (vright, right);
+		VectorCopy (vup, up);
+		VectorCopy (vpn, forward);
 	}
 
-	job->map = D_SpanTexmap ();
-	return prep != CACHE_TAKEN;
+	if (s->flags & SURF_DRAWTURB)
+	{
+		mip = 0;
+		job->draw = DS_TURB;
+		job->turb = (byte *)pface->texinfo->texture + pface->texinfo->texture->offsets[0];
+		job->turb30 = R_TextureOverride (pface->texinfo->texture, 0);
+	}
+	else
+	{
+		mip = D_MipLevelForScale (s->nearzi * scale_for_mip * pface->texinfo->mipadjust);
+		mip = D_SurfaceMipLevel (pface, mip);
+		job->draw = DS_CACHED;
+		job->face = pface;
+		job->miplevel = mip;
+	}
+	D_FaceTexmap (&job->map, pface, mip, transformed_org, right, up, forward);
+}
+
+// D_PREPARE_JOBS of the jobs prepared
+static void D_PrepareJobs (void *ctx, int index)
+{
+	int		i, end;
+
+	(void)ctx;
+	end = (index + 1) * D_PREPARE_JOBS < d_numjobs ? (index + 1) * D_PREPARE_JOBS : d_numjobs;
+	for (i = index * D_PREPARE_JOBS ; i<end ; i++)
+		D_PrepareJob (&d_jobs[i], d_drawn[i]);
 }
 
 // a job's block drawn (D_PrepareCacheSurface)
@@ -360,31 +382,31 @@ static void D_DrawJob (void *ctx, int index)
 ==============
 D_DrawBatch
 
-The prepared surfaces: their blocks, then their spans
+The jobs from first to end, a batch: their blocks, then their spans
 ==============
 */
-static void D_DrawBatch (void)
+static void D_DrawBatch (int first, int end)
 {
 	double	prof;
 	int		i, numbuilds, texels;
 
 	numbuilds = 0;
-	for (i=0 ; i<d_numjobs ; i++)
+	for (i=first ; i<end ; i++)
 		if (d_jobs[i].build)
 			d_builds[numbuilds++] = i;
 	prof = R_ProfStart ();
 	Sys_Parallel (numbuilds, D_BuildJob, d_builds);
 	R_ProfEnd (PROF_SURFCACHE, prof);
-	Sys_Parallel (d_numjobs, D_DrawJob, d_jobs);
+	Sys_Parallel (end - first, D_DrawJob, d_jobs + first);
 
 	texels = 0;
-	for (i=0 ; i<d_numjobs ; i++)
+	for (i=first ; i<end ; i++)
 		texels += d_jobs[i].texels;
 	R_ProfCount (PROFN_TEXELS, texels);
 	R_ProfCount (PROFN_BATCHES, 1);
-	d_numjobs = 0;
 	D_BeginSurfaceBatch ();
 }
+
 
 /*
 ==============
@@ -397,6 +419,9 @@ void D_DrawSurfaces (rband_t *bands, int numbands)
 {
 	surf_t			*s;
 	rband_t			*b;
+	dsjob_t			*job;
+	cacheprep_t		prep;
+	int				i, first;
 	double			prof = R_ProfStart ();
 
 	currententity = &r_worldentity;
@@ -423,7 +448,8 @@ void D_DrawSurfaces (rband_t *bands, int numbands)
 		return;
 	}
 
-	D_BeginSurfaceBatch ();
+// the surfaces with spans, and their jobs prepared
+	d_numjobs = 0;
 	for (b = bands ; b<bands + numbands ; b++)
 	{
 		for (s = &b->surfaces[1] ; s<b->surface_p ; s++)
@@ -431,18 +457,39 @@ void D_DrawSurfaces (rband_t *bands, int numbands)
 			if (!s->spans)
 				continue;
 
-			r_drawnpolycount++;
 			if (d_numjobs == d_maxjobs)
 			{
 				d_maxjobs = d_maxjobs ? d_maxjobs * 2 : 256;
 				d_jobs = Mem_Realloc (d_jobs, (size_t)d_maxjobs * sizeof(*d_jobs));
+				d_drawn = Mem_Realloc (d_drawn, (size_t)d_maxjobs * sizeof(*d_drawn));
 				d_builds = Mem_Realloc (d_builds, (size_t)d_maxjobs * sizeof(*d_builds));
 			}
-			while (!D_PrepareSurface (s, &d_jobs[d_numjobs]))
-				D_DrawBatch ();
-			d_numjobs++;
+			if ((s->flags & SURF_DRAWSKY) && !r_skyfaces && !r_skymade)
+				R_MakeSky ();
+			d_drawn[d_numjobs++] = s;
 		}
 	}
-	D_DrawBatch ();
+	r_drawnpolycount += d_numjobs;
+	Sys_Parallel ((d_numjobs + D_PREPARE_JOBS - 1) / D_PREPARE_JOBS, D_PrepareJobs, NULL);
+
+// their cache blocks, in batches of jobs no two of which have the same block
+// or the room for one; a batch is drawn when a job's block is taken
+	D_BeginSurfaceBatch ();
+	first = 0;
+	for (i=0 ; i<d_numjobs ; i++)
+	{
+		job = &d_jobs[i];
+		if (job->draw != DS_CACHED)
+			continue;
+		currententity = job->entity;		// its texture's animation
+		while ((prep = D_PrepareCacheSurface (job->face, job->miplevel, &job->cache, &job->buildsurf)) == CACHE_TAKEN)
+		{
+			D_DrawBatch (first, i);
+			first = i;
+		}
+		job->build = prep == CACHE_DRAW;
+	}
+	currententity = &r_worldentity;
+	D_DrawBatch (first, d_numjobs);
 	R_ProfEnd (PROF_DRAW, prof);
 }

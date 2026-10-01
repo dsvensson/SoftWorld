@@ -187,6 +187,7 @@ void R_DrawRings (void);		// r_scene's, r_ring.c
 void R_DrawAliasEntity (void);
 void R_RotateBmodel (void);
 void R_TransformFrustum (void);
+void R_EntityViewVectors (const entity_t *ent, vec3_t right, vec3_t up, vec3_t forward);
 
 void R_LightDataInit (void);
 void R_LoadLightData (model_t *mod, bspfile_t *bsp);
