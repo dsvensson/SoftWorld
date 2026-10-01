@@ -1,11 +1,22 @@
 // vid_d3d11.c -- Windows video backend: the main window and a DXGI flip-model swapchain
 // that presents the software renderer's framebuffer through Direct3D 11.
 //
-// The frame is uploaded as R10G10B10A2 (vid.h: SDR white at 512) and drawn by
-// present.hlsl into the letterboxed viewport (vid_common.c has the fit and the
-// constants). The swapchain is SDR (B8G8R8A8) or, when the display the window is
-// on runs in HDR mode, scRGB (linear R16G16B16A16_FLOAT). Which one is decided
-// again when the window moves or the display settings change.
+// The renderer draws into memory the GPU copies from, as vid_vulkan.c has it on a
+// GPU of its own memory: each layer (the 3D view, R10G10B10A2 as vid.h's pixels
+// are, and its 2D, RGBA8) is a staging texture, cached system memory the CPU
+// reads and writes, mapped while it is drawn in. At present it is unmapped and the
+// GPU copies it into the texture present.hlsl reads, which lays the layers into
+// the letterboxed viewport (vid_common.c has the fit and the constants); the CPU
+// copies nothing.
+//
+// The GPU copies a layer after VID_Update has returned, so there are two of each,
+// as vid_vulkan.c and vid_metal.m have them: the view is drawn into them in turn,
+// and the 2D goes to the one not shown when it is drawn again. Mapping a layer
+// waits for the GPU's copy of it.
+//
+// The swapchain is SDR (B8G8R8A8) or, when the display the window is on runs in
+// HDR mode, scRGB (linear R16G16B16A16_FLOAT). Which one is decided again when
+// the window moves or the display settings change.
 
 #include "args.h"
 #include "cmd.h"
@@ -14,7 +25,6 @@
 #include "sys.h"
 #include "client.h"
 #include "keys.h"
-#include "simd.h"
 #include "sound.h"
 #include "vid_common.h"
 #include "win_local.h"
@@ -29,6 +39,17 @@
 
 HWND		mainwindow;
 
+#define VID_SLOTS		2		// frames in flight at most, and so view layers
+
+// a layer the renderer draws in: a staging texture, mapped while it is drawn
+// in or read, which the GPU copies into the texture the shader reads
+typedef struct
+{
+	ID3D11Texture2D	*staging;
+	void			*data;		// while mapped
+	UINT			pitch;		// bytes from one row to the next
+} vid_layer_t;
+
 static IDXGIFactory2			*d3d_factory;
 static ID3D11Device				*d3d_device;
 static ID3D11DeviceContext		*d3d_context;
@@ -36,9 +57,9 @@ static IDXGISwapChain1			*d3d_swapchain;
 static IDXGISwapChain2			*d3d_swapchain2;	// the same, for the frame latency
 static UINT						d3d_latency;		// frames queued at most
 static ID3D11RenderTargetView	*d3d_rtv;
-static ID3D11Texture2D			*d3d_frame;
+static ID3D11Texture2D			*d3d_frame;			// the view the shader reads
 static ID3D11ShaderResourceView	*d3d_frame_srv;
-static ID3D11Texture2D			*d3d_hud;			// vid.hud, uploaded when it changes
+static ID3D11Texture2D			*d3d_hud;			// and the 2D, copied when it changes
 static ID3D11ShaderResourceView	*d3d_hud_srv;
 static ID3D11VertexShader		*d3d_vs;
 static ID3D11PixelShader		*d3d_ps;
@@ -48,6 +69,13 @@ static HANDLE					d3d_waitable;		// signaled when a frame may be queued
 static char						d3d_gpuname[128];	// the adapter's name
 static bool						d3d_allow_tearing;
 static UINT						d3d_swapflags;
+
+static vid_layer_t	vid_views[VID_SLOTS];	// the 3D view
+static vid_layer_t	vid_huds[2];			// the 2D
+static int			vid_slot;				// vid.buffer's view
+static int			vid_hudshown;			// the 2D shown; vid.hud is the other
+static int			vid_drawnslot;			// the view last drawn, presented or not
+static int			vid_drawnhud;			// and its 2D
 
 static bool		vid_initialized;
 static bool		vid_fullscreen;
@@ -405,18 +433,71 @@ static void VID_CreateDevice (void)
 
 /*
 ================
-VID_CreateFrameTexture
+VID_MapLayer
 
-The texture the software framebuffer is uploaded into every frame, and the
-one its 2D layer is uploaded into when it changes.
+The layer for the CPU to draw in or read, once the GPU has copied it
 ================
 */
-static void VID_CreateFrameTexture (int width, int height)
+static void *VID_MapLayer (vid_layer_t *layer)
 {
+	D3D11_MAPPED_SUBRESOURCE	mapped;
+
+	if (!layer->data)
+	{
+		VID_CheckHR (ID3D11DeviceContext_Map (d3d_context, (ID3D11Resource *)layer->staging, 0, D3D11_MAP_READ_WRITE,
+			0, &mapped), "ID3D11DeviceContext::Map");
+		layer->data = mapped.pData;
+		layer->pitch = mapped.RowPitch;
+	}
+	return layer->data;
+}
+
+// the layer into the texture the shader reads, copied by the GPU
+static void VID_CopyLayer (vid_layer_t *layer, ID3D11Texture2D *texture)
+{
+	if (layer->data)
+	{
+		ID3D11DeviceContext_Unmap (d3d_context, (ID3D11Resource *)layer->staging, 0);
+		layer->data = NULL;
+	}
+	ID3D11DeviceContext_CopyResource (d3d_context, (ID3D11Resource *)texture, (ID3D11Resource *)layer->staging);
+}
+
+static void VID_FreeLayer (vid_layer_t *layer)
+{
+	if (layer->data)
+		ID3D11DeviceContext_Unmap (d3d_context, (ID3D11Resource *)layer->staging, 0);
+	VID_RELEASE (layer->staging);
+	layer->data = NULL;
+}
+
+static void VID_FreeLayers (void)
+{
+	int		i;
+
+	for (i = 0 ; i < VID_SLOTS ; i++)
+		VID_FreeLayer (&vid_views[i]);
+	for (i = 0 ; i < 2 ; i++)
+		VID_FreeLayer (&vid_huds[i]);
 	VID_RELEASE (d3d_frame_srv);
 	VID_RELEASE (d3d_frame);
 	VID_RELEASE (d3d_hud_srv);
 	VID_RELEASE (d3d_hud);
+}
+
+/*
+================
+VID_CreateLayers
+
+The layers of a frame size: the staging textures the renderer draws in, and
+the textures the shader reads, which the GPU copies them into
+================
+*/
+static void VID_CreateLayers (int width, int height)
+{
+	int		i;
+
+	VID_FreeLayers ();
 
 	D3D11_TEXTURE2D_DESC desc = {
 		.Width = (UINT)width,
@@ -425,23 +506,30 @@ static void VID_CreateFrameTexture (int width, int height)
 		.ArraySize = 1,
 		.Format = DXGI_FORMAT_R10G10B10A2_UNORM,
 		.SampleDesc = {.Count = 1},
-		.Usage = D3D11_USAGE_DYNAMIC,
+		.Usage = D3D11_USAGE_DEFAULT,
 		.BindFlags = D3D11_BIND_SHADER_RESOURCE,
-		.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE,
 	};
-	VID_CheckHR (ID3D11Device_CreateTexture2D (d3d_device, &desc, NULL, &d3d_frame),
-		"ID3D11Device::CreateTexture2D");
+	VID_CheckHR (ID3D11Device_CreateTexture2D (d3d_device, &desc, NULL, &d3d_frame), "ID3D11Device::CreateTexture2D");
 	VID_CheckHR (ID3D11Device_CreateShaderResourceView (d3d_device, (ID3D11Resource *)d3d_frame, NULL,
 		&d3d_frame_srv), "ID3D11Device::CreateShaderResourceView");
-
-	// kept on the GPU between uploads
 	desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.CPUAccessFlags = 0;
-	VID_CheckHR (ID3D11Device_CreateTexture2D (d3d_device, &desc, NULL, &d3d_hud),
-		"ID3D11Device::CreateTexture2D");
+	VID_CheckHR (ID3D11Device_CreateTexture2D (d3d_device, &desc, NULL, &d3d_hud), "ID3D11Device::CreateTexture2D");
 	VID_CheckHR (ID3D11Device_CreateShaderResourceView (d3d_device, (ID3D11Resource *)d3d_hud, NULL,
 		&d3d_hud_srv), "ID3D11Device::CreateShaderResourceView");
+
+	// read as well as written, so the driver keeps them in memory the CPU caches:
+	// the renderer reads what it drew (blending, the underwater warp, screenshots)
+	desc.Usage = D3D11_USAGE_STAGING;
+	desc.BindFlags = 0;
+	desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ | D3D11_CPU_ACCESS_WRITE;
+	desc.Format = DXGI_FORMAT_R10G10B10A2_UNORM;
+	for (i = 0 ; i < VID_SLOTS ; i++)
+		VID_CheckHR (ID3D11Device_CreateTexture2D (d3d_device, &desc, NULL, &vid_views[i].staging),
+			"ID3D11Device::CreateTexture2D");
+	desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	for (i = 0 ; i < 2 ; i++)
+		VID_CheckHR (ID3D11Device_CreateTexture2D (d3d_device, &desc, NULL, &vid_huds[i].staging),
+			"ID3D11Device::CreateTexture2D");
 }
 
 /*
@@ -451,21 +539,6 @@ WINDOW
 
 ===============================================================================
 */
-
-/*
-================
-VID_AllocBuffers
-
-The framebuffer and its 2D layer for a frame size
-================
-*/
-static void VID_AllocBuffers (const vid_frame_t *frame)
-{
-	Mem_Free (vid.buffer);
-	vid.buffer = Mem_Alloc ((size_t)frame->width * frame->height * sizeof(pixel_t));
-	Mem_Free (vid.hud);
-	vid.hud = Mem_Calloc ((size_t)frame->width * frame->height, sizeof(hudpixel_t));
-}
 
 /*
 ================
@@ -596,10 +669,9 @@ void VID_Shutdown (void)
 	VID_RELEASE (d3d_sampler);
 	VID_RELEASE (d3d_ps);
 	VID_RELEASE (d3d_vs);
-	VID_RELEASE (d3d_frame_srv);
-	VID_RELEASE (d3d_frame);
-	VID_RELEASE (d3d_hud_srv);
-	VID_RELEASE (d3d_hud);
+	VID_FreeLayers ();
+	vid.buffer = NULL;
+	vid.hud = NULL;
 	VID_RELEASE (d3d_rtv);
 	VID_RELEASE (d3d_swapchain2);
 	VID_RELEASE (d3d_swapchain);
@@ -612,10 +684,11 @@ void VID_Shutdown (void)
 	mainwindow = NULL;
 }
 
+// the frame last drawn, whether it was presented or not (screenshots, dumps)
 void VID_ShownLayers (const pixel_t **frame, const hudpixel_t **hud)
 {
-	*frame = vid.buffer;
-	*hud = vid.hud;
+	*frame = VID_MapLayer (&vid_views[vid_drawnslot]);
+	*hud = VID_MapLayer (&vid_huds[vid_drawnhud]);
 }
 
 /*
@@ -628,26 +701,39 @@ A new frame for the window; the next frame is drawn at its size
 static void VID_SetScale (void)
 {
 	vid_frame_t	frame = VID_WantedFrame (client_width, client_height);
+	int			i;
 
-	VID_CreateFrameTexture (frame.width, frame.height);
-	VID_AllocBuffers (&frame);
-	VID_SetFrame (&frame, (unsigned)frame.width);
+	VID_CreateLayers (frame.width, frame.height);
+	for (i = 0 ; i < VID_SLOTS ; i++)
+		memset (VID_MapLayer (&vid_views[i]), 0, (size_t)vid_views[i].pitch * (size_t)frame.height);
+	for (i = 0 ; i < 2 ; i++)
+		memset (VID_MapLayer (&vid_huds[i]), 0, (size_t)vid_huds[i].pitch * (size_t)frame.height);
+	vid_slot = vid_drawnslot = 0;
+	vid_hudshown = vid_drawnhud = 0;
+	vid.buffer = vid_views[vid_slot].data;
+	vid.hud = vid_huds[vid_hudshown ^ 1].data;
+
+	// both layers are 32 bits a pixel, and the renderer takes one pitch for both
+	if (vid_views[vid_slot].pitch != vid_huds[vid_hudshown ^ 1].pitch || vid_views[vid_slot].pitch % sizeof(pixel_t))
+		Sys_Error ("The frame's layers are laid out differently (%u and %u bytes a row)",
+			vid_views[vid_slot].pitch, vid_huds[vid_hudshown ^ 1].pitch);
+	VID_SetFrame (&frame, vid_views[vid_slot].pitch / (unsigned)sizeof(pixel_t));
 }
 
 /*
 ================
 VID_Update
 
-Uploads the whole frame, whose RGB30 pixels are the texture's format, and
-presents it letterboxed into the window.
+Presents the frame the renderer drew, letterboxed into the window, and hands
+it the layers of the next once the GPU has copied what they held
 ================
 */
 void VID_Update (void)
 {
-	D3D11_MAPPED_SUBRESOURCE	mapped;
 	vid_present_constants_t		constants;
 	vid_fit_t					fit;
 	UINT						flags = 0, interval, latency;
+	int							hud;
 
 	if (!vid_initialized || Minimized)
 		return;
@@ -670,18 +756,14 @@ void VID_Update (void)
 	// room for this frame in the queue
 	WaitForSingleObjectEx (d3d_waitable, 100, TRUE);
 
-	if (FAILED (ID3D11DeviceContext_Map (d3d_context, (ID3D11Resource *)d3d_frame, 0, D3D11_MAP_WRITE_DISCARD, 0,
-			&mapped)))
-		return;
-	simd_copy_stream (mapped.pData, mapped.RowPitch, vid.buffer, vid.rowpixels * sizeof(pixel_t),
-		vid.width * sizeof(pixel_t), (int)vid.height);
-	ID3D11DeviceContext_Unmap (d3d_context, (ID3D11Resource *)d3d_frame, 0);
+	// the frame drawn, and the 2D if it was drawn again, to the textures the shader reads
+	hud = vid.huddirty ? vid_hudshown ^ 1 : vid_hudshown;
+	VID_CopyLayer (&vid_views[vid_slot], d3d_frame);
 	if (vid.huddirty)
-	{
-		ID3D11DeviceContext_UpdateSubresource (d3d_context, (ID3D11Resource *)d3d_hud, 0, NULL, vid.hud,
-			vid.rowpixels * sizeof(hudpixel_t), 0);
-		vid.huddirty = false;
-	}
+		VID_CopyLayer (&vid_huds[hud], d3d_hud);
+	vid_drawnslot = vid_slot;
+	vid_drawnhud = vid_hudshown = hud;
+	vid.huddirty = false;
 
 	fit = VID_Fit (client_width, client_height);
 	D3D11_VIEWPORT viewport = {
@@ -714,6 +796,12 @@ void VID_Update (void)
 	if (!interval && d3d_allow_tearing)
 		flags |= DXGI_PRESENT_ALLOW_TEARING;
 	IDXGISwapChain1_Present (d3d_swapchain, interval, flags);
+
+	// the next frame is drawn in the other view, and a new 2D in the one not
+	// shown, once the GPU has copied what they held
+	vid_slot ^= 1;
+	vid.buffer = VID_MapLayer (&vid_views[vid_slot]);
+	vid.hud = VID_MapLayer (&vid_huds[vid_hudshown ^ 1]);
 
 	// the window was resized, or the video settings changed
 	if (VID_NeedsResize (client_width, client_height))
