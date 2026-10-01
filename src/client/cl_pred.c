@@ -87,6 +87,7 @@ void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u)
 	VectorCopy (cl.pmove.angles, to->viewangles);
 	VectorCopy (cl.pmove.velocity, to->velocity);
 	to->onground = cl.pmove.onground;
+	to->waterlevel = cl.pmove.waterlevel;
 
 	to->weaponframe = from->weaponframe;
 }
@@ -135,6 +136,7 @@ static void CL_PredictOrigin (void)
 		CL_PredictUsercmd (&from->playerstate[cl.playernum]
 			, &to->playerstate[cl.playernum], &to->cmd);
 		cl.onground = to->playerstate[cl.playernum].onground;
+		cl.waterlevel = to->playerstate[cl.playernum].waterlevel;
 		if (to->senttime >= cl.time)
 			break;
 		from = to;

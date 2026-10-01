@@ -62,7 +62,7 @@ static float	maxgroundspeed;
 static cvar_t	cl_rollspeed = {.name = "cl_rollspeed", .string = "200",
 	.description = "Sideways speed, in units a second, at which the view rolls all of cl_rollangle; "
 		"slower rolls less."};
-static cvar_t	cl_rollangle = {.name = "cl_rollangle", .string = "2.0",
+static cvar_t	cl_rollangle = {.name = "cl_rollangle", .string = "0",
 	.description = "How far the view rolls moving sideways, in degrees; 0 is none. "
 		"Players' models roll 4 times as far."};
 

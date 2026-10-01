@@ -26,6 +26,12 @@ static cvar_t	cl_nodelta = {.name = "cl_nodelta", .string = "0",
 	.values = (const cvar_value_t[]){{"0", "Changes against the last update received"},
 		{"1", "Whole updates every packet"}, {0}}};
 
+static cvar_t	cl_smartjump = {.name = "cl_smartjump", .string = "1", .archive = true,
+	.description = "+jump moves up, as +moveup does, while swimming, flying, or flying a spectator's or "
+		"an MVD's camera (ezQuake).",
+	.values = (const cvar_value_t[]){{"0", "+jump always jumps"},
+		{"1", "+jump moves up where there's nothing to jump from"}, {0}}};
+
 /*
 ===============================================================================
 
@@ -166,8 +172,44 @@ static void IN_AttackUp(void) {KeyUp(&in_attack);}
 
 static void IN_UseDown (void) {KeyDown(&in_use);}
 static void IN_UseUp (void) {KeyUp(&in_use);}
-static void IN_JumpDown (void) {KeyDown(&in_jump);}
-static void IN_JumpUp (void) {KeyUp(&in_jump);}
+/*
+===============
+IN_JumpDown
+
+With cl_smartjump, as ezQuake: +jump goes up where there's nothing to jump
+from, swimming, flying, or a spectator's or an MVD's free camera
+===============
+*/
+static void IN_JumpDown (void)
+{
+	bool	up;
+	int		pmt;
+
+	if (cls.state != ca_active || !cl_smartjump.value)
+		up = false;
+	else if (cls.mvdplayback)
+		up = CL_MVDFlying ();	// following, jump goes to the next player
+	else if (cls.demoplayback)
+		up = false;
+	else if (cl.spectator)
+		up = Cam_TrackNum () == -1;
+	else if (cl.stats[STAT_HEALTH] <= 0)
+		up = false;				// jump respawns
+	else if (cl.validsequence && ((pmt = cl.frames[cl.validsequence & UPDATE_MASK].playerstate[cl.playernum].pm_type)
+		== PM_FLY || pmt == PM_SPECTATOR || pmt == PM_OLD_SPECTATOR))
+		up = true;
+	else
+		up = cl.waterlevel >= 2;
+
+	KeyDown (up ? &in_up : &in_jump);
+}
+
+static void IN_JumpUp (void)
+{
+	// whichever the key went down as; the other ignores a key it doesn't hold
+	KeyUp (&in_up);
+	KeyUp (&in_jump);
+}
 
 static void IN_Impulse (void) {in_impulse=Q_atoi(Cmd_Argv(1));}
 
@@ -230,12 +272,15 @@ static float CL_KeyState (kbutton_t *key)
 
 //==========================================================================
 
-cvar_t	cl_upspeed = {.name = "cl_upspeed", .string = "200",
+// moving runs by default, as ezQuake's; the menu's Always Run sets 200 to walk
+cvar_t	cl_upspeed = {.name = "cl_upspeed", .string = "400",
 	.description = "Speed of +moveup and +movedown, swimming or flying, in units a second."};
-cvar_t	cl_forwardspeed = {.name = "cl_forwardspeed", .string = "200", .archive = true,
-	.description = "Speed of +forward and the left stick, in units a second; the server caps it at sv_maxspeed."};
-cvar_t	cl_backspeed = {.name = "cl_backspeed", .string = "200", .archive = true,
-	.description = "Speed of +back, in units a second; the server caps it at sv_maxspeed."};
+cvar_t	cl_forwardspeed = {.name = "cl_forwardspeed", .string = "400", .archive = true,
+	.description = "Speed of +forward and the left stick, in units a second; the server caps it at sv_maxspeed. "
+		"200 walks unless +speed is held."};
+cvar_t	cl_backspeed = {.name = "cl_backspeed", .string = "400", .archive = true,
+	.description = "Speed of +back, in units a second; the server caps it at sv_maxspeed. "
+		"200 walks unless +speed is held."};
 cvar_t	cl_sidespeed = {.name = "cl_sidespeed", .string = "350",
 	.description = "Speed of strafing, by key or the left stick, in units a second; the server caps it at sv_maxspeed."};
 
@@ -733,7 +778,8 @@ void CL_InitInput (void)
 	Cmd_AddCommand ("+use", IN_UseDown, "Does nothing: QuakeWorld sends no use button; kept for configs that bind it.");
 	Cmd_AddCommand ("-use", IN_UseUp, "Releases +use.");
 	Cmd_AddCommand ("+jump", IN_JumpDown,
-		"Jumps or swims up while held; as a spectator following a player, and in an MVD, goes to the next player.");
+		"Jumps or swims up while held; as a spectator following a player, and in an MVD, goes to the next player. "
+		"With cl_smartjump it moves up instead where there's nothing to jump from.");
 	Cmd_AddCommand ("-jump", IN_JumpUp, "Releases +jump.");
 	Cmd_AddCommand ("impulse", IN_Impulse,
 		"Sends an impulse to the game with the next command, such as a weapon to switch to. Usage: impulse <number>");
@@ -744,6 +790,7 @@ void CL_InitInput (void)
 	Cmd_AddCommand ("-mlook", IN_MLookUp, "Releases +mlook.");
 
 	Cvar_RegisterVariable (&cl_nodelta);
+	Cvar_RegisterVariable (&cl_smartjump);
 	Cvar_RegisterVariable (&m_filter);
 	Cvar_RegisterVariable (&freelook);
 	Cvar_RegisterVariable (&joy_yawspeed);

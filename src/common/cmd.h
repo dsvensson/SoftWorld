@@ -42,11 +42,11 @@ The game starts with a Cbuf_AddText ("exec quake.rc\n"); Cbuf_Execute ();
 void Cbuf_Init (void);
 // allocates an initial text buffer that will grow as needed
 
-void Cbuf_AddText (char *text);
+void Cbuf_AddText (const char *text);
 // as new commands are generated from the console or keybindings,
 // the text is added to the end of the command buffer.
 
-void Cbuf_InsertText (char *text);
+void Cbuf_InsertText (const char *text);
 // when a command wants to issue other commands immediately, the text is
 // inserted at the beginning of the buffer, before any remaining unexecuted
 // commands.
@@ -121,5 +121,9 @@ void	Cmd_SetForwardHandler (void (*forward)(void));
 // adds the current command line as a clc_stringcmd to the client message.
 // things like godmode, noclip, etc, are commands directed to the server,
 // so when they are typed in at the console, they will need to be forwarded.
+
+void	Cmd_SetExecSuffix (const char *file, const char *text);
+// text run right after the file each time exec runs it, as the client puts
+// its own binds over id's default.cfg; text is referenced, not copied
 
 void Cmd_StuffCmds_f (void);

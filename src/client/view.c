@@ -32,7 +32,7 @@ when crossing a water boudnary.
 
 
 
-static cvar_t	cl_bob = {.name = "cl_bob", .string = "0.02",
+static cvar_t	cl_bob = {.name = "cl_bob", .string = "0",
 	.description = "How far the view bobs while moving on the ground, times the speed, at most 4 units up "
 		"and 7 down; 0 is none."};
 static cvar_t	cl_bobcycle = {.name = "cl_bobcycle", .string = "0.6",
@@ -113,9 +113,10 @@ static float V_CalcBob (void)
 {
 	static	double	bobtime;
 	static float	bob;
-	float	cycle;
-	
-	if (cl.spectator)
+	float	cycle, up;
+
+	// off, or no cycle to divide by
+	if (cl.spectator || !cl_bob.value || cl_bobcycle.value <= 0)
 		return 0;
 
 	// the local player's ground: cl.pmove holds whichever player moved last,
@@ -124,12 +125,13 @@ static float V_CalcBob (void)
 		return bob;		// just use old value
 
 	bobtime += cls.frametime;
-	cycle = (float)(bobtime - (int)(bobtime/cl_bobcycle.value)*cl_bobcycle.value);
-	cycle /= cl_bobcycle.value;
-	if (cycle < cl_bobup.value)
-		cycle = (float)(Q_PI * cycle / cl_bobup.value);
+	cycle = (float)(fmod (bobtime, cl_bobcycle.value) / cl_bobcycle.value);
+	// the rising part kept off 0 and 1, which the halves divide by
+	up = cl_bobup.value < 0.01f ? 0.01f : cl_bobup.value > 0.99f ? 0.99f : cl_bobup.value;
+	if (cycle < up)
+		cycle = (float)(Q_PI * cycle / up);
 	else
-		cycle = (float)(Q_PI + Q_PI*(cycle-cl_bobup.value)/(1.0f - cl_bobup.value));
+		cycle = (float)(Q_PI + Q_PI*(cycle-up)/(1.0f - up));
 
 // bob is proportional to simulated velocity in the xy plane
 // (don't count Z, or jumping messes it up)

@@ -66,6 +66,7 @@ typedef struct
 
 	float		waterjumptime;
 	bool		onground;		// the server's with Z_EXT_PF_ONGROUND, else predicted
+	int			waterlevel;		// predicted: 0 dry .. 3 head under
 	bool		jump_held;		// the server's with Z_EXT_PM_TYPE, else predicted
 	int			jump_msec;
 	int			pm_type;		// pmtype_t: the server's with Z_EXT_PM_TYPE, else a guess
@@ -337,6 +338,7 @@ typedef struct
 
 	int			cmdtime_msec;	// sum of the msec of every command sent
 	bool		onground;		// predicted
+	int			waterlevel;		// predicted, for cl_smartjump
 	playermove_t	pmove;		// the prediction's player movement; physents are set up by cl_ents.c
 
 	entity_state_t	baselines[MAX_EDICTS];

@@ -1155,6 +1155,16 @@ void Key_Init (void)
 	Cmd_AddCommand ("unbind",Key_Unbind_f, "Removes a key's binding. Usage: unbind <key>");
 	Cmd_AddCommand ("unbindall",Key_Unbindall_f, "Removes every key's binding.");
 
+	// over id's default.cfg (a and z look, d and c up and down): WASD moves,
+	// in water space swims up and c down
+	Cmd_SetExecSuffix ("default.cfg",
+		"bind w +forward\n"
+		"bind s +back\n"
+		"bind a +moveleft\n"
+		"bind d +moveright\n"
+		"bind c +movedown\n"
+		"bind SPACE +jump\n"
+		"bind MOUSE1 +attack\n");
 
 }
 

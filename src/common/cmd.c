@@ -47,6 +47,8 @@ static cmdalias_t	*cmd_alias;
 
 static bool	cmd_wait;
 
+static const char	*cmd_suffixfile, *cmd_suffixtext;	// Cmd_SetExecSuffix
+
 cvar_t cl_warncmd = {.name = "cl_warncmd", .string = "0",
 	.description = "Warns of unknown commands, and names each config file exec runs.",
 	.values = (const cvar_value_t[]){{"0", "Quiet"}, {"1", "Warnings and exec's files printed"}, {0}}};
@@ -95,7 +97,7 @@ Cbuf_AddText
 Adds command text at the end of the buffer
 ============
 */
-void Cbuf_AddText (char *text)
+void Cbuf_AddText (const char *text)
 {
 	int		l;
 	
@@ -120,7 +122,7 @@ Adds a \n to the text
 FIXME: actually change the command buffer to do less copying
 ============
 */
-void Cbuf_InsertText (char *text)
+void Cbuf_InsertText (const char *text)
 {
 	char	*temp;
 	int		templen;
@@ -331,9 +333,23 @@ static void Cmd_Exec_f (void)
 	}
 	if (!Cvar_Command () && (cl_warncmd.value || developer.value))
 		Con_Printf ("execing %s\n",Cmd_Argv(1));
-	
+
+	// inserted first, so it runs after the file
+	if (cmd_suffixfile && !Q_strcasecmp (Cmd_Argv(1), cmd_suffixfile))
+		Cbuf_InsertText (cmd_suffixtext);
 	Cbuf_InsertText (f);
 	Mem_Free (f);
+}
+
+/*
+===============
+Cmd_SetExecSuffix
+===============
+*/
+void Cmd_SetExecSuffix (const char *file, const char *text)
+{
+	cmd_suffixfile = file;
+	cmd_suffixtext = text;
 }
 
 
