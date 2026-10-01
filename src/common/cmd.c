@@ -47,7 +47,7 @@ static cmdalias_t	*cmd_alias;
 
 static bool	cmd_wait;
 
-static const char	*cmd_suffixfile, *cmd_suffixtext;	// Cmd_SetExecSuffix
+static const char	*cmd_suffixfile, *cmd_suffixpak, *cmd_suffixtext;	// Cmd_SetExecSuffix
 
 cvar_t cl_warncmd = {.name = "cl_warncmd", .string = "0", .noreset = true,	// 1 once the configs ran
 	.description = "Warns of unknown commands, and names each config file exec runs.",
@@ -318,6 +318,7 @@ Cmd_Exec_f
 static void Cmd_Exec_f (void)
 {
 	char	*f;
+	char	pak[MAX_OSPATH];
 
 	if (Cmd_Argc () != 2)
 	{
@@ -336,7 +337,11 @@ static void Cmd_Exec_f (void)
 
 	// inserted first, so it runs after the file
 	if (cmd_suffixfile && !Q_strcasecmp (Cmd_Argv(1), cmd_suffixfile))
-		Cbuf_InsertText (cmd_suffixtext);
+	{
+		snprintf (pak, sizeof(pak), "%s/%s", FS_BaseDir (), cmd_suffixpak);
+		if (!Q_strcasecmp (FS_FileSource (), pak))
+			Cbuf_InsertText (cmd_suffixtext);
+	}
 	Cbuf_InsertText (f);
 	Mem_Free (f);
 }
@@ -346,9 +351,10 @@ static void Cmd_Exec_f (void)
 Cmd_SetExecSuffix
 ===============
 */
-void Cmd_SetExecSuffix (const char *file, const char *text)
+void Cmd_SetExecSuffix (const char *file, const char *pak, const char *text)
 {
 	cmd_suffixfile = file;
+	cmd_suffixpak = pak;
 	cmd_suffixtext = text;
 }
 

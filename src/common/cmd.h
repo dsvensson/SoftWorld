@@ -122,8 +122,9 @@ void	Cmd_SetForwardHandler (void (*forward)(void));
 // things like godmode, noclip, etc, are commands directed to the server,
 // so when they are typed in at the console, they will need to be forwarded.
 
-void	Cmd_SetExecSuffix (const char *file, const char *text);
-// text run right after the file each time exec runs it, as the client puts
-// its own binds over id's default.cfg; text is referenced, not copied
+void	Cmd_SetExecSuffix (const char *file, const char *pak, const char *text);
+// text run right after the file each time exec runs it from that pak (under
+// the base directory), as the client puts its own binds over id's default.cfg
+// but not over a mod's; text is referenced, not copied
 
 void Cmd_StuffCmds_f (void);

@@ -371,6 +371,13 @@ Sets com_filesize and one of handle or file
 */
 int file_from_pak; // global indicating file came from pack file ZOID
 
+static char	com_filesource[MAX_OSPATH];	// the pak or directory the last file was found in
+
+const char *FS_FileSource (void)
+{
+	return com_filesource;
+}
+
 int COM_FOpenFile (const char *filename, FILE **file)
 {
 	searchpath_t	*search;
@@ -380,6 +387,7 @@ int COM_FOpenFile (const char *filename, FILE **file)
 	int			findtime;
 
 	file_from_pak = 0;
+	com_filesource[0] = 0;
 		
 //
 // search through the path, one element at a time
@@ -402,6 +410,7 @@ int COM_FOpenFile (const char *filename, FILE **file)
 					fseek (*file, pak->files[i].filepos, SEEK_SET);
 					com_filesize = pak->files[i].filelen;
 					file_from_pak = 1;
+					Q_strncpyz (com_filesource, pak->filename, sizeof(com_filesource));
 					return com_filesize;
 				}
 		}
@@ -427,6 +436,7 @@ int COM_FOpenFile (const char *filename, FILE **file)
 				continue;
 			}
 			Sys_Printf ("FindFile: %s\n",netpath);
+			Q_strncpyz (com_filesource, search->filename, sizeof(com_filesource));
 			return COM_filelength (*file);
 		}
 		

@@ -1155,15 +1155,42 @@ void Key_Init (void)
 	Cmd_AddCommand ("unbind",Key_Unbind_f, "Removes a key's binding. Usage: unbind <key>");
 	Cmd_AddCommand ("unbindall",Key_Unbindall_f, "Removes every key's binding.");
 
-	// over id's default.cfg (a and z look, d and c up and down): WASD moves,
-	// in water space swims up and c down
-	Cmd_SetExecSuffix ("default.cfg",
+	// this client's binds in place of the ones of id's default.cfg (its cvars
+	// and aliases stay), not of a mod's own: WASD moves, space jumps (and swims
+	// up), c swims down, the arrows play an MVD
+	Cmd_SetExecSuffix ("default.cfg", "id1/pak0.pak",
+		"unbindall\n"
 		"bind w +forward\n"
 		"bind s +back\n"
 		"bind a +moveleft\n"
 		"bind d +moveright\n"
 		"bind c +movedown\n"
+		"bind UPARROW \"demo_speed 1\"\n"
+		"bind DOWNARROW \"demo_speed 0\"\n"
+		"bind LEFTARROW \"demo_jump +10\"\n"
+		"bind RIGHTARROW \"demo_jump -10\"\n"
 		"bind SPACE +jump\n"
+		"bind TAB +showteamscores\n"
+		"bind 1 \"impulse 1\"\n"
+		"bind 2 \"impulse 2\"\n"
+		"bind 3 \"impulse 3\"\n"
+		"bind 4 \"impulse 4\"\n"
+		"bind 5 \"impulse 5\"\n"
+		"bind 6 \"impulse 6\"\n"
+		"bind 7 \"impulse 7\"\n"
+		"bind 8 \"impulse 8\"\n"
+		"bind F1 help\n"
+		"bind F4 menu_options\n"
+		"bind F5 menu_multiplayer\n"
+		"bind F10 quit\n"
+		"bind F12 screenshot\n"
+		"bind ESCAPE togglemenu\n"
+		"bind ~ toggleconsole\n"
+		"bind ` toggleconsole\n"
+		"bind ENTER messagemode\n"
+		"bind + sizeup\n"
+		"bind = sizeup\n"
+		"bind - sizedown\n"
 		"bind MOUSE1 +attack\n");
 
 }

@@ -36,6 +36,10 @@ const char	*FS_BaseDir (void);	// the directory holding the game directories
 // loads a file into memory from Mem_Alloc (0-terminated); NULL if missing
 byte	*FS_LoadFile (const char *path, int *length);
 
+// the pak (<basedir>/id1/pak0.pak) or directory the last file opened was found
+// in; empty when it wasn't
+const char	*FS_FileSource (void);
+
 // sees each file FS_LoadFile loads, as it is loaded (f_modified's checks)
 void	FS_SetLoadHook (void (*hook) (const char *path, const byte *data, int length));
 
