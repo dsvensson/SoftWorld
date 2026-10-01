@@ -293,6 +293,30 @@ bool	Cvar_Command (void)
 
 /*
 ============
+Cvar_ResetAll_f
+
+Through Cvar_Set, as if each were typed, so the userinfo and the change hooks
+follow
+============
+*/
+void Cvar_ResetAll_f (void)
+{
+	cvar_t	*var;
+	int		n = 0;
+
+	for (var = cvar_vars ; var ; var = var->next)
+	{
+		if (var->serverinfo || var->noreset || !strcmp (var->string, var->defaultstring))
+			continue;
+		Cvar_Set (var->name, var->defaultstring);
+		n++;
+	}
+	Con_Printf ("%d variable%s set back to default\n", n, n == 1 ? "" : "s");
+}
+
+
+/*
+============
 Cvar_WriteVariables
 
 Writes lines containing "set variable value" for all variables

@@ -49,7 +49,7 @@ static bool	cmd_wait;
 
 static const char	*cmd_suffixfile, *cmd_suffixtext;	// Cmd_SetExecSuffix
 
-cvar_t cl_warncmd = {.name = "cl_warncmd", .string = "0",
+cvar_t cl_warncmd = {.name = "cl_warncmd", .string = "0", .noreset = true,	// 1 once the configs ran
 	.description = "Warns of unknown commands, and names each config file exec runs.",
 	.values = (const cvar_value_t[]){{"0", "Quiet"}, {"1", "Warnings and exec's files printed"}, {0}}};
 

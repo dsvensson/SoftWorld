@@ -37,7 +37,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 
 
-static cvar_t	registered = {.name = "registered", .string = "0",
+static cvar_t	registered = {.name = "registered", .string = "0", .noreset = true,
 	.description = "Whether the registered game's data (gfx/pop.lmp) was found; set at startup, read by the game code.",
 	.values = (const cvar_value_t[]){{"0", "Shareware data"}, {"1", "Registered data"}, {0}}};
 

@@ -79,6 +79,7 @@ typedef struct cvar_s
 	bool archive;		// set to true to cause it to be saved to vars.rc
 	bool userinfo;		// the client's userinfo carries it
 	bool serverinfo;	// the server's serverinfo carries it
+	bool noreset;		// the engine sets it, not the player: cfg_reset leaves it
 	const char	*description;		// what it does, for the console
 	const cvar_value_t	*values;	// what each value does, ended by {0}; or NULL
 	char	*defaultstring;			// the string it was registered with
@@ -120,6 +121,10 @@ bool Cvar_Command (void);
 // called by Cmd_ExecuteString when Cmd_Argv(0) doesn't match a known
 // command.  Returns true if the command was a variable reference that
 // was handled. (print or change)
+
+void	Cvar_ResetAll_f (void);
+// cfg_reset: every variable back to its default, but the serverinfo ones (the
+// game's settings, which ezQuake's leaves too) and the noreset ones
 
 void 	Cvar_WriteVariables (FILE *f);
 // Writes lines containing "set variable value" for all variables
