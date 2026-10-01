@@ -40,8 +40,8 @@ static cvar_t	cl_bobcycle = {.name = "cl_bobcycle", .string = "0.6",
 static cvar_t	cl_bobup = {.name = "cl_bobup", .string = "0.5",
 	.description = "The part of each bob, 0 to 1, the view spends rising."};
 
-static cvar_t	v_kicktime = {.name = "v_kicktime", .string = "0.5",
-	.description = "How long the view's kick from taking damage lasts, in seconds."};
+static cvar_t	v_kicktime = {.name = "v_kicktime", .string = "0",
+	.description = "How long the view's kick from taking damage lasts, in seconds; 0 is none."};
 static cvar_t	v_kickroll = {.name = "v_kickroll", .string = "0.6",
 	.description = "How far damage from the side rolls the view, times the damage; 0 is none."};
 static cvar_t	v_kickpitch = {.name = "v_kickpitch", .string = "0.6",
@@ -593,6 +593,9 @@ static void V_CalcViewRoll (void)
 	side = V_CalcRoll (cl.simangles, cl.simvel);
 	r_refdef.viewangles[ROLL] += side;
 
+	// off: no time to divide by, even in the middle of a kick
+	if (v_kicktime.value <= 0)
+		v_dmg_time = 0;
 	if (v_dmg_time > 0)
 	{
 		r_refdef.viewangles[ROLL] += v_dmg_time/v_kicktime.value*v_dmg_roll;

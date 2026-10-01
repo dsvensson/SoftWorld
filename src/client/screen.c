@@ -87,7 +87,7 @@ static cvar_t		scr_fov = {.name = "fov", .string = "90",	// 10 - 170
 	.description = "The horizontal field of view in degrees, 10 to 170, of the 320 wide layout; "
 		"a wider one sees more to the sides."};
 // the gun's own field of view, so it looks the same whatever fov is; 0 is fov's
-static cvar_t		r_viewmodel_fov = {.name = "r_viewmodel_fov", .string = "0", .archive = true,
+static cvar_t		r_viewmodel_fov = {.name = "r_viewmodel_fov", .string = "90", .archive = true,
 	.description = "The gun's own field of view in degrees, 10 to 170, so it looks the same whatever fov is; "
 		"0 is fov's."};
 static cvar_t		scr_conspeed = {.name = "scr_conspeed", .string = "300",
