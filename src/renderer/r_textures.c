@@ -179,13 +179,6 @@ its fullbright light (glow[0]) times r_fullbright_scale is their floor, as the
 palette's fullbrights have theirs (d_pal30_unlit)
 ===============
 */
-// a pixel's channel times d_glowscale, at most 1023
-static unsigned R_GlowChannel (unsigned c)
-{
-	c = c * (unsigned)d_glowscale >> 15;
-	return c < 1023 ? c : 1023;
-}
-
 static void R_LightLiquid (texture_t *tx)
 {
 	int		i;
@@ -200,8 +193,7 @@ static void R_LightLiquid (texture_t *tx)
 			tx->rgb[0][i] = tx->rgb[1][i];
 			continue;
 		}
-		g = RGB30 (R_GlowChannel (RGB30_R (g)), R_GlowChannel (RGB30_G (g)), R_GlowChannel (RGB30_B (g)));
-		tx->rgb[0][i] = R_LitColor (tx->rgb[1][i], g, LIGHT_ONE, LIGHT_ONE, LIGHT_ONE);
+		tx->rgb[0][i] = R_LitColor (tx->rgb[1][i], R_GlowPixel (g), LIGHT_ONE, LIGHT_ONE, LIGHT_ONE);
 	}
 }
 

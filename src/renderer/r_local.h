@@ -105,6 +105,7 @@ extern bool		d_fullbright[256];
 extern int		d_glowscale;				// as simd_litrow_rgb30 takes r_fullbright_scale
 extern pixel_t	d_pal30_unlit[256];			// what light doesn't reach: particles, sprites,
 extern bool		d_unlitfloors;				// liquids, sky (R_SetUnlitColors)
+extern pixel_t	d_pal30_particle[256];		// particles', the fire ramp glowing too
 double		R_SrgbToLinear (double c);
 unsigned	R_LightCode (double light);
 
@@ -244,6 +245,16 @@ static inline pixel_t R_LitColor (pixel_t color, pixel_t floor, unsigned r, unsi
 static inline pixel_t R_LitPixel (int index, unsigned r, unsigned g, unsigned b)
 {
 	return R_LitColor (d_pal30[index], d_pal30_floor[index], r, g, b);
+}
+
+// a pixel's light times r_fullbright_scale (d_glowscale), each channel at most 1023
+static inline pixel_t R_GlowPixel (pixel_t p)
+{
+	unsigned	r = RGB30_R (p) * (unsigned)d_glowscale >> 15;
+	unsigned	g = RGB30_G (p) * (unsigned)d_glowscale >> 15;
+	unsigned	b = RGB30_B (p) * (unsigned)d_glowscale >> 15;
+
+	return RGB30 (r < 1023 ? r : 1023, g < 1023 ? g : 1023, b < 1023 ? b : 1023);
 }
 extern cvar_t	r_drawflat;
 extern cvar_t	r_ambient;

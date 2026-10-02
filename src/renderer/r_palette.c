@@ -35,7 +35,14 @@ int		d_glowscale = 32768;	// r_fullbright_scale for a pixel's channels (the four
 								// root of light), 32768 being 1.0
 pixel_t	d_pal30_unlit[256];		// what light doesn't reach (particles, sprites, liquids,
 								// sky): the palette, fullbrights at their floors in r_lightmode 1
+pixel_t	d_pal30_particle[256];	// particles': the fire ramp glows too
 bool	d_unlitfloors;			// d_pal30_unlit has the floors
+
+// the palette's fire ramp, yellow to dark brown, which explosions and rocket
+// trails fade through: not fullbright in the colormap, but fire, so a
+// particle of it glows as the fullbrights do
+#define	FIRE_FIRST		96
+#define	FIRE_LAST		111
 
 // an sRGB value, 0 .. 1, as linear light
 double R_SrgbToLinear (double c)
@@ -124,8 +131,12 @@ void R_SetUnlitColors (bool floors)
 	int		i;
 
 	for (i = 0 ; i < 256 ; i++)
+	{
 		d_pal30_unlit[i] = floors ? R_LitColor (d_pal30[i], d_pal30_floor[i], LIGHT_ONE, LIGHT_ONE, LIGHT_ONE)
 			: d_pal30[i];
+		d_pal30_particle[i] = floors && i >= FIRE_FIRST && i <= FIRE_LAST
+			? R_LitColor (d_pal30[i], R_GlowPixel (d_pal30[i]), LIGHT_ONE, LIGHT_ONE, LIGHT_ONE) : d_pal30_unlit[i];
+	}
 	d_unlitfloors = floors;
 }
 
