@@ -103,10 +103,13 @@ extern byte		d_palrgb[256][3];
 extern pixel_t	d_pal30_floor[256];
 extern bool		d_fullbright[256];
 extern int		d_glowscale;				// as simd_litrow_rgb30 takes r_fullbright_scale
+extern pixel_t	d_pal30_unlit[256];			// what light doesn't reach: particles, sprites,
+extern bool		d_unlitfloors;				// liquids, sky (R_SetUnlitColors)
 double		R_SrgbToLinear (double c);
 unsigned	R_LightCode (double light);
 
 void R_SetFullbrightScale (float scale);
+void R_SetUnlitColors (bool floors);
 void R_BuildMips (texture_t *tx, bool fence);
 
 // r_image.c
@@ -120,6 +123,7 @@ extern cvar_t	r_externaltextures;
 void R_TexturesInit (void);
 void R_LoadTextureOverride (texture_t *tx, const char *modelname, struct arena_s *arena);
 void R_BuildTexturePixels (texture_t *tx, struct arena_s *arena);
+void R_LightLiquids (void);		// after d_unlitfloors or d_glowscale changed
 
 // the texels to draw tx with in place of its own, or NULL
 static inline const pixel_t *R_TextureOverride (const texture_t *tx, int mip)

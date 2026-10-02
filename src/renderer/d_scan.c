@@ -142,7 +142,7 @@ void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture, 
 		if (texels)
 			simd_turbspan_rgb30 (dest, map, texels, turb, pspan->u, pspan->v, pspan->count);
 		else
-			simd_turbspan (dest, map, texture, d_pal30, turb, pspan->u, pspan->v, pspan->count);
+			simd_turbspan (dest, map, texture, d_pal30_unlit, turb, pspan->u, pspan->v, pspan->count);
 	} while ((pspan = pspan->pnext) != NULL);
 }
 
@@ -190,7 +190,7 @@ void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb)
 		if (turb && d_turbsource30)
 			simd_turbspan_rgb30 (row, &map, d_turbsource30, turbtab, pspan->u, pspan->v, pspan->count);
 		else if (turb)
-			simd_turbspan (row, &map, d_turbsource, d_pal30, turbtab, pspan->u, pspan->v, pspan->count);
+			simd_turbspan (row, &map, d_turbsource, d_pal30_unlit, turbtab, pspan->u, pspan->v, pspan->count);
 		else
 			simd_texspan (row, &map, cacheblock, cachewidth, pspan->u, pspan->v, pspan->count);
 

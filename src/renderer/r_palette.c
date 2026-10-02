@@ -33,6 +33,9 @@ pixel_t	d_pal30_floor[256];		// the least a lit color can be: fullbrights bright
 								// by r_fullbright_scale, 0 for the others
 int		d_glowscale = 32768;	// r_fullbright_scale for a pixel's channels (the fourth
 								// root of light), 32768 being 1.0
+pixel_t	d_pal30_unlit[256];		// what light doesn't reach (particles, sprites, liquids,
+								// sky): the palette, fullbrights at their floors in r_lightmode 1
+bool	d_unlitfloors;			// d_pal30_unlit has the floors
 
 // an sRGB value, 0 .. 1, as linear light
 double R_SrgbToLinear (double c)
@@ -104,6 +107,26 @@ void R_SetFullbrightScale (float scale)
 		d_pal30_floor[i] = d_fullbright[i] ? RGB30 (v[0], v[1], v[2]) : 0;
 	}
 	d_glowscale = (int)(32768.0 * sqrt (sqrt (scale)) + 0.5);
+	R_SetUnlitColors (d_unlitfloors);
+}
+
+/*
+===============
+R_SetUnlitColors
+
+The colors of what light doesn't reach, as a lit color shows in full light:
+with floors (r_lightmode 1) a fullbright no darker than its floor, so as
+bright as the fullbrights of what is lit; else the palette's
+===============
+*/
+void R_SetUnlitColors (bool floors)
+{
+	int		i;
+
+	for (i = 0 ; i < 256 ; i++)
+		d_pal30_unlit[i] = floors ? R_LitColor (d_pal30[i], d_pal30_floor[i], LIGHT_ONE, LIGHT_ONE, LIGHT_ONE)
+			: d_pal30[i];
+	d_unlitfloors = floors;
 }
 
 /*

@@ -162,7 +162,7 @@ static void D_SpriteDrawSpans (sspan_t *pspan)
 					if (*pz <= pixelzi)
 					{
 						*pz = (float)pixelzi;
-						*pdest = d_pal30[btemp];
+						*pdest = d_pal30_unlit[btemp];
 					}
 				}
 

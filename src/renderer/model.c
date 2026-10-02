@@ -228,6 +228,30 @@ void Mod_ClearAll (void)
 }
 
 /*
+===================
+Mod_ForEachTexture
+
+Each texture of the brush models loaded (a map's submodels, "*1" and on,
+share the map's)
+===================
+*/
+void Mod_ForEachTexture (void (*fn) (texture_t *tx))
+{
+	int		i, j;
+	model_t	*mod;
+
+	for (i = 0 ; i < mod_numknown ; i++)
+	{
+		mod = mod_known[i];
+		if (mod->type != mod_brush || mod->needload || mod->name[0] == '*')
+			continue;
+		for (j = 0 ; j < mod->numtextures ; j++)
+			if (mod->textures[j])
+				fn (mod->textures[j]);
+	}
+}
+
+/*
 ==================
 Mod_FindName
 

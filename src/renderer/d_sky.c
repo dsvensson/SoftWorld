@@ -124,7 +124,7 @@ void D_DrawSkyScans (espan_t *pspan)
 
 			do
 			{
-				*pdest++ = d_pal30[r_skysource[((t & R_SKY_TMASK) >> 8) +
+				*pdest++ = d_pal30_unlit[r_skysource[((t & R_SKY_TMASK) >> 8) +
 						((s & R_SKY_SMASK) >> 16)]] | sky;
 				s += sstep;
 				t += tstep;

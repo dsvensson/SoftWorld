@@ -78,8 +78,10 @@ typedef struct texture_s
 	struct texture_s *alternate_anims;	// bmodels in frmae 1 use these
 	unsigned	offsets[MIPLEVELS];		// four mip maps stored
 	// a TGA file's texels in place of the map's (r_textures.c), as large, cut
-	// out by PIXEL_TRANSPARENT; a liquid's are 64x64, at rgb[0] alone. NULL if
-	// there is none.
+	// out by PIXEL_TRANSPARENT. A liquid's are 64x64 with no mip levels: rgb[0]
+	// as drawn, its fullbright light (glow[0]) raised to its floor in
+	// r_lightmode 1 (R_LightLiquids), from the file's at rgb[1]. NULL if there
+	// is none.
 	pixel_t		*rgb[MIPLEVELS];
 	pixel_t		*glow[MIPLEVELS];		// their fullbright light, NULL for none
 	// the map's own texels as pixels, for walls in r_lightmode 1: mip levels
@@ -399,6 +401,7 @@ typedef struct model_s
 
 void	Mod_Init (void);
 void	Mod_ClearAll (void);
+void	Mod_ForEachTexture (void (*fn) (texture_t *tx));	// of the brush models loaded
 model_t *Mod_ForName (char *name, bool crash);
 // a model from its file's contents, e.g. for tests; false (the reason is
 // printed) if it can't be used. Mod_Unload frees what it loaded.

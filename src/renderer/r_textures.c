@@ -29,7 +29,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // from it in either. A fence's texels less than half opaque are cut out. The
 // fullbright light is <name>_luma.tga's or <name>_glow.tga's, else the
 // file's texels where the map's texture has fullbright colors, and as with
-// those a texel is lit to no less than it times r_fullbright_scale.
+// those a texel is lit to no less than it times r_fullbright_scale; a
+// liquid's, which light doesn't reach, is drawn no darker than that.
 
 #include "r_local.h"
 
@@ -171,6 +172,99 @@ void R_BuildTexturePixels (texture_t *tx, struct arena_s *arena)
 
 /*
 ===============
+R_LightLiquid
+
+A liquid's texels as drawn (rgb[0]) from its file's (rgb[1]): in r_lightmode 1
+its fullbright light (glow[0]) times r_fullbright_scale is their floor, as the
+palette's fullbrights have theirs (d_pal30_unlit)
+===============
+*/
+// a pixel's channel times d_glowscale, at most 1023
+static unsigned R_GlowChannel (unsigned c)
+{
+	c = c * (unsigned)d_glowscale >> 15;
+	return c < 1023 ? c : 1023;
+}
+
+static void R_LightLiquid (texture_t *tx)
+{
+	int		i;
+	pixel_t	g;
+
+	if (tx->name[0] != '*' || !tx->rgb[1])
+		return;
+	for (i = 0 ; i < LIQUID_SIZE * LIQUID_SIZE ; i++)
+	{
+		if (!d_unlitfloors || !tx->glow[0] || !(g = tx->glow[0][i]))
+		{
+			tx->rgb[0][i] = tx->rgb[1][i];
+			continue;
+		}
+		g = RGB30 (R_GlowChannel (RGB30_R (g)), R_GlowChannel (RGB30_G (g)), R_GlowChannel (RGB30_B (g)));
+		tx->rgb[0][i] = R_LitColor (tx->rgb[1][i], g, LIGHT_ONE, LIGHT_ONE, LIGHT_ONE);
+	}
+}
+
+// the liquids loaded, after r_fullbright_scale or r_lightmode changed
+void R_LightLiquids (void)
+{
+	Mod_ForEachTexture (R_LightLiquid);
+}
+
+/*
+===============
+R_LoadLiquidOverride
+
+A liquid's TGA file (rgba, freed) at 64x64, the turbulent span drawers' size,
+in tx->rgb[1], and its fullbright light as a wall's is (<name>_luma.tga's or
+<name>_glow.tga's, else the file's texels where the map's texture has
+fullbright colors) in tx->glow[0]; tx->rgb[0] is drawn from them
+===============
+*/
+static void R_LoadLiquidOverride (texture_t *tx, const char *dir, byte *rgba, int w, int h, struct arena_s *arena)
+{
+	const byte	*index = (const byte *)tx + tx->offsets[0];
+	int			x, y, width = (int)tx->width, height = (int)tx->height;
+	bool		bright = false;
+	pixel_t		*texel;
+
+	tx->rgb[0] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
+	tx->rgb[1] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
+	R_ImagePixels (rgba, w, h, tx->rgb[1], LIQUID_SIZE, LIQUID_SIZE, false);
+	Mem_Free (rgba);
+
+	rgba = R_FindTexture (dir, tx->name, "_luma", &w, &h);
+	if (!rgba)
+		rgba = R_FindTexture (dir, tx->name, "_glow", &w, &h);
+	if (rgba)
+	{
+		tx->glow[0] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
+		R_ImagePixels (rgba, w, h, tx->glow[0], LIQUID_SIZE, LIQUID_SIZE, false);
+		Mem_Free (rgba);
+	}
+	else
+	{
+		// the map's texel under each of the file's
+		for (y = 0 ; y < LIQUID_SIZE && !bright ; y++)
+			for (x = 0 ; x < LIQUID_SIZE && !bright ; x++)
+				bright = d_fullbright[index[y * height / LIQUID_SIZE * width + x * width / LIQUID_SIZE]];
+		if (bright)
+		{
+			tx->glow[0] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
+			for (y = 0 ; y < LIQUID_SIZE ; y++)
+				for (x = 0 ; x < LIQUID_SIZE ; x++)
+				{
+					texel = &tx->glow[0][y * LIQUID_SIZE + x];
+					*texel = d_fullbright[index[y * height / LIQUID_SIZE * width + x * width / LIQUID_SIZE]]
+						? tx->rgb[1][y * LIQUID_SIZE + x] : 0;
+				}
+		}
+	}
+	R_LightLiquid (tx);
+}
+
+/*
+===============
 R_LoadTextureOverride
 
 A texture's TGA file, if there is one, into tx->rgb and its fullbright light
@@ -194,9 +288,7 @@ void R_LoadTextureOverride (texture_t *tx, const char *modelname, struct arena_s
 
 	if (tx->name[0] == '*')
 	{
-		tx->rgb[0] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
-		R_ImagePixels (rgba, w, h, tx->rgb[0], LIQUID_SIZE, LIQUID_SIZE, false);
-		Mem_Free (rgba);
+		R_LoadLiquidOverride (tx, dir, rgba, w, h, arena);
 		return;
 	}
 

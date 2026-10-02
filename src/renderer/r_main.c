@@ -143,8 +143,8 @@ static cvar_t	r_dlight_color = {.name = "r_dlight_color", .string = "1", .archiv
 // fullbright colors are this much brighter than white allows (r_lightmode 1)
 // fullbrights' light, and dynamic lights' on surfaces, times these
 static cvar_t	r_fullbright_scale = {.name = "r_fullbright_scale", .string = "1.5", .archive = true,
-	.description = "How bright fullbright colors are at the least, times their color, in r_lightmode 1; "
-		"0 or less is 1."};
+	.description = "How bright fullbright colors are at the least, times their color, in r_lightmode 1, on "
+		"what light reaches and what it doesn't (particles, sprites, liquids, the sky); 0 or less is 1."};
 cvar_t	r_dlight_scale = {.name = "r_dlight_scale", .string = "1", .archive = true,
 	.description = "Multiplies dynamic lights' light on surfaces, in r_lightmode 1; 0 is none."};
 static cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1",
@@ -492,6 +492,9 @@ static void R_CheckLightSettings (void)
 		lightmode = r_lightmode.value;
 		dlightcolor = r_dlight_color.value;
 		external = r_externaltextures.value;
+		// what light doesn't reach shows fullbrights as what it reaches does
+		R_SetUnlitColors (lightmode != 0);
+		R_LightLiquids ();
 		D_FlushCaches ();
 	}
 }

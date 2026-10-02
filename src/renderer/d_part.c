@@ -94,7 +94,7 @@ void D_DrawParticle (particle_t *pparticle)
 	else if (pix > d_pix_max)
 		pix = d_pix_max;
 
-	color = d_pal30[(byte)pparticle->color];
+	color = d_pal30_unlit[(byte)pparticle->color];
 	if (r_fogactive)
 		color = R_FogPixel (color, zi);
 	count = pix << d_y_aspect_shift;
