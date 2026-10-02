@@ -97,6 +97,7 @@ typedef struct player_info_s
 
 	int		spectator;
 	int		stats[MAX_CL_STATS];	// an MVD's, the player's own
+	float	statsf[MAX_CL_STATS];
 	byte	translate[256];		// the palette with the player's colors, for the colormap
 	pixel_t	palette[256];		// and as the colors themselves, for RGB lighting (skin.c)
 	skin_t	*skin;
@@ -267,6 +268,8 @@ typedef struct
 
 // information for local display
 	int			stats[MAX_CL_STATS];	// health, etc
+	float		statsf[MAX_CL_STATS];	// the same as floats: FTE's svc_fte_updatestatfloat's
+	char		*statsstr[MAX_CL_STATS];	// FTE's string stats (Mem_), NULL for none
 	float		item_gettime[32];	// cl.time of aquiring item, for blinking
 	float		faceanimtime;		// use anim frame if cl.time < this
 
@@ -528,6 +531,7 @@ void CL_DumpTimedemoFrame (void);	// when timedemo_dump asks for it
 //
 int CL_CalcNet (void);
 void CL_ParseServerMessage (void);
+void CL_FreeStatStrings (void);		// FTE's string stats, before cl is cleared
 void CL_ProcessUserInfo (int slot, player_info_t *player);	// name, colors, skin from the userinfo
 double CL_ScoreClock (void);		// what the scoreboard's times count on
 void CL_RequestNextDownload (void);
@@ -537,7 +541,7 @@ void CL_StartUpload (byte *data, int size);
 void CL_StopUpload(void);
 
 //
-// cl_csqc.c: client-side QuakeC's files and lifecycle (the networking comes later)
+// cl_csqc.c: client-side QuakeC, as FTE's client runs it
 //
 extern	cvar_t	cl_nocsqc, cl_download_csprogs;
 void	CSQC_RegisterVariables (void);
@@ -545,8 +549,19 @@ void	CSQC_RegisterVariables (void);
 // load; whether CSQC runs
 bool	CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t size);
 void	CSQC_WorldLoaded (void);	// after the world model
+void	CSQC_Announce (void);		// then: tells the server whether CSQC runs (enablecsqc)
 void	CSQC_Shutdown (void);		// at serverdata, disconnect and quit
 bool	CSQC_Inited (void);
+void	CSQC_ParseEntities (bool sized);	// svc_fte_csqcentities(_sized)
+void	CSQC_ParseEvent (bool sized);		// svc_fte_cgamepacket(_sized)
+bool	CSQC_ParseTempEntity (void);		// svc_temp_entity, if CSQC took it
+// a sound the server plays, if CSQC took it (CSQC_Event_Sound)
+bool	CSQC_EventSound (int ent, int channel, const char *sample, float vol, float attenuation, const vec3_t pos);
+void	CSQC_InputFrame (usercmd_t *cmd);	// a command about to be sent, as CSQC changes it
+// draws the view if CSQC does (CSQC_UpdateView), and whether it asked for the
+// status bar; false to draw it as the client does
+bool	CSQC_DrawView (bool *sbar);
+bool	CSQC_DrawsView (void);
 // a matching csprogs is here already (none needs downloading)
 bool	CSQC_CheckDownload (const char *csprogsname, unsigned checksum, size_t size);
 
@@ -579,6 +594,7 @@ void V_ParseDamage (void);
 //
 void CL_InitTEnts (void);
 void CL_ClearTEnts (void);
+void CL_AddBeam (struct model_s *m, int ent, const vec3_t start, const vec3_t end);
 
 //
 // cl_ents.c

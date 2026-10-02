@@ -13,8 +13,8 @@ server, and the protocol extensions today's servers and clients speak.
 - **Network:** the FTE, MVD1 and ZQuake extensions (float coordinates, 2048 entities, 4096
   models, chunked downloads, …), mvdsv's player movement and its `pm_` keys.
 - **Demos:** QWD and MVD playback, MVD seeking (`demo_jump`), QTV (`qtvplay`), item timers.
-- **QuakeC:** a hardened VM with FTE's opcodes and builtins, multiprogs and threads; the
-  client-side QuakeC's files and lifecycle, its networking and drawing still to come.
+- **QuakeC:** a hardened VM with FTE's opcodes and builtins, multiprogs and threads; FTE's
+  client-side QuakeC (CSQC), enough for KTX's weapon prediction.
 
 ## Building
 
@@ -220,11 +220,20 @@ QuakeC threads (`sleep`, `fork`), autocvars, and hard limits, so that a QuakeC e
 with a backtrace, never a crash. [docs/qcvm](docs/qcvm) describes it.
 
 The server runs `qwprogs.dat` with FTE's server builtins and offers a `csprogs.dat`
-(`sv_csqc_progname`) in the serverinfo as FTE does. The client has the machinery of CSQC but not
-yet its networking and drawing, so `cl_nocsqc` keeps it off by default. With `cl_nocsqc 0` it
-downloads a server's csprogs into `csprogsvers` (`cl_download_csprogs`), checks it, loads it with
-`csaddon.dat` where cheats apply, and runs its lifecycle across maps. `csqc_builtins` lists the
-builtins a csprogs calls that the client still lacks.
+(`sv_csqc_progname`) in the serverinfo as FTE does. The client runs a server's csprogs as FTE's
+client does:
+- it downloads the csprogs into `csprogsvers` (`cl_download_csprogs`), checks it, and loads it
+  with `csaddon.dat` where cheats apply;
+- it tells the server CSQC runs, and takes its entities, events and stats (256, as floats and
+  strings too);
+- sounds and temp entities go to CSQC first, as do the commands before they are sent;
+- CSQC draws the view: the scene builtins, a gun of its own, lights, trails and beams.
+
+This is enough for KTX's weapon prediction on mvdsv: the gun, its sounds, projectiles and the
+lightning beam show at once, and the server's echo of each sound is dropped. The csprogs'
+autocvars become cvars, so its settings (`cl_predict_projectiles`, …) can be changed.
+`cl_nocsqc 1` keeps CSQC off, and `csqc_builtins` lists the builtins a csprogs calls that the
+client lacks. Traces see the world alone, not entities.
 
 ## License
 

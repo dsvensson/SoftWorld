@@ -1044,6 +1044,7 @@ void SCR_UpdateScreen (void)
 {
 	double			prof;
 	static float	oldscr_viewsize;
+	bool			sbar = true;
 
 	if (scr.disabled_for_loading || VID_IsMinimized ())
 		return;
@@ -1096,7 +1097,9 @@ void SCR_UpdateScreen (void)
 	SCR_SetUpToDrawConsole ();
 
 
-	V_RenderView ();
+	// CSQC draws the view when it can, and the status bar if it asks
+	if (!CSQC_DrawView (&sbar))
+		V_RenderView ();
 	prof = R_ProfStart ();
 	if (r_netgraph.value)
 		SCR_DrawNetGraph ();
@@ -1104,17 +1107,20 @@ void SCR_UpdateScreen (void)
 
 	if (scr_drawdialog)
 	{
-		Sbar_Draw ();
+		if (sbar)
+			Sbar_Draw ();
 		Draw_FadeScreen ();
 		SCR_DrawNotifyString ();
 	}
 	else if (cl.intermission == 1 && cls.key_dest == key_game)
 	{
-		Sbar_IntermissionOverlay ();
+		if (sbar)
+			Sbar_IntermissionOverlay ();
 	}
 	else if (cl.intermission == 2 && cls.key_dest == key_game)
 	{
-		Sbar_FinaleOverlay ();
+		if (sbar)
+			Sbar_FinaleOverlay ();
 		SCR_CheckDrawCenterString ();
 	}
 	else
@@ -1126,7 +1132,8 @@ void SCR_UpdateScreen (void)
 		SCR_DrawFPS ();
 		SCR_CheckDrawCenterString ();
 		CL_DrawItemTimers ();
-		Sbar_Draw ();
+		if (sbar)
+			Sbar_Draw ();
 		SCR_DrawConsole ();
 		M_Draw ();
 	}

@@ -82,7 +82,13 @@ static const char *svc_strings[] =
 	[56] = "svc_fte_soundlistshort",
 	[60] = "svc_fte_modellistshort",
 	[66] = "svc_fte_spawnbaseline2",
+	[76] = "svc_fte_csqcentities",
+	[78] = "svc_fte_updatestatstring",
+	[79] = "svc_fte_updatestatfloat",
+	[83] = "svc_fte_cgamepacket",
 	[84] = "svc_fte_voicechat",
+	[90] = "svc_fte_cgamepacket_sized",
+	[92] = "svc_fte_csqcentities_sized",
 };
 
 static const char *CL_SvcName (int cmd)
@@ -352,6 +358,7 @@ static void Model_NextDownload (void)
 	r_scene.worldmodel = cl.worldmodel;
 	R_NewMap ();
 	CSQC_WorldLoaded ();
+	CSQC_Announce ();
 
 	// done with the model list: the visible weapons', then the static signon
 	cls.downloadnumber = 0;
@@ -972,7 +979,10 @@ static void CL_ParseStartSoundPacket(void)
 		Host_EndGame ("CL_ParseStartSoundPacket: ent = %i", ent);
 	if (CL_Unseen ())
 		return;
-	
+	// CSQC may take it, as its own sound played already
+	if (CSQC_EventSound (ent, channel, cl.sound_name[sound_num], packetvolume/255.0f, attenuation, pos))
+		return;
+
     S_StartSound (ent, channel, cl.sound_precache[sound_num], pos, packetvolume/255.0f, attenuation);
 }       
 
@@ -1141,13 +1151,16 @@ static void CL_ServerInfo (void)
 /*
 =====================
 CL_SetStat
+
+A stat as an integer and a float, as FTE keeps them: svc_updatestat and
+svc_updatestatlong set both from the integer, svc_fte_updatestatfloat both
+from the float
 =====================
 */
-static void CL_SetStat (int stat, int value)
+static void CL_SetStat (int stat, int value, float fvalue)
 {
 	int	j, target;
 
-	// FTE servers send stats for their own purposes past these
 	if (stat < 0 || stat >= MAX_CL_STATS)
 		return;
 
@@ -1158,11 +1171,12 @@ static void CL_SetStat (int stat, int value)
 		if (target < 0)
 			return;
 		cl.players[target].stats[stat] = value;
+		cl.players[target].statsf[stat] = fvalue;
 		if (target != CL_MVDTracking ())
 			return;
 	}
 
-	
+
 	if (stat == STAT_ITEMS)
 	{	// set flash times
 		for (j=0 ; j<32 ; j++)
@@ -1171,6 +1185,30 @@ static void CL_SetStat (int stat, int value)
 	}
 
 	cl.stats[stat] = value;
+	cl.statsf[stat] = fvalue;
+}
+
+// FTE's string stat: the player's own (an MVD's aren't kept)
+static void CL_SetStatString (int stat, const char *value)
+{
+	if (stat < 0 || stat >= MAX_CL_STATS || cls.mvdplayback)
+		return;
+	if (cl.statsstr[stat])
+		Mem_Free (cl.statsstr[stat]);
+	cl.statsstr[stat] = Mem_Alloc (strlen (value) + 1);
+	strcpy (cl.statsstr[stat], value);
+}
+
+void CL_FreeStatStrings (void)
+{
+	int		i;
+
+	for (i = 0 ; i < MAX_CL_STATS ; i++)
+	{
+		if (cl.statsstr[i])
+			Mem_Free (cl.statsstr[i]);
+		cl.statsstr[i] = NULL;
+	}
 }
 
 /*
@@ -1529,26 +1567,45 @@ void CL_ParseServerMessage (void)
 			CL_ParseStatic (true);
 			break;
 		case svc_temp_entity:
-			CL_ParseTEnt ();
+			if (!CSQC_ParseTempEntity ())
+				CL_ParseTEnt ();
 			break;
 
 		case svc_killedmonster:
-			cl.stats[STAT_MONSTERS]++;
+			cl.statsf[STAT_MONSTERS] = (float)++cl.stats[STAT_MONSTERS];
 			break;
 
 		case svc_foundsecret:
-			cl.stats[STAT_SECRETS]++;
+			cl.statsf[STAT_SECRETS] = (float)++cl.stats[STAT_SECRETS];
 			break;
 
 		case svc_updatestat:
 			i = MSG_ReadByte ();
 			j = MSG_ReadByte ();
-			CL_SetStat (i, j);
+			CL_SetStat (i, j, (float)j);
 			break;
 		case svc_updatestatlong:
 			i = MSG_ReadByte ();
 			j = MSG_ReadLong ();
-			CL_SetStat (i, j);
+			CL_SetStat (i, j, (float)j);
+			break;
+		case svc_fte_updatestatfloat:
+			i = MSG_ReadByte ();
+			f = MSG_ReadFloat ();
+			CL_SetStat (i, (int)f, f);
+			break;
+		case svc_fte_updatestatstring:
+			i = MSG_ReadByte ();
+			CL_SetStatString (i, MSG_ReadString ());
+			break;
+
+		case svc_fte_csqcentities:
+		case svc_fte_csqcentities_sized:
+			CSQC_ParseEntities (cmd == svc_fte_csqcentities_sized);
+			break;
+		case svc_fte_cgamepacket:
+		case svc_fte_cgamepacket_sized:
+			CSQC_ParseEvent (cmd == svc_fte_cgamepacket_sized);
 			break;
 			
 		case svc_spawnstaticsound:

@@ -717,7 +717,8 @@ void CL_Record_f (void)
 		MSG_WriteString (&buf, cl.lightstyles[i].map);
 	}
 
-	for (i = 0; i < MAX_CL_STATS; i++) {
+	// id's stats only: other clients fail on FTE's past them
+	for (i = 0; i < MAX_STATS; i++) {
 		MSG_WriteByte (&buf, svc_updatestatlong);
 		MSG_WriteByte (&buf, i);
 		MSG_WriteLong (&buf, cl.stats[i]);

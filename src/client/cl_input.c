@@ -520,6 +520,8 @@ void CL_SendCmd (void)
 
 	Cam_FinishMove(cmd);
 
+	CSQC_InputFrame (cmd);
+
 // send this and the previous cmds in the message, so
 // if the last packet was dropped, it can be recovered
 	buf.maxsize = sizeof(data);

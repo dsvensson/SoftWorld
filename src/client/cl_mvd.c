@@ -543,6 +543,7 @@ static void MVD_Track (int slot)
 	mvd.track = slot;
 	cl.viewplayer = slot;
 	memcpy (cl.stats, cl.players[slot].stats, sizeof(cl.stats));
+	memcpy (cl.statsf, cl.players[slot].statsf, sizeof(cl.statsf));
 }
 
 /*

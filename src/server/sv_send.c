@@ -495,7 +495,7 @@ when a reliable message can be delivered this frame.
 static void SV_UpdateClientStats (client_t *client)
 {
 	edict_t	*ent;
-	int		stats[MAX_CL_STATS];
+	int		stats[MAX_STATS];
 	int		i;
 	
 	ent = client->edict;
@@ -521,7 +521,7 @@ static void SV_UpdateClientStats (client_t *client)
 	if (client->z_ext & Z_EXT_VIEWHEIGHT)
 		stats[STAT_VIEWHEIGHT] = (int)ent->v.view_ofs[2];
 
-	for (i=0 ; i<MAX_CL_STATS ; i++)
+	for (i=0 ; i<MAX_STATS ; i++)
 		if (stats[i] != client->stats[i])
 		{
 			client->stats[i] = stats[i];

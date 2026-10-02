@@ -377,8 +377,10 @@ static void SND_Spatialize(channel_t *ch)
     vec_t lscale, rscale, scale;
     vec3_t source_vec;
 
-// anything coming from the view entity will allways be full volume
-	if (ch->entnum == snd.viewentity)
+// anything coming from the view entity will allways be full volume, as is
+// CSQC's own sound without attenuation (its entities are numbered below 0),
+// as FTE plays such sounds
+	if (ch->entnum == snd.viewentity || (ch->entnum < 0 && !ch->dist_mult))
 	{
 		ch->leftvol = ch->master_vol;
 		ch->rightvol = ch->master_vol;

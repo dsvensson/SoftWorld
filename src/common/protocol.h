@@ -39,7 +39,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //
 // stats are integers communicated to the client by the server
 //
-#define	MAX_CL_STATS		32
+#define	MAX_STATS			32		// id's, which a server sends
+#define	MAX_CL_STATS		256		// FTE's: a server for CSQC registers its own past id's
 #define	STAT_HEALTH			0
 //define	STAT_FRAGS			1
 #define	STAT_WEAPON			2
@@ -125,6 +126,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	FTE_PEXT_256PACKETENTITIES	0x01000000	// 256 entities in a packet
 #define	FTE_PEXT_CHUNKEDDOWNLOADS	0x20000000	// downloads in numbered chunks
 #define	DL_CHUNKSIZE				1024		// their size
+#define	FTE_PEXT_CSQC				0x40000000	// client-side QuakeC: its entities, events and stats
 
 #define	MVD_PEXT1_FLOATCOORDS		0x00000001	// entity and player origins as floats
 #define	MVD_PEXT1_HIGHLAGTELEPORT	0x00000002	// svc_setangle carries a leading byte
@@ -138,7 +140,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	SV_FTE_EXTENSIONS	(FTE_PEXT_TRANS | FTE_PEXT_ACCURATETIMINGS | FTE_PEXT_MODELDBL | FTE_PEXT_ENTITYDBL | \
 	FTE_PEXT_ENTITYDBL2 | FTE_PEXT_FLOATCOORDS | FTE_PEXT_COLOURMOD | FTE_PEXT_SPAWNSTATIC2 | \
 	FTE_PEXT_256PACKETENTITIES | FTE_PEXT_CHUNKEDDOWNLOADS)
-#define	CL_FTE_EXTENSIONS	SV_FTE_EXTENSIONS
+#define	CL_FTE_EXTENSIONS	(SV_FTE_EXTENSIONS | FTE_PEXT_CSQC)	// the server has no CSQC
 #define	SV_MVD1_EXTENSIONS	(MVD_PEXT1_FLOATCOORDS | MVD_PEXT1_HIGHLAGTELEPORT)
 #define	CL_MVD1_EXTENSIONS	SV_MVD1_EXTENSIONS
 
@@ -279,7 +281,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	svc_fte_soundlistshort	56	// svc_soundlist with a [short] start
 #define	svc_fte_modellistshort	60	// svc_modellist with a [short] start
 #define	svc_fte_spawnbaseline2	66	// an entity delta from nothing
+#define	svc_fte_csqcentities	76	// CSQC's entities: [short] number, (0x8000 removed) or its data, ..., [short] 0
+#define	svc_fte_updatestatstring	78	// [byte] stat [string]
+#define	svc_fte_updatestatfloat	79	// [byte] stat [float]
+#define	svc_fte_cgamepacket	83		// CSQC's own message, all it reads (CSQC_Parse_Event)
 #define	svc_fte_voicechat	84		// [byte] [byte] [byte] [short] n [n bytes]
+#define	svc_fte_cgamepacket_sized	90	// svc_fte_cgamepacket with a [short] size first
+#define	svc_fte_csqcentities_sized	92	// svc_fte_csqcentities with a [short] size after each number
 
 
 //==============================================

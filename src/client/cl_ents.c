@@ -24,6 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 extern	cvar_t	cl_predict_players;
 extern	cvar_t	cl_predict_players2;
 extern	cvar_t	r_drawvweps;
+extern	cvar_t	r_rocketlight;
 extern	cvar_t	cl_solid_players;
 
 static struct predicted_player {
@@ -859,10 +860,13 @@ static void CL_LinkPacketEntities (void)
 		if (model->flags & EF_ROCKET)
 		{
 			R_RocketTrail (old_origin, ent->origin, 0);
-			dl = CL_AllocDlight (s1->number);
-			VectorCopy (ent->origin, dl->origin);
-			dl->radius = 200;
-			dl->die = (float)(cl.time + 0.1f);
+			if (r_rocketlight.value)
+			{
+				dl = CL_AllocDlight (s1->number);
+				VectorCopy (ent->origin, dl->origin);
+				dl->radius = 200;
+				dl->die = (float)(cl.time + 0.1f);
+			}
 		}
 		else if (model->flags & EF_GRENADE)
 			R_RocketTrail (old_origin, ent->origin, 1);
@@ -1641,6 +1645,9 @@ void CL_EmitEntities (void)
 	CL_LinkPacketEntities ();
 	CL_LinkProjectiles ();
 	CL_LinkItems ();
-	CL_UpdateTEnts ();
+	// CSQC's addentities brings the beams and explosions in (FTE's order), so
+	// the beams it adds before show this frame
+	if (!CSQC_DrawsView ())
+		CL_UpdateTEnts ();
 }
 

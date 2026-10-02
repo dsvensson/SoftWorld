@@ -768,21 +768,24 @@ static void V_DrawCrosshair (void)
 
 /*
 ==================
-V_RenderView
+V_SetupView
+
+This frame's view and gun, and what the renderer draws them from, once a
+frame; false while not in a game. V_DrawView draws them, with CSQC's changes
+in between when CSQC draws the view.
 
 The player's clipping box goes from (-16 -16 -24) to (16 16 32) from
 the entity origin, so any view position inside that will be valid
 ==================
 */
-
-void V_RenderView (void)
+bool V_SetupView (void)
 {
 //	if (cl.simangles[ROLL])
 //		Sys_Error ("cl.simangles[ROLL]");	// DEBUG
-cl.simangles[ROLL] = 0;	// FIXME @@@ 
+cl.simangles[ROLL] = 0;	// FIXME @@@
 
 	if (cls.state != ca_active)
-		return;
+		return false;
 
 	view_frame = &cl.frames[cls.netchan.incoming_sequence & UPDATE_MASK];
 	// an MVD's player followed, as last sent
@@ -802,14 +805,24 @@ cl.simangles[ROLL] = 0;	// FIXME @@@
 	r_scene.frametime = (float)cls.frametime;
 	r_scene.drawviewmodel = Cam_DrawViewModel ()
 		&& !(cl.stats[STAT_ITEMS] & IT_INVISIBILITY) && cl.stats[STAT_HEALTH] > 0;
+	return true;
+}
 
+// draws the view V_SetupView set up, with the crosshair if asked
+void V_DrawView (bool drawcrosshair)
+{
 	R_PushDlights ();
 	R_RenderView ();
 	V_SetContentsColor (r_scene.viewcontents);
 
-	if (crosshair.value)
+	if (drawcrosshair && crosshair.value)
 		V_DrawCrosshair ();
-		
+}
+
+void V_RenderView (void)
+{
+	if (V_SetupView ())
+		V_DrawView (true);
 }
 
 //============================================================================

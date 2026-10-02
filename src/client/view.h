@@ -28,4 +28,6 @@ extern	cvar_t		v_gamma;
 
 void V_Init (void);
 void V_RenderView (void);
+bool V_SetupView (void);	// V_RenderView in two: the view and gun of this frame,
+void V_DrawView (bool drawcrosshair);	// and drawing them, CSQC's in between
 void V_UpdateBlend (void);

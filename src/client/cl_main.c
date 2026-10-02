@@ -94,6 +94,10 @@ cvar_t	cl_solid_players = {.name = "cl_solid_players", .string = "1",
 cvar_t	r_drawvweps = {.name = "r_drawvweps", .string = "1", .archive = true,
 	.description = "Draws the weapon in each player's hands, on servers that send the weapon models.",
 	.values = (const cvar_value_t[]){{"0", "Players' models alone"}, {"1", "Players hold their weapons"}, {0}}};
+// ezQuake's name, which CSQC (KTX's) reads for its own rockets too
+cvar_t	r_rocketlight = {.name = "r_rocketlight", .string = "1", .archive = true,
+	.description = "Rockets light up what they fly past.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "On"}, {0}}};
 
 static cvar_t  localid = {.name = "localid", .string = "",
 	.description = "The key a server browser on this machine sends with its commands, which it sets itself; "
@@ -403,6 +407,7 @@ void CL_ClearState (void)
 // wipe the entire cl structure
 	if (cl.map)
 		CM_FreeMap (cl.map);
+	CL_FreeStatStrings ();
 	memset (&cl, 0, sizeof(cl));
 	CL_ProcessServerInfo ();
 
@@ -1302,6 +1307,7 @@ static void CL_InitLocal (void)
 
 	Cvar_RegisterVariable (&cl_predict_players2);
 	Cvar_RegisterVariable (&r_drawvweps);
+	Cvar_RegisterVariable (&r_rocketlight);
 	Cvar_RegisterVariable (&cl_predict_players);
 	Cvar_RegisterVariable (&cl_solid_players);
 

@@ -123,18 +123,32 @@ static void CL_ParseBeam (model_t *m)
 {
 	int		ent;
 	vec3_t	start, end;
-	beam_t	*b;
-	int		i;
-	
+
 	ent = MSG_ReadShort ();
-	
+
 	start[0] = MSG_ReadCoord ();
 	start[1] = MSG_ReadCoord ();
 	start[2] = MSG_ReadCoord ();
-	
+
 	end[0] = MSG_ReadCoord ();
 	end[1] = MSG_ReadCoord ();
 	end[2] = MSG_ReadCoord ();
+
+	CL_AddBeam (m, ent, start, end);
+}
+
+/*
+=================
+CL_AddBeam
+
+A beam of model m from entity ent for 0.2 seconds, replacing the entity's
+last; CSQC's are keyed past the server's entity numbers
+=================
+*/
+void CL_AddBeam (model_t *m, int ent, const vec3_t start, const vec3_t end)
+{
+	beam_t	*b;
+	int		i;
 
 	if (ent == cl.playernum + 1)
 		VectorCopy (end, cl_playerbeam_end);

@@ -199,7 +199,7 @@ typedef struct client_s
 // client known data for deltas	
 	int				old_frags;
 	
-	int				stats[MAX_CL_STATS];
+	int				stats[MAX_STATS];
 
 
 	client_frame_t	frames[UPDATE_BACKUP];	// updates can be deltad from here
