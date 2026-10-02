@@ -36,6 +36,10 @@ extern	bool		ActiveApp, Minimized;
 bool	Sys_SandboxLaunch (const char *cmdline, int *code);
 void	Sys_SandboxInit (void);
 
+// confines the cursor to rect, in screen coordinates, or frees it (NULL); in
+// the container, which may not, the launcher does it
+void	Sys_ClipCursor (const RECT *rect);
+
 // sys_win.c: extra handles Sys_WaitUntil wakes up for (console input, sockets)
 void	Sys_AddWaitHandle (HANDLE handle);
 void	Sys_RemoveWaitHandle (HANDLE handle);

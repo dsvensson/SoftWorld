@@ -97,7 +97,7 @@ static void IN_ClipCursor (void)
 	rect.top = topleft.y;
 	rect.right = bottomright.x;
 	rect.bottom = bottomright.y;
-	ClipCursor (&rect);
+	Sys_ClipCursor (&rect);
 }
 
 static void IN_SetCapture (bool capture)
@@ -123,7 +123,7 @@ static void IN_SetCapture (bool capture)
 	}
 	else
 	{
-		ClipCursor (NULL);
+		Sys_ClipCursor (NULL);
 		while (ShowCursor (TRUE) < 0)
 			;
 	}

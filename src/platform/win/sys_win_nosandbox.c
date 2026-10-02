@@ -11,3 +11,8 @@ bool Sys_SandboxLaunch ([[maybe_unused]] const char *cmdline, [[maybe_unused]] i
 void Sys_SandboxInit (void)
 {
 }
+
+void Sys_ClipCursor (const RECT *rect)
+{
+	ClipCursor (rect);
+}

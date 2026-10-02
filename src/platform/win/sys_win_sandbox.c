@@ -14,6 +14,9 @@
 // directories it was let into and asks again. What is remembered is sandbox.cfg
 // in the container's own folder, which the launcher and the game both write.
 //
+// The container may not confine the cursor either: the launcher does it for
+// the game (THE CURSOR, below).
+//
 // The container can't reach this computer's own addresses (a server or a QTV
 // proxy on 127.0.0.1) unless an administrator exempts it, and no firewall rule
 // lets players in to its server: the first start offers both, through the UAC
@@ -773,6 +776,90 @@ static void SB_AskNetwork (PSID sid, const wchar_t *exe)
 /*
 ===============================================================================
 
+THE CURSOR
+
+The container may not confine the cursor (ClipCursor needs the window station
+written, and is denied), so the launcher does it for the game: the game writes
+the rectangle to a block they share and signals an event, both handles the
+game inherits and finds in SW_SANDBOX_CURSOR. The launcher confines it only
+while the game's window is in front and only within that window, and frees it
+when the game ends, however it ends.
+
+===============================================================================
+*/
+
+#define SB_CURSORVAR	L"SW_SANDBOX_CURSOR"
+
+typedef struct
+{
+	RECT			rect;		// in screen coordinates
+	volatile LONG	clip;		// confined to rect, else free
+} sb_cursor_t;
+
+static sb_cursor_t	*sb_cursor;			// the shared block, the game's or the launcher's view of it
+static HANDLE		sb_cursorevent;		// the game signals it after writing the block
+
+/*
+================
+Sys_ClipCursor
+
+Confines the cursor to rect, in screen coordinates, or frees it (NULL): in the
+container through the launcher
+================
+*/
+void Sys_ClipCursor (const RECT *rect)
+{
+	static bool			opened;
+	wchar_t				value[64];
+	unsigned long long	block, event;
+
+	if (!opened)
+	{
+		opened = true;
+		if (SB_InContainer () && GetEnvironmentVariableW (SB_CURSORVAR, value, 64)
+			&& swscanf (value, L"%llu %llu", &block, &event) == 2)
+		{
+			sb_cursor = MapViewOfFile ((HANDLE)(uintptr_t)block, FILE_MAP_WRITE, 0, 0, sizeof(*sb_cursor));
+			sb_cursorevent = (HANDLE)(uintptr_t)event;
+		}
+	}
+	if (!sb_cursor)
+	{
+		ClipCursor (rect);
+		return;
+	}
+	if (rect)
+		sb_cursor->rect = *rect;
+	InterlockedExchange (&sb_cursor->clip, rect != NULL);
+	SetEvent (sb_cursorevent);
+}
+
+// the launcher: the cursor as the game last asked, if its window is in front;
+// freed only from its own confinement, not another program's set since
+static void SB_ClipForGame (DWORD game)
+{
+	static RECT	clipped;		// as the system has it, clamped to the screens
+	static bool	clipping;
+	HWND		front = GetForegroundWindow ();
+	DWORD		owner = 0;
+	RECT		window, rect, now;
+
+	if (front)
+		GetWindowThreadProcessId (front, &owner);
+	if (InterlockedCompareExchange (&sb_cursor->clip, 0, 0) && owner == game && GetWindowRect (front, &window)
+		&& IntersectRect (&rect, &sb_cursor->rect, &window) && ClipCursor (&rect))
+	{
+		clipping = GetClipCursor (&clipped) != FALSE;
+		return;
+	}
+	if (clipping && GetClipCursor (&now) && EqualRect (&now, &clipped))
+		ClipCursor (NULL);
+	clipping = false;
+}
+
+/*
+===============================================================================
+
 STARTING THE GAME
 
 ===============================================================================
@@ -788,9 +875,10 @@ static int SB_Run (const wchar_t *exe, PSID sid, const wchar_t *cwd)
 	STARTUPINFOW			own;
 	PROCESS_INFORMATION		pi = {0};
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION	limits = {0};
+	SECURITY_ATTRIBUTES		inherited = {.nLength = sizeof(inherited), .bInheritHandle = TRUE};
 	SIZE_T					size = 0;
-	HANDLE					job;
-	wchar_t					*cmdline;
+	HANDLE					job, block, handles[2];
+	wchar_t					*cmdline, value[64];
 	DWORD					code = 1, i;
 	BOOL					started;
 
@@ -802,11 +890,25 @@ static int SB_Run (const wchar_t *exe, PSID sid, const wchar_t *cwd)
 		security.CapabilityCount++;
 	}
 
-	InitializeProcThreadAttributeList (NULL, 1, 0, &size);
+	// the cursor's block and event, the only handles the game inherits
+	block = CreateFileMappingW (INVALID_HANDLE_VALUE, &inherited, PAGE_READWRITE, 0, sizeof(sb_cursor_t), NULL);
+	sb_cursor = block ? MapViewOfFile (block, FILE_MAP_WRITE, 0, 0, sizeof(sb_cursor_t)) : NULL;
+	sb_cursorevent = CreateEventW (&inherited, FALSE, FALSE, NULL);
+	if (!sb_cursor || !sb_cursorevent)
+		return SB_Fail (L"SoftWorld can't make its sandbox: %ls", SB_ErrorText (GetLastError ()));
+	handles[0] = block;
+	handles[1] = sb_cursorevent;
+	swprintf (value, 64, L"%llu %llu", (unsigned long long)(uintptr_t)block,
+		(unsigned long long)(uintptr_t)sb_cursorevent);
+	SetEnvironmentVariableW (SB_CURSORVAR, value);
+
+	InitializeProcThreadAttributeList (NULL, 2, 0, &size);
 	si.lpAttributeList = malloc (size);
-	if (!si.lpAttributeList || !InitializeProcThreadAttributeList (si.lpAttributeList, 1, 0, &size)
+	if (!si.lpAttributeList || !InitializeProcThreadAttributeList (si.lpAttributeList, 2, 0, &size)
 		|| !UpdateProcThreadAttribute (si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
-			&security, sizeof(security), NULL, NULL))
+			&security, sizeof(security), NULL, NULL)
+		|| !UpdateProcThreadAttribute (si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+			handles, sizeof(handles), NULL, NULL))
 		return SB_Fail (L"SoftWorld can't make its sandbox: %ls", SB_ErrorText (GetLastError ()));
 
 	// shown as the launcher was asked to be
@@ -820,7 +922,7 @@ static int SB_Run (const wchar_t *exe, PSID sid, const wchar_t *cwd)
 		SetInformationJobObject (job, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
 
 	cmdline = _wcsdup (GetCommandLineW ());
-	started = cmdline && CreateProcessW (exe, cmdline, NULL, NULL, FALSE,
+	started = cmdline && CreateProcessW (exe, cmdline, NULL, NULL, TRUE,
 		EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED, NULL, cwd, &si.StartupInfo, &pi);
 	if (!started)
 		code = (DWORD)SB_Fail (L"SoftWorld can't start in its sandbox: %ls", SB_ErrorText (GetLastError ()));
@@ -831,7 +933,15 @@ static int SB_Run (const wchar_t *exe, PSID sid, const wchar_t *cwd)
 		AllowSetForegroundWindow (pi.dwProcessId);
 		ResumeThread (pi.hThread);
 		CloseHandle (pi.hThread);
-		WaitForSingleObject (pi.hProcess, INFINITE);
+
+		// the cursor as the game asks, until it ends; then free
+		handles[0] = pi.hProcess;
+		handles[1] = sb_cursorevent;
+		while (WaitForMultipleObjects (2, handles, FALSE, INFINITE) == WAIT_OBJECT_0 + 1)
+			SB_ClipForGame (pi.dwProcessId);
+		InterlockedExchange (&sb_cursor->clip, 0);
+		SB_ClipForGame (pi.dwProcessId);
+
 		GetExitCodeProcess (pi.hProcess, &code);
 		CloseHandle (pi.hProcess);
 	}
@@ -843,6 +953,9 @@ static int SB_Run (const wchar_t *exe, PSID sid, const wchar_t *cwd)
 		LocalFree (caps[i].Sid);
 	if (job)
 		CloseHandle (job);
+	UnmapViewOfFile (sb_cursor);
+	CloseHandle (block);
+	CloseHandle (sb_cursorevent);
 	return (int)code;
 }
 
