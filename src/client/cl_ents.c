@@ -230,6 +230,18 @@ static int			lerp_update = 1;	// counts updates; 0 is never
 static double		lerp_lastat;		// when the last update arrived
 static double		lerp_interval;		// the mean gap between updates
 
+// where each entity's particle trail got to, and how far on its next particle
+// is due (R_RocketTrail), as the frame cl_trailframe counts last drew it
+typedef struct
+{
+	vec3_t	end;
+	float	carry;
+	int		frame;
+} enttrail_t;
+
+static enttrail_t	cl_trails[MAX_EDICTS];
+static int			cl_trailframe = 1;
+
 static entlerp_t	cl_playerlerp[MAX_CLIENTS];	// an MVD's players
 static int			playerlerp_frame = -1;		// the parse count they were aimed at
 static unsigned		playerlerp_fixangle;		// players whose view the server set
@@ -237,6 +249,7 @@ static unsigned		playerlerp_fixangle;		// players whose view the server set
 void CL_ResetSmoothing (void)
 {
 	lerp_update += 2;	// nothing tracked carries over
+	cl_trailframe += 2;	// nor any trail
 	lerp_lastat = 0;
 	lerp_interval = 0;
 	playerlerp_frame = -1;
@@ -761,6 +774,11 @@ static void CL_LinkPacketEntities (void)
 	int					i;
 	int					pnum;
 	dlight_t			*dl;
+	enttrail_t			*trail;
+	float				*carry;
+	bool				fresh;
+
+	cl_trailframe++;
 
 	// an MVD's frame may bring no entities: the last that did has them (qualia)
 	pack = &cl.frames[(cls.mvdplayback ? cl.validsequence : cls.netchan.incoming_sequence) & UPDATE_MASK].packet_entities;
@@ -835,31 +853,28 @@ static void CL_LinkPacketEntities (void)
 
 		VectorCopy (origin, ent->origin);
 
-		// add automatic particle trails
+		// add automatic particle trails: the stretch since the last frame drew
+		// the entity, which starts one if it didn't, or the entity teleported
 		if (!model->flags)
 			continue;
-
-		// scan the old entity display list for a matching
-		for (i=0 ; i<cl.oldnumvisedicts ; i++)
+		trail = &cl_trails[s1->number];
+		fresh = trail->frame != cl_trailframe - 1;
+		for (i=0 ; i<3 && !fresh ; i++)
+			if (fabsf (trail->end[i] - ent->origin[i]) > 128)
+				fresh = true;		// no trail if too far
+		if (fresh)
 		{
-			if (cl.oldvisedicts[i].keynum == ent->keynum)
-			{
-				VectorCopy (cl.oldvisedicts[i].origin, old_origin);
-				break;
-			}
+			VectorCopy (ent->origin, trail->end);
+			trail->carry = 0;
 		}
-		if (i == cl.oldnumvisedicts)
-			continue;		// not in last message
+		VectorCopy (trail->end, old_origin);
+		VectorCopy (ent->origin, trail->end);
+		trail->frame = cl_trailframe;
+		carry = &trail->carry;
 
-		for (i=0 ; i<3 ; i++)
-			if ( abs((int)(old_origin[i] - ent->origin[i])) > 128)
-			{	// no trail if too far
-				VectorCopy (ent->origin, old_origin);
-				break;
-			}
 		if (model->flags & EF_ROCKET)
 		{
-			R_RocketTrail (old_origin, ent->origin, 0);
+			R_RocketTrail (old_origin, ent->origin, 0, carry);
 			if (r_rocketlight.value)
 			{
 				dl = CL_AllocDlight (s1->number);
@@ -869,17 +884,17 @@ static void CL_LinkPacketEntities (void)
 			}
 		}
 		else if (model->flags & EF_GRENADE)
-			R_RocketTrail (old_origin, ent->origin, 1);
+			R_RocketTrail (old_origin, ent->origin, 1, carry);
 		else if (model->flags & EF_GIB)
-			R_RocketTrail (old_origin, ent->origin, 2);
+			R_RocketTrail (old_origin, ent->origin, 2, carry);
 		else if (model->flags & EF_ZOMGIB)
-			R_RocketTrail (old_origin, ent->origin, 4);
+			R_RocketTrail (old_origin, ent->origin, 4, carry);
 		else if (model->flags & EF_TRACER)
-			R_RocketTrail (old_origin, ent->origin, 3);
+			R_RocketTrail (old_origin, ent->origin, 3, carry);
 		else if (model->flags & EF_TRACER2)
-			R_RocketTrail (old_origin, ent->origin, 5);
+			R_RocketTrail (old_origin, ent->origin, 5, carry);
 		else if (model->flags & EF_TRACER3)
-			R_RocketTrail (old_origin, ent->origin, 6);
+			R_RocketTrail (old_origin, ent->origin, 6, carry);
 	}
 }
 

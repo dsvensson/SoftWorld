@@ -82,6 +82,7 @@ static struct
 	model_t			*models[MAX_CSMODELS];
 
 	double			starttime;			// of the map: cltime counts from it
+	float			*trailcarry;		// each entity's trail: how far on its next particle is due
 
 	// the fields the client reads each frame (NOFIELD if the progs lacks one)
 	struct
@@ -272,14 +273,16 @@ static void CSQC_Trace (void *ctx, const char *line)
 	Con_Printf ("%s\n", line);
 }
 
-// an entity going: if it is one of the server's, CSQC no longer holds it (its
-// next update makes it anew)
+// an entity going: its trail ends, and if it is one of the server's, CSQC no
+// longer holds it (its next update makes it anew)
 static bool CSQC_OnRemove (void *ctx, qcvm_t *vm, qc_ent_t e)
 {
 	uint32_t	ofs, type;
 	qc_word_t	n = {0};
 
 	(void)ctx;
+	if (csqc.trailcarry && e < QC_MaxEdicts (vm))
+		csqc.trailcarry[e] = 0;
 	if (QC_FindField (vm, "entnum", &ofs, &type) && type == QC_EV_FLOAT && QC_GetField (vm, e, ofs, 1, &n.u)
 		&& n.f > 0 && n.f < MAX_EDICTS && csqc.ents[(int)n.f] == e)
 		csqc.ents[(int)n.f] = 0;
@@ -887,16 +890,19 @@ static bool CS_ParticleEffectNum (qcvm_t *vm)
 	return true;
 }
 
-// void trailparticles(float effect, entity ent, vector start, vector end)
+// void trailparticles(float effect, entity ent, vector start, vector end): the
+// entity's trail goes on, its particles evenly spaced across the stretches
+// QuakeC draws, as FTE keeps a trail per entity
 static bool CS_TrailParticles (qcvm_t *vm)
 {
-	int		effect = QC_FloatToInt (QC_ArgFloat (vm, 0)) - 1;
-	vec3_t	start, end;
+	int			effect = QC_FloatToInt (QC_ArgFloat (vm, 0)) - 1;
+	qc_ent_t	e = QC_ArgWord (vm, 1);
+	vec3_t		start, end;
 
 	QC_ArgVector (vm, 2, start);
 	QC_ArgVector (vm, 3, end);
 	if (effect >= 0 && effect < (int)(sizeof(cs_trails) / sizeof(cs_trails[0])))
-		R_RocketTrail (start, end, effect);
+		R_RocketTrail (start, end, effect, e && e < QC_MaxEdicts (vm) ? &csqc.trailcarry[e] : NULL);
 	return true;
 }
 
@@ -1976,6 +1982,7 @@ bool CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t
 			QC_ReleaseProgs (addon);
 		return false;
 	}
+	csqc.trailcarry = Mem_Calloc (QC_MaxEdicts (csqc.vm), sizeof(*csqc.trailcarry));
 
 	// the add-on's init runs as it is added, after the csprogs' own
 	CSQC_RegisterAutocvars (0);
@@ -2440,6 +2447,9 @@ static void CSQC_Destroy (void)
 
 	QC_Destroy (csqc.vm);
 	csqc.vm = NULL;
+	if (csqc.trailcarry)
+		Mem_Free (csqc.trailcarry);
+	csqc.trailcarry = NULL;
 	csqc.worldloaded = false;
 	csqc.mayread = false;
 	csqc.drawing = false;

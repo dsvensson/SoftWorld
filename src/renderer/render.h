@@ -187,7 +187,9 @@ void R_NewMap (void);
 
 
 void R_RunParticleEffect (vec3_t org, vec3_t dir, int color, int count);
-void R_RocketTrail (vec3_t start, vec3_t end, int type);
+// id's trail types, a particle every 3 units; *carry (NULL for none) keeps
+// the spacing even across the stretches of one entity's trail
+void R_RocketTrail (const vec3_t start, const vec3_t end, int type, float *carry);
 
 void R_BlobExplosion (vec3_t org);
 void R_ParticleExplosion (vec3_t org);

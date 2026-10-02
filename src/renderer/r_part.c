@@ -21,7 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 #include "r_local.h"
 
-#define MAX_PARTICLES			2048	// default max # of particles at one
+#define MAX_PARTICLES			8192	// default max # of particles at one
 										//  time
 #define ABSOLUTE_MIN_PARTICLES	512		// no fewer than this no matter what's
 										//  on the command line
@@ -344,21 +344,33 @@ void R_TeleportSplash (vec3_t org)
 			}
 }
 
-void R_RocketTrail (vec3_t start, vec3_t end, int type)
+/*
+===============
+R_RocketTrail
+
+A trail from start to end: id's types (0 rocket, 1 grenade, 2 blood, 3 and
+5 tracers, 4 slight blood, 6 vore), a particle every 3 units (slight blood's
+6). id's stepped a unit for each 3 it counted, so only the first third of a
+stretch had any; as FTE does it, they are spaced along all of it, and *carry
+(if carry isn't NULL) is how far into the stretch the next is due, then how
+far into the next stretch: a trail drawn a stretch at a time stays even.
+===============
+*/
+void R_RocketTrail (const vec3_t start, const vec3_t end, int type, float *carry)
 {
-	vec3_t	vec;
-	float	len;
+	vec3_t	vec, at;
+	float	len, d, spacing = type == 4 ? 6.0f : 3.0f;
 	int			j;
 	particle_t	*p;
 
 	VectorSubtract (end, start, vec);
 	len = VectorNormalize (vec);
-	while (len > 0)
+	for (d = carry ? *carry : 0 ; d < len ; d += spacing)
 	{
-		len -= 3;
-
 		if (!free_particles)
-			return;
+			continue;		// the spacing goes on
+		for (j=0 ; j<3 ; j++)
+			at[j] = start[j] + vec[j] * d;
 		p = free_particles;
 		free_particles = p->next;
 		p->next = active_particles;
@@ -372,15 +384,14 @@ void R_RocketTrail (vec3_t start, vec3_t end, int type)
 			p->type = pt_slowgrav;
 			p->color = (float)(67 + (rand()&3));
 			for (j=0 ; j<3 ; j++)
-				p->org[j] = start[j] + ((rand()%6)-3);
-			len -= 3;
+				p->org[j] = at[j] + ((rand()%6)-3);
 		}
 		else if (type == 2)
 		{	// blood
 			p->type = pt_slowgrav;
 			p->color = (float)(67 + (rand()&3));
 			for (j=0 ; j<3 ; j++)
-				p->org[j] = start[j] + ((rand()%6)-3);
+				p->org[j] = at[j] + ((rand()%6)-3);
 		}
 		else if (type == 6)
 		{	// voor trail
@@ -388,7 +399,7 @@ void R_RocketTrail (vec3_t start, vec3_t end, int type)
 			p->type = pt_static;
 			p->die = (float)(r_scene.time + 0.3f);
 			for (j=0 ; j<3 ; j++)
-				p->org[j] = start[j] + ((rand()&15)-8);
+				p->org[j] = at[j] + ((rand()&15)-8);
 		}
 		else if (type == 1)
 		{	// smoke smoke
@@ -396,7 +407,7 @@ void R_RocketTrail (vec3_t start, vec3_t end, int type)
 			p->color = (float)(ramp3[(int)p->ramp]);
 			p->type = pt_fire;
 			for (j=0 ; j<3 ; j++)
-				p->org[j] = start[j] + ((rand()%6)-3);
+				p->org[j] = at[j] + ((rand()%6)-3);
 		}
 		else if (type == 0)
 		{	// rocket trail
@@ -404,7 +415,7 @@ void R_RocketTrail (vec3_t start, vec3_t end, int type)
 			p->color = (float)(ramp3[(int)p->ramp]);
 			p->type = pt_fire;
 			for (j=0 ; j<3 ; j++)
-				p->org[j] = start[j] + ((rand()%6)-3);
+				p->org[j] = at[j] + ((rand()%6)-3);
 		}
 		else if (type == 3 || type == 5)
 		{	// tracer
@@ -419,7 +430,7 @@ void R_RocketTrail (vec3_t start, vec3_t end, int type)
 			
 			tracercount++;
 
-			VectorCopy (start, p->org);
+			VectorCopy (at, p->org);
 			if (tracercount & 1)
 			{
 				p->vel[0] = 30*vec[1];
@@ -432,10 +443,9 @@ void R_RocketTrail (vec3_t start, vec3_t end, int type)
 			}
 			
 		}
-		
-
-		VectorAdd (start, vec, start);
 	}
+	if (carry)
+		*carry = d - len;
 }
 
 
