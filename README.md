@@ -190,20 +190,21 @@ Worth knowing:
 | `-scale n`, `vid_scale` | render at 320×200 times n (1, the default, is 320×200 itself); 0 picks the largest that fits the window |
 | `vid_widescreen`, `vid_crt` | wider view (hor+); CRT pixel aspect |
 | `r_lightmode` | 1 linear light in RGB, brighter than white where it is (the default); 0 lighting as Quake had it |
-| `r_fullbright_scale`, `r_dlight_scale` | fullbrights' light, and dynamic lights' on surfaces, times these |
+| `r_fullbright_scale`, `r_dlight_scale` | in `r_lightmode 1`, fullbright colors no darker than their color times this (1.5), on walls and models and where light doesn't reach: particles (fire too), sprites, liquids, the sky; dynamic lights' light on surfaces times `r_dlight_scale` |
 | `r_externaltextures` | TGA files in `textures/<map>/` or `textures/` in place of the map's textures, truecolor (1, the default); walls take them in `r_lightmode 1` |
 | `r_skybox` | a skybox in place of the sky's texture: `<name>rt.tga` and the other five faces in `env/` or `gfx/env/`; empty (the default) for the one the map's worldspawn names |
 | `r_fog`, `r_fog_usemap`, `r_skyfog` | fog: the map's, from its worldspawn's `fog` key (`r_fog_usemap 0` leaves it out), with `r_fog`'s over it, as FTE's `fog` command takes it (`"density red green blue"`; 0 is no fog); how far the sky takes the fog's color |
 | `r_threads` | threads drawing the view, each walking the world in a band of it; 0 (the default) one a core, at most 8 |
 | `r_lerpframes`, `r_lerpmuzzlehack` | models' animation frames blend into each other (1, the default), as in ezQuake; the view model's muzzle flash appears at once rather than blending in from behind the view |
 | `gamma`, `vid_contrast` | the view's gamma and contrast; the HUD keeps its own |
-| `vid_hdr`, `vid_hdr_paperwhite` | HDR output on an HDR display; SDR white's brightness in nits (on macOS 0, the default, is the system's white, and nits are over a white of 100; on Linux 0 is the compositor's) |
+| `vid_hdr`, `vid_hdr_paperwhite` | HDR output on an HDR display; SDR white's brightness in nits, 0 (the default) the system's: Windows' SDR content brightness, the compositor's on Linux, the system's white on macOS (where nits are over a white of 100). What is brighter than white goes up to the display's peak, which the console tells at start; on Windows a color profile assigned to the display can change the peak it reports |
 | `vid_vsync` | 1 a frame at each refresh; 0 (the default) doesn't wait for the display |
 | `vid_fullscreen`, `-fullscreen`, Alt+Enter | fullscreen: a borderless window on Windows, macOS's own (Option+Enter) on a Mac, the compositor's on Linux |
 | `vid_info`, `-gpu n` | Linux: the GPU, the presentation, the compositor's protocols, direct scanout and latency; the n'th GPU instead of the compositor's |
 | `r_profile 1`, `r_profile_show` | time a frame takes, by stage |
 | `cl_maxfps` | frame rate cap; 0 is none but the display's |
 | `cl_idlefps` | frame rate cap while the window isn't the focus, 50 by default; 0 is `cl_maxfps`'s |
+| `cl_truelightning` | how far the lightning beam of the player whose view you see (yours, or the one a demo or spectating follows) turns toward the view, hiding its lag; 1, the default, all the way |
 | `demo_speed`, `pause` | MVD playback speed, and pause |
 | `demo_jump [+\|-][m:]s` | seek in an MVD |
 | `track [name]`, jump, attack | in an MVD or QTV: follow a player, the next one; attack flies the camera and gives it back |
