@@ -115,6 +115,18 @@ bool Cam_DrawViewModel(void)
 	return false;
 }
 
+// the entity whose eyes the view is, as Cam_DrawViewModel has it: the
+// player's own, the player an MVD follows, or the one a spectator follows in
+// first person (cl_chasecam); 0 for a free camera
+int Cam_ViewEntity (void)
+{
+	if (cls.mvdplayback)
+		return CL_MVDTracking () >= 0 && !CL_MVDFlying () ? CL_MVDTracking () + 1 : 0;
+	if (!cl.spectator)
+		return cl.playernum + 1;
+	return autocam && locked && cl_chasecam.value ? spec_track + 1 : 0;
+}
+
 // returns true if we should draw this player, we don't if we are chase camming
 bool Cam_DrawPlayer(int playernum)
 {

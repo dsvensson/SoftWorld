@@ -645,6 +645,7 @@ void CL_PredictUsercmd (player_state_t *from, player_state_t *to, usercmd_t *u);
 // cl_cam.c
 //
 int Cam_TrackNum (void);		// the player the camera follows, or -1
+int Cam_ViewEntity (void);		// whose eyes the view is: their entity, 0 for a free camera
 bool Cam_DrawViewModel(void);
 bool Cam_DrawPlayer(int playernum);
 void Cam_Track(usercmd_t *cmd);

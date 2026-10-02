@@ -33,12 +33,13 @@ typedef struct
 
 static beam_t		cl_beams[MAX_BEAMS];
 
-// how far toward the current aim the player's own beam turns from where the
-// server last put it, 0 .. 1: hides the beam's lag behind the view (FTE)
+// how far toward the current aim the beam of whose eyes the view is turns
+// from where the server last put it, 0 .. 1: hides the beam's lag behind the
+// view (FTE)
 static cvar_t		cl_truelightning = {.name = "cl_truelightning", .string = "1", .archive = true,
-	.description = "How far your own lightning beam turns from the server's aim toward your view, 0 to 1, "
-		"hiding its lag; 0 draws it as sent."};
-static vec3_t		cl_playerbeam_end;		// the server's end of the player's own beam
+	.description = "How far the lightning beam of the player whose view you see (yours, or the one a demo or "
+		"spectating follows) turns from the server's aim toward the view, 0 to 1, hiding its lag; 0 draws it "
+		"as sent."};
 
 #define	MAX_EXPLOSIONS	8
 typedef struct
@@ -149,9 +150,6 @@ void CL_AddBeam (model_t *m, int ent, const vec3_t start, const vec3_t end)
 {
 	beam_t	*b;
 	int		i;
-
-	if (ent == cl.playernum + 1)
-		VectorCopy (end, cl_playerbeam_end);
 
 // override any beam with the same entity
 	for (i=0, b=cl_beams ; i< MAX_BEAMS ; i++, b++)
@@ -418,9 +416,9 @@ entity_t *CL_NewTempEntity (void)
 =================
 CL_TrueLightningEnd
 
-The end of the player's own beam turned toward the view by fraction f, at
-the length the server gave it; it leaves from 16 above the origin, as the
-server's does
+The end of the viewed player's beam (the server's, in end) turned toward the
+view by fraction f, at the length the server gave it; it leaves from 16 above
+the origin, as the server's does
 =================
 */
 static void CL_TrueLightningEnd (const vec3_t start, float f, vec3_t end)
@@ -430,7 +428,7 @@ static void CL_TrueLightningEnd (const vec3_t start, float f, vec3_t end)
 
 	VectorCopy (start, from);
 	from[2] += 16;
-	VectorSubtract (cl_playerbeam_end, from, dir);
+	VectorSubtract (end, from, dir);
 	len = Length (dir);
 	if (len < 1)
 		return;
@@ -467,6 +465,7 @@ static void CL_UpdateBeams (void)
 	entity_t	*ent;
 	float		yaw, pitch;
 	float		forward;
+	int			viewed = Cam_ViewEntity ();
 
 // update lightning
 	for (i=0, b=cl_beams ; i< MAX_BEAMS ; i++, b++)
@@ -474,9 +473,10 @@ static void CL_UpdateBeams (void)
 		if (!b->model || b->endtime < cl.time)
 			continue;
 
-	// if coming from the player, update the start position, and maybe the end
+	// if coming from whose eyes the view is (the player, or the one a demo
+	// or spectating follows), update the start position, and maybe the end
 		VectorCopy (b->end, end);
-		if (b->entity == cl.playernum+1)	// entity 0 is the world
+		if (viewed && b->entity == viewed)	// entity 0 is the world
 		{
 			VectorCopy (cl.simorg, b->start);
 			f = cl_truelightning.value;
