@@ -12,6 +12,12 @@ elseif(SW_ARCH MATCHES "^x86-64-v[34]$")
 	list(APPEND SW_CPU_CHECK_SOURCES cpu/cpuid_gnu.c)
 endif()
 
+# the CPU check alone, as the entry points build it, for tests/cpu_supported.c
+add_library(sw_cpu_check OBJECT ${SW_CPU_CHECK_SOURCES})
+target_include_directories(sw_cpu_check PUBLIC .)
+set_target_properties(sw_cpu_check PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
+sw_set_warnings(sw_cpu_check)
+
 # the programs with a client sandboxed: macOS's App Sandbox, a Windows AppContainer
 # (its Release builds); the game directory is one the player chooses
 option(SW_SANDBOX "The programs with a client run sandboxed, in a game directory the player chooses" ON)

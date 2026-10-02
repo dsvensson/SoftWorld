@@ -126,6 +126,8 @@
 			"filter": { "include": { "label": "maps" } } },
 		{ "name": "msvc-v3", "configurePreset": "msvc-v3", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },
+		{ "name": "msvc-v3-maps", "configurePreset": "msvc-v3", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "include": { "label": "maps" } } },
 		{ "name": "macos-m3", "configurePreset": "macos-m3", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "macos-m3-maps", "configurePreset": "macos-m3", "configuration": "Release", "output": { "outputOnFailure": true },

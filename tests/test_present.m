@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // in SDR each pixel within 1 of what VID_FrameToRGB (screenshots) makes of it,
 // with and without gamma and a view blend; and in HDR, SDR white at paper white,
 // the brightest light rolled off below the peak, and the 2D at paper white.
+// Without a GPU with Metal 4 it is skipped.
 
 #import <Metal/Metal.h>
 
@@ -38,6 +39,7 @@ extern const size_t			vid_present_metallib_size;
 
 #define WIDTH	200
 #define HEIGHT	120
+#define SKIPPED	77		// ctest's SKIP_RETURN_CODE
 
 static int	failures;
 
@@ -109,7 +111,8 @@ static void Check (id object, NSError *error, const char *what)
 		Sys_Error ("%s failed%s%s", what, error ? ": " : "", error ? error.localizedDescription.UTF8String : "");
 }
 
-static void Setup (void)
+// false if there is no GPU to test on
+static bool Setup (void)
 {
 	MTL4ArgumentTableDescriptor		*table = [MTL4ArgumentTableDescriptor new];
 	MTL4RenderPipelineDescriptor	*desc = [MTL4RenderPipelineDescriptor new];
@@ -123,7 +126,7 @@ static void Setup (void)
 
 	device = MTLCreateSystemDefaultDevice ();
 	if (!device || ![device supportsFamily:MTLGPUFamilyMetal4])
-		Sys_Error ("no Metal 4 GPU");
+		return false;
 	queue = [device newMTL4CommandQueue];
 	allocator = [device newCommandAllocator];
 	commands = [device newCommandBuffer];
@@ -184,6 +187,7 @@ static void Setup (void)
 	vid.rowpixels = (unsigned)(pitch / 4);
 	shown_frame = framebuf.contents;
 	shown_hud = hudbuf.contents;
+	return true;
 }
 
 // the frame as the shader shows it, one float RGBA a pixel
@@ -317,7 +321,11 @@ int main (void)
 {
 	@autoreleasepool
 	{
-		Setup ();
+		if (!Setup ())
+		{
+			printf ("present: no GPU with Metal 4, skipped\n");
+			return SKIPPED;
+		}
 
 		Fill ();
 		VID_SetPresent (&(vid_present_t){.gamma = 1});

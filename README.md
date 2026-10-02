@@ -49,8 +49,10 @@ ctest --preset msvc-v4
 AVX-512 and refuse to start on a CPU without it, the v3 builds AVX2 (Intel's since Haswell, AMD's
 since Zen), for CPUs without AVX-512. Builds treat warnings as errors
 (`SW_WARNINGS_AS_ERRORS`). The build presets build Release; `msvc-v4-debug` and
-`clangcl-v4-debug` build Debug. The `msvc-v4-maps` test preset loads every map under the
-directory the `SW_BASEDIR` environment variable names, and is skipped without it.
+`clangcl-v4-debug` build Debug. The `msvc-v4-maps` and `msvc-v3-maps` test presets load every
+map under the directory the `SW_BASEDIR` environment variable names, and are skipped without it.
+`cpu_supported` tells whether the CPU runs the build. CI builds everything and runs the tests
+where it does, the maps test on the shareware's.
 
 ### macOS
 

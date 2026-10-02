@@ -1,6 +1,8 @@
 # Release builds of softworld, the client with its own server, for Windows,
 # macOS and Linux, uploaded as artifacts; and for a version tag (v3.06) to the
-# tag's GitHub release (release.sh).
+# tag's GitHub release (release.sh). Every target is built, the tests too, and
+# the tests run where the runner's CPU runs the build (cpu_supported): the maps
+# test on the shareware's (shareware.sh).
 
 name: Build
 
@@ -14,9 +16,37 @@ on:
 permissions:
   contents: read
 
+# the Quake archive's commit the shareware comes from
+env:
+  QUAKE_ARCHIVE: 30c29bd5907fd999b0bb8e52c941ef770b4d3ba8
+
 jobs:
+  # the shareware's maps, fetched once and only when they aren't cached, for the
+  # other jobs to take from the cache (on Windows too: enableCrossOsArchive)
+  shareware:
+    name: Shareware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cached shareware
+        id: shareware
+        uses: actions/cache@v6
+        with:
+          path: shareware
+          key: shareware-pak0-${{ env.QUAKE_ARCHIVE }}
+          enableCrossOsArchive: true
+
+      - name: Shareware's maps
+        if: steps.shareware.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libarchive-tools
+          bash .github/shareware.sh
+
   build:
     name: ${{ matrix.name }}
+    needs: shareware
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -35,7 +65,6 @@ jobs:
             arch: x86-64-v3
             preset: msvc-v3
             fteqcc: fteqcc.exe
-            test: simd
           - name: macOS
             os: macos-26
             preset: macos-m3
@@ -44,9 +73,18 @@ jobs:
     # fteqcc compiles qw-qc into the game the server carries (cmake/qwprogs.cmake)
     env:
       FTEQCC: ${{ github.workspace }}/fteqcc/${{ matrix.fteqcc }}
+      PRESET: ${{ matrix.preset }}
 
     steps:
       - uses: actions/checkout@v7
+
+      - name: Shareware
+        uses: actions/cache/restore@v6
+        with:
+          path: shareware
+          key: shareware-pak0-${{ env.QUAKE_ARCHIVE }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
 
       # fteqcc from fteqw's newest commit, built again only when there is a newer
       - name: fteqw's commit
@@ -110,16 +148,8 @@ jobs:
           Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
           cmake --preset ${{ matrix.preset }}
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          cmake --build --preset ${{ matrix.preset }} --target softworld
+          cmake --build --preset ${{ matrix.preset }}
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          # the AVX2 kernels as MSVC compiles them, against the scalar ones: the
-          # runners' CPUs all have AVX2, not all AVX-512
-          if ('${{ matrix.test }}') {
-            cmake --build --preset ${{ matrix.preset }} --target test_${{ matrix.test }}
-            if ($LASTEXITCODE) { exit $LASTEXITCODE }
-            ctest --preset ${{ matrix.preset }} -R '^${{ matrix.test }}$'
-            if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          }
 
       # the Metal shader compiler is a component of Xcode's, downloaded apart
       - name: Build (macOS)
@@ -128,7 +158,26 @@ jobs:
           xcodebuild -showComponent MetalToolchain | grep -q 'Status: installed' \
             || sudo xcodebuild -downloadComponent MetalToolchain
           cmake --preset ${{ matrix.preset }}
-          cmake --build --preset ${{ matrix.preset }} --target softworld
+          cmake --build --preset ${{ matrix.preset }}
+
+      # the runners' CPUs all run AVX2, not all AVX-512, and the M3's builds
+      # don't run on an M1: the tests run where the CPU runs the build (what
+      # cpu_supported says goes to the log)
+      - name: CPU
+        id: cpu
+        shell: bash
+        run: |
+          if build/$PRESET/Release/cpu_supported; then runs=true; else runs=false; fi
+          echo "runs=$runs" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        if: steps.cpu.outputs.runs == 'true'
+        shell: bash
+        env:
+          SW_BASEDIR: ${{ github.workspace }}/shareware
+        run: |
+          ctest --preset $PRESET
+          ctest --preset $PRESET-maps
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -179,6 +228,7 @@ jobs:
   # and for AVX2 ones without it.
   linux:
     name: Linux ${{ matrix.arch }}
+    needs: shareware
     runs-on: ubuntu-latest
     container: archlinux:latest
     permissions:
@@ -203,6 +253,14 @@ jobs:
             vulkan-icd-loader glslang wayland wayland-protocols libxkbcommon libpipewire github-cli
 
       - uses: actions/checkout@v7
+
+      - name: Shareware
+        uses: actions/cache/restore@v6
+        with:
+          path: shareware
+          key: shareware-pak0-${{ env.QUAKE_ARCHIVE }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
 
       - name: fteqw's commit
         id: fteqw
@@ -232,7 +290,22 @@ jobs:
       - name: Build
         run: |
           cmake --preset $PRESET
-          cmake --build --preset $PRESET --target softworld
+          cmake --build --preset $PRESET
+
+      # as for Windows: the runners' CPUs all run AVX2, not all AVX-512
+      - name: CPU
+        id: cpu
+        run: |
+          if build/$PRESET/Release/cpu_supported; then runs=true; else runs=false; fi
+          echo "runs=$runs" >> "$GITHUB_OUTPUT"
+
+      # without a GPU, present_vulkan is skipped. The shareware by the working
+      # directory: github.workspace is the host's path, not the container's
+      - name: Test
+        if: steps.cpu.outputs.runs == 'true'
+        run: |
+          ctest --preset $PRESET
+          SW_BASEDIR="$PWD/shareware" ctest --preset $PRESET-maps
 
       # tarred here: the artifact's own zip loses the executable bit
       - name: Package

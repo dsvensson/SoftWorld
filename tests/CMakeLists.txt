@@ -1,3 +1,10 @@
+# cpu_supported tells whether this CPU runs the build, so the tests can be: not a
+# test, and built without the architecture's flags (sw_cpu_check's) to run on any.
+add_executable(cpu_supported cpu_supported.c $<TARGET_OBJECTS:sw_cpu_check>)
+target_include_directories(cpu_supported PRIVATE "${PROJECT_SOURCE_DIR}/src/platform")
+set_target_properties(cpu_supported PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
+sw_set_warnings(cpu_supported)
+
 # test_simd runs every kernel of the build's SIMD backend (AVX-512, AVX2 or
 # NEON) against the scalar reference, so it needs a build that has one; the
 # backend's kernels are named by their prefix.
@@ -47,8 +54,9 @@ target_link_libraries(test_tga PRIVATE sw_common)
 add_test(NAME tga COMMAND test_tga)
 
 # test_bspload loads every map under the directory SW_BASEDIR names as a
-# collision map and as a render model. It needs the maps, so only the
-# msvc-v4-maps test preset runs it, and without SW_BASEDIR it is skipped.
+# collision map and as a render model. It needs the maps, so only the -maps
+# test presets run it (CI's with the shareware's), and without SW_BASEDIR it is
+# skipped.
 sw_add_program(test_bspload test_bspload.c)
 target_link_libraries(test_bspload PRIVATE sw_game sw_render sw_common)
 add_test(NAME bspload COMMAND test_bspload)
@@ -64,7 +72,8 @@ endif()
 add_test(NAME workers COMMAND test_workers)
 
 # test_present draws present.metal with Metal 4 as vid_metal.m does, and compares
-# what it shows with VID_FrameToRGB. It needs the GPU.
+# what it shows with VID_FrameToRGB. It needs a GPU with Metal 4, and without one
+# is skipped.
 if(APPLE)
 	sw_add_program(test_present test_present.m
 		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c"
@@ -76,6 +85,7 @@ if(APPLE)
 	target_link_libraries(test_present PRIVATE sw_platform_posix sw_common "-framework Metal"
 		"-framework Foundation")
 	add_test(NAME present COMMAND test_present)
+	set_tests_properties(present PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 # test_present_d3d11 draws present.hlsl with Direct3D 11 as vid_d3d11.c does, and
