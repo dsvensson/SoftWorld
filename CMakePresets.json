@@ -51,6 +51,13 @@
 			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "generic" }
 		},
 		{
+			"name": "msvc-x86",
+			"displayName": "MSVC, 32-bit x86 (from an x86 developer prompt)",
+			"inherits": "windows",
+			"architecture": { "value": "x86", "strategy": "external" },
+			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "generic", "SW_POINTER_BITS": "32" }
+		},
+		{
 			"name": "msvc-asan",
 			"displayName": "MSVC, x86-64-v4, AddressSanitizer (Debug only)",
 			"inherits": "windows",
@@ -103,6 +110,8 @@
 		{ "name": "msvc-v3", "configurePreset": "msvc-v3", "configuration": "Release" },
 		{ "name": "msvc-v3-debug", "configurePreset": "msvc-v3", "configuration": "Debug" },
 		{ "name": "msvc-generic", "configurePreset": "msvc-generic", "configuration": "Release" },
+		{ "name": "msvc-x86", "configurePreset": "msvc-x86", "configuration": "Release" },
+		{ "name": "msvc-x86-debug", "configurePreset": "msvc-x86", "configuration": "Debug" },
 		{ "name": "msvc-asan", "configurePreset": "msvc-asan", "configuration": "Debug" },
 		{ "name": "clangcl-v4", "configurePreset": "clangcl-v4", "configuration": "Release" },
 		{ "name": "clangcl-v4-debug", "configurePreset": "clangcl-v4", "configuration": "Debug" },
@@ -127,6 +136,10 @@
 		{ "name": "msvc-v3", "configurePreset": "msvc-v3", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "msvc-v3-maps", "configurePreset": "msvc-v3", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "include": { "label": "maps" } } },
+		{ "name": "msvc-x86", "configurePreset": "msvc-x86", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "exclude": { "label": "maps" } } },
+		{ "name": "msvc-x86-maps", "configurePreset": "msvc-x86", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "include": { "label": "maps" } } },
 		{ "name": "macos-m3", "configurePreset": "macos-m3", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },

@@ -109,7 +109,8 @@ static void TestSinkCap (void)
 	qc_sink_t	s;
 
 	QC_SinkInit (&s, 4);
-	QC_FormatInt (&s, false, 1, 10, false, false, &(qc_spec_t){.width = (size_t)1 << 40});
+	// a width far past the sink's 4 bytes, and past memory on a 64-bit host
+	QC_FormatInt (&s, false, 1, 10, false, false, &(qc_spec_t){.width = (size_t)1 << (sizeof(size_t) > 4 ? 40 : 30)});
 	QT_EQ_S (QC_SinkText (&s), "    ");
 	QC_SinkFree (&s);
 }

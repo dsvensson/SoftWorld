@@ -17,6 +17,17 @@ elseif(NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID MATCHES "
 		"or clang or GCC on Linux")
 endif()
 
+# a preset for one word size (msvc-x86's 32) takes the compiler for it from the
+# developer prompt, which the preset can't choose
+if(DEFINED SW_POINTER_BITS)
+	math(EXPR sw_bits "${CMAKE_SIZEOF_VOID_P} * 8")
+	if(NOT sw_bits EQUAL SW_POINTER_BITS)
+		message(FATAL_ERROR "This build is of ${SW_POINTER_BITS}-bit programs, but the compiler makes ${sw_bits}-bit "
+			"ones: configure it from a developer prompt for them (for 32-bit x86, vcvarsamd64_x86.bat, or "
+			"Enter-VsDevShell -DevCmdArguments '-arch=x86 -host_arch=x64')")
+	endif()
+endif()
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(warnings)
 include(arch)
@@ -50,6 +61,10 @@ if(MSVC)
 	# Release keeps a program database too, for profilers and crash dumps; the code is the same
 	set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo,Release>:ProgramDatabase>")
 	add_link_options("$<$<CONFIG:Release>:/DEBUG;/OPT:REF;/OPT:ICF>")
+	# a 32-bit program has 4 GB on 64-bit Windows rather than 2
+	if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+		add_link_options(/LARGEADDRESSAWARE)
+	endif()
 
 	add_compile_definitions(_CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN NOMINMAX)
 	add_compile_options(/utf-8 /permissive- /diagnostics:column)

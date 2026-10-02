@@ -43,11 +43,15 @@ ctest --preset msvc-v4
 | `clangcl-v4` | clang-cl with lld-link | x86-64-v4 |
 | `msvc-v3` | MSVC | x86-64-v3 (AVX2) |
 | `msvc-generic` | MSVC | baseline x86-64 |
+| `msvc-x86` | MSVC | 32-bit x86, scalar kernels |
 | `msvc-asan` | MSVC, AddressSanitizer | x86-64-v4, Debug only |
 
 `SW_ARCH` (`x86-64-v4`, `x86-64-v3` or `generic`) chooses the instruction set: the v4 builds use
 AVX-512 and refuse to start on a CPU without it, the v3 builds AVX2 (Intel's since Haswell, AMD's
-since Zen), for CPUs without AVX-512. Builds treat warnings as errors
+since Zen), for CPUs without AVX-512. `msvc-x86` builds 32-bit programs, for 32-bit Windows 10:
+configure it from a developer prompt for x86 (`vcvarsamd64_x86.bat`, the x64 to x86 cross tools),
+or it says so. Its programs have 4 GB of address space on 64-bit Windows, 2 GB on 32-bit, and
+draw a little slower than the 64-bit ones. Builds treat warnings as errors
 (`SW_WARNINGS_AS_ERRORS`). The build presets build Release; `msvc-v4-debug` and
 `clangcl-v4-debug` build Debug. The `msvc-v4-maps` and `msvc-v3-maps` test presets load every
 map under the directory the `SW_BASEDIR` environment variable names, and are skipped without it.

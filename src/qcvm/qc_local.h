@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#if !defined(__BYTE_ORDER__) && !defined(_M_X64) && !defined(_M_ARM64)
+#if !defined(__BYTE_ORDER__) && !defined(_M_X64) && !defined(_M_IX86) && !defined(_M_ARM64)
 #error "qcvm: unknown byte order"
 #elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
 #error "qcvm: VM memory is little-endian, and so must the host be"
