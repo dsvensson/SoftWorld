@@ -933,6 +933,13 @@ static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 		AppActivate (LOWORD (wParam) != WA_INACTIVE, HIWORD (wParam) != 0);
 		return 0;
 
+	case WM_MOUSEACTIVATE:
+		// a click that brings the window to the front does only that: it doesn't
+		// shoot, or take a demo's camera (the title bar's still drags at once)
+		if (LOWORD (lParam) == HTCLIENT)
+			return MA_ACTIVATEANDEAT;
+		break;
+
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN:
 		if (wParam == VK_RETURN && (lParam & (1 << 29)))

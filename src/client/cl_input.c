@@ -645,14 +645,28 @@ void IN_GamepadSticks (float lx, float ly, float rx, float ry)
 	in_stick[3] = ry;
 }
 
-bool IN_WantsMouse (void)
+// the view is the viewer's to turn: playing, flying an MVD's (or QTV's) camera,
+// or a spectator following no one; not a QWD's, nor a player's followed
+static bool IN_OwnView (void)
 {
-	return cls.key_dest == key_game;
+	if (cls.demoplayback)
+		return CL_MVDFlying ();
+	if (cl.spectator)
+		return Cam_TrackNum () == -1;
+	return true;
 }
 
+// captured only while the view is the viewer's; else the mouse is let go
+bool IN_WantsMouse (void)
+{
+	return cls.key_dest == key_game && IN_OwnView ();
+}
+
+// the menu's, and while watching someone else's view: attack takes the camera
+// to fly it, jump goes to the next player
 bool IN_WantsMouseButtons (void)
 {
-	return cls.key_dest == key_menu;
+	return cls.key_dest == key_menu || (cls.key_dest == key_game && !IN_OwnView ());
 }
 
 void IN_ClearStates (void)

@@ -48,11 +48,14 @@ void	IN_GamepadSticks (float lx, float ly, float rx, float ry);
 // what the platform asks
 //
 
-// true while playing, when the mouse should be captured instead of pointing
+// true while playing, or flying a demo's (QTV's) or a spectator's camera, when
+// the mouse should be captured instead of pointing; not in the menu or the
+// console, nor while watching a player's view (a QWD's, a player followed)
 bool	IN_WantsMouse (void);
 
 // true when mouse buttons should be sent even though the mouse isn't captured
-// (menus, where they can be bound)
+// (menus, where they can be bound, and while watching: they fly the camera or
+// go to the next player)
 bool	IN_WantsMouseButtons (void);
 
 //
