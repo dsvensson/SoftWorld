@@ -78,6 +78,21 @@ if(APPLE)
 	add_test(NAME present COMMAND test_present)
 endif()
 
+# test_present_d3d11 draws present.hlsl with Direct3D 11 as vid_d3d11.c does, and
+# compares what it shows with VID_FrameToRGB, and its HDR with what it should be;
+# on the GPU, else WARP.
+if(WIN32)
+	sw_add_program(test_present_d3d11 test_present_d3d11.c
+		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c")
+	add_dependencies(test_present_d3d11 sw_platform_gui)	# the shaders' headers
+	target_include_directories(test_present_d3d11 PRIVATE
+		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/platform/win"
+		"${PROJECT_SOURCE_DIR}/src/renderer" "${PROJECT_BINARY_DIR}/src/platform/shaders")
+	target_link_libraries(test_present_d3d11 PRIVATE sw_platform_win sw_common d3d11 dxgi dxguid)
+	add_test(NAME present_d3d11 COMMAND test_present_d3d11)
+	add_test(NAME present_d3d11_warp COMMAND test_present_d3d11 -warp)
+endif()
+
 # test_present_vulkan draws present.glsl with Vulkan as vid_vulkan.c does, and
 # compares what it shows with VID_FrameToRGB, and its HDR and PQ with what they
 # should be. It needs a GPU with Vulkan 1.3, and without one is skipped.

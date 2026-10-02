@@ -1,17 +1,19 @@
 // present.hlsl -- draws the software-rendered frame into the letterboxed viewport.
 //
-// The 3D view is R10G10B10A2 holding linear light, each channel 512 times the fourth root of
-// its light: 512 is SDR white, 1023 light 15.9 times as bright. The shader applies gamma and
+// The layers aren't textures: they are the renderer's own buffers, read raw, a pixel a
+// uint, as present.glsl reads them. The 3D view is RGB30 (R10G10B10A2) holding linear
+// light, each channel 512 times the fourth root of its light: 512 is SDR white, 1023 light
+// 15.9 times as bright. The shader applies gamma and
 // contrast to the light and takes it to the display, laying the view blend over its sRGB
 // values as Quake did (in light it would wash the view out). For SDR, light brighter than
 // white goes toward white keeping its hue, the rest is as it is. For HDR it is scRGB (linear,
 // 1.0 = 80 nits) with SDR white at paper white, and only light near and past the display's
 // peak is compressed. The 2D (RGBA8, sRGB, premultiplied) is laid over it as it is.
 
-Texture2D<float4> g_frame : register(t0);
-Texture2D<float4> g_hud : register(t1);
-SamplerState g_linear : register(s0);
+ByteAddressBuffer g_frame : register(t0);
+ByteAddressBuffer g_hud : register(t1);
 
+// d3d_present_t: vid_present_constants_t, then the layers' row length
 cbuffer Present : register(b0)
 {
 	float4	g_blend;		// sRGB color, and how much of it covers the view
@@ -24,6 +26,8 @@ cbuffer Present : register(b0)
 	float	g_paperwhite;	// scRGB value of SDR white
 	float	g_peak;			// scRGB value of the display's brightest white
 	float2	g_pad;
+	uint	g_rowpixels;	// pixels from one row of a layer to the next
+	uint3	g_pad2;
 };
 
 struct VSOut
@@ -42,17 +46,29 @@ VSOut VSMain (uint id : SV_VertexID)
 	return o;
 }
 
-// a layer of the frame, both as big
-float4 SampleLayer (Texture2D<float4> layer, float2 uv)
+// a layer's pixel, the nearest one inside it
+uint Fetch (ByteAddressBuffer layer, int2 t)
+{
+	t = clamp(t, int2(0, 0), int2(g_texsize) - 1);
+	return layer.Load((uint(t.y) * g_rowpixels + uint(t.x)) * 4);
+}
+
+float4 Decode (bool view, uint c)
+{
+	if (view)
+		return float4(uint3(c, c >> 10, c >> 20) & 1023u, 0) / 1023.0;
+	return float4(uint4(c, c >> 8, c >> 16, c >> 24) & 255u) / 255.0;
+}
+
+// a layer of the frame, both as big: as a texture's sampler takes it, in the
+// channels as they are
+float4 SampleLayer (ByteAddressBuffer layer, bool view, float2 uv)
 {
 	float2 texel = uv * g_texsize;
 	float4 c;
 
 	[branch] if (g_sharp == 0)
-	{
-		int2 t = int2(min(floor(texel), g_texsize - 1));
-		c = layer.Load(int3(t, 0));
-	}
+		c = Decode(view, Fetch(layer, int2(min(floor(texel), g_texsize - 1))));
 	else
 	{
 		// sharp bilinear: nearest inside each texel, a one pixel wide blend at the edges
@@ -60,7 +76,14 @@ float4 SampleLayer (Texture2D<float4> layer, float2 uv)
 		float2 center_dist = frac(texel) - 0.5;
 		float2 range = 0.5 - 0.5 / g_scale;
 		float2 f = (center_dist - clamp(center_dist, -range, range)) * g_scale + 0.5;
-		c = layer.SampleLevel(g_linear, (base + f) / g_texsize, 0);
+
+		// the bilinear filter at base + f, in texels
+		float2 at = base + f - 0.5;
+		int2 t = int2(floor(at));
+		float2 w = at - floor(at);
+		float4 a = lerp(Decode(view, Fetch(layer, t)), Decode(view, Fetch(layer, t + int2(1, 0))), w.x);
+		float4 b = lerp(Decode(view, Fetch(layer, t + int2(0, 1))), Decode(view, Fetch(layer, t + int2(1, 1))), w.x);
+		c = lerp(a, b, w.y);
 	}
 	return c;
 }
@@ -103,8 +126,8 @@ float3 RollOff (float3 c, float knee, float peak)
 
 float4 PSMain (VSOut i) : SV_Target
 {
-	float3 light = ViewLight(SampleLayer(g_frame, i.uv).rgb);
-	float4 hud = SampleLayer(g_hud, i.uv);
+	float3 light = ViewLight(SampleLayer(g_frame, true, i.uv).rgb);
+	float4 hud = SampleLayer(g_hud, false, i.uv);
 
 	light = pow(max(light, 0), g_gamma);
 	light = MIDGRAY * pow(max(light / MIDGRAY, 0), g_contrast);
