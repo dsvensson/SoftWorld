@@ -196,11 +196,12 @@ Worth knowing:
 | `r_lerpframes`, `r_lerpmuzzlehack` | models' animation frames blend into each other (1, the default), as in ezQuake; the view model's muzzle flash appears at once rather than blending in from behind the view |
 | `gamma`, `vid_contrast` | the view's gamma and contrast; the HUD keeps its own |
 | `vid_hdr`, `vid_hdr_paperwhite` | HDR output on an HDR display; SDR white's brightness in nits (on macOS 0, the default, is the system's white, and nits are over a white of 100; on Linux 0 is the compositor's) |
-| `vid_vsync` | 1 a frame at each refresh (the default); 0 doesn't wait for the display |
+| `vid_vsync` | 1 a frame at each refresh; 0 (the default) doesn't wait for the display |
 | `vid_fullscreen`, `-fullscreen`, Alt+Enter | fullscreen: a borderless window on Windows, macOS's own (Option+Enter) on a Mac, the compositor's on Linux |
 | `vid_info`, `-gpu n` | Linux: the GPU, the presentation, the compositor's protocols, direct scanout and latency; the n'th GPU instead of the compositor's |
 | `r_profile 1`, `r_profile_show` | time a frame takes, by stage |
 | `cl_maxfps` | frame rate cap; 0 is none but the display's |
+| `cl_idlefps` | frame rate cap while the window isn't the focus, 50 by default; 0 is `cl_maxfps`'s |
 | `demo_speed`, `pause` | MVD playback speed, and pause |
 | `demo_jump [+\|-][m:]s` | seek in an MVD |
 | `track [name]`, jump, attack | in an MVD or QTV: follow a player, the next one; attack flies the camera and gives it back |

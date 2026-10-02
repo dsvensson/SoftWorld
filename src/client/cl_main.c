@@ -52,6 +52,10 @@ cvar_t	cl_hudswap	= {.name = "cl_hudswap", .string = "0", .archive = true,
 static cvar_t	cl_maxfps	= {.name = "cl_maxfps", .string = "0", .archive = true,
 	.description = "The most frames a second drawn, at least 30; 0 is no limit but the display's. "
 		"Without cl_independentPhysics: 30 to 72, 0 is rate/80."};
+// FTE's name
+static cvar_t	cl_idlefps	= {.name = "cl_idlefps", .string = "50", .archive = true,
+	.description = "The most frames a second drawn while the window isn't the focus, to yield the CPU; 0 is "
+		"cl_maxfps's. Minimized, 20."};
 
 cvar_t	lookspring = {.name = "lookspring", .string = "0", .archive = true,
 	.description = "Recenters the view's pitch when +mlook is let go, with freelook off.",
@@ -1281,6 +1285,7 @@ static void CL_InitLocal (void)
 	Cvar_RegisterVariable (&cl_sbar);
 	Cvar_RegisterVariable (&cl_hudswap);
 	Cvar_RegisterVariable (&cl_maxfps);
+	Cvar_RegisterVariable (&cl_idlefps);
 	Cvar_RegisterVariable (&cl_timeout);
 	Cvar_RegisterVariable (&cl_pext_chunkeddownloads);
 	CSQC_RegisterVariables ();
@@ -1546,12 +1551,12 @@ double CL_FrameWait (void)
 	if (cls.timedemo)
 		return 0;
 
-// yield the CPU when nobody watches: a little while not the focus,
-// more when minimized or paused
+// yield the CPU when nobody watches: a little while not the focus
+// (cl_idlefps), more when minimized or paused
 	if ((VID_IsMinimized () || (cl.paused && !VID_IsActive ())) && (!fps || fps > 20))
 		idlefps = 20;
-	else if (!VID_IsActive () && (!fps || fps > 50))
-		idlefps = 50;
+	else if (!VID_IsActive () && cl_idlefps.value > 0 && (!fps || fps > cl_idlefps.value))
+		idlefps = cl_idlefps.value;
 
 	if (idlefps)
 		wait = oldrealtime + 1.0 / idlefps - host.realtime;
