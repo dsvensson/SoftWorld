@@ -1,8 +1,8 @@
 # Release builds of softworld, the client with its own server, for Windows
-# (64-bit and 32-bit), macOS and Linux, uploaded as artifacts; and for a
-# version tag (v3.06) to the tag's GitHub release (release.sh). Every target is
-# built, the tests too, and the tests run where the runner's CPU runs the build
-# (cpu_supported): the maps test on the shareware's (shareware.sh).
+# (64-bit and 32-bit), macOS, Linux and the web, uploaded as artifacts; and for
+# a version tag (v3.06) to the tag's GitHub release (release.sh). Every target
+# is built, the tests too, and the tests run where the runner's CPU runs the
+# build (cpu_supported): the maps test on the shareware's (shareware.sh).
 
 name: Build
 
@@ -336,3 +336,66 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/release.sh dist/SoftWorld-Linux-${{ matrix.arch }}.tar.gz
+
+  # the page, with Emscripten (pinned: emsdk's version, cached); the tests in
+  # its node. Zipped with the workers next to the page and serve.py, which
+  # serves it and a Quake directory.
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      EMSDK_VERSION: 6.0.11
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cached emsdk
+        id: emsdk
+        uses: actions/cache@v6
+        with:
+          path: emsdk
+          key: emsdk-${{ env.EMSDK_VERSION }}
+
+      - name: emsdk
+        if: steps.emsdk.outputs.cache-hit != 'true'
+        run: |
+          git clone -q --depth 1 https://github.com/emscripten-core/emsdk.git
+          emsdk/emsdk install $EMSDK_VERSION
+          emsdk/emsdk activate $EMSDK_VERSION
+
+      - name: Build
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build
+          source emsdk/emsdk_env.sh
+          cmake --preset web
+          cmake --build --preset web
+
+      - name: Test
+        run: |
+          source emsdk/emsdk_env.sh
+          ctest --preset web
+
+      - name: Package
+        run: |
+          mkdir -p dist/SoftWorld-Web
+          cp build/web/Release/softworld.html build/web/Release/softworld.js build/web/Release/softworld.wasm \
+            build/web/Release/softworld-fs.js build/web/Release/softworld-sound.js src/platform/web/serve.py \
+            dist/SoftWorld-Web/
+          (cd dist && zip -qr SoftWorld-Web.zip SoftWorld-Web)
+
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: SoftWorld-Web.zip
+          path: dist/SoftWorld-Web.zip
+          archive: false
+          if-no-files-found: error
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/release.sh dist/SoftWorld-Web.zip

@@ -1,17 +1,19 @@
 # SoftWorld
 
 QuakeWorld with a software renderer, grown from id Software's 1999 source release into a
-current Windows, macOS and Linux program: a client that hosts its own server, a dedicated
-server, and the protocol extensions today's servers and clients speak.
+current Windows, macOS and Linux program, and a page in a browser: a client that hosts its own
+server, a dedicated server, and the protocol extensions today's servers and clients speak.
 
 - **Renderer:** software only, drawing 32-bit HDR pixels. The render size is 320×200 times a
   whole number, presented through Direct3D 11 on Windows, Metal 4 on macOS and Vulkan on
-  Linux (Wayland or X11), with HDR output where supported. The renderer draws straight into memory the
-  GPU reads, or on a GPU of its own memory the GPU copies from: the CPU copies nothing.
+  Linux (Wayland or X11), with HDR output where supported, and WebGL 2 in a browser. The
+  renderer draws straight into memory the GPU reads, or on a GPU of its own memory the GPU copies
+  from: the CPU copies nothing (in a browser, a copy a frame).
   Colored lighting (`.lit`, BSPX), BSP2 maps, translucency, skyboxes, fog and TGA textures
   from the map's worldspawn and files, and AVX-512, AVX2 and NEON kernels.
 - **Network:** the FTE, MVD1 and ZQuake extensions (float coordinates, 2048 entities, 4096
-  models, chunked downloads, …), mvdsv's player movement and its `pm_` keys.
+  models, chunked downloads, …), mvdsv's player movement and its `pm_` keys. WebSocket next
+  to UDP: servers take browsers' clients on TCP at their port, as FTE's do.
 - **Demos:** QWD and MVD playback, MVD seeking (`demo_jump`), QTV (`qtvplay`), item timers.
 - **QuakeC:** a hardened VM with FTE's opcodes and builtins, multiprogs and threads; FTE's
   client-side QuakeC (CSQC), enough for KTX's weapon prediction.
@@ -116,6 +118,23 @@ screenshots make (skipped without a GPU).
 Both backends are built by default. Use `-DSW_WAYLAND=OFF` for X11 only or
 `-DSW_X11=OFF` for Wayland only.
 
+### Web
+
+The client in a browser, built with Emscripten (6.0 or later) on Windows, macOS or Linux, with
+CMake 3.28 or later and Ninja. Install and activate emsdk once (`emsdk install latest`,
+`emsdk activate latest`), and in each shell take its environment (`emsdk_env.ps1` on Windows,
+`source emsdk_env.sh` elsewhere):
+
+```
+..\emsdk\emsdk_env.ps1
+cmake --preset web
+cmake --build --preset web
+ctest --preset web
+```
+
+`web-debug` builds Debug. The tests run in node, Emscripten's. The build is WebAssembly with the
+scalar kernels, and worker threads in the page as on the systems (`r_threads`).
+
 ## Programs
 
 The executables land in `build/<preset>/<config>/`; on macOS the two with a client are
@@ -127,7 +146,8 @@ applications (`softworld.app`), whose programs run from a terminal too
 - **`softworld-server`:** the dedicated server, in a console.
 
 The two with a server carry its game inside them: a game directory without a `qwprogs.dat`
-runs the built-in one.
+runs the built-in one. The web build makes the two with a client as pages:
+`softworld.html` (with its `.js` and `.wasm`), `softworld-fs.js` and `softworld-sound.js`.
 
 ## Running
 
@@ -215,6 +235,7 @@ Worth knowing:
 | `vid_info`, `-gpu n` | Linux: GPU and presentation details. Use the n'th GPU |
 | `r_profile 1`, `r_profile_show` | time a frame takes, by stage |
 | `cl_maxfps` | frame rate cap; 0 is none but the display's |
+| `sv_websocket` | the server takes browsers' clients over WebSocket, on TCP at its port (1, the default) |
 | `cl_idlefps` | frame rate cap while the window isn't the focus, 50 by default; 0 is `cl_maxfps`'s |
 | `cl_truelightning` | how far the lightning beam of the player whose view you see (yours, or the one a demo or spectating follows) turns toward the view, hiding its lag; 1, the default, all the way |
 | `demo_speed`, `pause` | MVD playback speed, and pause |
@@ -223,6 +244,49 @@ Worth knowing:
 | `demo_itemtimers`, `demo_itemrings` | KTX's item announcements, as a list and as rings on the floor |
 | `f_version`, `f_system`, `f_modified` | answered in chat as ezQuake answers them; `f_modified` also as a command, and `allow_f_system 0` answers `f_system` with "disabled" |
 | `memstats` | memory by use |
+
+### In a browser
+
+The page needs the game's files from the site that serves it, and cross-origin isolation (the
+COOP and COEP headers) for its shared memory. `serve.py` serves a build and a Quake directory
+on this machine:
+
+```
+python src\platform\web\serve.py build\web\Release C:\quake
+```
+
+and the page is at `http://localhost:8000/`. The address's query is the command line:
+`softworld.html?+map dm4`, `softworld.html?-scale 3 +connect qw.example.com`. Browsers allow
+the shared memory over http on localhost alone; from elsewhere the page must come over https.
+Another server needs the same headers, and `manifest.json`, which lists the files (each path,
+size and modification time).
+
+The game's files come as the game reads them, a piece at a time, and the browser keeps the
+pieces for 30 days or until the file changes on the site. What the game writes (`config.cfg`,
+written when the page hides, as a closed tab never quits; demos, screenshots, downloads) is
+kept in the browser and read over the site's files at the next start; clearing the site's
+data forgets it. Sound and the mouse wait for a click or a key: the browser's rule. The mouse
+moves raw where the browser has it (Chrome), and `vid_vsync 0` shows frames as soon as they
+are drawn where it lets a page (Chrome too); `vid_info` tells what it has.
+
+A browser has no UDP: the page connects to servers over WebSocket. `connect host[:port]` is
+`ws://host:27500`, or `wss://` from an https page; `connect wss://quake.example.com/qw` names
+the URL. SoftWorld's servers (`sv_websocket 1`, the default) and FTE's take browsers on TCP at
+their port; mvdsv doesn't. For wss:// put a TLS proxy in front, which may say who its client is
+(`X-Forwarded-For`, believed from the server's machine alone), as Caddy does:
+
+```
+caddy reverse-proxy --from quake.example.com --to 127.0.0.1:27500
+```
+
+QTV comes over WebSocket too, through a bridge in front of the relay:
+`websockify 27600 127.0.0.1:27599`, then `qtvplay 1@ws://host:27600`. TCP delays what comes
+after a packet lost until it comes again, which UDP doesn't. The page's own server takes only
+its own client.
+
+On Windows the sandbox's firewall rule lets TCP in with UDP since the WebSocket port came; a
+rule made before lets UDP alone in, until `softworld -sandbox-network`, run once as an
+administrator, makes it again.
 
 ## QuakeC
 
