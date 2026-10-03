@@ -161,7 +161,20 @@ void NET_CloseSocket (netsrc_t sock)
 		UDP_Close (net_sockets[sock]);
 	net_sockets[sock] = NULL;
 	if (sock == NS_SERVER)
+	{
 		NET_CloseWebSocket ();
+		RTC_Host (NULL);
+	}
+}
+
+bool NET_HostRTC (const char *url)
+{
+	return RTC_Host (url);
+}
+
+void NET_RTCInfo (const char *info)
+{
+	RTC_HostInfo (info);
 }
 
 netadr_t NET_SocketAddress (netsrc_t sock)
@@ -191,7 +204,8 @@ bool NET_GetPacket (netsrc_t sock, netadr_t *from, sizebuf_t *msg)
 			return true;
 		}
 	}
-	// the server's browsers' clients, and the peers over WebRTC
+	// the server's browsers' clients, and the peers over WebRTC (the server's
+	// clients, or the client's servers)
 	if (sock == NS_SERVER && WS_GetPacket (from, msg))
 		return true;
 	return RTC_GetPacket (sock, from, msg);
@@ -206,7 +220,7 @@ void NET_SendPacket (netsrc_t sock, int length, const void *data, netadr_t to)
 		if (sock == NS_SERVER)
 			WS_SendPacket (data, length, &to);
 	}
-	else if (to.type == NA_RTC)
+	else if (to.type == NA_RTC || to.type == NA_RTCCLIENT)
 		RTC_SendPacket (sock, data, length, &to);
 	else if ((to.type == NA_IP || to.type == NA_URL) && net_sockets[sock])
 		UDP_Send (net_sockets[sock], data, length, &to);

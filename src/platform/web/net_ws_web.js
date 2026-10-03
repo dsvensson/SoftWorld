@@ -12,7 +12,9 @@
 // channel, "quake", unordered and never sending again, as UDP; the broker
 // passes the offer, the answer and the candidates as JSON (a byte for what it
 // is, the peer's number in two, then the text), and is the first STUN server.
-// The socket opens when the channel does. It closes with a code of its own
+// A channel the server opens of its own (FTE's servers in a browser send on
+// theirs) is read beside it. The socket opens when the channel does. It
+// closes with a code of its own
 // for why (4000 and up, net_ws_web.c tells them), or its broker's.
 
 addToLibrary({
@@ -105,7 +107,7 @@ addToLibrary({
 				if (s.dc)
 					s.dc.onopen = s.dc.onmessage = s.dc.onclose = null;
 				if (s.pc) {
-					s.pc.onicecandidate = s.pc.onconnectionstatechange = null;
+					s.pc.onicecandidate = s.pc.onconnectionstatechange = s.pc.ondatachannel = null;
 					s.pc.close();
 				}
 			};
@@ -160,6 +162,11 @@ addToLibrary({
 				};
 				s.dc.onmessage = (e) => WebNet.received(id, s, e.data);
 				s.dc.onclose = () => fail(4003);
+				// a channel the server opened of its own, read beside ours
+				s.pc.ondatachannel = (e) => {
+					e.channel.binaryType = 'arraybuffer';
+					e.channel.onmessage = (m) => WebNet.received(id, s, m.data);
+				};
 				s.pc.onicecandidate = (e) => {
 					if (e.candidate)
 						signal(WebNet.CANDIDATE, JSON.stringify(e.candidate));

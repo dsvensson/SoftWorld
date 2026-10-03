@@ -20,6 +20,14 @@ void	RTC_Shutdown (void);
 bool	RTC_ResolveURL (const char *s, netadr_t *a);
 const char	*RTC_AdrToString (netadr_t a, bool port);
 
-// the end's next packet over WebRTC, and a packet to a peer
+// the end's next packet over WebRTC, and a packet to a peer: the client's to
+// servers by URL (NA_RTC), the server's to its clients (NA_RTCCLIENT)
 bool	RTC_GetPacket (netsrc_t sock, netadr_t *from, sizebuf_t *msg);
 void	RTC_SendPacket (netsrc_t sock, const void *data, int length, const netadr_t *to);
+
+// the room the server hosts at a broker, its clients coming through it (NULL
+// or "" for none; the same room again keeps its clients); false where the
+// build has no WebRTC, or the URL isn't one. What the server tells the broker
+// it is, an info string, every 30 s.
+bool	RTC_Host (const char *url);
+void	RTC_HostInfo (const char *info);

@@ -40,8 +40,10 @@ typedef enum { NS_CLIENT, NS_SERVER } netsrc_t;
 // (ws://, wss://, and rtc:// and rtcs:// over the browser's WebRTC: the web's
 // net_ws_web.c), ip the URL's number there.
 // NA_RTC: a peer over WebRTC (net_rtc.c), ip its URL's number, port the
-// broker's.
-typedef enum { NA_INVALID, NA_LOOPBACK, NA_IP, NA_WS, NA_URL, NA_RTC } netadrtype_t;
+// broker's. NA_RTCCLIENT: a client of the server's over WebRTC, by the
+// address and port its packets come from; it prints and compares as NA_IP,
+// but packets to it go through its data channel.
+typedef enum { NA_INVALID, NA_LOOPBACK, NA_IP, NA_WS, NA_URL, NA_RTC, NA_RTCCLIENT } netadrtype_t;
 
 typedef struct
 {
@@ -69,6 +71,12 @@ netadr_t	NET_SocketAddress (netsrc_t sock);	// type NA_INVALID without a socket,
 // closes it too.
 bool	NET_ListenWebSocket (int port);
 void	NET_CloseWebSocket (void);
+// the room at a broker the server takes clients in over WebRTC
+// (rtc://broker[:port]/room or rtcs://, "" for none; the same room again keeps
+// it), and what the server tells the broker it is, an info string (net_rtc.c);
+// false where the build has no WebRTC
+bool	NET_HostRTC (const char *url);
+void	NET_RTCInfo (const char *info);
 
 // the next packet for this end, from the loopback first, then the socket
 bool	NET_GetPacket (netsrc_t sock, netadr_t *from, sizebuf_t *msg);

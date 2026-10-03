@@ -239,6 +239,7 @@ Worth knowing:
 | `r_profile 1`, `r_profile_show` | time a frame takes, by stage |
 | `cl_maxfps` | frame rate cap; 0 is none but the display's |
 | `sv_websocket` | the server takes browsers' clients over WebSocket, on TCP at its port (1, the default) |
+| `sv_webrtc` | the server takes clients over WebRTC in a broker's room, `rtc://broker[:port]/room`; empty (the default) for none |
 | `cl_idlefps` | frame rate cap while the window isn't the focus, 50 by default; 0 is `cl_maxfps`'s |
 | `cl_truelightning` | how far the lightning beam of the player whose view you see (yours, or the one a demo or spectating follows) turns toward the view, hiding its lag; 1, the default, all the way |
 | `demo_speed`, `pause` | MVD playback speed, and pause |
@@ -294,12 +295,18 @@ administrator, makes it again.
 
 ### WebRTC
 
-FTE's servers also take clients over WebRTC: a broker (FTE's master, or the server's own)
-introduces the client to the server and passes their offers, and the packets then go between
-them over a data channel, unordered and never sent again, as UDP's. `connect rtc://broker/room`,
-or `rtcs://` for a broker over TLS; the broker's port is 27950 unless the address names one.
-The room is the name the server took at the broker, or `udp/ip:port` for a server the broker
-knows by its address (FTE's master).
+Servers also take clients over WebRTC, FTE's and SoftWorld's: a broker (FTE's master, or an
+FTE server's own TCP port) introduces the client to the server and passes their offers, and the
+packets then go between them over a data channel, unordered and never sent again, as UDP's.
+`connect rtc://broker/room`, or `rtcs://` for a broker over TLS; the broker's port is 27950
+unless the address names one. The room is the name the server took at the broker, or
+`udp/ip:port` for a server the broker knows by its address (FTE's master).
+
+A SoftWorld server takes a room with `sv_webrtc rtc://broker/room` (read as a map opens the
+port), and tells the broker what it is every 30 s, for its list. Clients come in by the same
+address: SoftWorld's, FTE's and browsers'. The server knows them by their IPv4 address, as its
+UDP clients, and talks to them from ports of their own, which a firewall must let through. A
+client already in stays when the broker goes; the server takes the room again when it is back.
 
 FTE's servers send a packet over WebRTC whole, and a big one is lost on the way: the client
 asks for them in pieces under 1384 bytes (FTE's fragmentation, which demos record put

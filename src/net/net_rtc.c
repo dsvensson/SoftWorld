@@ -1,5 +1,5 @@
 // net_rtc.c -- WebRTC over libdatachannel (net_rtc.h), as FTE's clients reach
-// servers through a broker
+// servers through a broker, and as FTE's servers take clients through one
 //
 // The client opens a WebSocket to the broker (subprotocol rtc_client) at
 // /FTE-Quake/<room>, FTE's name for Quake's games. The broker answers with the
@@ -10,11 +10,24 @@
 // browser's). Once the channel opens a packet is a message on it. The broker
 // also answers STUN at its port, so its own address is the first ICE server.
 //
+// A server keeps a WebSocket to its broker as a room's host (rtc_host): the
+// broker greets it (GREETING), tells it of each client that comes (NEWPEER)
+// and passes the client's offer, which the server answers. The server opens a
+// "quake" channel of its own too, and sends on the client's when there is
+// one, or else on its own: FTE's native clients open none, and take the
+// other side's (as FTE's servers in a browser send on theirs, which the
+// client reads beside its own). Every 30 s the server tells the broker
+// what it is (SERVERINFO), for the broker's list of servers. Its clients are
+// by the IPv4 address their packets come from (NA_RTCCLIENT; the server's ICE
+// is IPv4's alone), as its UDP clients are; a lost broker loses no client
+// already in.
+//
 // Nothing here waits: what libdatachannel's threads tell (the descriptions and
-// candidates to send, the connections' states, its log) is queued for the
-// game's thread, and the broker's messages and the channel's packets are
-// taken as they wait. A packet sent before the channel is open is dropped, as
-// a network drops it; the client asks for a challenge again in a while.
+// candidates to send, the connections' states, the clients' channels, its
+// log) is queued or stored for the game's thread, and the broker's messages
+// and the channels' packets are taken as they wait. A packet sent before the
+// channel is open is dropped, as a network drops it; the client asks for a
+// challenge again in a while.
 
 #include "cvar.h"
 #include "net_rtc.h"
@@ -35,11 +48,15 @@
 #define	RTC_BROKERPORT	27950			// FTE's (dpmaster's), unless the URL gives one
 #define	RTC_PROTOCOL	"FTE-Quake"		// what FTE's brokers know Quake's games by
 #define	MAX_RTCURLS		64
-#define	MAX_RTCCONNS	32
+#define	MAX_RTCCONNS	32				// the client's connections to servers
+#define	MAX_RTCPEERS	32				// the server's clients, connecting or in
 #define	REOPEN_TIME		5.0				// seconds before a failed connection is tried again
+#define	HOST_REOPEN_TIME	10.0		// and the server's broker connection
 #define	CONNECT_TIME	20.0			// seconds a connection may take to open
-#define	IDLE_TIME		30.0			// seconds without a packet sent before one is closed
+#define	IDLE_TIME		30.0			// seconds without a packet sent (or come) before one is closed
+#define	INFO_TIME		30.0			// seconds between the server's SERVERINFO, as FTE's
 #define	MAX_RTCMESSAGE	65536
+#define	RTC_NOPEER		-65536			// no broker's number (theirs are shorts)
 
 // the broker's messages (FTE's ICEMSG_*)
 enum { ICEMSG_PEERLOST, ICEMSG_GREETING, ICEMSG_NEWPEER, ICEMSG_OFFER, ICEMSG_CANDIDATE, ICEMSG_ACCEPT,
@@ -54,7 +71,7 @@ static cvar_t	net_rtc_debug = {.name = "net_rtc_debug", .string = "0",
 	.values = (const cvar_value_t[]){{"0", "Quiet"}, {"1", "The connections' steps"},
 		{"2", "And libdatachannel's log"}, {0}}};
 
-// the servers by URL, an NA_RTC's ip[0] and ip[1] their number
+// the rooms by URL, an NA_RTC's ip[0] and ip[1] their number
 typedef struct
 {
 	bool	tls;				// rtcs://
@@ -65,6 +82,7 @@ typedef struct
 static rtcurl_t	rtc_urls[MAX_RTCURLS];
 static int		rtc_numurls;
 
+// the client's connection to a server
 typedef struct
 {
 	bool		used;
@@ -72,6 +90,7 @@ typedef struct
 	int			ws;				// the broker's WebSocket, -1 for none
 	int			pc;				// the peer connection, -1 for none
 	int			dc;				// its data channel, -1 for none
+	_Atomic int	extra;			// a channel the server opened, -1 for none
 	int			peer;			// the broker's number of the other side
 	bool		open;			// the data channel is
 	bool		failed;			// told it failed
@@ -81,7 +100,36 @@ typedef struct
 } rtcconn_t;
 
 static rtcconn_t	rtc_conns[MAX_RTCCONNS];
-static bool			rtc_initialized;
+
+// a client of the server's
+typedef struct
+{
+	bool		used;
+	int			peer;			// the broker's number of it
+	int			pc;				// the peer connection
+	int			own;			// the server's channel to it, -1 for none
+	bool		open;			// a channel is, and adr known
+	netadr_t	adr;			// NA_RTCCLIENT, once open
+	double		started;		// when the broker told of it
+	double		heard;			// when a packet last came
+	_Atomic int	state;			// the peer connection's (rtcState)
+	_Atomic int	channel;		// the client's data channel, -1 until it comes
+} rtcpeer_t;
+
+// the room the server hosts
+static struct
+{
+	netadr_t	adr;			// NA_RTC; NA_INVALID for none
+	int			ws;				// the broker's WebSocket, -1 for none
+	bool		greeted;		// the broker took the room
+	bool		failed;			// told it failed
+	double		opened;			// when the WebSocket was last opened
+	double		infosent;
+	char		info[2048];		// what the server tells the broker it is
+	rtcpeer_t	peers[MAX_RTCPEERS];
+} rtc_host = {.ws = -1};
+
+static bool	rtc_initialized;
 
 /*
 ===============================================================================
@@ -95,7 +143,7 @@ enum { EV_DESCRIPTION, EV_CANDIDATE, EV_LOG };
 
 typedef struct
 {
-	int		conn;
+	int		conn;		// RTC_ConnOf's number, -1 for none
 	int		kind;
 	char	*text;
 	char	*extra;		// a description's type, a candidate's mid
@@ -164,12 +212,13 @@ static bool RTC_Pop (rtcevent_t *event)
 	return got;
 }
 
-// a peer connection's user pointer is its connection's number, plus one
+// a peer connection's user pointer is its number, plus one: the client's
+// connections, then the server's clients
 static int RTC_ConnOf (void *ptr)
 {
 	int		i = (int)(intptr_t)ptr - 1;
 
-	return i >= 0 && i < MAX_RTCCONNS ? i : -1;
+	return i >= 0 && i < MAX_RTCCONNS + MAX_RTCPEERS ? i : -1;
 }
 
 static void RTC_API RTC_OnDescription (int pc, const char *sdp, const char *type, void *ptr)
@@ -189,8 +238,23 @@ static void RTC_API RTC_OnState (int pc, rtcState state, void *ptr)
 	int		i = RTC_ConnOf (ptr);
 
 	(void)pc;
-	if (i >= 0)
+	if (i >= 0 && i < MAX_RTCCONNS)
 		atomic_store (&rtc_conns[i].state, (int)state);
+	else if (i >= MAX_RTCCONNS)
+		atomic_store (&rtc_host.peers[i - MAX_RTCCONNS].state, (int)state);
+}
+
+// a channel the other side opened: a client's to the server, or a server's
+// of its own to the client; the first is taken
+static void RTC_API RTC_OnDataChannel (int pc, int dc, void *ptr)
+{
+	int		i = RTC_ConnOf (ptr), none = -1;
+
+	(void)pc;
+	if (i >= 0 && i < MAX_RTCCONNS)
+		atomic_compare_exchange_strong (&rtc_conns[i].extra, &none, dc);
+	else if (i >= MAX_RTCCONNS)
+		atomic_compare_exchange_strong (&rtc_host.peers[i - MAX_RTCCONNS].channel, &none, dc);
 }
 
 // only kept when it is printed
@@ -199,6 +263,19 @@ static void RTC_API RTC_OnLog (rtcLogLevel level, const char *message)
 	(void)level;
 	if (net_rtc_debug.value >= 2)
 		RTC_Push (-1, EV_LOG, message, NULL);
+}
+
+static void RTC_Debug (const char *fmt, ...)
+{
+	va_list	args;
+	char	text[1024];
+
+	if (!net_rtc_debug.value)
+		return;
+	va_start (args, fmt);
+	vsnprintf (text, sizeof(text), fmt, args);
+	va_end (args);
+	Con_Printf ("%s", text);
 }
 
 /*
@@ -373,52 +450,11 @@ const char *RTC_AdrToString (netadr_t a, bool port)
 	return out;
 }
 
-/*
-===============================================================================
-
-CONNECTIONS
-
-===============================================================================
-*/
-
-static void RTC_Debug (const char *fmt, ...)
+// the broker's WebSocket for a room, as a client or as its host
+static int RTC_OpenBroker (netadr_t adr, const char *protocol)
 {
-	va_list	args;
-	char	text[1024];
-
-	if (!net_rtc_debug.value)
-		return;
-	va_start (args, fmt);
-	vsnprintf (text, sizeof(text), fmt, args);
-	va_end (args);
-	Con_Printf ("%s", text);
-}
-
-static void RTC_Close (rtcconn_t *c)
-{
-	if (c->dc >= 0)
-		rtcDeleteDataChannel (c->dc);
-	if (c->pc >= 0)
-		rtcDeletePeerConnection (c->pc);
-	if (c->ws >= 0)
-		rtcDeleteWebSocket (c->ws);
-	c->ws = c->pc = c->dc = -1;
-	c->open = false;
-}
-
-// told once, until it opens again
-static void RTC_Fail (rtcconn_t *c, const char *why)
-{
-	if (!c->failed)
-		Con_Printf ("WebRTC to %s: %s\n", RTC_AdrToString (c->adr, true), why);
-	c->failed = true;
-	RTC_Close (c);
-}
-
-static void RTC_Open (rtcconn_t *c, double now)
-{
-	rtcurl_t			*url = &rtc_urls[RTC_UrlIndex (c->adr)];
-	const char			*protocols[] = {"rtc_client"};
+	rtcurl_t			*url = &rtc_urls[RTC_UrlIndex (adr)];
+	const char			*protocols[] = {protocol};
 	rtcWsConfiguration	config = {
 		.disableTlsVerification = net_rtc_ignorecert.value != 0,
 		.protocols = protocols,
@@ -426,17 +462,19 @@ static void RTC_Open (rtcconn_t *c, double now)
 	};
 	char				address[400];
 
-	RTC_Close (c);
 	snprintf (address, sizeof(address), "%s://%s:%i/%s/%s", url->tls ? "wss" : "ws", url->host,
-		(unsigned short)BigShort ((short)c->adr.port), RTC_PROTOCOL, url->room);
-	c->opened = now;
-	c->peer = -1;
-	atomic_store (&c->state, RTC_NEW);
-	c->ws = rtcCreateWebSocketEx (address, &config);
-	RTC_Debug ("WebRTC: broker %s\n", address);
-	if (c->ws < 0)
-		RTC_Fail (c, "the broker's address can't be opened");
+		(unsigned short)BigShort ((short)adr.port), RTC_PROTOCOL, url->room);
+	RTC_Debug ("WebRTC: broker %s (%s)\n", address, protocol);
+	return rtcCreateWebSocketEx (address, &config);
 }
+
+/*
+===============================================================================
+
+CONNECTIONS
+
+===============================================================================
+*/
 
 // a channel's next message (size < 0 for text); one bigger than capacity is
 // taken and dropped (size 0)
@@ -460,67 +498,228 @@ static bool RTC_Receive (int id, char *buffer, int capacity, int *size)
 	return ret == RTC_ERR_SUCCESS;
 }
 
-static void RTC_SendBroker (rtcconn_t *c, int message, const char *text)
+// the next packet on a data channel, from adr; false when none waits
+static bool RTC_ChannelPacket (int dc, netadr_t adr, netadr_t *from, sizebuf_t *msg)
+{
+	static char	buffer[MAX_RTCMESSAGE];
+	int			size;
+
+	while (RTC_Receive (dc, buffer, sizeof(buffer), &size))
+	{
+		if (size <= 0)
+			continue;		// text: not a packet
+		if (size > msg->maxsize)
+		{
+			Con_Printf ("Oversize packet from %s\n", NET_AdrToString (adr));
+			continue;
+		}
+		memcpy (msg->data, buffer, (size_t)size);
+		msg->cursize = size;
+		*from = adr;
+		return true;
+	}
+	return false;
+}
+
+// a message to the broker: what, to whom, and its text
+static void RTC_SendBroker (int ws, int peer, int message, const char *text)
 {
 	static char	buffer[MAX_RTCMESSAGE];
 	size_t		length = strlen (text);
 
-	if (c->ws < 0 || length + 3 > sizeof(buffer))
+	if (ws < 0 || length + 3 > sizeof(buffer))
 		return;
 	buffer[0] = (char)message;
-	buffer[1] = (char)(c->peer & 0xff);
-	buffer[2] = (char)((c->peer >> 8) & 0xff);
+	buffer[1] = (char)(peer & 0xff);
+	buffer[2] = (char)((peer >> 8) & 0xff);
 	memcpy (buffer + 3, text, length);
-	rtcSendMessage (c->ws, buffer, (int)length + 3);
+	rtcSendMessage (ws, buffer, (int)length + 3);
+}
+
+// a broker's message: what, from whom, and its text (the text ends in a 0,
+// and NEWPEER's has the relays after it)
+static bool RTC_BrokerText (const char *data, int length, int *message, int *from, char *text)
+{
+	if (length < 3)
+		return false;
+	*message = (byte)data[0];
+	*from = (short)((byte)data[1] | (byte)data[2] << 8);
+	memcpy (text, data + 3, (size_t)(length - 3));
+	text[length - 3] = 0;
+	return true;
+}
+
+// a NEWPEER's relays, after its text
+static const char *RTC_Relays (const char *data, int length)
+{
+	const char	*relays = data + 3 + strlen (data + 3) + 1;
+
+	return relays < data + length ? relays : "";
+}
+
+// a description's or candidate's text and its second field from the JSON a
+// browser sends, or as it is
+static void RTC_JsonPair (const char *text, const char *key, const char *key2, const char *default2, char *value,
+	size_t size, char *value2, size_t size2)
+{
+	if (!RTC_JsonField (text, key, value, size))
+		Q_strncpyz (value, text, size);
+	if (!RTC_JsonField (text, key2, value2, size2))
+		Q_strncpyz (value2, default2, size2);
+}
+
+// the ICE servers for a peer connection: the broker as STUN server, and the
+// relays it gives (FTE's turn:host:port?user=u?auth=p, between spaces)
+typedef struct
+{
+	char		servers[8][256];
+	const char	*list[8];
+} rtcservers_t;
+
+static void RTC_IceServers (rtcConfiguration *config, rtcservers_t *s, netadr_t broker, const char *relays)
+{
+	const char	*user, *auth;
+	char		token[256];
+	int			count = 0, length;
+
+	snprintf (s->servers[count], sizeof(s->servers[0]), "stun:%s:%i", rtc_urls[RTC_UrlIndex (broker)].host,
+		(unsigned short)BigShort ((short)broker.port));
+	s->list[count] = s->servers[count];
+	count++;
+	while (*relays && count < 8)
+	{
+		while (*relays == ' ')
+			relays++;
+		for (length = 0 ; relays[length] && relays[length] != ' ' && length < (int)sizeof(token) - 1 ; length++)
+			token[length] = relays[length];
+		token[length] = 0;
+		relays += length;
+		if (strncmp (token, "turn:", 5))
+			continue;
+		user = strstr (token, "?user=");
+		auth = strstr (token, "?auth=");
+		if (user)
+			*strchr (token, '?') = 0;
+		if (user && auth)
+			snprintf (s->servers[count], sizeof(s->servers[0]), "turn:%.*s:%s@%s", (int)strcspn (user + 6, "?"),
+				user + 6, auth + 6, token + 5);
+		else
+			snprintf (s->servers[count], sizeof(s->servers[0]), "%s", token);
+		s->list[count] = s->servers[count];
+		count++;
+	}
+	config->iceServers = s->list;
+	config->iceServersCount = count;
+}
+
+// the descriptions and candidates libdatachannel made, through the broker to
+// the other side; its log
+static void RTC_PollEvents (void)
+{
+	static char	buffer[MAX_RTCMESSAGE], json[MAX_RTCMESSAGE];
+	rtcevent_t	event;
+	rtcpeer_t	*p;
+	int			ws, peer;
+
+	while (RTC_Pop (&event))
+	{
+		ws = peer = -1;
+		if (event.conn >= 0 && event.conn < MAX_RTCCONNS && rtc_conns[event.conn].used
+			&& rtc_conns[event.conn].pc >= 0)
+		{
+			ws = rtc_conns[event.conn].ws;
+			peer = rtc_conns[event.conn].peer;
+		}
+		else if (event.conn >= MAX_RTCCONNS)
+		{
+			p = &rtc_host.peers[event.conn - MAX_RTCCONNS];
+			if (p->used && p->peer != RTC_NOPEER)
+			{
+				ws = rtc_host.ws;
+				peer = p->peer;
+			}
+		}
+
+		if (event.kind == EV_LOG)
+			Con_Printf ("libdatachannel: %s\n", event.text);
+		else if (ws >= 0 && event.kind == EV_DESCRIPTION)
+		{
+			RTC_JsonEscape (buffer, sizeof(buffer), event.text);
+			snprintf (json, sizeof(json), "{\"type\":\"%s\",\"sdp\":\"%s\"}", event.extra, buffer);
+			RTC_Debug ("WebRTC: our %s (%i)\n", event.extra, peer);
+			RTC_SendBroker (ws, peer, ICEMSG_OFFER, json);
+		}
+		else if (ws >= 0 && event.kind == EV_CANDIDATE)
+		{
+			RTC_JsonEscape (buffer, sizeof(buffer), event.text);
+			snprintf (json, sizeof(json), "{\"candidate\":\"%s\",\"sdpMid\":\"%s\",\"sdpMLineIndex\":0}", buffer,
+				event.extra);
+			RTC_Debug ("WebRTC: our %s\n", event.text);
+			RTC_SendBroker (ws, peer, ICEMSG_CANDIDATE, json);
+		}
+		free (event.text);
+		free (event.extra);
+	}
+}
+
+/*
+===============================================================================
+
+THE CLIENT'S CONNECTIONS
+
+===============================================================================
+*/
+
+static void RTC_Close (rtcconn_t *c)
+{
+	int		extra = atomic_exchange (&c->extra, -1);
+
+	if (extra >= 0)
+		rtcDeleteDataChannel (extra);
+	if (c->dc >= 0)
+		rtcDeleteDataChannel (c->dc);
+	if (c->pc >= 0)
+		rtcDeletePeerConnection (c->pc);
+	if (c->ws >= 0)
+		rtcDeleteWebSocket (c->ws);
+	c->ws = c->pc = c->dc = -1;
+	c->open = false;
+}
+
+// told once, until it opens again
+static void RTC_Fail (rtcconn_t *c, const char *why)
+{
+	if (!c->failed)
+		Con_Printf ("WebRTC to %s: %s\n", RTC_AdrToString (c->adr, true), why);
+	c->failed = true;
+	RTC_Close (c);
+}
+
+static void RTC_Open (rtcconn_t *c, double now)
+{
+	RTC_Close (c);
+	c->opened = now;
+	c->peer = -1;
+	atomic_store (&c->state, RTC_NEW);
+	c->ws = RTC_OpenBroker (c->adr, "rtc_client");
+	if (c->ws < 0)
+		RTC_Fail (c, "the broker's address can't be opened");
 }
 
 /*
 ================
 RTC_StartPeer
 
-The broker found the server: a peer connection to offer, with the broker as
-STUN server and the relays it gives (FTE's turn:host:port?user=u?auth=p)
+The broker found the server: a peer connection to offer
 ================
 */
 static void RTC_StartPeer (rtcconn_t *c, const char *relays)
 {
-	rtcurl_t			*url = &rtc_urls[RTC_UrlIndex (c->adr)];
-	char				servers[8][256];
-	const char			*list[8];
 	rtcConfiguration	config = {0};
+	rtcservers_t		servers;
 	rtcDataChannelInit	init = {.reliability = {.unordered = true, .unreliable = true, .maxRetransmits = 0}};
-	const char			*s, *user, *auth;
-	char				token[256];
-	int					count = 0, length;
 
-	snprintf (servers[count], sizeof(servers[0]), "stun:%s:%i", url->host, (unsigned short)BigShort ((short)c->adr.port));
-	list[count] = servers[count];
-	count++;
-	for (s = relays ; *s && count < 8 ; )
-	{
-		while (*s == ' ')
-			s++;
-		for (length = 0 ; s[length] && s[length] != ' ' && length < (int)sizeof(token) - 1 ; length++)
-			token[length] = s[length];
-		token[length] = 0;
-		s += length;
-		if (strncmp (token, "turn:", 5))
-			continue;
-		user = strstr (token, "?user=");
-		auth = strstr (token, "?auth=");
-		if (user)
-			*(char *)strchr (token, '?') = 0;
-		if (user && auth)
-			snprintf (servers[count], sizeof(servers[0]), "turn:%.*s:%s@%s", (int)strcspn (user + 6, "?"), user + 6,
-				auth + 6, token + 5);
-		else
-			snprintf (servers[count], sizeof(servers[0]), "%s", token);
-		list[count] = servers[count];
-		count++;
-	}
-	config.iceServers = list;
-	config.iceServersCount = count;
-
+	RTC_IceServers (&config, &servers, c->adr, relays);
 	c->pc = rtcCreatePeerConnection (&config);
 	if (c->pc < 0)
 	{
@@ -531,6 +730,7 @@ static void RTC_StartPeer (rtcconn_t *c, const char *relays)
 	rtcSetLocalDescriptionCallback (c->pc, RTC_OnDescription);
 	rtcSetLocalCandidateCallback (c->pc, RTC_OnCandidate);
 	rtcSetStateChangeCallback (c->pc, RTC_OnState);
+	rtcSetDataChannelCallback (c->pc, RTC_OnDataChannel);
 	// the channel makes the offer
 	c->dc = rtcCreateDataChannelEx (c->pc, "quake", &init);
 	if (c->dc < 0)
@@ -539,33 +739,26 @@ static void RTC_StartPeer (rtcconn_t *c, const char *relays)
 
 static void RTC_BrokerMessage (rtcconn_t *c, const char *data, int length)
 {
-	static char	text[MAX_RTCMESSAGE], value[MAX_RTCMESSAGE], mid[64];
+	static char	text[MAX_RTCMESSAGE], value[MAX_RTCMESSAGE];
+	char		mid[64];
 	int			message, from;
 
-	if (length < 3)
+	if (!RTC_BrokerText (data, length, &message, &from, text))
 		return;
-	message = (byte)data[0];
-	from = (short)((byte)data[1] | (byte)data[2] << 8);
-	memcpy (text, data + 3, (size_t)(length - 3));
-	text[length - 3] = 0;
 
 	switch (message)
 	{
-	case ICEMSG_NEWPEER:
-		// the server's address, then the relays, each ending in a 0
+	case ICEMSG_NEWPEER:	// the server's address, then the relays
 		c->peer = from;
 		RTC_Debug ("WebRTC: the broker found the server (%i)\n", from);
 		if (c->pc < 0)
-			RTC_StartPeer (c, data + 3 + strlen (text) + 1 < data + length ? data + 3 + strlen (text) + 1 : "");
+			RTC_StartPeer (c, RTC_Relays (data, length));
 		break;
 
 	case ICEMSG_OFFER:		// the server's answer
 		if (c->pc < 0)
 			break;
-		if (!RTC_JsonField (text, "sdp", value, sizeof(value)))
-			strcpy (value, text);
-		if (!RTC_JsonField (text, "type", mid, sizeof(mid)))
-			strcpy (mid, "answer");
+		RTC_JsonPair (text, "sdp", "type", "answer", value, sizeof(value), mid, sizeof(mid));
 		RTC_Debug ("WebRTC: the server's %s\n", mid);
 		rtcSetRemoteDescription (c->pc, value, mid);
 		break;
@@ -573,10 +766,7 @@ static void RTC_BrokerMessage (rtcconn_t *c, const char *data, int length)
 	case ICEMSG_CANDIDATE:
 		if (c->pc < 0)
 			break;
-		if (!RTC_JsonField (text, "candidate", value, sizeof(value)))
-			strcpy (value, text);
-		if (!RTC_JsonField (text, "sdpMid", mid, sizeof(mid)))
-			strcpy (mid, "0");
+		RTC_JsonPair (text, "candidate", "sdpMid", "0", value, sizeof(value), mid, sizeof(mid));
 		RTC_Debug ("WebRTC: the server's %s\n", value);
 		rtcAddRemoteCandidate (c->pc, value, mid);
 		break;
@@ -592,37 +782,12 @@ static void RTC_BrokerMessage (rtcconn_t *c, const char *data, int length)
 	}
 }
 
-// what libdatachannel told, the broker's messages, and the connections' states
+// the broker's messages, and the connections' states
 static void RTC_Poll (double now)
 {
-	static char	buffer[MAX_RTCMESSAGE], json[MAX_RTCMESSAGE];
-	rtcevent_t	event;
+	static char	buffer[MAX_RTCMESSAGE];
 	rtcconn_t	*c;
 	int			i, size, state;
-
-	while (RTC_Pop (&event))
-	{
-		c = event.conn >= 0 ? &rtc_conns[event.conn] : NULL;
-		if (event.kind == EV_LOG)
-			Con_Printf ("libdatachannel: %s\n", event.text);
-		else if (c && c->used && c->pc >= 0 && event.kind == EV_DESCRIPTION)
-		{
-			RTC_JsonEscape (buffer, sizeof(buffer), event.text);
-			snprintf (json, sizeof(json), "{\"type\":\"%s\",\"sdp\":\"%s\"}", event.extra, buffer);
-			RTC_Debug ("WebRTC: our %s\n", event.extra);
-			RTC_SendBroker (c, ICEMSG_OFFER, json);
-		}
-		else if (c && c->used && c->pc >= 0 && event.kind == EV_CANDIDATE)
-		{
-			RTC_JsonEscape (buffer, sizeof(buffer), event.text);
-			snprintf (json, sizeof(json), "{\"candidate\":\"%s\",\"sdpMid\":\"%s\",\"sdpMLineIndex\":0}", buffer,
-				event.extra);
-			RTC_Debug ("WebRTC: our %s\n", event.text);
-			RTC_SendBroker (c, ICEMSG_CANDIDATE, json);
-		}
-		free (event.text);
-		free (event.extra);
-	}
 
 	for (i = 0, c = rtc_conns ; i < MAX_RTCCONNS ; i++, c++)
 	{
@@ -668,6 +833,307 @@ static void RTC_Poll (double now)
 /*
 ===============================================================================
 
+THE SERVER'S ROOM
+
+===============================================================================
+*/
+
+static void RTC_ClosePeer (rtcpeer_t *p)
+{
+	int		dc = atomic_exchange (&p->channel, -1);
+
+	if (dc >= 0)
+		rtcDeleteDataChannel (dc);
+	if (p->own >= 0)
+		rtcDeleteDataChannel (p->own);
+	p->own = -1;
+	if (p->pc >= 0)
+		rtcDeletePeerConnection (p->pc);
+	p->pc = -1;
+	p->open = false;
+	p->used = false;
+}
+
+// the broker's connection; the clients in stay
+static void RTC_CloseBroker (void)
+{
+	if (rtc_host.ws >= 0)
+		rtcDeleteWebSocket (rtc_host.ws);
+	rtc_host.ws = -1;
+	rtc_host.greeted = false;
+}
+
+// told once, until the broker greets it again; opened again in a while
+static void RTC_HostFail (const char *why)
+{
+	if (!rtc_host.failed)
+		Con_Printf ("WebRTC room %s: %s\n", RTC_AdrToString (rtc_host.adr, true), why);
+	rtc_host.failed = true;
+	RTC_CloseBroker ();
+}
+
+static void RTC_OpenHost (double now)
+{
+	RTC_CloseBroker ();
+	rtc_host.opened = now;
+	rtc_host.ws = RTC_OpenBroker (rtc_host.adr, "rtc_host");
+	if (rtc_host.ws < 0)
+		RTC_HostFail ("the broker's address can't be opened");
+}
+
+static void RTC_SendInfo (double now)
+{
+	if (rtc_host.greeted && *rtc_host.info)
+		RTC_SendBroker (rtc_host.ws, -1, ICEMSG_SERVERINFO, rtc_host.info);
+	rtc_host.infosent = now;
+}
+
+// "a.b.c.d:port" (or IPv6's "[::ffff:a.b.c.d]:port") as an NA_RTCCLIENT
+static bool RTC_ClientAddress (const char *s, netadr_t *a)
+{
+	const char	*colon = strrchr (s, ':');
+	int			b[4], port, i, n = 0;
+
+	if (!colon)
+		return false;
+	if (*s == '[')
+		s++;
+	if (!Q_strncasecmp (s, "::ffff:", 7))
+		s += 7;
+	if (sscanf (s, "%3d.%3d.%3d.%3d%n", &b[0], &b[1], &b[2], &b[3], &n) != 4 || (s[n] != ':' && s[n] != ']'))
+		return false;
+	port = atoi (colon + 1);
+	if (port <= 0 || port > 65535)
+		return false;
+	memset (a, 0, sizeof(*a));
+	a->type = NA_RTCCLIENT;
+	for (i = 0 ; i < 4 ; i++)
+	{
+		if (b[i] < 0 || b[i] > 255)
+			return false;
+		a->ip[i] = (byte)b[i];
+	}
+	a->port = (unsigned short)BigShort ((short)port);
+	return true;
+}
+
+// the channel to send a client its packets on: its own, or else the server's;
+// -1 while neither is open
+static int RTC_PeerChannel (rtcpeer_t *p)
+{
+	int		dc = atomic_load (&p->channel);
+
+	if (dc >= 0 && rtcIsOpen (dc))
+		return dc;
+	return p->own >= 0 && rtcIsOpen (p->own) ? p->own : -1;
+}
+
+// a client the broker told of, to answer
+static void RTC_NewPeer (int from, const char *relays, double now)
+{
+	rtcConfiguration	config = {0};
+	rtcservers_t		servers;
+	rtcpeer_t			*p;
+	int					i;
+
+	for (i = 0 ; i < MAX_RTCPEERS && rtc_host.peers[i].used ; i++)
+		;
+	if (i == MAX_RTCPEERS)
+	{
+		RTC_Debug ("WebRTC: no room for another client (%i)\n", from);
+		return;
+	}
+	p = &rtc_host.peers[i];
+	memset (&p->adr, 0, sizeof(p->adr));
+	p->used = true;
+	p->peer = from;
+	p->own = -1;
+	p->open = false;
+	p->started = now;
+	atomic_store (&p->state, RTC_NEW);
+	atomic_store (&p->channel, -1);
+
+	RTC_IceServers (&config, &servers, rtc_host.adr, relays);
+	// IPv4 alone: the clients are by their IPv4 addresses
+	config.bindAddress = "0.0.0.0";
+	p->pc = rtcCreatePeerConnection (&config);
+	if (p->pc < 0)
+	{
+		p->used = false;
+		return;
+	}
+	rtcSetUserPointer (p->pc, (void *)(intptr_t)(MAX_RTCCONNS + i + 1));
+	rtcSetLocalDescriptionCallback (p->pc, RTC_OnDescription);
+	rtcSetLocalCandidateCallback (p->pc, RTC_OnCandidate);
+	rtcSetStateChangeCallback (p->pc, RTC_OnState);
+	rtcSetDataChannelCallback (p->pc, RTC_OnDataChannel);
+	RTC_Debug ("WebRTC: a client comes (%i)\n", from);
+}
+
+static void RTC_HostMessage (const char *data, int length, double now)
+{
+	static char	text[MAX_RTCMESSAGE], value[MAX_RTCMESSAGE];
+	char		mid[64];
+	rtcpeer_t	*p = NULL;
+	rtcDataChannelInit	init = {.reliability = {.unordered = true, .unreliable = true, .maxRetransmits = 0}};
+	int			message, from, i;
+
+	if (!RTC_BrokerText (data, length, &message, &from, text))
+		return;
+	for (i = 0 ; i < MAX_RTCPEERS ; i++)
+		if (rtc_host.peers[i].used && rtc_host.peers[i].peer == from)
+			p = &rtc_host.peers[i];
+
+	switch (message)
+	{
+	case ICEMSG_GREETING:	// the broker took the room
+		if (!rtc_host.greeted)
+			Con_Printf ("WebRTC room %s is this server's\n", RTC_AdrToString (rtc_host.adr, true));
+		rtc_host.greeted = true;
+		rtc_host.failed = false;
+		RTC_SendInfo (now);
+		break;
+
+	case ICEMSG_NEWPEER:	// a client: its address, then the relays
+		// a number the broker gives again: one still connecting with it is
+		// gone, one in keeps its channel
+		if (p && !p->open)
+			RTC_ClosePeer (p);
+		else if (p)
+			p->peer = RTC_NOPEER;
+		RTC_NewPeer (from, RTC_Relays (data, length), now);
+		break;
+
+	case ICEMSG_OFFER:		// the client's, which libdatachannel answers
+		if (!p || p->pc < 0)
+			break;
+		RTC_JsonPair (text, "sdp", "type", "offer", value, sizeof(value), mid, sizeof(mid));
+		RTC_Debug ("WebRTC: the client's %s (%i)\n", mid, from);
+		rtcSetRemoteDescription (p->pc, value, mid);
+		// the server's own channel, once answered (before, it would offer)
+		if (p->own < 0)
+			p->own = rtcCreateDataChannelEx (p->pc, "quake", &init);
+		break;
+
+	case ICEMSG_CANDIDATE:
+		if (!p || p->pc < 0)
+			break;
+		RTC_JsonPair (text, "candidate", "sdpMid", "0", value, sizeof(value), mid, sizeof(mid));
+		RTC_Debug ("WebRTC: the client's %s\n", value);
+		rtcAddRemoteCandidate (p->pc, value, mid);
+		break;
+
+	case ICEMSG_PEERLOST:
+		// the broker going; a client gone from it before its channel opened
+		if (from == -1)
+			RTC_HostFail (*text ? text : "the broker closed the room");
+		else if (p && !p->open)
+			RTC_ClosePeer (p);
+		break;
+
+	case ICEMSG_NAMEINUSE:
+		RTC_HostFail ("another server has the room");
+		break;
+	}
+}
+
+// the broker's messages, and the clients' states
+static void RTC_HostPoll (double now)
+{
+	static char	buffer[MAX_RTCMESSAGE];
+	char		address[96];
+	rtcpeer_t	*p;
+	int			i, size, state, dc;
+
+	if (rtc_host.adr.type != NA_RTC)
+		return;
+
+	if (rtc_host.ws < 0 && now - rtc_host.opened >= HOST_REOPEN_TIME)
+		RTC_OpenHost (now);
+	while (rtc_host.ws >= 0 && RTC_Receive (rtc_host.ws, buffer, sizeof(buffer) - 1, &size))
+	{
+		buffer[size > 0 ? size : 0] = 0;		// the relays' list ends
+		if (size > 0)
+			RTC_HostMessage (buffer, size, now);
+	}
+	if (rtc_host.ws >= 0 && rtcIsClosed (rtc_host.ws))
+		RTC_HostFail (rtc_host.greeted ? "the broker's connection closed" : "the broker can't be reached");
+	else if (rtc_host.ws >= 0 && !rtc_host.greeted && now - rtc_host.opened > CONNECT_TIME)
+		RTC_HostFail ("the broker didn't take the room in time");
+	else if (rtc_host.greeted && now - rtc_host.infosent >= INFO_TIME)
+		RTC_SendInfo (now);
+
+	for (i = 0, p = rtc_host.peers ; i < MAX_RTCPEERS ; i++, p++)
+	{
+		if (!p->used)
+			continue;
+		state = atomic_load (&p->state);
+		dc = RTC_PeerChannel (p);
+		if (!p->open && dc >= 0)
+		{
+			// by where its packets come from
+			if (rtcGetRemoteAddress (p->pc, address, sizeof(address)) < 0 || !RTC_ClientAddress (address, &p->adr))
+			{
+				RTC_Debug ("WebRTC: a client without an IPv4 address (%i)\n", p->peer);
+				RTC_ClosePeer (p);
+				continue;
+			}
+			p->open = true;
+			p->heard = now;
+			RTC_Debug ("WebRTC: client %s open (%i)\n", NET_AdrToString (p->adr), p->peer);
+		}
+		else if (state == RTC_FAILED || state == RTC_CLOSED || (p->open && state == RTC_DISCONNECTED)
+			|| (p->open && dc < 0) || (p->open && now - p->heard > IDLE_TIME)
+			|| (!p->open && now - p->started > CONNECT_TIME))
+		{
+			RTC_Debug ("WebRTC: client %s gone (%i)\n", p->open ? NET_AdrToString (p->adr) : "", p->peer);
+			RTC_ClosePeer (p);
+		}
+	}
+}
+
+/*
+=============
+RTC_Host
+
+The room the server hosts, rtc://broker[:port]/room or rtcs://; NULL or ""
+for none. The same room again keeps its connection and its clients.
+=============
+*/
+bool RTC_Host (const char *url)
+{
+	netadr_t	adr = {.type = NA_INVALID};
+	int			i;
+
+	if (!rtc_initialized)
+		return false;
+	if (url && *url && !RTC_ResolveURL (url, &adr))
+	{
+		Con_Printf ("WebRTC: %s isn't a broker's room (rtc://broker[:port]/room)\n", url);
+		adr.type = NA_INVALID;
+	}
+	if (NET_CompareAdr (adr, rtc_host.adr))
+		return adr.type == NA_RTC;
+
+	RTC_CloseBroker ();
+	for (i = 0 ; i < MAX_RTCPEERS ; i++)
+		if (rtc_host.peers[i].used)
+			RTC_ClosePeer (&rtc_host.peers[i]);
+	rtc_host.adr = adr;
+	rtc_host.failed = false;
+	if (adr.type == NA_RTC)
+		RTC_OpenHost (Sys_DoubleTime ());
+	return adr.type == NA_RTC;
+}
+
+void RTC_HostInfo (const char *info)
+{
+	Q_strncpyz (rtc_host.info, info, sizeof(rtc_host.info));
+}
+
+/*
+===============================================================================
+
 PACKETS
 
 ===============================================================================
@@ -675,35 +1141,35 @@ PACKETS
 
 bool RTC_GetPacket (netsrc_t sock, netadr_t *from, sizebuf_t *msg)
 {
-	static char	buffer[MAX_RTCMESSAGE];
+	double		now;
 	rtcconn_t	*c;
-	int			i, size;
+	rtcpeer_t	*p;
+	int			i;
 
-	if (!rtc_initialized || sock != NS_CLIENT)
+	if (!rtc_initialized)
 		return false;
-	RTC_Poll (Sys_DoubleTime ());
+	now = Sys_DoubleTime ();
+	RTC_PollEvents ();
 
-	for (i = 0, c = rtc_conns ; i < MAX_RTCCONNS ; i++, c++)
+	if (sock == NS_SERVER)
 	{
-		if (!c->used || !c->open)
-			continue;
-		for (;;)
-		{
-			if (!RTC_Receive (c->dc, buffer, sizeof(buffer), &size))
-				break;
-			if (size <= 0)
-				continue;		// text: not a packet
-			if (size > msg->maxsize)
+		RTC_HostPoll (now);
+		for (i = 0, p = rtc_host.peers ; i < MAX_RTCPEERS ; i++, p++)
+			if (p->used && p->open && ((atomic_load (&p->channel) >= 0
+				&& RTC_ChannelPacket (atomic_load (&p->channel), p->adr, from, msg))
+				|| (p->own >= 0 && RTC_ChannelPacket (p->own, p->adr, from, msg))))
 			{
-				Con_Printf ("Oversize packet from %s\n", RTC_AdrToString (c->adr, true));
-				continue;
+				p->heard = now;
+				return true;
 			}
-			memcpy (msg->data, buffer, (size_t)size);
-			msg->cursize = size;
-			*from = c->adr;
-			return true;
-		}
+		return false;
 	}
+
+	RTC_Poll (now);
+	for (i = 0, c = rtc_conns ; i < MAX_RTCCONNS ; i++, c++)
+		if (c->used && c->open && (RTC_ChannelPacket (c->dc, c->adr, from, msg)
+			|| (atomic_load (&c->extra) >= 0 && RTC_ChannelPacket (atomic_load (&c->extra), c->adr, from, msg))))
+			return true;
 	return false;
 }
 
@@ -711,9 +1177,25 @@ void RTC_SendPacket (netsrc_t sock, const void *data, int length, const netadr_t
 {
 	double		now = Sys_DoubleTime ();
 	rtcconn_t	*c, *unused = NULL;
+	rtcpeer_t	*p;
 	int			i;
 
-	if (!rtc_initialized || sock != NS_CLIENT || to->type != NA_RTC)
+	if (!rtc_initialized)
+		return;
+	// the server's clients
+	if (sock == NS_SERVER)
+	{
+		for (i = 0, p = rtc_host.peers ; i < MAX_RTCPEERS ; i++, p++)
+			if (p->used && p->open && to->type == NA_RTCCLIENT && NET_CompareAdr (p->adr, *to))
+			{
+				if (RTC_PeerChannel (p) >= 0)
+					rtcSendMessage (RTC_PeerChannel (p), data, length);
+				return;
+			}
+		return;
+	}
+
+	if (to->type != NA_RTC)
 		return;
 	for (i = 0, c = rtc_conns ; i < MAX_RTCCONNS ; i++, c++)
 	{
@@ -731,6 +1213,7 @@ void RTC_SendPacket (netsrc_t sock, const void *data, int length, const netadr_t
 		c->used = true;
 		c->adr = *to;
 		c->ws = c->pc = c->dc = -1;
+		atomic_store (&c->extra, -1);
 		RTC_Open (c, now);
 	}
 	c->sent = now;
@@ -768,6 +1251,7 @@ void RTC_Shutdown (void)
 
 	if (!rtc_initialized)
 		return;
+	RTC_Host (NULL);
 	for (i = 0 ; i < MAX_RTCCONNS ; i++)
 		if (rtc_conns[i].used)
 			RTC_Close (&rtc_conns[i]);

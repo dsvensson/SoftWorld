@@ -2,6 +2,7 @@
 // an address, and nothing comes or goes
 
 #include "net_rtc.h"
+#include "print.h"
 
 void RTC_Init (void)
 {
@@ -39,4 +40,16 @@ void RTC_SendPacket (netsrc_t sock, const void *data, int length, const netadr_t
 	(void)data;
 	(void)length;
 	(void)to;
+}
+
+bool RTC_Host (const char *url)
+{
+	if (url && *url)
+		Con_Printf ("WebRTC: this build has none, for %s\n", url);
+	return false;
+}
+
+void RTC_HostInfo (const char *info)
+{
+	(void)info;
 }

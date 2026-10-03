@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 static void SV_FinalMessage (char *message);
 static void Master_Heartbeat (void);
+static void SV_WebRTCInfo (void);
 
 
 
@@ -91,6 +92,12 @@ cvar_t	sv_websocket = {.name = "sv_websocket", .string = "1",
 	.description = "Lets browsers' clients join over WebSocket (ws://), on TCP at the server's port number, a packet "
 		"a binary message as FTE's. Read as a map opens the port; wss:// is a TLS proxy's in front.",
 	.values = (const cvar_value_t[]){{"0", "UDP only"}, {"1", "UDP, and WebSocket on TCP"}, {0}}};
+// clients over WebRTC, through a broker's room, as FTE's servers take them
+// (net_rtc.c)
+cvar_t	sv_webrtc = {.name = "sv_webrtc", .string = "",
+	.description = "Takes clients over WebRTC through a broker, as FTE's servers do: the room there, "
+		"rtc://broker[:port]/room or rtcs:// for a broker over TLS, which clients connect to by the same address; "
+		"empty for none. Read as a map opens the port."};
 // the most bytes per second a client's rate may ask for, 0 no limit (FTE's)
 static cvar_t	sv_maxrate = {.name = "sv_maxrate", .string = "50000",
 	.description = "Most bytes per second a client's rate may ask for; 0 for no limit."};
@@ -1470,6 +1477,7 @@ void SV_Frame (double time)
 
 // send a heartbeat to the master if needed
 	Master_Heartbeat ();
+	SV_WebRTCInfo ();
 
 // collect timing statistics
 	end = Sys_DoubleTime ();
@@ -1546,6 +1554,7 @@ static void SV_InitLocal (void)
 	Cvar_RegisterVariable (&sv_maxtic);
 	Cvar_RegisterVariable (&sv_bigcoords);
 	Cvar_RegisterVariable (&sv_websocket);
+	Cvar_RegisterVariable (&sv_webrtc);
 	Cvar_RegisterVariable (&sv_maxrate);
 	Cvar_RegisterVariable (&sv_maxdrate);
 	Cvar_RegisterVariable (&pm_ktjump);
@@ -1671,6 +1680,37 @@ static void Master_Heartbeat (void)
 			Con_Printf ("Sending heartbeat to %s\n", NET_AdrToString (svs.master_adr[i]));
 			NET_SendPacket (NS_SERVER, (int)strlen(string), string, svs.master_adr[i]);
 		}
+}
+
+/*
+================
+SV_WebRTCInfo
+
+What the server tells its WebRTC broker it is, for the broker's list: the
+serverinfo, and FTE's keys for the rest. Made every few seconds; the broker
+hears it every 30.
+================
+*/
+static void SV_WebRTCInfo (void)
+{
+	static double	made = -1000;
+	char			info[1024];
+	const char		*gamedir;
+	int				i, clients = 0;
+
+	if (!sv_webrtc.string[0] || host.realtime - made < 5)
+		return;
+	made = host.realtime;
+	for (i = 0 ; i < MAX_CLIENTS ; i++)
+		if ((svs.clients[i].state == cs_connected || svs.clients[i].state == cs_spawned) && !svs.clients[i].spectator)
+			clients++;
+	gamedir = Info_ValueForKey (svs.info, "*gamedir");
+	Q_strncpyz (info, svs.info, sizeof(info));
+	Info_SetValueForKey (info, "clients", va("%i", clients), sizeof(info), INFO_CHARSET_ANY);
+	Info_SetValueForKey (info, "mapname", sv.name, sizeof(info), INFO_CHARSET_ANY);
+	Info_SetValueForKey (info, "modname", *gamedir ? gamedir : "qw", sizeof(info), INFO_CHARSET_ANY);
+	Info_SetValueForKey (info, "protocol", va("%i", PROTOCOL_VERSION), sizeof(info), INFO_CHARSET_ANY);
+	NET_RTCInfo (info);
 }
 
 /*
