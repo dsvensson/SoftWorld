@@ -190,6 +190,52 @@ elseif(EMSCRIPTEN)
 	target_include_directories(sw_platform_posix PUBLIC posix PRIVATE "${SW_CPU_RELAX_DIR}")
 	target_compile_definitions(sw_platform_posix PRIVATE SW_MAX_WORKERS=${SW_WEB_WORKERS})
 	target_link_libraries(sw_platform_posix PUBLIC sw_net sw_common)
+
+	# the process entry point and the CPU check, built as on the other systems
+	add_library(sw_entry_gui OBJECT web/entry_gui.c ${SW_CPU_CHECK_SOURCES})
+	target_include_directories(sw_entry_gui PRIVATE .)
+	set_target_properties(sw_entry_gui PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
+	sw_set_warnings(sw_entry_gui)
+
+	# the page, its drawing, input, sound and network: C files, and the
+	# JavaScript libraries of the page's side of them; present.glsl inside the
+	# program, compiled by WebGL
+	set(SW_WEB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/web")
+	set(SW_WEB_LIBRARIES sys_web.js fs_web.js vid_webgl.js in_web.js)
+	sw_add_module(sw_platform_gui
+		vid_common.c
+		web/sys_web_gui.c web/vid_webgl.c web/present_glsl.c web/in_web.c web/in_gamepad_web.c
+		web/snd_webaudio.c web/net_ws_web.c)
+	set_source_files_properties(web/present_glsl.c PROPERTIES OBJECT_DEPENDS "${SW_WEB_DIR}/present.glsl")
+	target_include_directories(sw_platform_gui PRIVATE . web)
+	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_posix)
+
+	set(SW_HOST_DIR "${PROJECT_SOURCE_DIR}/src/host")
+
+	# client with a local server, and the client alone: softworld.html, .js and
+	# .wasm, and the file system's fetch worker next to them (softworld-fs.js)
+	set(SW_WEB_LINK_OPTIONS -sENVIRONMENT=web,worker -sCASE_INSENSITIVE_FS=1
+		-sPTHREAD_POOL_SIZE=${SW_WEB_WORKERS} -sPTHREAD_POOL_SIZE_STRICT=2
+		"SHELL:--shell-file ${SW_WEB_DIR}/shell.html")
+	set(SW_WEB_LINK_DEPENDS "${SW_WEB_DIR}/shell.html")
+	foreach(library ${SW_WEB_LIBRARIES})
+		list(APPEND SW_WEB_LINK_OPTIONS "SHELL:--js-library ${SW_WEB_DIR}/${library}")
+		list(APPEND SW_WEB_LINK_DEPENDS "${SW_WEB_DIR}/${library}")
+	endforeach()
+	foreach(target softworld softworld-client)
+		sw_add_program(${target}
+			"${SW_HOST_DIR}/host.c"
+			$<TARGET_OBJECTS:sw_entry_gui>)
+		set_target_properties(${target} PROPERTIES SUFFIX ".html" LINK_DEPENDS "${SW_WEB_LINK_DEPENDS}")
+		target_link_options(${target} PRIVATE ${SW_WEB_LINK_OPTIONS})
+		target_link_libraries(${target} PRIVATE sw_platform_gui)
+		add_custom_command(TARGET ${target} POST_BUILD
+			COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${SW_WEB_DIR}/fs_web_worker.js"
+				"$<TARGET_FILE_DIR:${target}>/softworld-fs.js"
+			VERBATIM)
+	endforeach()
+	target_link_libraries(softworld PRIVATE sw_server)
+	target_link_libraries(softworld-client PRIVATE sw_server_null)
 else()
 	# Linux: the process entry points and the CPU check, built as on Windows
 	set(SW_ENTRY_gui linux/entry_gui.c)

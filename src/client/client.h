@@ -420,8 +420,6 @@ static inline entity_t *CL_StaticEntity (int i)
 dlight_t *CL_AllocDlight (int key);
 void	CL_DecayLights (void);
 
-void CL_WriteConfiguration (void);
-
 
 void CL_NextDemo (void);
 

@@ -52,7 +52,7 @@ typedef struct
 vid_fit_t	VID_Fit (int clientwidth, int clientheight);
 
 // the constants of the present shaders (present.hlsl, present.metal,
-// present.glsl), laid out as they declare them
+// present.glsl, and the web's present.glsl), laid out as they declare them
 typedef struct
 {
 	float	blend[4];		// sRGB color, and how much of it covers the view

@@ -1,0 +1,72 @@
+<!doctype html>
+<!-- shell.html -- the page of the programs with a client in a browser: the
+     game's canvas filling the window, and notices over it. The command line is
+     the address's query, split at spaces (softworld.html?+map dm4). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoftWorld</title>
+<style>
+	html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+	#screen { position: fixed; inset: 0; background: #000; touch-action: none; user-select: none;
+		-webkit-user-select: none; cursor: default; }
+	#canvas { display: block; width: 100%; height: 100%; outline: none; }
+	.notice { position: absolute; left: 50%; transform: translateX(-50%); max-width: 80%; padding: 8px 14px;
+		border-radius: 6px; background: rgba(0, 0, 0, 0.75); color: #ddd; font: 14px/1.4 system-ui, sans-serif;
+		text-align: center; white-space: pre-wrap; pointer-events: none; }
+	.notice:empty { display: none; }
+	#notice-status { top: 16px; }
+	#notice-capture { top: 50%; transform: translate(-50%, -50%); }
+	#notice-sound { bottom: 16px; }
+	#notice-error { top: 30%; color: #f99; pointer-events: auto; user-select: text; -webkit-user-select: text; }
+</style>
+</head>
+<body>
+<div id="screen">
+	<canvas id="canvas" tabindex="-1"></canvas>
+	<div class="notice" id="notice-status"></div>
+	<div class="notice" id="notice-capture"></div>
+	<div class="notice" id="notice-sound"></div>
+	<div class="notice" id="notice-error"></div>
+</div>
+<script>
+	'use strict';
+
+	// the query as a command line: words between spaces, or in quotes
+	function commandLine (query) {
+		var text = decodeURIComponent(query.replace(/^\?/, ''));
+		return Array.from(text.matchAll(/"([^"]*)"|(\S+)/g), (m) => m[1] ?? m[2]);
+	}
+
+	// a notice in a slot, none for null; an error stays
+	function notice (slot, text) {
+		var e = document.getElementById('notice-' + slot);
+		if (e && !(slot == 'error' && e.textContent))
+			e.textContent = text ?? '';
+	}
+
+	var Module = {
+		arguments: commandLine(location.search),
+		canvas: document.getElementById('canvas'),
+		print: (text) => {
+			console.log(text);
+			Module.onLine?.(text);
+		},
+		printErr: (text) => console.warn(text),
+		setStatus: (text) => notice('status', text || null),
+		onAbort: (what) => notice('error', 'SoftWorld stopped: ' + what),
+		swNotice: notice,
+		swAssets: 'quake/',
+		swManifest: 'manifest.json',
+	};
+
+	if (!globalThis.crossOriginIsolated)
+		notice('error', "This page needs cross-origin isolation (COOP and COEP headers) for its shared memory: "
+			+ "serve it with serve.py, or a server sending them.");
+	else if (!document.createElement('canvas').getContext('webgl2'))
+		notice('error', 'This browser has no WebGL 2.');
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

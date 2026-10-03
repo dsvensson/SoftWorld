@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 void	CL_Init (void);			// brings up the client with its video, sound and input
 void	CL_Shutdown (void);		// writes the configuration and closes the devices
+void	CL_WriteConfiguration (void);	// config.cfg, as CL_Shutdown writes it (a page leaving: sys_web_gui.c)
 
 void	CL_Frame (void);		// packets, a command when due and a drawn frame, by host.realtime
 double	CL_FrameWait (void);	// seconds until CL_Frame has a frame to draw
