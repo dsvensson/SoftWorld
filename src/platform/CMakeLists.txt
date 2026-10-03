@@ -253,6 +253,7 @@ else()
 		vid_common.c
 		linux/sys_linux_gui.c linux/wl_linux.c linux/wl_hyprland.c linux/vid_vulkan.c
 		linux/in_wayland.c linux/in_evdev.c linux/snd_pipewire.c
+		linux/window.c linux/in_linux.c
 		$<TARGET_OBJECTS:sw_present_spirv> $<TARGET_OBJECTS:sw_wayland_protocols>)
 	target_include_directories(sw_platform_gui PRIVATE . linux "${SW_PROTOCOL_DIR}")
 	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_posix

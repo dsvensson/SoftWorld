@@ -2,7 +2,8 @@
 // wl_local.h -- the Wayland connection and window the Linux client shares
 // (wl_linux.c), with the protocols' headers
 
-#include "linux_local.h"
+#define VK_USE_PLATFORM_WAYLAND_KHR
+#include "window.h"
 
 #include <wayland-client.h>
 
@@ -79,22 +80,6 @@ char	*WL_GetClipboardText (void);
 // the GPU the compositor draws with, as a DRM device number
 bool	WL_MainDevice (unsigned *major, unsigned *minor);
 
-// the colors the compositor would like the window's frames in, from its
-// preferred image description for the window
-typedef struct
-{
-	bool		known;
-	uint32_t	serial;			// bumped by each new description
-	uint32_t	tf;				// wp_color_manager_v1 transfer function, 0 for none named
-	uint32_t	primaries;		// named primaries, 0 for none named
-	float		minlum, maxlum;	// the primary volume's range, cd/m²
-	float		reference;		// reference white: SDR white, cd/m²
-	float		targetmin, targetmax;	// the range the display shows, cd/m²
-	bool		hastargetprimaries;
-	float		targetprimaries[8];		// red, green, blue and white x, y
-} wl_colors_t;
-
-const wl_colors_t	*WL_PreferredColors (void);
 bool	WL_ColorsSupported (uint32_t tf, uint32_t primaries);
 
 // the frame Vulkan presents next: when it's shown is asked (wp_presentation)
@@ -117,3 +102,10 @@ bool	WL_HasGlobal (const char *name);
 
 // wl_hyprland.c: whether the compositor scans windows out, and lets them tear
 void	WL_PrintScanout (void);
+
+void	IN_WaylandInit (void);
+void	IN_WaylandShutdown (void);
+void	IN_WaylandCommands (void);
+void	IN_WaylandWindowActivated (bool active);
+double	IN_WaylandNextRepeat (void);
+void	IN_WaylandRepeat (void);

@@ -107,7 +107,7 @@ static clockid_t	wl_clock = CLOCK_MONOTONIC;		// what presentation times count i
 static dev_t		wl_maindevice;
 static bool			wl_hasmaindevice;
 
-static wl_colors_t	wl_colors;
+static window_colors_t	wl_colors;
 static uint32_t		wl_colorfeatures;		// 1 << wp_color_manager_v1 feature
 static uint32_t		wl_colortfs;			// 1 << transfer function
 static uint32_t		wl_colorprimaries;		// 1 << primaries
@@ -635,7 +635,7 @@ THE COLORS THE COMPOSITOR WANTS
 ===============================================================================
 */
 
-static wl_colors_t	wl_pending;		// the description being read
+static window_colors_t	wl_pending;		// the description being read
 
 static void WL_InfoDone (void *data, struct wp_image_description_info_v1 *info)
 {
@@ -666,7 +666,7 @@ static void WL_InfoPrimariesNamed (void *data, struct wp_image_description_info_
 {
 	(void)data;
 	(void)info;
-	wl_pending.primaries = primaries;
+	(void)primaries;
 }
 
 static void WL_InfoTfPower (void *data, struct wp_image_description_info_v1 *info, uint32_t eexp)
@@ -680,7 +680,8 @@ static void WL_InfoTfNamed (void *data, struct wp_image_description_info_v1 *inf
 {
 	(void)data;
 	(void)info;
-	wl_pending.tf = tf;
+	wl_pending.hdr = tf == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ
+		|| tf == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_HLG;
 }
 
 static void WL_InfoLuminances (void *data, struct wp_image_description_info_v1 *info, uint32_t min_lum,
@@ -688,7 +689,7 @@ static void WL_InfoLuminances (void *data, struct wp_image_description_info_v1 *
 {
 	(void)data;
 	(void)info;
-	wl_pending.minlum = min_lum / 10000.0f;
+	(void)min_lum;
 	wl_pending.maxlum = (float)max_lum;
 	wl_pending.reference = (float)reference_lum;
 }
@@ -796,8 +797,9 @@ static const struct wp_color_management_surface_feedback_v1_listener	wl_colorfee
 
 // the image description the compositor would like the window's frames in: the
 // display's, as the compositor has it; serial 0 until it said
-const wl_colors_t *WL_PreferredColors (void)
+static const window_colors_t *WL_PreferredColors (void)
 {
+	wl_colors.managed = way.color != NULL;
 	return &wl_colors;
 }
 
@@ -1284,3 +1286,75 @@ bool WL_HasGlobal (const char *name)
 			return wl_globals[i].version != 0;
 	return false;
 }
+
+static VkResult WL_CreateSurface (VkInstance instance, VkSurfaceKHR *surface)
+{
+	return vkCreateWaylandSurfaceKHR (instance, &(VkWaylandSurfaceCreateInfoKHR){
+		.sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
+		.display = way.display,
+		.surface = way.surface,
+	}, NULL, surface);
+}
+
+static bool WL_Presented (uint64_t serial)
+{
+	return !way.presentation || WL_PresentStats ()->presented >= serial;
+}
+
+static void WL_PrintInfo (bool all)
+{
+	const wl_present_stats_t	*stats = WL_PresentStats ();
+
+	Con_Printf ("Wayland:\n");
+	WL_PrintProtocols (all);
+	WL_PrintScanout ();
+	if (!all)
+		return;
+	if (!stats->count)
+	{
+		Con_Printf ("No frame shown has been told of (presentation-time)\n");
+		return;
+	}
+	Con_Printf ("Frames shown %llu, passed over %llu, scanned out directly %llu\n", (unsigned long long)stats->count,
+		(unsigned long long)stats->discarded, (unsigned long long)stats->zerocopy);
+	Con_Printf ("The last: %s%s%s%s\n", stats->flags & WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY
+		? "scanned out directly" : "composited",
+		stats->flags & WP_PRESENTATION_FEEDBACK_KIND_VSYNC ? ", at a refresh" : ", torn or unsynchronized",
+		stats->flags & WP_PRESENTATION_FEEDBACK_KIND_HW_CLOCK ? ", the display's clock" : "",
+		stats->flags & WP_PRESENTATION_FEEDBACK_KIND_HW_COMPLETION ? ", the display's completion" : "");
+	if (stats->refresh > 0)
+		Con_Printf ("Refresh %.2f Hz\n", 1 / stats->refresh);
+	Con_Printf ("From present to shown: %.2f ms on average, at most %.2f, over the last frames\n",
+		stats->latency * 1000, stats->worst * 1000);
+}
+
+const window_backend_t	window_wayland =
+{
+	.name = "Wayland",
+	.extension = VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
+	.Init = WL_Init,
+	.Shutdown = WL_Shutdown,
+	.CreateSurface = WL_CreateSurface,
+	.ReadEvents = WL_ReadEvents,
+	.PrepareRead = WL_PrepareRead,
+	.FinishRead = WL_FinishRead,
+	.WindowSize = WL_WindowSize,
+	.IsFullscreen = WL_IsFullscreen,
+	.SetFullscreen = WL_SetFullscreen,
+	.SetTitle = WL_SetTitle,
+	.SetIdleInhibit = WL_SetIdleInhibit,
+	.Activate = WL_Activate,
+	.GetClipboardText = WL_GetClipboardText,
+	.PrintInfo = WL_PrintInfo,
+	.MainDevice = WL_MainDevice,
+	.SetFrameSize = WL_SetFrameSize,
+	.BeforePresent = WL_BeforePresent,
+	.Presented = WL_Presented,
+	.PreferredColors = WL_PreferredColors,
+	.InputInit = IN_WaylandInit,
+	.InputShutdown = IN_WaylandShutdown,
+	.InputCommands = IN_WaylandCommands,
+	.InputActivated = IN_WaylandWindowActivated,
+	.NextRepeat = IN_WaylandNextRepeat,
+	.Repeat = IN_WaylandRepeat,
+};
