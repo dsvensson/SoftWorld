@@ -260,7 +260,7 @@ jobs:
       - name: Packages
         run: |
           pacman -Syu --noconfirm --needed git make gcc cmake ninja clang lld llvm pkgconf vulkan-headers \
-            vulkan-icd-loader glslang wayland wayland-protocols libxkbcommon libpipewire github-cli
+            vulkan-icd-loader glslang wayland wayland-protocols libxkbcommon libpipewire libx11 libxi libxss github-cli
 
       - uses: actions/checkout@v7
 

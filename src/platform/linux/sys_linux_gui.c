@@ -31,7 +31,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "sys.h"
 #include "sound.h"
 #include "entry.h"
-#include "wl_local.h"
+#include "window.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -88,7 +88,7 @@ void Sys_Quit (void)
 
 char *Sys_GetClipboardText (void)
 {
-	return way.display ? WL_GetClipboardText () : NULL;
+	return window ? window->GetClipboardText () : NULL;
 }
 
 /*
@@ -101,9 +101,9 @@ EVENTS
 
 void Sys_SendKeyEvents (void)
 {
-	if (!way.display)
+	if (!window)
 		return;
-	WL_ReadEvents ();
+	window->ReadEvents ();
 	IN_Repeat ();
 }
 
@@ -127,14 +127,14 @@ bool Sys_WaitEvents (double until)
 	for (;;)
 	{
 		// the display's events queued already end the wait at once
-		if (WL_PrepareRead ())
+		if (window->PrepareRead ())
 		{
-			WL_FinishRead (false);
+			window->FinishRead (false);
 			early = true;
 			break;
 		}
 		what = Sys_ReadWaitQueue (true);
-		if (WL_FinishRead ((what & SYS_WAIT_WINDOW) != 0) || (what & (SYS_WAIT_FD | SYS_WAIT_SIGNAL)))
+		if (window->FinishRead ((what & SYS_WAIT_WINDOW) != 0) || (what & (SYS_WAIT_FD | SYS_WAIT_SIGNAL)))
 		{
 			early = true;
 			break;

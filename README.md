@@ -6,7 +6,7 @@ server, and the protocol extensions today's servers and clients speak.
 
 - **Renderer:** software only, drawing 32-bit HDR pixels. The render size is 320×200 times a
   whole number, presented through Direct3D 11 on Windows, Metal 4 on macOS and Vulkan on
-  Linux (Wayland), with HDR output on HDR displays. The renderer draws straight into memory the
+  Linux (Wayland or X11), with HDR output where supported. The renderer draws straight into memory the
   GPU reads, or on a GPU of its own memory the GPU copies from: the CPU copies nothing.
   Colored lighting (`.lit`, BSPX), BSP2 maps, translucency, skyboxes, fog and TGA textures
   from the map's worldspawn and files, and AVX-512, AVX2 and NEON kernels.
@@ -87,13 +87,14 @@ make.
 ### Linux
 
 You need a Wayland compositor (Hyprland, KDE Plasma, Sway and the like; GNOME draws no title bar
-for the window), a GPU with Vulkan 1.3, and:
+for the window) or an X11 desktop, a GPU with Vulkan 1.3, and:
 
 - clang with lld (the presets' compiler and linker), or GCC; CMake 3.28 or later and Ninja.
 - Vulkan's headers and loader, glslang (which compiles the shader), and the development files of
-  wayland-client, wayland-protocols 1.41 or later, xkbcommon and PipeWire. On Arch:
+  wayland-client, wayland-protocols 1.41 or later, xkbcommon, PipeWire, Xlib, XInput 2 and
+  libXss. On Arch:
   `pacman -S cmake ninja clang lld vulkan-headers vulkan-icd-loader glslang wayland
-  wayland-protocols libxkbcommon libpipewire`.
+  wayland-protocols libxkbcommon libpipewire libx11 libxi libxss`.
 - Optionally fteqcc, as on Windows.
 
 ```
@@ -111,6 +112,9 @@ ctest --preset linux-v4
 `-debug` build presets build Debug, and `-maps` test presets load the maps as on Windows. The
 tests include `test_present_vulkan`, which draws the shader with Vulkan and compares it with what
 screenshots make (skipped without a GPU).
+
+Both backends are built by default. Use `-DSW_WAYLAND=OFF` for X11 only or
+`-DSW_X11=OFF` for Wayland only.
 
 ## Programs
 
@@ -167,7 +171,11 @@ server or QTV proxy on 127.0.0.1, or a client here joining the game's server) an
 through the firewall, which takes an administrator once (a UAC prompt). Without it the sandboxed
 game reaches only other computers. `-DSW_SANDBOX=OFF` builds the programs without the sandbox.
 
-On Linux the client runs on the GPU the compositor draws with, which reads the frame where the
+On Linux, Wayland is the default in a Wayland session, with X11 as a fallback. Use
+`-window-backend x11` or `-window-backend wayland` to select a backend explicitly.
+X11 uses SDR output.
+
+On Wayland the client runs on the GPU the compositor draws with, which reads the frame where the
 renderer drew it (an integrated GPU; a GPU of its own memory gets a copy), and tells at start
 what the compositor offers for latency and HDR. `vid_info` tells it all again, with how long
 frames take from present to the screen. The frames go to the display without the compositor
@@ -204,7 +212,7 @@ Worth knowing:
 | `vid_hdr`, `vid_hdr_paperwhite` | HDR output on an HDR display; SDR white's brightness in nits, 0 (the default) the system's: Windows' SDR content brightness, the compositor's on Linux, the system's white on macOS (where nits are over a white of 100). What is brighter than white goes up to the display's peak, which the console tells at start; on Windows a color profile assigned to the display can change the peak it reports |
 | `vid_vsync` | 1 a frame at each refresh; 0 (the default) doesn't wait for the display |
 | `vid_fullscreen`, `-fullscreen`, Alt+Enter | fullscreen: a borderless window on Windows, macOS's own (Option+Enter) on a Mac, the compositor's on Linux |
-| `vid_info`, `-gpu n` | Linux: the GPU, the presentation, the compositor's protocols, direct scanout and latency; the n'th GPU instead of the compositor's |
+| `vid_info`, `-gpu n` | Linux: GPU and presentation details. Use the n'th GPU |
 | `r_profile 1`, `r_profile_show` | time a frame takes, by stage |
 | `cl_maxfps` | frame rate cap; 0 is none but the display's |
 | `cl_idlefps` | frame rate cap while the window isn't the focus, 50 by default; 0 is `cl_maxfps`'s |

@@ -17,8 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// vid_vulkan.c -- Linux video backend: Vulkan presenting the software renderer's
-// frame in the Wayland window (wl_linux.c).
+// The window interface lets Linux backends share Vulkan presentation.
 //
 // The renderer draws into memory the GPU reads: each layer (the 3D view, RGB30,
 // and its 2D, RGBA8) is a buffer mapped for the CPU, and present.glsl reads it
@@ -53,10 +52,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "sys.h"
 #include "sound.h"
 #include "present_spirv.h"
-#include "wl_local.h"
-
-#define VK_USE_PLATFORM_WAYLAND_KHR
-#include <vulkan/vulkan.h>
+#include "window.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -180,7 +176,7 @@ THE WINDOW
 // played in fullscreen
 static void VID_UpdateIdle (void)
 {
-	WL_SetIdleInhibit (ActiveApp && !Minimized && WL_IsFullscreen ());
+	window->SetIdleInhibit (ActiveApp && !Minimized && window->IsFullscreen ());
 }
 
 void VID_AppActivate (bool active)
@@ -220,13 +216,13 @@ void VID_WindowSuspended (bool suspended)
 
 static void VID_SetFullscreen (bool fullscreen)
 {
-	if (fullscreen != WL_IsFullscreen ())
-		WL_SetFullscreen (fullscreen);
+	if (fullscreen != window->IsFullscreen ())
+		window->SetFullscreen (fullscreen);
 }
 
 static void VID_Fullscreen_f (void)
 {
-	VID_SetFullscreen (!WL_IsFullscreen ());
+	VID_SetFullscreen (!window->IsFullscreen ());
 }
 
 void VID_ToggleFullscreen (void)
@@ -239,7 +235,7 @@ static void VID_UpdateClientSize (void)
 {
 	int		pixelwidth, pixelheight, width, height;
 
-	WL_WindowSize (&pixelwidth, &pixelheight, &width, &height);
+	window->WindowSize (&pixelwidth, &pixelheight, &width, &height);
 	if (pixelwidth != client_width || pixelheight != client_height || width != vk_unitwidth
 		|| height != vk_unitheight)
 		vk_swapdirty = true;
@@ -277,10 +273,10 @@ static void VID_CreateInstance (void)
 		Sys_Error ("SoftWorld needs Vulkan 1.3; the Vulkan loader is %u.%u", VK_API_VERSION_MAJOR (version),
 			VK_API_VERSION_MINOR (version));
 	VID_Check (vkEnumerateInstanceExtensionProperties (NULL, &count, extensions), "Listing Vulkan's extensions");
-	if (!VID_HasExtension (extensions, count, VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME))
-		Sys_Error ("Vulkan has no Wayland surfaces (%s)", VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
+	if (!VID_HasExtension (extensions, count, window->extension))
+		Sys_Error ("Vulkan has no %s surfaces (%s)", window->name, window->extension);
 	wanted[numwanted++] = VK_KHR_SURFACE_EXTENSION_NAME;
-	wanted[numwanted++] = VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME;
+	wanted[numwanted++] = window->extension;
 	vk_colorspaces = VID_HasExtension (extensions, count, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
 	if (vk_colorspaces)
 		wanted[numwanted++] = VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME;
@@ -297,11 +293,7 @@ static void VID_CreateInstance (void)
 			.ppEnabledExtensionNames = wanted,
 		}, NULL, &vk_instance), "vkCreateInstance");
 
-	VID_Check (vkCreateWaylandSurfaceKHR (vk_instance, &(VkWaylandSurfaceCreateInfoKHR){
-			.sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
-			.display = way.display,
-			.surface = way.surface,
-		}, NULL, &vk_surface), "vkCreateWaylandSurfaceKHR");
+	VID_Check (window->CreateSurface (vk_instance, &vk_surface), "Creating the Vulkan window surface");
 }
 
 typedef struct
@@ -378,7 +370,7 @@ static bool VID_CheckGPU (VkPhysicalDevice gpu, vid_gpu_t *out, const char **why
 
 	// the compositor's, by the DRM device the compositor named
 	if (VID_HasExtension (extensions, count, VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME)
-		&& WL_MainDevice (&major, &minor))
+		&& window->MainDevice && window->MainDevice (&major, &minor))
 	{
 		props2.pNext = &drm;
 		vkGetPhysicalDeviceProperties2 (gpu, &props2);
@@ -709,7 +701,7 @@ and the swapchain can be HDR10
 */
 static void VID_CheckOutput (void)
 {
-	const wl_colors_t	*colors = WL_PreferredColors ();
+	const window_colors_t	*colors = Window_Colors ();
 	VkColorSpaceKHR		space;
 	float				reference, peak;
 	bool				displayhdr, wasknown;
@@ -721,12 +713,11 @@ static void VID_CheckOutput (void)
 
 	reference = colors->reference > 0 ? colors->reference : 203;
 	peak = colors->targetmax > 0 ? colors->targetmax : colors->maxlum;
-	displayhdr = colors->known && (colors->tf == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ
-		|| colors->tf == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_HLG || peak >= reference * 1.5f);
+	displayhdr = colors->known && (colors->hdr || peak >= reference * 1.5f);
 
 	output = VID_OUTPUT_SDR;
-	if (!way.color)
-		why = "the compositor has no color management";
+	if (!colors->managed)
+		why = "the window backend has no color management";
 	else if (!colors->known)
 		why = "the compositor didn't describe the display";
 	else if (displayhdr && !vid_hdr.value)
@@ -761,7 +752,7 @@ static void VID_CheckOutput (void)
 // maps nothing
 static void VID_SetHdrMetadata (void)
 {
-	const wl_colors_t	*colors = WL_PreferredColors ();
+	const window_colors_t	*colors = Window_Colors ();
 	const float			*p = colors->targetprimaries;
 	float				reference = colors->reference > 0 ? colors->reference : 203;
 
@@ -857,7 +848,7 @@ static void VID_CreateSwapchain (void)
 	int							pixelwidth, pixelheight;
 
 	vk_swapdirty = false;
-	WL_WindowSize (&pixelwidth, &pixelheight, &vk_unitwidth, &vk_unitheight);
+	window->WindowSize (&pixelwidth, &pixelheight, &vk_unitwidth, &vk_unitheight);
 	client_width = pixelwidth;
 	client_height = pixelheight;
 	if (pixelwidth <= 0 || pixelheight <= 0)
@@ -1071,8 +1062,8 @@ static bool VID_Presentable (void)
 		return true;		// a frame the display never told of
 	if (vk_presentwait)
 		return vk_WaitForPresent (vk_device, vk_swapchain, vk_presentid, 0) == VK_SUCCESS;
-	if (way.presentation)
-		return WL_PresentStats ()->presented >= vk_presentid;
+	if (window->Presented)
+		return window->Presented (vk_presentid);
 	return true;
 }
 
@@ -1137,7 +1128,7 @@ void VID_Update (void)
 	VID_UpdateClientSize ();
 	if (client_width <= 0 || client_height <= 0)
 		return;
-	if (WL_PreferredColors ()->serial != vid_colorserial || vid_hdr.value != vid_hdrwanted)
+	if (Window_Colors ()->serial != vid_colorserial || vid_hdr.value != vid_hdrwanted)
 		VID_CheckOutput ();
 	VID_SetLatency ();
 	if (vk_swapdirty)
@@ -1253,9 +1244,11 @@ void VID_Update (void)
 	vk_acquiredserial[a] = vk_serial;
 
 	// the viewport's size and the compositor's feedback go with Vulkan's commit
-	WL_SetFrameSize ((int)vk_extent.width, (int)vk_extent.height, vk_unitwidth, vk_unitheight);
+	if (window->SetFrameSize)
+		window->SetFrameSize ((int)vk_extent.width, (int)vk_extent.height, vk_unitwidth, vk_unitheight);
 	vid_presenttime = Sys_DoubleTime ();
-	WL_BeforePresent (vk_serial, vid_presenttime);
+	if (window->BeforePresent)
+		window->BeforePresent (vk_serial, vid_presenttime);
 	result = vkQueuePresentKHR (vk_queue, &(VkPresentInfoKHR){
 		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.pNext = vk_presentwait ? &(VkPresentIdKHR){
@@ -1327,8 +1320,13 @@ static const char *VID_GPUType (VkPhysicalDeviceType type)
 
 static void VID_PrintGPU (void)
 {
+	unsigned	major, minor;
+	const char	*display = "display GPU unknown";
+
+	if (window->MainDevice && window->MainDevice (&major, &minor))
+		display = vk_compositorgpu ? "the compositor's" : "not the compositor's: its frames are copied between GPUs";
 	Con_Printf ("Vulkan: %s (%s, %s)\n", vk_gpuprops.deviceName, VID_GPUType (vk_gpuprops.deviceType),
-		vk_compositorgpu ? "the compositor's" : "not the compositor's: its frames are copied between GPUs");
+		display);
 	if (vk_inplace)
 		Con_Printf ("The GPU reads the frame where the CPU draws it\n");
 	else
@@ -1337,32 +1335,12 @@ static void VID_PrintGPU (void)
 
 static void VID_Info_f (void)
 {
-	const wl_present_stats_t	*stats = WL_PresentStats ();
-
 	VID_PrintGPU ();
 	Con_Printf ("Presenting with %s, %u images, %s, %ux%u\n", VID_PresentModeName (vk_presentmode), vk_numimages,
 		VID_FormatName (vk_format, vk_colorspace), vk_extent.width, vk_extent.height);
 	Con_Printf ("%s, %s\n", vk_presentwait ? "present wait" : "no present wait",
 		vk_hdrmetadata ? "HDR metadata" : "no HDR metadata");
-	Con_Printf ("Wayland:\n");
-	WL_PrintProtocols (true);
-	WL_PrintScanout ();
-	if (!stats->count)
-	{
-		Con_Printf ("No frame shown has been told of (presentation-time)\n");
-		return;
-	}
-	Con_Printf ("Frames shown %llu, passed over %llu, scanned out directly %llu\n", (unsigned long long)stats->count,
-		(unsigned long long)stats->discarded, (unsigned long long)stats->zerocopy);
-	Con_Printf ("The last: %s%s%s%s\n", stats->flags & WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY
-		? "scanned out directly" : "composited",
-		stats->flags & WP_PRESENTATION_FEEDBACK_KIND_VSYNC ? ", at a refresh" : ", torn or unsynchronized",
-		stats->flags & WP_PRESENTATION_FEEDBACK_KIND_HW_CLOCK ? ", the display's clock" : "",
-		stats->flags & WP_PRESENTATION_FEEDBACK_KIND_HW_COMPLETION ? ", the display's completion" : "");
-	if (stats->refresh > 0)
-		Con_Printf ("Refresh %.2f Hz\n", 1 / stats->refresh);
-	Con_Printf ("From present to shown: %.2f ms on average, at most %.2f, over the last frames\n",
-		stats->latency * 1000, stats->worst * 1000);
+	window->PrintInfo (true);
 }
 
 /*
@@ -1383,13 +1361,11 @@ void VID_Init (void)
 	Cmd_AddCommand ("vid_info", VID_Info_f,
 		"Prints the GPU, the presentation, the compositor's protocols, direct scanout and present-to-screen latency.");
 
-	if (!WL_Init (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale))
-		Sys_Error ("SoftWorld runs on Wayland, and found no Wayland compositor (WAYLAND_DISPLAY)");
+	Window_Init (VID_BASE_WIDTH * scale, VID_BASE_HEIGHT * scale);
 	VID_CreateInstance ();
 	VID_CreateDevice ();
 	VID_PrintGPU ();
-	WL_PrintProtocols (false);
-	WL_PrintScanout ();
+	window->PrintInfo (false);
 
 	VID_CheckOutput ();
 	VID_SetLatency ();
@@ -1434,17 +1410,17 @@ void VID_Shutdown (void)
 	vkDestroyDevice (vk_device, NULL);
 	vkDestroySurfaceKHR (vk_instance, vk_surface, NULL);
 	vkDestroyInstance (vk_instance, NULL);
-	WL_Shutdown ();
+	window->Shutdown ();
 }
 
 void VID_SetCaption (const char *text)
 {
-	WL_SetTitle (text);
+	window->SetTitle (text);
 }
 
 void VID_BringToFront (void)
 {
-	WL_Activate ();
+	window->Activate ();
 }
 
 bool VID_IsActive (void)
@@ -1459,7 +1435,7 @@ bool VID_IsMinimized (void)
 
 bool VID_IsFullscreen (void)
 {
-	return WL_IsFullscreen ();
+	return window->IsFullscreen ();
 }
 
 const char *VID_GPUName (void)

@@ -47,11 +47,15 @@ void	VID_AppActivate (bool active);
 void	VID_WindowSuspended (bool suspended);
 void	VID_ToggleFullscreen (void);
 
-// in_wayland.c: the keyboard's focus; keys held repeat until then (0 for
-// none), and repeat when it has come
+// in_linux.c: the keyboard's focus. Wayland needs the main loop to schedule
+// key repeats. IN_NextRepeat returns the next repeat time (0 for none),
+// and IN_Repeat emits repeats when due.
 void	IN_WindowActivated (bool active);
 double	IN_NextRepeat (void);
 void	IN_Repeat (void);
+
+// Physical keys keep bindings independent of the keyboard layout.
+int		IN_EvdevKey (unsigned code);
 
 // in_evdev.c
 void	IN_InitGamepad (void);
