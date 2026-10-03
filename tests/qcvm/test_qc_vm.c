@@ -1032,7 +1032,9 @@ static void TestDeadline (void)
 	start = Seconds ();
 	QT_EQ_U (CallError (vm, "spin"), QC_ERR_DEADLINE);
 	took = Seconds () - start;
-	QT_CHECK (took >= 0.05 && took < 5);
+	// a millisecond less: a clock of whole milliseconds (the browser's) ends the
+	// wait in the deadline's, which the seconds since 1970 may round below it
+	QT_CHECK (took >= 0.049 && took < 5);
 	QC_Destroy (vm);
 	QA_Free (a);
 }

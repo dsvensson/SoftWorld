@@ -1,8 +1,8 @@
 # The platform layers: the process entry points, the system services, and for
 # the programs with a client the window, drawing, input and sound. Files named
-# _posix are macOS's and Linux's both, and the systems' own halves of them
-# _macos and _linux: each system takes its own here, as each compiler takes its
-# own of the CPU check's.
+# _posix are macOS's and Linux's both (and some the web's), and the systems' own
+# halves of them _macos, _linux and _web: each system takes its own here, as
+# each compiler takes its own of the CPU check's.
 
 # the CPU check, and for x86-64-v3 and v4 CPUID as the compiler has it
 set(SW_CPU_CHECK_SOURCES cpu/cpu_check_${SW_ARCH_SUFFIX}.c)
@@ -181,6 +181,15 @@ elseif(APPLE)
 		"${SW_HOST_DIR}/host_ded.c"
 		$<TARGET_OBJECTS:sw_entry_con>)
 	target_link_libraries(softworld-server PRIVATE sw_server sw_platform_con)
+elseif(EMSCRIPTEN)
+	# the web: the system services of a page, the POSIX ones Emscripten has and
+	# the web's own (the name kept: the tests link it as macOS's and Linux's)
+	sw_add_module(sw_platform_posix
+		posix/sys_posix.c posix/sys_workers_posix.c
+		web/sys_web.c web/sys_memory_web.c)
+	target_include_directories(sw_platform_posix PUBLIC posix PRIVATE "${SW_CPU_RELAX_DIR}")
+	target_compile_definitions(sw_platform_posix PRIVATE SW_MAX_WORKERS=${SW_WEB_WORKERS})
+	target_link_libraries(sw_platform_posix PUBLIC sw_net sw_common)
 else()
 	# Linux: the process entry points and the CPU check, built as on Windows
 	set(SW_ENTRY_gui linux/entry_gui.c)

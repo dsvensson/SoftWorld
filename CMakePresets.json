@@ -102,6 +102,13 @@
 			"displayName": "clang + lld, baseline x86-64 or arm64, scalar kernels",
 			"inherits": "linux",
 			"cacheVariables": { "SW_ARCH": "generic" }
+		},
+		{
+			"name": "web",
+			"displayName": "Emscripten, WebAssembly (from a shell emsdk_env set up)",
+			"inherits": "base",
+			"toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+			"cacheVariables": { "SW_ARCH": "generic" }
 		}
 	],
 	"buildPresets": [
@@ -124,7 +131,9 @@
 		{ "name": "linux-v3", "configurePreset": "linux-v3", "configuration": "Release" },
 		{ "name": "linux-v3-debug", "configurePreset": "linux-v3", "configuration": "Debug" },
 		{ "name": "linux-generic", "configurePreset": "linux-generic", "configuration": "Release" },
-		{ "name": "linux-generic-debug", "configurePreset": "linux-generic", "configuration": "Debug" }
+		{ "name": "linux-generic-debug", "configurePreset": "linux-generic", "configuration": "Debug" },
+		{ "name": "web", "configurePreset": "web", "configuration": "Release" },
+		{ "name": "web-debug", "configurePreset": "web", "configuration": "Debug" }
 	],
 	"testPresets": [
 		{ "name": "msvc-v4", "configurePreset": "msvc-v4", "configuration": "Release", "output": { "outputOnFailure": true },
@@ -160,6 +169,8 @@
 		{ "name": "linux-generic", "configurePreset": "linux-generic", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "linux-generic-maps", "configurePreset": "linux-generic", "configuration": "Release", "output": { "outputOnFailure": true },
-			"filter": { "include": { "label": "maps" } } }
+			"filter": { "include": { "label": "maps" } } },
+		{ "name": "web", "configurePreset": "web", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "exclude": { "label": "maps" } } }
 	]
 }

@@ -1,3 +1,9 @@
+# On the web the tests run in node (the toolchain's emulator), on its file
+# system, with their exit codes.
+if(EMSCRIPTEN)
+	add_link_options(-sENVIRONMENT=node -sNODERAWFS=1 -sEXIT_RUNTIME=1)
+endif()
+
 # cpu_supported tells whether this CPU runs the build, so the tests can be: not a
 # test, and built without the architecture's flags (sw_cpu_check's) to run on any.
 add_executable(cpu_supported cpu_supported.c $<TARGET_OBJECTS:sw_cpu_check>)
@@ -68,6 +74,10 @@ if(WIN32)
 	target_link_libraries(test_workers PRIVATE sw_platform_win)
 else()
 	target_link_libraries(test_workers PRIVATE sw_platform_posix)
+endif()
+if(EMSCRIPTEN)
+	# the threads made ahead, as the programs make them
+	target_link_options(test_workers PRIVATE -sPTHREAD_POOL_SIZE=${SW_WEB_WORKERS})
 endif()
 add_test(NAME workers COMMAND test_workers)
 

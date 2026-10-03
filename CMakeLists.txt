@@ -12,9 +12,9 @@ if(WIN32 AND MSVC)
 	enable_language(RC)
 elseif(APPLE)
 	enable_language(OBJC)
-elseif(NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID MATCHES "^(Clang|GNU)$"))
+elseif(NOT EMSCRIPTEN AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID MATCHES "^(Clang|GNU)$"))
 	message(FATAL_ERROR "SoftWorld builds with MSVC or clang-cl on Windows, Apple clang on macOS, "
-		"or clang or GCC on Linux")
+		"clang or GCC on Linux, or Emscripten for the web")
 endif()
 
 # a preset for one word size (msvc-x86's 32) takes the compiler for it from the
@@ -87,6 +87,19 @@ if(APPLE)
 	set(CMAKE_OBJC_STANDARD 23)
 	set(CMAKE_OBJC_STANDARD_REQUIRED ON)
 	set(CMAKE_OBJC_EXTENSIONS OFF)
+elseif(EMSCRIPTEN)
+	# the web: POSIX as musl has it (dirent's types), which strict C23 hides; the
+	# worker threads and the shared memory the page's workers read; longjmp
+	# (Host_Error's) in WebAssembly, not through JavaScript; Windows' 1 MB of stack
+	# (the refresh takes about 256 KB); memory grown as used, up to 2 GB
+	add_compile_definitions(_GNU_SOURCE)
+	add_compile_options(-pthread -sSUPPORT_LONGJMP=wasm)
+	add_link_options(-pthread -sSUPPORT_LONGJMP=wasm -sSTACK_SIZE=1MB -sINITIAL_MEMORY=256MB
+		-sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2GB -Wno-pthreads-mem-growth
+		"$<$<CONFIG:Release>:--profiling-funcs>")
+	# the threads made ahead, as one started later waits for the page to yield:
+	# the most worker threads r_threads gets
+	set(SW_WEB_WORKERS 7 CACHE STRING "Worker threads the web programs make ahead")
 elseif(NOT WIN32)
 	# Linux: POSIX and glibc's own (futexes, epoll, timerfd), which strict C23 hides
 	add_compile_definitions(_GNU_SOURCE)

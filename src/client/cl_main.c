@@ -20,6 +20,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // cl_main.c  -- client main loop
 
 #include "cl_local.h"
+
+#include <limits.h>
+
 static void Cmd_ForwardToServer (void);
 
 
@@ -160,19 +163,23 @@ cvar_t	show_fps = {.name = "show_fps", .string = "0",			// set for running times
 
 static float	server_version = 0;	// version of server we connected to
 
+// the names stored with their bits flipped (CL_FixupModelNames flips them
+// back): by -1 where char is signed, so each fits in one
+#define	CRYPT(c)	((c) ^ (CHAR_MIN < 0 ? -1 : 0xff))
 char emodel_name[] = 
-	{ 'e' ^ 0xff, 'm' ^ 0xff, 'o' ^ 0xff, 'd' ^ 0xff, 'e' ^ 0xff, 'l' ^ 0xff, 0 };
+	{ CRYPT('e'), CRYPT('m'), CRYPT('o'), CRYPT('d'), CRYPT('e'), CRYPT('l'), 0 };
 char pmodel_name[] = 
-	{ 'p' ^ 0xff, 'm' ^ 0xff, 'o' ^ 0xff, 'd' ^ 0xff, 'e' ^ 0xff, 'l' ^ 0xff, 0 };
+	{ CRYPT('p'), CRYPT('m'), CRYPT('o'), CRYPT('d'), CRYPT('e'), CRYPT('l'), 0 };
 char prespawn_name[] = 
-	{ 'p'^0xff, 'r'^0xff, 'e'^0xff, 's'^0xff, 'p'^0xff, 'a'^0xff, 'w'^0xff, 'n'^0xff,
-		' '^0xff, '%'^0xff, 'i'^0xff, ' '^0xff, '0'^0xff, ' '^0xff, '%'^0xff, 'i'^0xff, 0 };
+	{ CRYPT('p'), CRYPT('r'), CRYPT('e'), CRYPT('s'), CRYPT('p'), CRYPT('a'), CRYPT('w'), CRYPT('n'),
+		CRYPT(' '), CRYPT('%'), CRYPT('i'), CRYPT(' '), CRYPT('0'), CRYPT(' '), CRYPT('%'), CRYPT('i'), 0 };
 char modellist_name[] = 
-	{ 'm'^0xff, 'o'^0xff, 'd'^0xff, 'e'^0xff, 'l'^0xff, 'l'^0xff, 'i'^0xff, 's'^0xff, 't'^0xff, 
-		' '^0xff, '%'^0xff, 'i'^0xff, ' '^0xff, '%'^0xff, 'i'^0xff, 0 };
+	{ CRYPT('m'), CRYPT('o'), CRYPT('d'), CRYPT('e'), CRYPT('l'), CRYPT('l'), CRYPT('i'), CRYPT('s'), CRYPT('t'), 
+		CRYPT(' '), CRYPT('%'), CRYPT('i'), CRYPT(' '), CRYPT('%'), CRYPT('i'), 0 };
 char soundlist_name[] = 
-	{ 's'^0xff, 'o'^0xff, 'u'^0xff, 'n'^0xff, 'd'^0xff, 'l'^0xff, 'i'^0xff, 's'^0xff, 't'^0xff, 
-		' '^0xff, '%'^0xff, 'i'^0xff, ' '^0xff, '%'^0xff, 'i'^0xff, 0 };
+	{ CRYPT('s'), CRYPT('o'), CRYPT('u'), CRYPT('n'), CRYPT('d'), CRYPT('l'), CRYPT('i'), CRYPT('s'), CRYPT('t'), 
+		CRYPT(' '), CRYPT('%'), CRYPT('i'), CRYPT(' '), CRYPT('%'), CRYPT('i'), 0 };
+#undef CRYPT
 
 /*
 ==================

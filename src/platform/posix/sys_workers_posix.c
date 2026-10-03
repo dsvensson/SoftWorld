@@ -21,7 +21,12 @@
 #include <stdatomic.h>
 #include <stdint.h>
 
-#define	MAX_WORKERS		63
+// the most Sys_SetWorkers starts; in a browser the ones made ahead (the build
+// sets it to the page's pool), as a thread started later waits for the page to
+// yield
+#ifndef SW_MAX_WORKERS
+#define	SW_MAX_WORKERS	63
+#endif
 #define	WORKER_STACK	(1 << 20)	// Windows' default; macOS gives threads 512 KB
 
 static struct
@@ -37,7 +42,7 @@ static struct
 	atomic_int		sleepers;		// workers waiting on the generation
 	atomic_int		quit;
 	int				numworkers;
-	pthread_t		threads[MAX_WORKERS];
+	pthread_t		threads[SW_MAX_WORKERS];
 } pool;
 
 // takes and runs the run's jobs until none are left
@@ -91,8 +96,8 @@ void Sys_SetWorkers (int workers)
 
 	if (workers < 0)
 		workers = 0;
-	if (workers > MAX_WORKERS)
-		workers = MAX_WORKERS;
+	if (workers > SW_MAX_WORKERS)
+		workers = SW_MAX_WORKERS;
 	if (workers == pool.numworkers)
 		return;
 

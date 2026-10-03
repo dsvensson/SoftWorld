@@ -1,4 +1,4 @@
-// cpu_check_generic.c -- baseline build (x86-64, or arm64): every CPU of the target qualifies.
+// cpu_check_generic.c -- baseline build (x86-64, arm64 or WebAssembly): every CPU of the target qualifies.
 
 #include "../cpu_check.h"
 
