@@ -201,7 +201,7 @@ elseif(EMSCRIPTEN)
 	# JavaScript libraries of the page's side of them; present.glsl inside the
 	# program, compiled by WebGL
 	set(SW_WEB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/web")
-	set(SW_WEB_LIBRARIES sys_web.js fs_web.js vid_webgl.js in_web.js)
+	set(SW_WEB_LIBRARIES sys_web.js fs_web.js vid_webgl.js in_web.js snd_webaudio.js)
 	sw_add_module(sw_platform_gui
 		vid_common.c
 		web/sys_web_gui.c web/vid_webgl.c web/present_glsl.c web/in_web.c web/in_gamepad_web.c
@@ -213,11 +213,13 @@ elseif(EMSCRIPTEN)
 	set(SW_HOST_DIR "${PROJECT_SOURCE_DIR}/src/host")
 
 	# client with a local server, and the client alone: softworld.html, .js and
-	# .wasm, and the file system's fetch worker next to them (softworld-fs.js)
+	# .wasm, and next to them the file system's fetch worker (softworld-fs.js)
+	# and the sound's AudioWorklet (softworld-sound.js)
 	set(SW_WEB_LINK_OPTIONS -sENVIRONMENT=web,worker -sCASE_INSENSITIVE_FS=1
 		-sPTHREAD_POOL_SIZE=${SW_WEB_WORKERS} -sPTHREAD_POOL_SIZE_STRICT=2
 		"SHELL:--shell-file ${SW_WEB_DIR}/shell.html")
-	set(SW_WEB_LINK_DEPENDS "${SW_WEB_DIR}/shell.html")
+	# the workers are copied as the programs are linked
+	set(SW_WEB_LINK_DEPENDS "${SW_WEB_DIR}/shell.html" "${SW_WEB_DIR}/fs_web_worker.js" "${SW_WEB_DIR}/snd_worklet.js")
 	foreach(library ${SW_WEB_LIBRARIES})
 		list(APPEND SW_WEB_LINK_OPTIONS "SHELL:--js-library ${SW_WEB_DIR}/${library}")
 		list(APPEND SW_WEB_LINK_DEPENDS "${SW_WEB_DIR}/${library}")
@@ -232,6 +234,8 @@ elseif(EMSCRIPTEN)
 		add_custom_command(TARGET ${target} POST_BUILD
 			COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${SW_WEB_DIR}/fs_web_worker.js"
 				"$<TARGET_FILE_DIR:${target}>/softworld-fs.js"
+			COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${SW_WEB_DIR}/snd_worklet.js"
+				"$<TARGET_FILE_DIR:${target}>/softworld-sound.js"
 			VERBATIM)
 	endforeach()
 	target_link_libraries(softworld PRIVATE sw_server)
