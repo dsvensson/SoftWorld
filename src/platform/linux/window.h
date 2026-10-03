@@ -53,7 +53,7 @@ typedef struct
 } window_backend_t;
 
 extern const window_backend_t	*window;
-extern const window_backend_t	window_wayland;
+extern const window_backend_t	window_wayland, window_x11;
 
 void	Window_Init (int width, int height);
 const window_colors_t *Window_Colors (void);

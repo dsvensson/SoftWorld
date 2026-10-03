@@ -207,33 +207,50 @@ else()
 	target_include_directories(sw_platform_con PRIVATE .)
 	target_link_libraries(sw_platform_con PUBLIC sw_platform_posix)
 
-	# the Wayland protocols, the shaders compiled at build time and carried inside
-	# the programs, and the libraries of the window, drawing, input and sound
-	include(wayland)
+	# Keep each backend's headers optional so either backend can build alone.
+	option(SW_WAYLAND "Build the Wayland window backend" ON)
+	option(SW_X11 "Build the X11 window backend" ON)
+	if(NOT SW_WAYLAND AND NOT SW_X11)
+		message(FATAL_ERROR "Enable at least one Linux window backend: SW_WAYLAND or SW_X11")
+	endif()
+	find_package(PkgConfig REQUIRED)
 	include(glsl)
 	find_package(Vulkan 1.3 REQUIRED)
-	pkg_check_modules(SW_XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
 	pkg_check_modules(SW_PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
 
-	set(SW_PROTOCOL_SOURCES "")
-	sw_wayland_protocols(SW_PROTOCOL_SOURCES
-		stable/xdg-shell/xdg-shell.xml
-		stable/viewporter/viewporter.xml
-		stable/presentation-time/presentation-time.xml
-		stable/linux-dmabuf/linux-dmabuf-v1.xml
-		stable/tablet/tablet-v2.xml
-		staging/fractional-scale/fractional-scale-v1.xml
-		staging/color-management/color-management-v1.xml
-		staging/content-type/content-type-v1.xml
-		staging/cursor-shape/cursor-shape-v1.xml
-		staging/xdg-activation/xdg-activation-v1.xml
-		unstable/idle-inhibit/idle-inhibit-unstable-v1.xml
-		unstable/relative-pointer/relative-pointer-unstable-v1.xml
-		unstable/pointer-constraints/pointer-constraints-unstable-v1.xml
-		unstable/xdg-decoration/xdg-decoration-unstable-v1.xml)
-	add_library(sw_wayland_protocols OBJECT ${SW_PROTOCOL_SOURCES})
-	target_include_directories(sw_wayland_protocols PUBLIC "${SW_PROTOCOL_DIR}")
-	target_link_libraries(sw_wayland_protocols PUBLIC PkgConfig::SW_WAYLAND)
+	set(SW_WINDOW_SOURCES "")
+	set(SW_WINDOW_LIBRARIES "")
+	if(SW_WAYLAND)
+		include(wayland)
+		pkg_check_modules(SW_XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
+		set(SW_PROTOCOL_SOURCES "")
+		sw_wayland_protocols(SW_PROTOCOL_SOURCES
+			stable/xdg-shell/xdg-shell.xml
+			stable/viewporter/viewporter.xml
+			stable/presentation-time/presentation-time.xml
+			stable/linux-dmabuf/linux-dmabuf-v1.xml
+			stable/tablet/tablet-v2.xml
+			staging/fractional-scale/fractional-scale-v1.xml
+			staging/color-management/color-management-v1.xml
+			staging/content-type/content-type-v1.xml
+			staging/cursor-shape/cursor-shape-v1.xml
+			staging/xdg-activation/xdg-activation-v1.xml
+			unstable/idle-inhibit/idle-inhibit-unstable-v1.xml
+			unstable/relative-pointer/relative-pointer-unstable-v1.xml
+			unstable/pointer-constraints/pointer-constraints-unstable-v1.xml
+			unstable/xdg-decoration/xdg-decoration-unstable-v1.xml)
+		add_library(sw_wayland_protocols OBJECT ${SW_PROTOCOL_SOURCES})
+		target_include_directories(sw_wayland_protocols PUBLIC "${SW_PROTOCOL_DIR}")
+		target_link_libraries(sw_wayland_protocols PUBLIC PkgConfig::SW_WAYLAND)
+		list(APPEND SW_WINDOW_SOURCES linux/wl_linux.c linux/wl_hyprland.c linux/in_wayland.c
+			$<TARGET_OBJECTS:sw_wayland_protocols>)
+		list(APPEND SW_WINDOW_LIBRARIES PkgConfig::SW_WAYLAND PkgConfig::SW_XKBCOMMON)
+	endif()
+	if(SW_X11)
+		pkg_check_modules(SW_XLIB REQUIRED IMPORTED_TARGET x11 xi xscrnsaver)
+		list(APPEND SW_WINDOW_SOURCES linux/x11_linux.c linux/in_x11.c)
+		list(APPEND SW_WINDOW_LIBRARIES PkgConfig::SW_XLIB)
+	endif()
 
 	set(SW_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 	file(MAKE_DIRECTORY "${SW_SHADER_DIR}")
@@ -251,14 +268,20 @@ else()
 	# the window, drawing, input and sound of the programs with a client
 	sw_add_module(sw_platform_gui
 		vid_common.c
-		linux/sys_linux_gui.c linux/wl_linux.c linux/wl_hyprland.c linux/vid_vulkan.c
-		linux/in_wayland.c linux/in_evdev.c linux/snd_pipewire.c
+		linux/sys_linux_gui.c linux/vid_vulkan.c
+		linux/in_evdev.c linux/snd_pipewire.c
 		linux/window.c linux/in_linux.c
-		$<TARGET_OBJECTS:sw_present_spirv> $<TARGET_OBJECTS:sw_wayland_protocols>)
+		$<TARGET_OBJECTS:sw_present_spirv> ${SW_WINDOW_SOURCES})
 	target_include_directories(sw_platform_gui PRIVATE . linux "${SW_PROTOCOL_DIR}")
 	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_posix
-		Vulkan::Vulkan PkgConfig::SW_WAYLAND PkgConfig::SW_XKBCOMMON PkgConfig::SW_PIPEWIRE)
-	add_dependencies(sw_platform_gui sw_wayland_protocols)
+		Vulkan::Vulkan PkgConfig::SW_PIPEWIRE ${SW_WINDOW_LIBRARIES})
+	if(SW_WAYLAND)
+		target_compile_definitions(sw_platform_gui PRIVATE SW_WAYLAND)
+		add_dependencies(sw_platform_gui sw_wayland_protocols)
+	endif()
+	if(SW_X11)
+		target_compile_definitions(sw_platform_gui PRIVATE SW_X11)
+	endif()
 
 	set(SW_HOST_DIR "${PROJECT_SOURCE_DIR}/src/host")
 
