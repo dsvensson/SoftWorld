@@ -13,7 +13,8 @@ server, a dedicated server, and the protocol extensions today's servers and clie
   from the map's worldspawn and files, and AVX-512, AVX2 and NEON kernels.
 - **Network:** the FTE, MVD1 and ZQuake extensions (float coordinates, 2048 entities, 4096
   models, chunked downloads, …), mvdsv's player movement and its `pm_` keys. WebSocket next
-  to UDP: servers take browsers' clients on TCP at their port, as FTE's do.
+  to UDP: servers take browsers' clients on TCP at their port, as FTE's do. WebRTC to FTE's
+  servers, through their brokers.
 - **Demos:** QWD and MVD playback, MVD seeking (`demo_jump`), QTV (`qtvplay`), item timers.
 - **QuakeC:** a hardened VM with FTE's opcodes and builtins, multiprogs and threads; FTE's
   client-side QuakeC (CSQC), enough for KTX's weapon prediction.
@@ -289,6 +290,24 @@ its own client.
 On Windows the sandbox's firewall rule lets TCP in with UDP since the WebSocket port came; a
 rule made before lets UDP alone in, until `softworld -sandbox-network`, run once as an
 administrator, makes it again.
+
+### WebRTC
+
+FTE's servers also take clients over WebRTC: a broker (FTE's master, or the server's own)
+introduces the client to the server and passes their offers, and the packets then go between
+them over a data channel, unordered and never sent again, as UDP's. `connect rtc://broker/room`,
+or `rtcs://` for a broker over TLS; the broker's port is 27950 unless the address names one.
+The room is the name the server took at the broker, or `udp/ip:port` for a server the broker
+knows by its address (FTE's master).
+
+FTE's servers send a packet over WebRTC whole, and a big one is lost on the way: the client
+asks for them in pieces under 1384 bytes (FTE's fragmentation, which demos record put
+together). `net_rtc_debug` tells what a connection does (2 with libdatachannel's log), and
+`net_rtc_ignorecert 1` takes a broker's certificate unchecked, to test with one that has run
+out.
+
+The native programs do WebRTC with libdatachannel over mbedTLS, which configuring fetches
+(with git) and builds with them, once a build directory; `-DSW_WEBRTC=OFF` leaves them out.
 
 ## QuakeC
 

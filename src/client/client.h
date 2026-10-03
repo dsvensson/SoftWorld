@@ -174,7 +174,7 @@ typedef struct
 	netchan_t	netchan;
 	sizebuf_t	net_message;	// the packet being read
 	netadr_t	net_from;		// and who sent it
-	byte		net_message_buf[MAX_UDP_PACKET];
+	byte		net_message_buf[MAX_FRAGMENTED];	// a packet, or one put together of FTE's fragments
 
 // private userinfo for sending to masterless servers
 	char		userinfo[MAX_INFO_STRING];
@@ -212,6 +212,7 @@ typedef struct
 // in the connect packet; from svc_serverdata, those in use
 	unsigned	fteext;
 	unsigned	mvdext1;
+	int			fragmtu;		// FTE's fragmentation: the server's mtu, then the one asked for; 0 for none
 
 	float		latency;		// rolling average
 
@@ -454,6 +455,7 @@ char *Key_KeynumToString (int keynum);
 //
 void CL_StopPlayback (void);
 bool CL_GetMessage (void);
+void CL_RecordPacket (void);	// a packet CL_GetMessage left to the netchan (FTE's fragments)
 void CL_WriteDemoCmd (usercmd_t *pcmd);
 
 void CL_Stop_f (void);

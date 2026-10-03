@@ -183,6 +183,23 @@ void Netchan_Setup (netchan_t *chan, netadr_t adr, int remoteqport, netsrc_t soc
 
 
 /*
+==============
+Netchan_SetFragments
+
+FTE's fragmentation (PROTOCOL_VERSION_FRAGMENT), as the connection agreed it
+==============
+*/
+void Netchan_SetFragments (netchan_t *chan, int mtu)
+{
+	chan->fragmtu = mtu > 0 ? mtu : 0;
+}
+
+// the pieces of the packet coming together: only a client's channel gets them
+static byte		frag_buf[MAX_FRAGMENTED];
+static int		frag_length;
+static unsigned	frag_sequence;
+
+/*
 ===============
 Netchan_CanPacket
 
@@ -216,6 +233,46 @@ bool Netchan_CanReliable (netchan_t *chan)
 
 /*
 ===============
+Netchan_SendFragments
+
+A packet bigger than FTE's fragmentation lets go in pieces, as FTE's do: each
+with the packet's header, and after it the piece's offset in the payload
+over 4 (a multiple of 8) with 1 for more to come. False if it fits whole.
+===============
+*/
+static bool Netchan_SendFragments (netchan_t *chan, const sizebuf_t *send)
+{
+	byte	piece[MAX_MSGLEN + PACKET_HEADER + 4];
+	int		header, payload, offset, next, chunk;
+	bool	more;
+
+	if (!chan->fragmtu)
+		return false;
+	header = PACKET_HEADER + (chan->sock == NS_CLIENT ? 2 : 0) + 2;
+	payload = send->cursize - header;
+	// what a piece's payload may be: the mtu less the headers, and WebRTC's
+	// SCTP and DTLS, as FTE leaves
+	chunk = (chan->fragmtu - header - 60) & ~7;
+	if (payload <= chunk || chunk < 64)
+		return false;
+
+	for (offset = 0 ; offset < payload ; offset = next)
+	{
+		next = offset + chunk;
+		more = next < payload;
+		if (!more)
+			next = payload;
+		memcpy (piece, send->data, (size_t)header - 2);
+		piece[header - 2] = (byte)(((offset >> 2) | more) & 0xff);
+		piece[header - 1] = (byte)(((offset >> 2) | more) >> 8);
+		memcpy (piece + header, send->data + header + offset, (size_t)(next - offset));
+		NET_SendPacket (chan->sock, header + next - offset, piece, chan->remote_address);
+	}
+	return true;
+}
+
+/*
+===============
 Netchan_Transmit
 
 tries to send an unreliable message to a connection, and handles the
@@ -227,7 +284,7 @@ A 0 length will still generate a packet and deal with the reliable messages.
 void Netchan_Transmit (netchan_t *chan, int length, byte *data)
 {
 	sizebuf_t	send;
-	byte		send_buf[MAX_MSGLEN + PACKET_HEADER];
+	byte		send_buf[MAX_MSGLEN + PACKET_HEADER + 4];	// and the qport, and the fragment offset
 	bool	send_reliable;
 	unsigned	w1, w2;
 	int			i;
@@ -275,6 +332,9 @@ void Netchan_Transmit (netchan_t *chan, int length, byte *data)
 	// send the qport if we are a client
 	if (chan->sock == NS_CLIENT)
 		MSG_WriteShort (&send, chan->qport);
+	// with FTE's fragmentation, a whole packet's offset: none
+	if (chan->fragmtu)
+		MSG_WriteShort (&send, 0);
 
 // copy the reliable message to the packet first
 	if (send_reliable)
@@ -292,7 +352,8 @@ void Netchan_Transmit (netchan_t *chan, int length, byte *data)
 	chan->outgoing_size[i] = send.cursize;
 	chan->outgoing_time[i] = host.realtime;
 
-	NET_SendPacket (chan->sock, send.cursize, send.data, chan->remote_address);
+	if (!Netchan_SendFragments (chan, &send))
+		NET_SendPacket (chan->sock, send.cursize, send.data, chan->remote_address);
 
 	if (chan->cleartime < host.realtime)
 		chan->cleartime = host.realtime + send.cursize*chan->rate;
@@ -321,6 +382,8 @@ bool Netchan_Process (netchan_t *chan, netadr_t from, sizebuf_t *msg)
 {
 	unsigned		sequence, sequence_ack;
 	unsigned		reliable_ack, reliable_message;
+	int				header, offset, length;
+	bool			more;
 
 	if (!NET_CompareAdr (from, chan->remote_address))
 		return false;
@@ -333,6 +396,9 @@ bool Netchan_Process (netchan_t *chan, netadr_t from, sizebuf_t *msg)
 	// read the qport if we are a server
 	if (chan->sock == NS_SERVER)
 		MSG_ReadShort ();
+	header = MSG_GetReadCount ();
+	// with FTE's fragmentation, the piece's offset (over 4, 1 for more to come)
+	offset = chan->fragmtu ? (unsigned short)MSG_ReadShort () : 0;
 
 	reliable_message = sequence >> 31;
 	reliable_ack = sequence_ack >> 31;
@@ -361,6 +427,50 @@ bool Netchan_Process (netchan_t *chan, netadr_t from, sizebuf_t *msg)
 				,  sequence
 				, chan->incoming_sequence);
 		return false;
+	}
+
+//
+// with FTE's fragmentation the offset goes, and a packet's pieces are kept
+// until the last (a piece lost loses the packet): the message is then the
+// plain packet, as a demo records it
+//
+	if (chan->fragmtu)
+	{
+		length = msg->cursize - MSG_GetReadCount ();
+		more = offset & 1;
+		offset = (offset & ~1) << 2;
+		if (!more && !offset)
+		{
+			memmove (msg->data + header, msg->data + header + 2, (size_t)length);
+			frag_length = 0;
+		}
+		else
+		{
+			if (sequence != frag_sequence)
+			{
+				frag_sequence = sequence;
+				frag_length = 0;
+			}
+			if (offset != frag_length || offset + length > MAX_FRAGMENTED)
+			{
+				if (showdrop.value)
+					Con_Printf ("%s:Fragment lost before %i of %u\n", NET_AdrToString (chan->remote_address), offset, sequence);
+				frag_length = 0;
+				return false;
+			}
+			memcpy (frag_buf + offset, msg->data + MSG_GetReadCount (), (size_t)length);
+			frag_length += length;
+			if (more)
+				return false;
+			length = frag_length;
+			frag_length = 0;
+			if (header + length > msg->maxsize)
+				return false;
+			memcpy (msg->data + header, frag_buf, (size_t)length);
+		}
+		msg->cursize = header + length;
+		MSG_BeginReading (msg);
+		msg_readcount = header;
 	}
 
 //

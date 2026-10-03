@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define	PORT_ANY	-1
 #define	MAX_UDP_PACKET	(MAX_MSGLEN*2)	// one more than msg + header
+#define	MAX_FRAGMENTED	65536			// a packet put together of fragments, at most (FTE's)
 
 // which end of a connection a socket or channel belongs to; each end has
 // its own UDP socket, and a loopback to the other end in the same process
@@ -37,7 +38,9 @@ typedef enum { NS_CLIENT, NS_SERVER } netsrc_t;
 // and port it connected from; it prints and compares as NA_IP, but packets to
 // it go through its connection. NA_URL: a server a browser reaches by URL
 // (ws:// or wss://, the web's net_ws_web.c), ip the URL's number there.
-typedef enum { NA_INVALID, NA_LOOPBACK, NA_IP, NA_WS, NA_URL } netadrtype_t;
+// NA_RTC: a peer over WebRTC (net_rtc.c), ip its URL's number, port the
+// broker's.
+typedef enum { NA_INVALID, NA_LOOPBACK, NA_IP, NA_WS, NA_URL, NA_RTC } netadrtype_t;
 
 typedef struct
 {
@@ -77,6 +80,11 @@ char	*NET_AdrToString (netadr_t a);
 char	*NET_BaseAdrToString (netadr_t a);
 bool	NET_StringToAdr (const char *s, netadr_t *a);	// "local" is the loopback, ws:// a URL
 
+// the mtu to ask a server for fragments of (FTE's PROTOCOL_VERSION_FRAGMENT) on
+// the path to it, 0 for none: WebRTC's, over which FTE's servers send a packet
+// in one piece, and too big a one is lost
+int		NET_FragmentMTU (netadr_t a);
+
 //============================================================================
 
 #define	OLD_AVG		0.99		// total = oldtotal*OLD_AVG + new*(1-OLD_AVG)
@@ -101,6 +109,7 @@ typedef struct
 	netadr_t	remote_address;
 	netsrc_t	sock;			// NS_CLIENT channels send the qport, NS_SERVER read it
 	int			qport;
+	int			fragmtu;		// FTE's fragmentation agreed, at this mtu; 0 for none
 
 // bandwidth estimator
 	double		cleartime;			// if realtime > nc->cleartime, free to go
@@ -137,6 +146,10 @@ void Netchan_OutOfBandPrint (netsrc_t sock, netadr_t adr, char *format, ...);
 // continues after its header
 bool Netchan_Process (netchan_t *chan, netadr_t from, sizebuf_t *msg);
 void Netchan_Setup (netchan_t *chan, netadr_t adr, int qport, netsrc_t sock);
+// FTE's fragmentation, as both ends agreed in the connection (an mtu, 0 for
+// none): every packet has an offset after its header, and the client's end
+// puts the pieces together (one channel at a time: a client's)
+void Netchan_SetFragments (netchan_t *chan, int mtu);
 
 bool Netchan_CanPacket (netchan_t *chan);
 bool Netchan_CanReliable (netchan_t *chan);

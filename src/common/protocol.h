@@ -114,6 +114,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	PROTOCOL_VERSION_FTE	(('F'<<0) + ('T'<<8) + ('E'<<16) + ('X'<<24))
 #define	PROTOCOL_VERSION_FTE2	(('F'<<0) + ('T'<<8) + ('E'<<16) + ('2'<<24))
 #define	PROTOCOL_VERSION_MVD1	(('M'<<0) + ('V'<<8) + ('D'<<16) + ('1'<<24))
+// FTE's fragmentation: the packets have an offset after their header, and one
+// bigger than the mtu agreed goes in pieces (net_chan.c)
+#define	PROTOCOL_VERSION_FRAGMENT	(('F'<<0) + ('R'<<8) + ('A'<<16) + ('G'<<24))
 
 #define	FTE_PEXT_TRANS				0x00000008	// entity alpha
 #define	FTE_PEXT_ACCURATETIMINGS	0x00000040

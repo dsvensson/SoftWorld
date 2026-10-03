@@ -275,8 +275,9 @@ static bool CL_GetDemoMessage (void)
 		fread (&cls.net_message.cursize, 4, 1, cls.demofile);
 		cls.net_message.cursize = LittleLong (cls.net_message.cursize);
 	//Con_Printf("read: %ld bytes\n", net_message.cursize);
-		if (cls.net_message.cursize > MAX_MSGLEN)
-			Sys_Error ("Demo message > MAX_MSGLEN");
+		// as big as a packet put together of FTE's fragments
+		if (cls.net_message.cursize < 0 || cls.net_message.cursize > (int)sizeof(cls.net_message_buf))
+			Sys_Error ("Demo message too big");
 		r = (int)fread (cls.net_message.data, cls.net_message.cursize, 1, cls.demofile);
 		if (r != 1)
 		{
@@ -316,9 +317,24 @@ bool CL_GetMessage (void)
 	if (!NET_GetPacket (NS_CLIENT, &cls.net_from, &cls.net_message))
 		return false;
 
-	CL_WriteDemoMessage (&cls.net_message);
-	
+	// with FTE's fragmentation, the server's packets are recorded once the
+	// netchan has made them plain (CL_RecordPacket)
+	if (!cls.netchan.fragmtu || *(int *)cls.net_message.data == -1)
+		CL_WriteDemoMessage (&cls.net_message);
+
 	return true;
+}
+
+/*
+====================
+CL_RecordPacket
+
+Records the server's packet the netchan just took, plain
+====================
+*/
+void CL_RecordPacket (void)
+{
+	CL_WriteDemoMessage (&cls.net_message);
 }
 
 

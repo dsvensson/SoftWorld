@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "cvar.h"
 #include "net.h"
+#include "net_rtc.h"
 #include "net_socket.h"
 #include "net_ws.h"
 #include "print.h"
@@ -121,6 +122,7 @@ NET_Init / NET_Shutdown
 void NET_Init (void)
 {
 	UDP_Init ();
+	RTC_Init ();
 	Netchan_Init ();
 	Cvar_RegisterVariable (&password);
 	Cvar_RegisterVariable (&rcon_password);
@@ -131,6 +133,7 @@ void NET_Shutdown (void)
 	NET_CloseSocket (NS_CLIENT);
 	NET_CloseSocket (NS_SERVER);
 	memset (loopbacks, 0, sizeof(loopbacks));
+	RTC_Shutdown ();
 	UDP_Shutdown ();
 }
 
@@ -188,8 +191,10 @@ bool NET_GetPacket (netsrc_t sock, netadr_t *from, sizebuf_t *msg)
 			return true;
 		}
 	}
-	// the server's browsers' clients
-	return sock == NS_SERVER && WS_GetPacket (from, msg);
+	// the server's browsers' clients, and the peers over WebRTC
+	if (sock == NS_SERVER && WS_GetPacket (from, msg))
+		return true;
+	return RTC_GetPacket (sock, from, msg);
 }
 
 void NET_SendPacket (netsrc_t sock, int length, const void *data, netadr_t to)
@@ -201,6 +206,8 @@ void NET_SendPacket (netsrc_t sock, int length, const void *data, netadr_t to)
 		if (sock == NS_SERVER)
 			WS_SendPacket (data, length, &to);
 	}
+	else if (to.type == NA_RTC)
+		RTC_SendPacket (sock, data, length, &to);
 	else if ((to.type == NA_IP || to.type == NA_URL) && net_sockets[sock])
 		UDP_Send (net_sockets[sock], data, length, &to);
 }
@@ -212,6 +219,15 @@ ADDRESSES
 
 =============================================================================
 */
+
+int NET_FragmentMTU (netadr_t a)
+{
+	// as FTE's web client asks: the packet, and the SCTP and DTLS around it,
+	// in one UDP datagram under 1500 bytes
+	if (a.type == NA_RTC)
+		return 1384;
+	return 0;
+}
 
 bool NET_CompareBaseAdr (netadr_t a, netadr_t b)
 {
@@ -255,6 +271,8 @@ char *NET_AdrToString (netadr_t a)
 		return "loopback";
 	if (a.type == NA_URL)
 		return (char *)UDP_URLToString (a, true);
+	if (a.type == NA_RTC)
+		return (char *)RTC_AdrToString (a, true);
 	snprintf (s, sizeof(s), "%i.%i.%i.%i:%i", a.ip[0], a.ip[1], a.ip[2], a.ip[3],
 		(unsigned short)BigShort ((short)a.port));
 	return s;
@@ -268,6 +286,8 @@ char *NET_BaseAdrToString (netadr_t a)
 		return "loopback";
 	if (a.type == NA_URL)
 		return (char *)UDP_URLToString (a, false);
+	if (a.type == NA_RTC)
+		return (char *)RTC_AdrToString (a, false);
 	snprintf (s, sizeof(s), "%i.%i.%i.%i", a.ip[0], a.ip[1], a.ip[2], a.ip[3]);
 	return s;
 }
@@ -282,6 +302,7 @@ idnewt:28000
 192.246.40.70
 192.246.40.70:28000
 ws://idnewt:28000/path, wss://idnewt/path (where the platform's packets go to URLs: a browser's)
+rtc://broker/room, rtcs://broker:27950/udp/192.246.40.70:28000 (WebRTC)
 =============
 */
 bool NET_StringToAdr (const char *s, netadr_t *a)
@@ -297,7 +318,7 @@ bool NET_StringToAdr (const char *s, netadr_t *a)
 		return true;
 	}
 	if (strstr (s, "://"))
-		return UDP_ResolveURL (s, a);
+		return RTC_ResolveURL (s, a) || UDP_ResolveURL (s, a);
 
 	Q_strncpyz (copy, s, sizeof(copy));
 

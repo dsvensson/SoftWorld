@@ -30,38 +30,38 @@
 			"hidden": true,
 			"inherits": "base",
 			"condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
-			"cacheVariables": { "CMAKE_C_COMPILER": "clang", "CMAKE_LINKER_TYPE": "LLD" }
+			"cacheVariables": { "CMAKE_C_COMPILER": "clang", "CMAKE_CXX_COMPILER": "clang++", "CMAKE_LINKER_TYPE": "LLD" }
 		},
 		{
 			"name": "msvc-v4",
 			"displayName": "MSVC, x86-64-v4 (AVX-512)",
 			"inherits": "windows",
-			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "x86-64-v4" }
+			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "CMAKE_CXX_COMPILER": "cl", "SW_ARCH": "x86-64-v4" }
 		},
 		{
 			"name": "msvc-v3",
 			"displayName": "MSVC, x86-64-v3 (AVX2)",
 			"inherits": "windows",
-			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "x86-64-v3" }
+			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "CMAKE_CXX_COMPILER": "cl", "SW_ARCH": "x86-64-v3" }
 		},
 		{
 			"name": "msvc-generic",
 			"displayName": "MSVC, baseline x86-64",
 			"inherits": "windows",
-			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "generic" }
+			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "CMAKE_CXX_COMPILER": "cl", "SW_ARCH": "generic" }
 		},
 		{
 			"name": "msvc-x86",
 			"displayName": "MSVC, 32-bit x86 (from an x86 developer prompt)",
 			"inherits": "windows",
 			"architecture": { "value": "x86", "strategy": "external" },
-			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "generic", "SW_POINTER_BITS": "32" }
+			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "CMAKE_CXX_COMPILER": "cl", "SW_ARCH": "generic", "SW_POINTER_BITS": "32" }
 		},
 		{
 			"name": "msvc-asan",
 			"displayName": "MSVC, x86-64-v4, AddressSanitizer (Debug only)",
 			"inherits": "windows",
-			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "SW_ARCH": "x86-64-v4", "SW_ASAN": "ON" }
+			"cacheVariables": { "CMAKE_C_COMPILER": "cl", "CMAKE_CXX_COMPILER": "cl", "SW_ARCH": "x86-64-v4", "SW_ASAN": "ON" }
 		},
 		{
 			"name": "clangcl-v4",
@@ -69,6 +69,7 @@
 			"inherits": "windows",
 			"cacheVariables": {
 				"CMAKE_C_COMPILER": "clang-cl",
+				"CMAKE_CXX_COMPILER": "clang-cl",
 				"CMAKE_LINKER_TYPE": "LLD",
 				"SW_ARCH": "x86-64-v4"
 			}

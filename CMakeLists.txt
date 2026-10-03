@@ -57,6 +57,16 @@ else()
 	message(WARNING "Link-time optimization is not available: ${sw_ipo_output}")
 endif()
 
+# WebRTC (rtc://) for the native programs: libdatachannel and mbedTLS, fetched
+# and built as projects of their own, before the project's options below
+if(NOT EMSCRIPTEN)
+	option(SW_WEBRTC "WebRTC for the native programs: libdatachannel and mbedTLS, fetched and built" ON)
+endif()
+if(SW_WEBRTC)
+	enable_language(CXX)
+	include(webrtc)
+endif()
+
 if(MSVC)
 	# Release keeps a program database too, for profilers and crash dumps; the code is the same
 	set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo,Release>:ProgramDatabase>")

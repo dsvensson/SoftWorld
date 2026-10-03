@@ -221,6 +221,7 @@ static void CL_SendConnectPacket (void)
 	netadr_t	adr;
 	char	data[2048];
 	double t1, t2;
+	int		mtu;
 // JACK: Fixed bug where DNS lookups would cause two connects real fast
 //       Now, adds lookup time to the connect time.
 //		 Should I add it to realtime instead?!?!
@@ -257,6 +258,16 @@ static void CL_SendConnectPacket (void)
 		Q_strncatz (data, va("0x%x 0x%x\n", PROTOCOL_VERSION_FTE, cls.fteext), sizeof(data));
 	if (cls.mvdext1)
 		Q_strncatz (data, va("0x%x 0x%x\n", PROTOCOL_VERSION_MVD1, cls.mvdext1), sizeof(data));
+	// FTE's fragmentation where the path needs it (WebRTC), at the smaller of
+	// the server's mtu and the path's
+	mtu = NET_FragmentMTU (adr);
+	if (cls.fragmtu > 0 && mtu > 0)
+	{
+		cls.fragmtu = (cls.fragmtu < mtu ? cls.fragmtu : mtu) & ~7;
+		Q_strncatz (data, va("0x%x %i\n", PROTOCOL_VERSION_FRAGMENT, cls.fragmtu), sizeof(data));
+	}
+	else
+		cls.fragmtu = 0;
 	NET_SendPacket (NS_CLIENT, (int)strlen(data), data, adr);
 }
 
@@ -953,6 +964,7 @@ static void CL_ConnectionlessPacket (void)
 			return;
 		}
 		Netchan_Setup (&cls.netchan, cls.net_from, cls.qport, NS_CLIENT);
+		Netchan_SetFragments (&cls.netchan, cls.fragmtu);
 		MSG_WriteChar (&cls.netchan.message, clc_stringcmd);
 		MSG_WriteString (&cls.netchan.message, "new");	
 		cls.state = ca_connected;
@@ -1045,6 +1057,7 @@ static void CL_ConnectionlessPacket (void)
 		// then the server's protocol extensions, (magic, mask) pairs to the
 		// end; unknown families are skipped
 		cls.fteext = cls.mvdext1 = 0;
+		cls.fragmtu = 0;
 		for (;;)
 		{
 			magic = MSG_ReadLong ();
@@ -1056,6 +1069,8 @@ static void CL_ConnectionlessPacket (void)
 				cls.fteext = mask & CL_FTEExtensions ();
 			else if (magic == PROTOCOL_VERSION_MVD1)
 				cls.mvdext1 = mask & CL_MVD1_EXTENSIONS;
+			else if (magic == PROTOCOL_VERSION_FRAGMENT)
+				cls.fragmtu = (int)mask;		// the server's mtu
 		}
 
 		CL_SendConnectPacket ();
@@ -1112,6 +1127,8 @@ static void CL_ReadPackets (void)
 		}
 		if (!Netchan_Process (&cls.netchan, cls.net_from, &cls.net_message))
 			continue;		// wasn't accepted for some reason
+		if (cls.netchan.fragmtu && !cls.demoplayback)
+			CL_RecordPacket ();
 		CL_ParseServerMessage ();
 	}
 
