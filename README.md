@@ -272,10 +272,11 @@ data forgets it. Sound and the mouse wait for a click or a key: the browser's ru
 moves raw where the browser has it (Chrome), and `vid_vsync 0` shows frames as soon as they
 are drawn where it lets a page (Chrome too); `vid_info` tells what it has.
 
-A browser has no UDP: the page connects to servers over WebSocket. `connect host[:port]` is
-`ws://host:27500`, or `wss://` from an https page; `connect wss://quake.example.com/qw` names
-the URL. SoftWorld's servers (`sv_websocket 1`, the default) and FTE's take browsers on TCP at
-their port; mvdsv doesn't. For wss:// put a TLS proxy in front, which may say who its client is
+A browser has no UDP: the page connects to servers over WebSocket, or WebRTC (`rtc://`, in
+WebRTC below). `connect host[:port]` is `ws://host:27500`, or `wss://` from an https page;
+`connect wss://quake.example.com/qw` names the URL. SoftWorld's servers (`sv_websocket 1`,
+the default) and FTE's take browsers on TCP at their port; mvdsv doesn't. For wss:// put a
+TLS proxy in front, which may say who its client is
 (`X-Forwarded-For`, believed from the server's machine alone), as Caddy does:
 
 ```
@@ -308,6 +309,8 @@ out.
 
 The native programs do WebRTC with libdatachannel over mbedTLS, which configuring fetches
 (with git) and builds with them, once a build directory; `-DSW_WEBRTC=OFF` leaves them out.
+The page does it with the browser's own, which checks the broker's certificate itself; an
+https page reaches brokers only by `rtcs://`.
 
 ## QuakeC
 

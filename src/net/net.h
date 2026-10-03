@@ -37,7 +37,8 @@ typedef enum { NS_CLIENT, NS_SERVER } netsrc_t;
 // NA_WS: a client on the server's WebSocket port (net_ws.c), by the address
 // and port it connected from; it prints and compares as NA_IP, but packets to
 // it go through its connection. NA_URL: a server a browser reaches by URL
-// (ws:// or wss://, the web's net_ws_web.c), ip the URL's number there.
+// (ws://, wss://, and rtc:// and rtcs:// over the browser's WebRTC: the web's
+// net_ws_web.c), ip the URL's number there.
 // NA_RTC: a peer over WebRTC (net_rtc.c), ip its URL's number, port the
 // broker's.
 typedef enum { NA_INVALID, NA_LOOPBACK, NA_IP, NA_WS, NA_URL, NA_RTC } netadrtype_t;

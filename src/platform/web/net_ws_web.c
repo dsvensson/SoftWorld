@@ -17,7 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// net_ws_web.c -- the network in a browser page: WebSockets (net_ws_web.js)
+// net_ws_web.c -- the network in a browser page: WebSockets and WebRTC
+// (net_ws_web.js)
 //
 // A page has no UDP and no DNS, so its packets go to servers by URL (NA_URL):
 // ws://host[:port][/path] or wss://, and a bare host[:port] as ws:// (wss://
@@ -30,6 +31,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // challenge. QTV's streams are WebSockets too (without a subprotocol, as a
 // bridge like websockify takes them). A page can't listen: its server has
 // only its own client, over the loopback.
+//
+// rtc://broker[:port]/room and rtcs:// (the broker over TLS) go over the
+// browser's WebRTC instead, as the native programs' net_rtc.c does: the
+// broker (port 27950 unless given) introduces the page to the server, and a
+// packet is then a message on an unordered data channel that never sends
+// again, as UDP's.
 
 #include "mem.h"
 #include "net_socket.h"
@@ -44,6 +51,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 // net_ws_web.js
 int		web_ws_open (const char *url, const char *protocol, bool stream);
+int		web_rtc_open (const char *broker, const char *stun);
 bool	web_ws_send (int id, const void *data, int length);
 int		web_ws_state (int id, int *code);
 int		web_ws_recv (byte *buf, int max, int *id);
@@ -57,13 +65,15 @@ enum { WS_CONNECTING, WS_OPEN, WS_CLOSED };
 #define	MAX_CONNS		32
 #define	REOPEN_TIME		5.0			// seconds before a closed connection is opened again
 #define	IDLE_TIME		30.0		// seconds without a packet sent before one is closed
+#define	RTC_BROKERPORT	27950		// FTE's (dpmaster's), unless the URL gives one
+#define	RTC_PROTOCOL	"FTE-Quake"	// what FTE's brokers know Quake's games by
 
 // the servers by URL, an NA_URL's ip[0] and ip[1] their number
 typedef struct
 {
-	char	scheme[4];			// "ws" or "wss"
+	char	scheme[8];			// "ws", "wss", "rtc" or "rtcs"
 	char	host[128];
-	char	path[128];			// "" or from the '/'
+	char	path[128];			// "" or from the '/' (WebRTC's room)
 } weburl_t;
 
 static weburl_t	net_urls[MAX_URLS];
@@ -113,12 +123,26 @@ static bool URL_HostChar (int c, bool ipv6)
 	return ipv6 && (c == ':' || c == '[' || c == ']');
 }
 
+static bool URL_IsRTC (const weburl_t *url)
+{
+	return !strncmp (url->scheme, "rtc", 3);
+}
+
+// a URL's own port: the scheme's, or a WebRTC broker's
+static int URL_DefaultPort (const weburl_t *url)
+{
+	if (URL_IsRTC (url))
+		return RTC_BROKERPORT;
+	return !strcmp (url->scheme, "wss") ? 443 : 80;
+}
+
 /*
 =============
 UDP_ResolveURL
 
 ws://host[:port][/path], wss://, or a bare host[:port] as ws:// (wss:// on an
-https page). A URL's port is the URL's (80 or 443) unless given, a bare host's
+https page); rtc://broker[:port]/room or rtcs://, over WebRTC. A URL's port
+is the URL's (80, 443, or the broker's 27950) unless given, a bare host's
 QuakeWorld's (left 0 here for the caller's). No credentials, nothing a
 userinfo or a request would take for more.
 =============
@@ -139,6 +163,16 @@ bool UDP_ResolveURL (const char *s, netadr_t *a)
 	{
 		strcpy (url.scheme, "ws");
 		p += 5;
+	}
+	else if (!Q_strncasecmp (p, "rtcs://", 7))
+	{
+		strcpy (url.scheme, "rtcs");
+		p += 7;
+	}
+	else if (!Q_strncasecmp (p, "rtc://", 6))
+	{
+		strcpy (url.scheme, "rtc");
+		p += 6;
 	}
 	else if (strstr (p, "://"))
 		return false;
@@ -177,16 +211,18 @@ bool UDP_ResolveURL (const char *s, netadr_t *a)
 			return false;
 	}
 	else if (!bare)
-		port = !strcmp (url.scheme, "wss") ? 443 : 80;
+		port = URL_DefaultPort (&url);
 
 	if (*p == '/')
 	{
 		if (bare || strlen (p) >= sizeof(url.path) || strpbrk (p, " \t\r\n\"\\;"))
 			return false;
+		if (URL_IsRTC (&url) && (!p[1] || strpbrk (p, "?#")))
+			return false;
 		strcpy (url.path, p);
 	}
-	else if (*p)
-		return false;
+	else if (*p || URL_IsRTC (&url))
+		return false;		// WebRTC's room is needed
 
 	// the URL's number, the same for the same server
 	for (i = 0 ; i < net_numurls ; i++)
@@ -221,7 +257,7 @@ const char *UDP_URLToString (netadr_t a, bool port)
 	if (a.type != NA_URL || URL_Index (a) >= net_numurls)
 		return "";
 	url = &net_urls[URL_Index (a)];
-	if (port && number && number != (!strcmp (url->scheme, "wss") ? 443 : 80))
+	if (port && number && number != URL_DefaultPort (url))
 		snprintf (out, sizeof(s[0]), "%s://%s:%i%s", url->scheme, url->host, number, url->path);
 	else
 		snprintf (out, sizeof(s[0]), "%s://%s%s", url->scheme, url->host, url->path);
@@ -304,15 +340,48 @@ static void NET_CloseIdle (double now)
 
 static void NET_Open (webconn_t *c, double now)
 {
-	char	url[320];
+	weburl_t	*url = &net_urls[URL_Index (c->to)];
+	char		address[400], stun[300];
+	int			port = (unsigned short)BigShort ((short)c->to.port);
 
-	snprintf (url, sizeof(url), "%s", UDP_URLToString (c->to, true));
-	c->id = web_ws_open (url, "fteqw", false);
+	if (URL_IsRTC (url))
+	{
+		// the broker's WebSocket at /FTE-Quake/<room>, and the broker the
+		// first STUN server
+		snprintf (address, sizeof(address), "%s://%s:%i/" RTC_PROTOCOL "%s", url->scheme[3] ? "wss" : "ws",
+			url->host, port, url->path);
+		snprintf (stun, sizeof(stun), "stun:%s:%i", url->host, port);
+		c->id = web_rtc_open (address, stun);
+	}
+	else
+	{
+		snprintf (address, sizeof(address), "%s", UDP_URLToString (c->to, true));
+		c->id = web_ws_open (address, "fteqw", false);
+	}
 	c->opened = now;
 	c->toldclosed = false;
-	if (c->id < 0)
-		Con_Printf ("Can't open %s%s\n", url, !strncmp (url, "ws:", 3) && web_page_secure ()
-			? " from an https page: wss:// it must be" : "");
+	if (c->id < 0 && URL_IsRTC (url) && !url->scheme[3] && web_page_secure ())
+		Con_Printf ("Can't open %s from an https page: rtcs:// it must be\n", UDP_URLToString (c->to, true));
+	else if (c->id < 0)
+		Con_Printf ("Can't open %s%s\n", address, !strncmp (address, "ws:", 3) && web_page_secure ()
+			? " from an https page: wss:// it must be" : URL_IsRTC (url) ? ": no WebRTC in this browser" : "");
+}
+
+// why a connection closed: a WebSocket's code, or net_ws_web.js's for
+// WebRTC's
+static const char *NET_ClosedWhy (const weburl_t *url, int code)
+{
+	if (!URL_IsRTC (url))
+		return code == 1006 ? ": couldn't connect, or the connection was lost" : "";
+	switch (code)
+	{
+	case 4000:	return ": the broker lost the server";
+	case 4001:	return ": the broker refused the room";
+	case 4002:	return ": the peers couldn't reach each other";
+	case 4003:	return ": the connection was lost";
+	case 4004:	return ": no connection in time";
+	default:	return ": the broker's connection closed";
+	}
 }
 
 void UDP_Send (udpsocket_t *s, const void *data, int length, const netadr_t *to)
@@ -344,8 +413,8 @@ void UDP_Send (udpsocket_t *s, const void *data, int length, const netadr_t *to)
 	if (c->id >= 0 && web_ws_state (c->id, &code) == WS_CLOSED)
 	{
 		if (!c->toldclosed)
-			Con_Printf ("WebSocket to %s closed (%i%s)\n", UDP_URLToString (*to, true), code,
-				code == 1006 ? ": couldn't connect, or the connection was lost" : "");
+			Con_Printf ("%s to %s closed (%i%s)\n", URL_IsRTC (&net_urls[URL_Index (*to)]) ? "WebRTC" : "WebSocket",
+				UDP_URLToString (*to, true), code, NET_ClosedWhy (&net_urls[URL_Index (*to)], code));
 		c->toldclosed = true;
 		web_ws_close (c->id);
 		c->id = -1;
@@ -399,7 +468,7 @@ tcpsocket_t *TCP_Connect (const netadr_t *to)
 	tcpsocket_t	*s;
 	int			id;
 
-	if (to->type != NA_URL)
+	if (to->type != NA_URL || URL_IsRTC (&net_urls[URL_Index (*to)]))
 		return NULL;
 	id = web_ws_open (UDP_URLToString (*to, true), NULL, true);
 	if (id < 0)

@@ -224,7 +224,7 @@ int NET_FragmentMTU (netadr_t a)
 {
 	// as FTE's web client asks: the packet, and the SCTP and DTLS around it,
 	// in one UDP datagram under 1500 bytes
-	if (a.type == NA_RTC)
+	if (a.type == NA_RTC || (a.type == NA_URL && !Q_strncasecmp (UDP_URLToString (a, false), "rtc", 3)))
 		return 1384;
 	return 0;
 }

@@ -1,7 +1,8 @@
 #pragma once
 // net_rtc.h -- WebRTC: QuakeWorld's packets over data channels (unordered, never
 // sent again: as UDP), the peers found through a broker as FTE's are
-// (net_rtc.c, over libdatachannel; net_rtc_none.c where the build has none)
+// (net_rtc.c, over libdatachannel; net_rtc_none.c where the build has none: in
+// a browser rtc:// is a URL, net_ws_web.c's)
 //
 // A server is reached by rtc://broker[:port]/room, or rtcs:// with the broker
 // over TLS: the room a server took at the broker, or udp/ip:port for a server
