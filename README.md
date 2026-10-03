@@ -132,7 +132,9 @@ cmake --build --preset web
 ctest --preset web
 ```
 
-`web-debug` builds Debug. The tests run in node, Emscripten's. The build is WebAssembly with the
+`web-debug` builds Debug. The tests run in node, Emscripten's, and with Chrome `test_present_webgl`
+and `test_sound_web` in it, headless (emrun): the shader drawn with WebGL 2 and compared with what
+screenshots make, and sound played through its AudioWorklet. The build is WebAssembly with the
 scalar kernels, and worker threads in the page as on the systems (`r_threads`).
 
 ## Programs

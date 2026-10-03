@@ -272,6 +272,55 @@ addToLibrary({
 		return 1;
 	},
 
+	// the frame drawn as web_vid_present draws it, but into width x height
+	// pixels of a target of its own, read back as floats a channel, top row
+	// first, into out (tests/test_present_webgl.c); 2 for a float target, 1 for
+	// one of 8 bits where the GPU has none
+	web_vid_drawto__deps: ['$WebVid'],
+	web_vid_drawto: (view, hud, rowpixels, constants, width, height, out) => {
+		var gl = WebVid.gl, float = !!gl.getExtension('EXT_color_buffer_float');
+		var fb = gl.createFramebuffer(), rb = gl.createRenderbuffer(), pixels, row, y;
+
+		gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+		gl.renderbufferStorage(gl.RENDERBUFFER, float ? gl.RGBA32F : gl.RGBA8, width, height);
+		gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+		gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rb);
+
+		gl.pixelStorei(gl.UNPACK_ROW_LENGTH, rowpixels);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, WebVid.view);
+		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, WebVid.width, WebVid.height, gl.RED_INTEGER, gl.UNSIGNED_INT,
+			HEAPU32, view >> 2);
+		gl.activeTexture(gl.TEXTURE1);
+		gl.bindTexture(gl.TEXTURE_2D, WebVid.hud);
+		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, WebVid.width, WebVid.height, gl.RED_INTEGER, gl.UNSIGNED_INT,
+			HEAPU32, hud >> 2);
+		gl.bindBuffer(gl.UNIFORM_BUFFER, WebVid.ubo);
+		gl.bufferSubData(gl.UNIFORM_BUFFER, 0, HEAPU8, constants, 64);
+		gl.viewport(0, 0, width, height);
+		gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+		if (float) {
+			pixels = new Float32Array(width * height * 4);
+			gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, pixels);
+		}
+		else {
+			pixels = new Uint8Array(width * height * 4);
+			gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+			pixels = Float32Array.from(pixels, (v) => v / 255);
+		}
+		// GL's rows count from the bottom
+		for (y = 0 ; y < height ; y++) {
+			row = pixels.subarray((height - 1 - y) * width * 4, (height - y) * width * 4);
+			HEAPF32.set(row, (out >> 2) + y * width * 4);
+		}
+		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+		gl.deleteFramebuffer(fb);
+		gl.deleteRenderbuffer(rb);
+		WebVid.hudforce = true;
+		return float ? 2 : 1;
+	},
+
 	web_vid_settitle: (text) => {
 		document.title = UTF8ToString(text);
 	},

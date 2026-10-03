@@ -135,5 +135,49 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	set_tests_properties(present_vulkan PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
+# test_present_webgl draws the web's present.glsl with WebGL 2 as vid_webgl.c
+# does, and compares what it shows with VID_FrameToRGB; test_sound_web plays a
+# wave through the sound's AudioWorklet and checks what it plays. They run in a
+# browser: browser_test.mjs serves each and runs it in a headless Chrome of its
+# own (drawing in software, SwiftShader; sound playing without a gesture,
+# muted). Without Chrome they aren't made, and a Chrome that can't skips them.
+if(EMSCRIPTEN)
+	find_program(SW_CHROME NAMES chrome google-chrome google-chrome-stable chromium chromium-browser "Google Chrome"
+		PATHS "C:/Program Files/Google/Chrome/Application" "/Applications/Google Chrome.app/Contents/MacOS")
+endif()
+if(EMSCRIPTEN AND SW_CHROME AND CMAKE_CROSSCOMPILING_EMULATOR)
+	set(SW_WEB_SOURCE "${PROJECT_SOURCE_DIR}/src/platform/web")
+
+	sw_add_program(test_present_webgl test_present_webgl.c
+		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c" "${SW_WEB_SOURCE}/present_glsl.c")
+	set_source_files_properties("${SW_WEB_SOURCE}/present_glsl.c" PROPERTIES OBJECT_DEPENDS "${SW_WEB_SOURCE}/present.glsl")
+	target_include_directories(test_present_webgl PRIVATE
+		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/renderer")
+	target_link_libraries(test_present_webgl PRIVATE sw_common)
+
+	sw_add_program(test_sound_web test_sound_web.c)
+	target_include_directories(test_sound_web PRIVATE
+		"${SW_WEB_SOURCE}" "${PROJECT_SOURCE_DIR}/src/platform/posix" "${PROJECT_SOURCE_DIR}/src/sound")
+	target_link_libraries(test_sound_web PRIVATE sw_common)
+	add_custom_command(TARGET test_sound_web POST_BUILD
+		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${SW_WEB_SOURCE}/snd_worklet.js"
+			"$<TARGET_FILE_DIR:test_sound_web>/softworld-sound.js"
+		VERBATIM)
+
+	# pages, not node's: the libraries of the page's side, and emrun's reports
+	# of what they print and their exit (--emrun), which browser_test.mjs reads
+	set(SW_LIBRARY_present_webgl vid_webgl.js)
+	set(SW_LIBRARY_sound_web snd_webaudio.js)
+	foreach(test present_webgl sound_web)
+		set_target_properties(test_${test} PROPERTIES SUFFIX ".html"
+			LINK_DEPENDS "${SW_WEB_SOURCE}/vid_webgl.js;${SW_WEB_SOURCE}/snd_webaudio.js")
+		target_link_options(test_${test} PRIVATE -sENVIRONMENT=web,worker -sNODERAWFS=0 --emrun
+			"SHELL:--js-library ${SW_WEB_SOURCE}/${SW_LIBRARY_${test}}")
+		add_test(NAME ${test} COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${CMAKE_CURRENT_SOURCE_DIR}/browser_test.mjs"
+			"${SW_CHROME}" "$<TARGET_FILE:test_${test}>" 60)
+		set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
+	endforeach()
+endif()
+
 # the QuakeC VM's tests
 add_subdirectory(qcvm)
