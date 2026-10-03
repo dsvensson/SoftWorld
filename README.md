@@ -314,10 +314,14 @@ together). `net_rtc_debug` tells what a connection does (2 with libdatachannel's
 `net_rtc_ignorecert 1` takes a broker's certificate unchecked, to test with one that has run
 out.
 
-The native programs do WebRTC with libdatachannel over mbedTLS, which configuring fetches
-(with git) and builds with them, once a build directory; `-DSW_WEBRTC=OFF` leaves them out.
-The page does it with the browser's own, which checks the broker's certificate itself; an
-https page reaches brokers only by `rtcs://`.
+The native programs do WebRTC with libdatachannel 0.24 or later: the one CMake finds (a
+package, vcpkg's, Homebrew's), and without one WebRTC is left out. `-DSW_WEBRTC=ON` asks for
+it: where there is none, configuring fetches libdatachannel and mbedTLS (with git), builds them
+with the programs' compilers and configurations (a minute or so) and installs them under the
+build directory's `deps`, where later configures find them; `SW_DEPS_DIR` puts them elsewhere,
+to share between build directories. `-DSW_WEBRTC=OFF` leaves WebRTC out. CI asks for it, and
+caches what it builds. The page does it with the browser's own, which checks the broker's
+certificate itself; an https page reaches brokers only by `rtcs://`.
 
 ## QuakeC
 

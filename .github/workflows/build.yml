@@ -2,7 +2,8 @@
 # (64-bit and 32-bit), macOS, Linux and the web, uploaded as artifacts; and for
 # a version tag (v3.06) to the tag's GitHub release (release.sh). Every target
 # is built, the tests too, and the tests run where the runner's CPU runs the
-# build (cpu_supported): the maps test on the shareware's (shareware.sh).
+# build (cpu_supported): the maps test on the shareware's (shareware.sh). The
+# native programs are built with WebRTC, its libraries built once and cached.
 
 name: Build
 
@@ -146,6 +147,16 @@ jobs:
           mkdir -p fteqcc
           cp fteqw/engine/qclib/fteqcc.bin fteqcc/fteqcc
 
+      # WebRTC's libraries (libdatachannel and mbedTLS), which configuring with
+      # SW_WEBRTC=ON builds into deps where the cache has none for what builds
+      # them (cmake/webrtc.cmake); kept once the programs build
+      - name: WebRTC's libraries
+        id: webrtc
+        uses: actions/cache/restore@v6
+        with:
+          path: deps
+          key: webrtc-${{ matrix.preset }}-${{ hashFiles('cmake/webrtc.cmake', 'cmake/webrtc/**') }}
+
       # MSVC, the Windows SDK's fxc and Ninja, from a Visual Studio developer shell
       # for the programs' architecture (VSARCH)
       - name: Build (Windows)
@@ -156,7 +167,7 @@ jobs:
             -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           Import-Module (Join-Path $vs 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
           Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=$env:VSARCH -host_arch=x64"
-          cmake --preset ${{ matrix.preset }}
+          cmake --preset ${{ matrix.preset }} -DSW_WEBRTC=ON -DSW_DEPS_DIR=deps -DCMAKE_CONFIGURATION_TYPES=Release
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cmake --build --preset ${{ matrix.preset }}
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
@@ -167,8 +178,15 @@ jobs:
         run: |
           xcodebuild -showComponent MetalToolchain | grep -q 'Status: installed' \
             || sudo xcodebuild -downloadComponent MetalToolchain
-          cmake --preset ${{ matrix.preset }}
+          cmake --preset ${{ matrix.preset }} -DSW_WEBRTC=ON -DSW_DEPS_DIR=deps -DCMAKE_CONFIGURATION_TYPES=Release
           cmake --build --preset ${{ matrix.preset }}
+
+      - name: Keep WebRTC's libraries
+        if: steps.webrtc.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: deps
+          key: ${{ steps.webrtc.outputs.cache-primary-key }}
 
       # the runners' CPUs all run AVX2, not all AVX-512, and the M3's builds
       # don't run on an M1: the tests run where the CPU runs the build (what
@@ -297,10 +315,27 @@ jobs:
           mkdir -p fteqcc
           cp fteqw/engine/qclib/fteqcc.bin fteqcc/fteqcc
 
+      # WebRTC's libraries (libdatachannel and mbedTLS), which configuring with
+      # SW_WEBRTC=ON builds into deps where the cache has none for what builds
+      # them (cmake/webrtc.cmake); kept once the programs build
+      - name: WebRTC's libraries
+        id: webrtc
+        uses: actions/cache/restore@v6
+        with:
+          path: deps
+          key: webrtc-${{ matrix.preset }}-${{ hashFiles('cmake/webrtc.cmake', 'cmake/webrtc/**') }}
+
       - name: Build
         run: |
-          cmake --preset $PRESET
+          cmake --preset $PRESET -DSW_WEBRTC=ON -DSW_DEPS_DIR=deps -DCMAKE_CONFIGURATION_TYPES=Release
           cmake --build --preset $PRESET
+
+      - name: Keep WebRTC's libraries
+        if: steps.webrtc.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: deps
+          key: ${{ steps.webrtc.outputs.cache-primary-key }}
 
       # as for Windows: the runners' CPUs all run AVX2, not all AVX-512
       - name: CPU

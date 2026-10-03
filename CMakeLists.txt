@@ -57,13 +57,9 @@ else()
 	message(WARNING "Link-time optimization is not available: ${sw_ipo_output}")
 endif()
 
-# WebRTC (rtc://) for the native programs: libdatachannel and mbedTLS, fetched
-# and built as projects of their own, before the project's options below
+# WebRTC (rtc://) for the native programs: libdatachannel where there is one,
+# or built when asked (SW_WEBRTC), with the runtime library above
 if(NOT EMSCRIPTEN)
-	option(SW_WEBRTC "WebRTC for the native programs: libdatachannel and mbedTLS, fetched and built" ON)
-endif()
-if(SW_WEBRTC)
-	enable_language(CXX)
 	include(webrtc)
 endif()
 
