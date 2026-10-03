@@ -17,12 +17,16 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// net_tcp_posix.c -- TCP streams on BSD sockets (QTV), on macOS and Linux
+// net_tcp_posix.c -- TCP streams on BSD sockets (QTV, and the server's
+// WebSocket port), on macOS and Linux
 
+#include "args.h"
 #include "mem.h"
 #include "net_socket.h"
+#include "print.h"
 #include "posix_local.h"
 
+#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -37,6 +41,11 @@ struct tcpsocket_s
 {
 	int		socket;
 	bool	connected;
+};
+
+struct tcplisten_s
+{
+	int		socket;
 };
 
 /*
@@ -162,4 +171,121 @@ bool TCP_Send (tcpsocket_t *s, const void *data, int length)
 		length -= (int)ret;
 	}
 	return true;
+}
+
+/*
+====================
+TCP_Write
+
+What the socket takes without waiting
+====================
+*/
+int TCP_Write (tcpsocket_t *s, const void *data, int length)
+{
+	ssize_t	ret;
+
+	do
+		ret = send (s->socket, data, (size_t)length, 0);
+	while (ret < 0 && errno == EINTR);
+	if (ret >= 0)
+		return (int)ret;
+	return errno == EWOULDBLOCK || errno == EAGAIN ? 0 : -1;
+}
+
+/*
+===============================================================================
+
+LISTENING
+
+===============================================================================
+*/
+
+/*
+====================
+TCP_Listen
+
+Binds to -ip if given, otherwise to every interface, as UDP_Open does
+====================
+*/
+tcplisten_t *TCP_Listen (int port)
+{
+	tcplisten_t			*l;
+	struct sockaddr_in	address = {.sin_family = AF_INET};
+	int					i;
+
+	l = Mem_Calloc (1, sizeof(*l));
+	l->socket = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (l->socket < 0)
+	{
+		Con_Printf ("TCP port %i: %s\n", port, strerror (errno));
+		Mem_Free (l);
+		return NULL;
+	}
+	// a server started again takes its port at once, though the last one's
+	// connections linger
+	setsockopt (l->socket, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
+	signal (SIGPIPE, SIG_IGN);
+
+	if ((i = COM_CheckParm ("-ip")) != 0 && i + 1 < com_argc)
+		inet_pton (AF_INET, com_argv[i + 1], &address.sin_addr);
+	else
+		address.sin_addr.s_addr = INADDR_ANY;
+	address.sin_port = htons ((unsigned short)port);
+	if (fcntl (l->socket, F_SETFL, fcntl (l->socket, F_GETFL) | O_NONBLOCK) < 0
+		|| bind (l->socket, (struct sockaddr *)&address, sizeof(address)) < 0 || listen (l->socket, 16) < 0)
+	{
+		Con_Printf ("TCP port %i: %s\n", port, strerror (errno));
+		close (l->socket);
+		Mem_Free (l);
+		return NULL;
+	}
+
+	// let Sys_WaitUntil wake up when a connection comes
+	Sys_AddWaitFd (l->socket);
+	return l;
+}
+
+void TCP_CloseListen (tcplisten_t *l)
+{
+	Sys_RemoveWaitFd (l->socket);
+	close (l->socket);
+	Mem_Free (l);
+}
+
+/*
+====================
+TCP_Accept
+
+A connection come, open and non-blocking; NULL when none has
+====================
+*/
+tcpsocket_t *TCP_Accept (tcplisten_t *l, netadr_t *from)
+{
+	struct sockaddr_in	addr;
+	socklen_t			addrlen = sizeof(addr);
+	tcpsocket_t			*s;
+	int					accepted;
+
+	do
+		accepted = accept (l->socket, (struct sockaddr *)&addr, &addrlen);
+	while (accepted < 0 && (errno == EINTR || errno == ECONNABORTED));
+	if (accepted < 0)
+		return NULL;
+	if (fcntl (accepted, F_SETFL, fcntl (accepted, F_GETFL) | O_NONBLOCK) < 0)
+	{
+		close (accepted);
+		return NULL;
+	}
+	setsockopt (accepted, IPPROTO_TCP, TCP_NODELAY, &(int){1}, sizeof(int));
+
+	s = Mem_Calloc (1, sizeof(*s));
+	s->socket = accepted;
+	s->connected = true;
+	Sys_AddWaitFd (accepted);
+
+	memset (from, 0, sizeof(*from));
+	from->type = NA_IP;
+	memcpy (from->ip, &addr.sin_addr, 4);
+	from->port = addr.sin_port;
+	return s;
 }

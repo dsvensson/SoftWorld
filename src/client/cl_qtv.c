@@ -227,17 +227,32 @@ void CL_QTVFrame (void)
 	}
 }
 
+static void CL_QTVConnect (const netadr_t *to)
+{
+	CL_Disconnect ();
+	qtv.socket = TCP_Connect (to);
+	if (!qtv.socket)
+	{
+		Con_Printf ("QTV: couldn't connect to %s\n", NET_AdrToString (*to));
+		return;
+	}
+	qtv.state = QTV_CONNECTING;
+	qtv.started = host.realtime;
+	Con_Printf ("QTV: connecting to %s%s%s\n", qtv.source, qtv.source[0] ? "@" : "", NET_AdrToString (*to));
+}
+
 /*
 ==================
 CL_QTVPlay_f
 
-qtvplay [source@]host[:port], also as qw://[source@]host[:port]/qtvplay
+qtvplay [source@]host[:port], also as qw://[source@]host[:port]/qtvplay; in a
+browser [source@]ws(s)://host[:port][/path] too
 ==================
 */
 static void CL_QTVPlay_f (void)
 {
 	char		address[256], *at, *slash;
-	const char	*arg;
+	const char	*arg, *url;
 	netadr_t	to;
 
 	if (Cmd_Argc () != 2)
@@ -249,6 +264,33 @@ static void CL_QTVPlay_f (void)
 	arg = Cmd_Argv (1);
 	if (!Q_strncasecmp (arg, "qw://", 5))
 		arg += 5;
+
+	// a browser's: [stream@]ws(s)://host[:port][/path], the URL kept whole
+	for (url = arg ; *url ; url++)
+		if (!Q_strncasecmp (url, "ws://", 5) || !Q_strncasecmp (url, "wss://", 6))
+			break;
+	if (*url)
+	{
+		if (url - arg >= (int)sizeof(qtv.source))
+		{
+			Con_Printf ("Bad stream name\n");
+			return;
+		}
+		Q_strncpyz (qtv.source, arg, sizeof(qtv.source));
+		qtv.source[url - arg] = 0;
+		at = strrchr (qtv.source, '@');
+		if (at && !at[1])
+			*at = 0;
+		Q_strncpyz (address, url, sizeof(address));
+		if (strpbrk (qtv.source, "\r\n") || !NET_StringToAdr (address, &to))
+		{
+			Con_Printf ("Bad address %s\n", address);
+			return;
+		}
+		CL_QTVConnect (&to);
+		return;
+	}
+
 	Q_strncpyz (address, arg, sizeof(address));
 	slash = strchr (address, '/');
 	if (slash)
@@ -275,22 +317,12 @@ static void CL_QTVPlay_f (void)
 		Con_Printf ("Bad address %s\n", address);
 		return;
 	}
-
-	CL_Disconnect ();
-	qtv.socket = TCP_Connect (&to);
-	if (!qtv.socket)
-	{
-		Con_Printf ("QTV: couldn't connect to %s\n", NET_AdrToString (to));
-		return;
-	}
-	qtv.state = QTV_CONNECTING;
-	qtv.started = host.realtime;
-	Con_Printf ("QTV: connecting to %s%s%s\n", qtv.source, qtv.source[0] ? "@" : "", NET_AdrToString (to));
+	CL_QTVConnect (&to);
 }
 
 void CL_InitQTV (void)
 {
 	Cmd_AddCommand ("qtvplay", CL_QTVPlay_f,
 		"Watches a game a QTV relay or mvdsv streams, on port 27599 unless one is given. "
-		"Usage: qtvplay [stream@]host[:port]");
+		"Usage: qtvplay [stream@]host[:port], in a browser [stream@]ws(s)://host[:port][/path] too");
 }

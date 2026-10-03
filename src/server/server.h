@@ -399,6 +399,7 @@ typedef struct
 extern	cvar_t	sv_mintic, sv_maxtic;
 extern	cvar_t	sv_csqc_progname;
 extern	cvar_t	sv_bigcoords;
+extern	cvar_t	sv_websocket;
 extern	cvar_t	sv_maxdrate;
 extern	cvar_t	sv_maxpitch, sv_minpitch;
 extern	cvar_t	pm_ktjump, pm_bunnyspeedcap, pm_slidefix, pm_airstep, pm_pground, pm_rampjump;

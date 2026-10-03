@@ -43,6 +43,12 @@ void	UDP_Send (udpsocket_t *s, const void *data, int length, const netadr_t *to)
 // resolves a host name or dotted address, without a port
 bool	UDP_Resolve (const char *host, netadr_t *a);
 
+// a server by URL, ws:// or wss:// (its port as the URL has it), where the
+// platform's packets go to URLs (a browser's, where a bare host[:port] is one
+// too); false elsewhere. UDP_URLToString prints one back.
+bool	UDP_ResolveURL (const char *s, netadr_t *a);
+const char	*UDP_URLToString (netadr_t a, bool port);
+
 // TCP streams (QTV): non-blocking, and they wake Sys_WaitUntil when the
 // connection is made, data arrives, or it closes
 typedef struct tcpsocket_s tcpsocket_t;
@@ -54,3 +60,17 @@ void	TCP_Close (tcpsocket_t *s);
 int		TCP_State (tcpsocket_t *s);
 int		TCP_Recv (tcpsocket_t *s, byte *buf, int maxlen);	// 0 nothing yet, -1 closed
 bool	TCP_Send (tcpsocket_t *s, const void *data, int length);
+
+// what the socket takes of data without waiting: the bytes, 0 for none, -1
+// when the connection failed
+int		TCP_Write (tcpsocket_t *s, const void *data, int length);
+
+// a TCP port listened on (the server's WebSocket port), bound as UDP_Open
+// binds (-ip); NULL when it can't be. TCP_Accept takes a connection come,
+// open and non-blocking, NULL when none has; the listening and the
+// connections taken wake Sys_WaitUntil.
+typedef struct tcplisten_s tcplisten_t;
+
+tcplisten_t	*TCP_Listen (int port);
+void	TCP_CloseListen (tcplisten_t *l);
+tcpsocket_t	*TCP_Accept (tcplisten_t *l, netadr_t *from);

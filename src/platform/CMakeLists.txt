@@ -201,7 +201,7 @@ elseif(EMSCRIPTEN)
 	# JavaScript libraries of the page's side of them; present.glsl inside the
 	# program, compiled by WebGL
 	set(SW_WEB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/web")
-	set(SW_WEB_LIBRARIES sys_web.js fs_web.js vid_webgl.js in_web.js snd_webaudio.js)
+	set(SW_WEB_LIBRARIES sys_web.js fs_web.js vid_webgl.js in_web.js snd_webaudio.js net_ws_web.js)
 	sw_add_module(sw_platform_gui
 		vid_common.c
 		web/sys_web_gui.c web/vid_webgl.c web/present_glsl.c web/in_web.c web/in_gamepad_web.c

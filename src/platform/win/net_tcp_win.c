@@ -17,13 +17,19 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// net_tcp_win.c -- TCP streams on Winsock (QTV)
+// net_tcp_win.c -- TCP streams on Winsock (QTV, and the server's WebSocket
+// port)
+//
+// The connections a port takes share its event: the waits have room for a few
+// handles (sys_win.c), and a server reads all its connections when any wakes it.
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include "args.h"
 #include "mem.h"
 #include "net_socket.h"
+#include "print.h"
 #include "win_local.h"
 
 #include <string.h>
@@ -33,6 +39,13 @@ struct tcpsocket_s
 	SOCKET	socket;
 	HANDLE	event;		// auto reset: connected, data, or closed
 	bool	connected;
+	bool	sharedevent;	// the listening port's, which it closes
+};
+
+struct tcplisten_s
+{
+	SOCKET	socket;
+	HANDLE	event;		// auto reset: a connection came, or data to one taken
 };
 
 /*
@@ -88,8 +101,11 @@ tcpsocket_t *TCP_Connect (const netadr_t *to)
 
 void TCP_Close (tcpsocket_t *s)
 {
-	Sys_RemoveWaitHandle (s->event);
-	CloseHandle (s->event);
+	if (!s->sharedevent)
+	{
+		Sys_RemoveWaitHandle (s->event);
+		CloseHandle (s->event);
+	}
 	closesocket (s->socket);
 	Mem_Free (s);
 }
@@ -163,4 +179,130 @@ bool TCP_Send (tcpsocket_t *s, const void *data, int length)
 		length -= ret;
 	}
 	return true;
+}
+
+/*
+====================
+TCP_Write
+
+What the socket takes without waiting
+====================
+*/
+int TCP_Write (tcpsocket_t *s, const void *data, int length)
+{
+	int		ret;
+
+	ret = send (s->socket, data, length, 0);
+	if (ret != SOCKET_ERROR)
+		return ret;
+	return WSAGetLastError () == WSAEWOULDBLOCK ? 0 : -1;
+}
+
+/*
+===============================================================================
+
+LISTENING
+
+===============================================================================
+*/
+
+/*
+====================
+TCP_Listen
+
+Binds to -ip if given, otherwise to every interface, as UDP_Open does
+====================
+*/
+tcplisten_t *TCP_Listen (int port)
+{
+	tcplisten_t			*l;
+	struct sockaddr_in	address = {.sin_family = AF_INET};
+	u_long				nonblocking = 1;
+	int					i;
+
+	l = Mem_Calloc (1, sizeof(*l));
+	l->socket = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (l->socket == INVALID_SOCKET)
+	{
+		Con_Printf ("TCP port %i: Winsock error %i\n", port, WSAGetLastError ());
+		Mem_Free (l);
+		return NULL;
+	}
+	// no other program takes the port with this one
+	setsockopt (l->socket, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&(int){1}, sizeof(int));
+
+	if ((i = COM_CheckParm ("-ip")) != 0 && i + 1 < com_argc)
+		inet_pton (AF_INET, com_argv[i + 1], &address.sin_addr);
+	else
+		address.sin_addr.s_addr = INADDR_ANY;
+	address.sin_port = htons ((unsigned short)port);
+	if (ioctlsocket (l->socket, FIONBIO, &nonblocking) == SOCKET_ERROR
+		|| bind (l->socket, (struct sockaddr *)&address, sizeof(address)) == SOCKET_ERROR
+		|| listen (l->socket, 16) == SOCKET_ERROR)
+	{
+		Con_Printf ("TCP port %i: Winsock error %i\n", port, WSAGetLastError ());
+		closesocket (l->socket);
+		Mem_Free (l);
+		return NULL;
+	}
+
+	// let Sys_WaitUntil wake up when a connection comes
+	l->event = CreateEventW (NULL, FALSE, FALSE, NULL);
+	if (!l->event || WSAEventSelect (l->socket, l->event, FD_ACCEPT) == SOCKET_ERROR)
+	{
+		if (l->event)
+			CloseHandle (l->event);
+		closesocket (l->socket);
+		Mem_Free (l);
+		return NULL;
+	}
+	Sys_AddWaitHandle (l->event);
+	return l;
+}
+
+void TCP_CloseListen (tcplisten_t *l)
+{
+	Sys_RemoveWaitHandle (l->event);
+	CloseHandle (l->event);
+	closesocket (l->socket);
+	Mem_Free (l);
+}
+
+/*
+====================
+TCP_Accept
+
+A connection come, open and non-blocking, waking with the port's event; NULL
+when none has
+====================
+*/
+tcpsocket_t *TCP_Accept (tcplisten_t *l, netadr_t *from)
+{
+	struct sockaddr_in	addr;
+	int					addrlen = sizeof(addr);
+	tcpsocket_t			*s;
+	SOCKET				accepted;
+
+	accepted = accept (l->socket, (struct sockaddr *)&addr, &addrlen);
+	if (accepted == INVALID_SOCKET)
+		return NULL;
+	// an event selected makes the socket non-blocking
+	if (WSAEventSelect (accepted, l->event, FD_READ | FD_CLOSE) == SOCKET_ERROR)
+	{
+		closesocket (accepted);
+		return NULL;
+	}
+	setsockopt (accepted, IPPROTO_TCP, TCP_NODELAY, (const char *)&(int){1}, sizeof(int));
+
+	s = Mem_Calloc (1, sizeof(*s));
+	s->socket = accepted;
+	s->event = l->event;
+	s->sharedevent = true;
+	s->connected = true;
+
+	memset (from, 0, sizeof(*from));
+	from->type = NA_IP;
+	memcpy (from->ip, &addr.sin_addr, 4);
+	from->port = addr.sin_port;
+	return s;
 }

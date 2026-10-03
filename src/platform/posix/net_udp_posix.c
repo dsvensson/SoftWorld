@@ -91,6 +91,21 @@ bool UDP_Resolve (const char *host, netadr_t *a)
 	return true;
 }
 
+// no URLs here: a browser's (net_ws_web.c)
+bool UDP_ResolveURL (const char *s, netadr_t *a)
+{
+	(void)s;
+	(void)a;
+	return false;
+}
+
+const char *UDP_URLToString (netadr_t a, bool port)
+{
+	(void)a;
+	(void)port;
+	return "";
+}
+
 /*
 ====================
 UDP_Open

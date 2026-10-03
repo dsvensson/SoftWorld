@@ -49,6 +49,12 @@ sw_add_program(test_sha2 test_sha2.c)
 target_link_libraries(test_sha2 PRIVATE sw_common)
 add_test(NAME sha2 COMMAND test_sha2)
 
+# test_ws reads WebSocket handshakes and frames as the server's WebSocket port
+# takes them (net_wsproto.c).
+sw_add_program(test_ws test_ws.c)
+target_link_libraries(test_ws PRIVATE sw_net sw_common)
+add_test(NAME ws COMMAND test_ws)
+
 # test_markup reads ezQuake's and FTE's colors out of text.
 sw_add_program(test_markup test_markup.c)
 target_link_libraries(test_markup PRIVATE sw_common)

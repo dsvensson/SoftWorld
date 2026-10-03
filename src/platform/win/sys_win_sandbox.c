@@ -717,7 +717,8 @@ static int SB_SetUpNetwork (PSID sid)
 	{
 		INetFwRule3_put_Name (rule, name);
 		INetFwRule3_put_Description (rule, description);
-		INetFwRule3_put_Protocol (rule, NET_FW_IP_PROTOCOL_UDP);
+		// UDP, and TCP for browsers' clients (the WebSocket port, net_ws.c)
+		INetFwRule3_put_Protocol (rule, NET_FW_IP_PROTOCOL_ANY);
 		INetFwRule3_put_Direction (rule, NET_FW_RULE_DIR_IN);
 		INetFwRule3_put_Action (rule, NET_FW_ACTION_ALLOW);
 		INetFwRule3_put_Profiles (rule, NET_FW_PROFILE2_ALL);

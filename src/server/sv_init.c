@@ -399,6 +399,11 @@ void SV_SpawnServer (char *server)
 			Sys_Error ("Couldn't open UDP port %i", svs.port);
 		Con_Printf ("Couldn't open UDP port %i: only this client can join\n", svs.port);
 	}
+	// and browsers' clients at its number, over WebSocket; without them if it can't
+	if (sv_websocket.value)
+		NET_ListenWebSocket (svs.port);
+	else
+		NET_CloseWebSocket ();
 	
 	SV_SaveSpawnparms ();
 

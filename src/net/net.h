@@ -33,7 +33,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // its own UDP socket, and a loopback to the other end in the same process
 typedef enum { NS_CLIENT, NS_SERVER } netsrc_t;
 
-typedef enum { NA_INVALID, NA_LOOPBACK, NA_IP } netadrtype_t;
+// NA_WS: a client on the server's WebSocket port (net_ws.c), by the address
+// and port it connected from; it prints and compares as NA_IP, but packets to
+// it go through its connection. NA_URL: a server a browser reaches by URL
+// (ws:// or wss://, the web's net_ws_web.c), ip the URL's number there.
+typedef enum { NA_INVALID, NA_LOOPBACK, NA_IP, NA_WS, NA_URL } netadrtype_t;
 
 typedef struct
 {
@@ -54,7 +58,13 @@ void	NET_Shutdown (void);
 // works without it
 bool	NET_OpenSocket (netsrc_t sock, int port);
 void	NET_CloseSocket (netsrc_t sock);
-netadr_t	NET_SocketAddress (netsrc_t sock);	// type NA_INVALID without a socket
+netadr_t	NET_SocketAddress (netsrc_t sock);	// type NA_INVALID without a socket, or a browser's
+
+// the server's WebSocket port (net_ws.c): TCP at the port number of its UDP,
+// for browsers' clients; true if it listens there. Closing the server's socket
+// closes it too.
+bool	NET_ListenWebSocket (int port);
+void	NET_CloseWebSocket (void);
 
 // the next packet for this end, from the loopback first, then the socket
 bool	NET_GetPacket (netsrc_t sock, netadr_t *from, sizebuf_t *msg);
@@ -65,7 +75,7 @@ bool	NET_CompareBaseAdr (netadr_t a, netadr_t b);
 bool	NET_IsLocalAddress (netadr_t a);	// the loopback or this machine
 char	*NET_AdrToString (netadr_t a);
 char	*NET_BaseAdrToString (netadr_t a);
-bool	NET_StringToAdr (const char *s, netadr_t *a);	// "local" is the loopback
+bool	NET_StringToAdr (const char *s, netadr_t *a);	// "local" is the loopback, ws:// a URL
 
 //============================================================================
 

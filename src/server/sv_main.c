@@ -85,6 +85,12 @@ cvar_t sv_bigcoords = {.name = "sv_bigcoords", .string = "0",
 	.description = "Uses float coordinates on every map, not only those past +-4096; clients without them can't join. "
 		"Read as a map loads.",
 	.values = (const cvar_value_t[]){{"0", "Only on maps past +-4096"}, {"1", "On every map"}, {0}}};
+// browsers' clients, which can't send UDP: WebSocket on TCP at the port's
+// number, a packet a binary message, as FTE's (net_ws.c)
+cvar_t	sv_websocket = {.name = "sv_websocket", .string = "1",
+	.description = "Lets browsers' clients join over WebSocket (ws://), on TCP at the server's port number, a packet "
+		"a binary message as FTE's. Read as a map opens the port; wss:// is a TLS proxy's in front.",
+	.values = (const cvar_value_t[]){{"0", "UDP only"}, {"1", "UDP, and WebSocket on TCP"}, {0}}};
 // the most bytes per second a client's rate may ask for, 0 no limit (FTE's)
 static cvar_t	sv_maxrate = {.name = "sv_maxrate", .string = "50000",
 	.description = "Most bytes per second a client's rate may ask for; 0 for no limit."};
@@ -1539,6 +1545,7 @@ static void SV_InitLocal (void)
 	Cvar_RegisterVariable (&sv_mintic);
 	Cvar_RegisterVariable (&sv_maxtic);
 	Cvar_RegisterVariable (&sv_bigcoords);
+	Cvar_RegisterVariable (&sv_websocket);
 	Cvar_RegisterVariable (&sv_maxrate);
 	Cvar_RegisterVariable (&sv_maxdrate);
 	Cvar_RegisterVariable (&pm_ktjump);

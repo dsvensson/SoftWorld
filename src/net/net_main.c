@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cvar.h"
 #include "net.h"
 #include "net_socket.h"
+#include "net_ws.h"
 #include "print.h"
 #include "q_endian.h"
 #include "q_string.h"
@@ -144,8 +145,10 @@ bool NET_OpenSocket (netsrc_t sock, int port)
 	net_sockets[sock] = UDP_Open (port);
 	if (!net_sockets[sock])
 		return false;
-	Con_Printf ("%s UDP on %s\n", sock == NS_SERVER ? "Server" : "Client",
-		NET_AdrToString (UDP_Address (net_sockets[sock])));
+	// a browser's has no address: its packets go to URLs
+	if (UDP_Address (net_sockets[sock]).type == NA_IP)
+		Con_Printf ("%s UDP on %s\n", sock == NS_SERVER ? "Server" : "Client",
+			NET_AdrToString (UDP_Address (net_sockets[sock])));
 	return true;
 }
 
@@ -154,6 +157,8 @@ void NET_CloseSocket (netsrc_t sock)
 	if (net_sockets[sock])
 		UDP_Close (net_sockets[sock]);
 	net_sockets[sock] = NULL;
+	if (sock == NS_SERVER)
+		NET_CloseWebSocket ();
 }
 
 netadr_t NET_SocketAddress (netsrc_t sock)
@@ -174,21 +179,29 @@ bool NET_GetPacket (netsrc_t sock, netadr_t *from, sizebuf_t *msg)
 
 	if (Loop_GetPacket (sock, from, msg))
 		return true;
-	if (!net_sockets[sock])
-		return false;
-
-	length = UDP_Recv (net_sockets[sock], msg->data, msg->maxsize, from);
-	if (length <= 0)
-		return false;
-	msg->cursize = length;
-	return true;
+	if (net_sockets[sock])
+	{
+		length = UDP_Recv (net_sockets[sock], msg->data, msg->maxsize, from);
+		if (length > 0)
+		{
+			msg->cursize = length;
+			return true;
+		}
+	}
+	// the server's browsers' clients
+	return sock == NS_SERVER && WS_GetPacket (from, msg);
 }
 
 void NET_SendPacket (netsrc_t sock, int length, const void *data, netadr_t to)
 {
 	if (to.type == NA_LOOPBACK)
 		Loop_SendPacket (sock, length, data);
-	else if (to.type == NA_IP && net_sockets[sock])
+	else if (to.type == NA_WS)
+	{
+		if (sock == NS_SERVER)
+			WS_SendPacket (data, length, &to);
+	}
+	else if ((to.type == NA_IP || to.type == NA_URL) && net_sockets[sock])
 		UDP_Send (net_sockets[sock], data, length, &to);
 }
 
@@ -240,6 +253,8 @@ char *NET_AdrToString (netadr_t a)
 
 	if (a.type == NA_LOOPBACK)
 		return "loopback";
+	if (a.type == NA_URL)
+		return (char *)UDP_URLToString (a, true);
 	snprintf (s, sizeof(s), "%i.%i.%i.%i:%i", a.ip[0], a.ip[1], a.ip[2], a.ip[3],
 		(unsigned short)BigShort ((short)a.port));
 	return s;
@@ -251,6 +266,8 @@ char *NET_BaseAdrToString (netadr_t a)
 
 	if (a.type == NA_LOOPBACK)
 		return "loopback";
+	if (a.type == NA_URL)
+		return (char *)UDP_URLToString (a, false);
 	snprintf (s, sizeof(s), "%i.%i.%i.%i", a.ip[0], a.ip[1], a.ip[2], a.ip[3]);
 	return s;
 }
@@ -264,6 +281,7 @@ idnewt
 idnewt:28000
 192.246.40.70
 192.246.40.70:28000
+ws://idnewt:28000/path, wss://idnewt/path (where the platform's packets go to URLs: a browser's)
 =============
 */
 bool NET_StringToAdr (const char *s, netadr_t *a)
@@ -278,6 +296,8 @@ bool NET_StringToAdr (const char *s, netadr_t *a)
 		a->type = NA_LOOPBACK;
 		return true;
 	}
+	if (strstr (s, "://"))
+		return UDP_ResolveURL (s, a);
 
 	Q_strncpyz (copy, s, sizeof(copy));
 
@@ -289,8 +309,9 @@ bool NET_StringToAdr (const char *s, netadr_t *a)
 		port = (unsigned short)BigShort ((short)atoi (colon + 1));
 	}
 
+	// a browser has no UDP, nor DNS: a host there is a URL's
 	if (!UDP_Resolve (copy, a))
-		return false;
+		return UDP_ResolveURL (s, a);
 	a->port = port;
 	return true;
 }
