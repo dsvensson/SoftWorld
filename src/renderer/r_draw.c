@@ -418,8 +418,9 @@ void R_RenderFace (rband_t *b, msurface_t *fa, int clipflags)
 			lindex = -lindex;
 		b->pedge = &pedges[lindex];
 
-	// if the edge is cached, we can just reuse the edge: a world edge the band
-	// made for another face, owned by this medge_t, or found to have no lines
+	// if the edge is cached, we can just reuse the edge: a world edge found to
+	// have no lines, or one the band made for the other face it is shared with
+	// (Mod_MarkSharedEdges), owned by this medge_t
 		if (!b->insubmodel)
 		{
 			cached = b->edgecache[lindex];
@@ -433,7 +434,7 @@ void R_RenderFace (rband_t *b, msurface_t *fa, int clipflags)
 					continue;
 				}
 			}
-			else if ((((uintptr_t)b->edge_p - (uintptr_t)b->edges) > cached) &&
+			else if (b->pedge->shared && (((uintptr_t)b->edge_p - (uintptr_t)b->edges) > cached) &&
 				(((edge_t *)((uintptr_t)b->edges + cached))->owner == b->pedge))
 			{
 				R_EmitCachedEdge (b, cached);

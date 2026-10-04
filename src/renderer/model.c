@@ -1196,6 +1196,41 @@ static float RadiusFromBounds (vec3_t mins, vec3_t maxs)
 
 /*
 =================
+Mod_MarkSharedEdges
+
+The edges two of the world's faces have, one each way: one face's leading
+edge on the screen is then the other's trailing edge, and the renderer emits
+it once for both. An edge of three faces or more (or of two the same way)
+is emitted for each, or a face would be given another's half of it and its
+spans would run on to the screen's edge.
+=================
+*/
+static void Mod_MarkSharedEdges (model_t *mod)
+{
+	const dmodel_t	*world = &mod->submodels[0];
+	int				*uses = Mem_Calloc ((size_t)mod->numedges + 1, sizeof(*uses));
+	int				*way = Mem_Calloc ((size_t)mod->numedges + 1, sizeof(*way));
+	msurface_t		*s;
+	int				i, j, e;
+
+	for (i = world->firstface ; i < world->firstface + world->numfaces ; i++)
+	{
+		s = &mod->surfaces[i];
+		for (j = 0 ; j < s->numedges ; j++)
+		{
+			e = mod->surfedges[s->firstedge + j];
+			uses[abs (e)]++;
+			way[abs (e)] += e < 0 ? -1 : 1;
+		}
+	}
+	for (i = 0 ; i < mod->numedges ; i++)
+		mod->edges[i].shared = uses[i] == 2 && !way[i];
+	Mem_Free (uses);
+	Mem_Free (way);
+}
+
+/*
+=================
 Mod_LoadBrushModel
 =================
 */
@@ -1231,6 +1266,7 @@ static bool Mod_LoadBrushModel (model_t *mod, byte *buffer, int size)
 		Con_Printf ("Couldn't load %s: %s\n", mod->name, bsp.error);
 		return false;
 	}
+	Mod_MarkSharedEdges (mod);
 
 	// a row of visibility bits for every leaf, in whole 32 bit words
 	mod->visbytes = (((mod->numleafs + 31) >> 3) + 3) & ~3;

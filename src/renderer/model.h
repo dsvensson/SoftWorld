@@ -107,6 +107,10 @@ typedef struct texture_s
 typedef struct
 {
 	unsigned	v[2];
+	// two of the world's faces have it, one each way: the renderer emits it
+	// once for both (R_RenderFace's edge cache), as id's qbsp made every edge;
+	// other compilers give an edge to three faces or more
+	bool		shared;
 } medge_t;
 
 typedef struct
