@@ -78,6 +78,9 @@ unsigned	Sys_Seed (void);
 // frame's pacing) spins the end of the wait to come back on time; otherwise
 // it may come back as late as the system's timer wakes (a server's frames)
 void	Sys_WaitUntil (double time, bool exact);
+// ends the main thread's Sys_WaitUntil now, or its next one: from any thread,
+// for what came on it (WebRTC's packets, on libdatachannel's threads)
+void	Sys_Wake (void);
 
 // a line typed on the dedicated server console, or NULL
 char	*Sys_ConsoleInput (void);

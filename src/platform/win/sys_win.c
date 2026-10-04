@@ -158,6 +158,27 @@ WAITING
 static HANDLE	sys_timer;
 static HANDLE	sys_waithandles[MAX_WAIT_HANDLES];
 static int		sys_numwaithandles;
+static HANDLE volatile	sys_wake;		// auto reset: Sys_Wake's, made by whichever thread comes first
+
+static HANDLE Sys_WakeEvent (void)
+{
+	HANDLE	event;
+
+	if (!sys_wake)
+	{
+		event = CreateEventW (NULL, FALSE, FALSE, NULL);
+		if (!event)
+			Sys_Error ("Couldn't create the wake event");
+		if (InterlockedCompareExchangePointer ((PVOID volatile *)&sys_wake, event, NULL))
+			CloseHandle (event);
+	}
+	return sys_wake;
+}
+
+void Sys_Wake (void)
+{
+	SetEvent (Sys_WakeEvent ());
+}
 
 void Sys_AddWaitHandle (HANDLE handle)
 {
@@ -191,13 +212,14 @@ static double	sys_timerlate = 0.0005;
 ================
 Sys_WaitUntil
 
-Waits on a high-resolution waitable timer, window messages and the registered
-handles; an exact wait sets the timer sys_timerlate early and spins the rest
+Waits on a high-resolution waitable timer, window messages, Sys_Wake and the
+registered handles; an exact wait sets the timer sys_timerlate early and spins
+the rest
 ================
 */
 void Sys_WaitUntil (double time, bool exact)
 {
-	HANDLE			handles[MAX_WAIT_HANDLES + 1];
+	HANDLE			handles[MAX_WAIT_HANDLES + 2];
 	LARGE_INTEGER	due;
 	double			wait, early, late;
 	int				i;
@@ -222,11 +244,12 @@ void Sys_WaitUntil (double time, bool exact)
 		SetWaitableTimer (sys_timer, &due, 0, NULL, NULL, FALSE);
 
 		handles[0] = sys_timer;
+		handles[1] = Sys_WakeEvent ();
 		for (i=0 ; i<sys_numwaithandles ; i++)
-			handles[i+1] = sys_waithandles[i];
-		if (MsgWaitForMultipleObjectsEx ((DWORD)sys_numwaithandles + 1, handles, INFINITE,
+			handles[i+2] = sys_waithandles[i];
+		if (MsgWaitForMultipleObjectsEx ((DWORD)sys_numwaithandles + 2, handles, INFINITE,
 			QS_ALLINPUT, MWMO_INPUTAVAILABLE) != WAIT_OBJECT_0)
-			return;		// woken by input or a packet
+			return;		// woken by input, a packet or Sys_Wake
 
 		if (!exact)
 			return;

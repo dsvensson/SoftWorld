@@ -26,9 +26,11 @@
 // Nothing here waits: what libdatachannel's threads tell (the descriptions and
 // candidates to send, the connections' states, the clients' channels, its
 // log) is queued or stored for the game's thread, and the broker's messages
-// and the channels' packets are taken as they wait. A packet sent before the
-// channel is open is dropped, as a network drops it; the client asks for a
-// challenge again in a while.
+// and the channels' packets are taken as they wait. Each but the log wakes the
+// game's thread (Sys_Wake), as a UDP packet does, so a packet is answered when
+// it comes rather than at the next frame. A packet sent before the channel is
+// open is dropped, as a network drops it; the client asks for a challenge
+// again in a while.
 
 #include "cvar.h"
 #include "net_rtc.h"
@@ -198,6 +200,9 @@ static void RTC_Push (int conn, int kind, const char *text, const char *extra)
 	}
 	rtc_events[rtc_numevents++] = (rtcevent_t){conn, kind, t, e};
 	atomic_flag_clear_explicit (&rtc_lock, memory_order_release);
+	// a description or candidate for the broker goes now; a log line may wait
+	if (kind != EV_LOG)
+		Sys_Wake ();
 }
 
 // the oldest, on the game's thread; false when there is none
@@ -247,6 +252,16 @@ static void RTC_API RTC_OnState (int pc, rtcState state, void *ptr)
 		atomic_store (&rtc_conns[i].state, (int)state);
 	else if (i >= MAX_RTCCONNS)
 		atomic_store (&rtc_host.peers[i - MAX_RTCCONNS].state, (int)state);
+	Sys_Wake ();
+}
+
+// a message come on a channel or a broker's WebSocket: the game's thread
+// takes it at once, not at its next frame (a server's may be 30 ms away)
+static void RTC_API RTC_OnAvailable (int id, void *ptr)
+{
+	(void)id;
+	(void)ptr;
+	Sys_Wake ();
 }
 
 // a channel the other side opened: a client's to the server, or a server's
@@ -256,10 +271,12 @@ static void RTC_API RTC_OnDataChannel (int pc, int dc, void *ptr)
 	int		i = RTC_ConnOf (ptr), none = -1;
 
 	(void)pc;
+	rtcSetAvailableCallback (dc, RTC_OnAvailable);
 	if (i >= 0 && i < MAX_RTCCONNS)
 		atomic_compare_exchange_strong (&rtc_conns[i].extra, &none, dc);
 	else if (i >= MAX_RTCCONNS)
 		atomic_compare_exchange_strong (&rtc_host.peers[i - MAX_RTCCONNS].channel, &none, dc);
+	Sys_Wake ();
 }
 
 // only kept when it is printed
@@ -466,11 +483,15 @@ static int RTC_OpenBroker (netadr_t adr, const char *protocol)
 		.protocolsCount = 1,
 	};
 	char				address[400];
+	int					ws;
 
 	snprintf (address, sizeof(address), "%s://%s:%i/%s/%s", url->tls ? "wss" : "ws", url->host,
 		(unsigned short)BigShort ((short)adr.port), RTC_PROTOCOL, url->room);
 	RTC_Debug ("WebRTC: broker %s (%s)\n", address, protocol);
-	return rtcCreateWebSocketEx (address, &config);
+	ws = rtcCreateWebSocketEx (address, &config);
+	if (ws >= 0)
+		rtcSetAvailableCallback (ws, RTC_OnAvailable);
+	return ws;
 }
 
 /*
@@ -740,6 +761,8 @@ static void RTC_StartPeer (rtcconn_t *c, const char *relays)
 	c->dc = rtcCreateDataChannelEx (c->pc, "quake", &init);
 	if (c->dc < 0)
 		RTC_Fail (c, "no data channel");
+	else
+		rtcSetAvailableCallback (c->dc, RTC_OnAvailable);
 }
 
 static void RTC_BrokerMessage (rtcconn_t *c, const char *data, int length)
@@ -1039,7 +1062,11 @@ static void RTC_HostMessage (const char *data, int length, double now)
 		rtcSetRemoteDescription (p->pc, value, mid);
 		// the server's own channel, once answered (before, it would offer)
 		if (p->own < 0)
+		{
 			p->own = rtcCreateDataChannelEx (p->pc, "quake", &init);
+			if (p->own >= 0)
+				rtcSetAvailableCallback (p->own, RTC_OnAvailable);
+		}
 		break;
 
 	case ICEMSG_CANDIDATE:

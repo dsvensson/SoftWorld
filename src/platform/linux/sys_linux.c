@@ -12,11 +12,13 @@
 #include "linux_local.h"
 
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <sys/prctl.h>
 #include <sys/timerfd.h>
 #include <time.h>
@@ -142,10 +144,12 @@ WAITING
 static int	sys_epoll = -1;
 static int	sys_timer = -1;		// a timerfd, level-triggered in the epoll
 static int	sys_windowfd = -1;	// level-triggered too (Sys_AddWindowFd)
+static _Atomic int	sys_wakefd = -1;	// an eventfd, Sys_Wake's: level-triggered, read when it fires
 
 int Sys_WaitQueue (void)
 {
 	struct epoll_event	ev = {.events = EPOLLIN};
+	int					wake;
 
 	if (sys_epoll >= 0)
 		return sys_epoll;
@@ -159,10 +163,28 @@ int Sys_WaitQueue (void)
 	ev.data.fd = sys_timer;
 	if (epoll_ctl (sys_epoll, EPOLL_CTL_ADD, sys_timer, &ev) < 0)
 		Sys_Error ("Couldn't wait on the timerfd");
+	wake = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
+	if (wake < 0)
+		Sys_Error ("Couldn't create an eventfd");
+	ev.data.fd = wake;
+	if (epoll_ctl (sys_epoll, EPOLL_CTL_ADD, wake, &ev) < 0)
+		Sys_Error ("Couldn't wait on the eventfd");
+	atomic_store (&sys_wakefd, wake);
 
 	// the wait's timer fires when it is due, not up to 50 us later
 	prctl (PR_SET_TIMERSLACK, 1UL, 0UL, 0UL, 0UL);
 	return sys_epoll;
+}
+
+// from any thread; before the queue is made, the main thread hasn't waited yet
+void Sys_Wake (void)
+{
+	uint64_t	one = 1;
+	int			fd = atomic_load (&sys_wakefd);
+
+	// fails only with the count full: a wake is due already
+	if (fd >= 0)
+		(void)!write (fd, &one, sizeof(one));
 }
 
 bool Sys_AddWaitFd (int fd)
@@ -236,7 +258,12 @@ int Sys_ReadWaitQueue (bool block)
 		else if (events[i].data.fd == sys_windowfd)
 			what |= SYS_WAIT_WINDOW;
 		else
+		{
+			if (events[i].data.fd == atomic_load (&sys_wakefd))
+				while (read (events[i].data.fd, &expirations, sizeof(expirations)) > 0)
+					;
 			what |= SYS_WAIT_FD;
+		}
 	}
 	return what;
 }

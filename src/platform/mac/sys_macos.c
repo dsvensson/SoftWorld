@@ -5,6 +5,7 @@
 #include "posix_local.h"
 
 #include <errno.h>
+#include <stdatomic.h>
 #include <string.h>
 #include <sys/event.h>
 #include <sys/sysctl.h>
@@ -89,17 +90,39 @@ WAITING
 ===============================================================================
 */
 
-static int	sys_kqueue = -1;
+#define SYS_TIMER_IDENT	1
+#define SYS_WAKE_IDENT	2		// Sys_Wake's user event
+
+static int			sys_kqueue = -1;
+static _Atomic int	sys_wakequeue = -1;		// the kqueue, once its user event is in it
 
 int Sys_WaitQueue (void)
 {
+	struct kevent	ev;
+
 	if (sys_kqueue < 0)
 	{
 		sys_kqueue = kqueue ();
 		if (sys_kqueue < 0)
 			Sys_Error ("Couldn't create a kqueue");
+		EV_SET (&ev, SYS_WAKE_IDENT, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, NULL);
+		if (kevent (sys_kqueue, &ev, 1, NULL, 0, NULL) < 0)
+			Sys_Error ("Couldn't add the kqueue's user event");
+		atomic_store (&sys_wakequeue, sys_kqueue);
 	}
 	return sys_kqueue;
+}
+
+// from any thread; before the queue is made, the main thread hasn't waited yet
+void Sys_Wake (void)
+{
+	struct kevent	ev;
+	int				queue = atomic_load (&sys_wakequeue);
+
+	if (queue < 0)
+		return;
+	EV_SET (&ev, SYS_WAKE_IDENT, EVFILT_USER, 0, NOTE_TRIGGER, 0, NULL);
+	kevent (queue, &ev, 1, NULL, 0, NULL);
 }
 
 bool Sys_AddWaitFd (int fd)
@@ -117,8 +140,6 @@ void Sys_RemoveWaitFd (int fd)
 	EV_SET (&ev, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
 	kevent (Sys_WaitQueue (), &ev, 1, NULL, 0, NULL);
 }
-
-#define SYS_TIMER_IDENT	1
 
 void Sys_SetWaitTimer (double until)
 {
