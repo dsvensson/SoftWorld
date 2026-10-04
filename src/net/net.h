@@ -71,12 +71,15 @@ netadr_t	NET_SocketAddress (netsrc_t sock);	// type NA_INVALID without a socket,
 // closes it too.
 bool	NET_ListenWebSocket (int port);
 void	NET_CloseWebSocket (void);
-// the room at a broker the server takes clients in over WebRTC
-// (rtc://broker[:port]/room or rtcs://, "" for none; the same room again keeps
-// it), and what the server tells the broker it is, an info string (net_rtc.c);
-// false where the build has no WebRTC
-bool	NET_HostRTC (const char *url);
+// the room the server takes clients in over WebRTC at net_webrtc_broker: its
+// name, "" for this run's invitation code, NULL for none (the same room again
+// keeps it), and what the server tells the broker it is, an info string
+// (net_rtc.c); false where the build has no WebRTC
+bool	NET_HostRTC (const char *room);
 void	NET_RTCInfo (const char *info);
+// a broker's room as a URL, rtc://broker[:port] or rtcs:// and /room; false
+// if the broker isn't one, or the URL doesn't fit
+bool	NET_RoomURL (const char *broker, const char *room, char *url, int size);
 
 // the next packet for this end, from the loopback first, then the socket
 bool	NET_GetPacket (netsrc_t sock, netadr_t *from, sizebuf_t *msg);

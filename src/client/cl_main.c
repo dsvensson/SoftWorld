@@ -1386,8 +1386,8 @@ static void CL_InitLocal (void)
 	Cmd_AddCommand ("quit", CL_Quit_f, "Asks whether to quit the game.");
 
 	Cmd_AddCommand ("connect", CL_Connect_f,
-		"Connects to a server, on port 27500 when none is given; local is the game in this process. "
-		"Usage: connect <address>");
+		"Connects to a server, on port 27500 when none is given; local is the game in this process, and an "
+		"invitation code (1234-5678) a server's room at the WebRTC broker. Usage: connect <address>");
 	Cmd_AddCommand ("reconnect", CL_Reconnect_f,
 		"Asks the server for its new map (the server sends it on a map change), "
 		"or connects to the last server again.");

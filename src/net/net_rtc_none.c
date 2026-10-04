@@ -42,10 +42,11 @@ void RTC_SendPacket (netsrc_t sock, const void *data, int length, const netadr_t
 	(void)to;
 }
 
-bool RTC_Host (const char *url)
+// told only for a room named: a public server hosts the code by default
+bool RTC_Host (const char *broker, const char *room)
 {
-	if (url && *url)
-		Con_Printf ("WebRTC: this build has none, for %s\n", url);
+	if (broker && room && *room)
+		Con_Printf ("WebRTC: this build has none, for room %s\n", room);
 	return false;
 }
 

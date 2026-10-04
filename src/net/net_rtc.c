@@ -10,8 +10,10 @@
 // browser's). Once the channel opens a packet is a message on it. The broker
 // also answers STUN at its port, so its own address is the first ICE server.
 //
-// A server keeps a WebSocket to its broker as a room's host (rtc_host): the
-// broker greets it (GREETING), tells it of each client that comes (NEWPEER)
+// A server keeps a WebSocket to its broker as a room's host (rtc_host), the
+// room it is given or else its invitation code (eight digits made once a run,
+// others while another server has them): the broker greets it (GREETING),
+// tells it of each client that comes (NEWPEER)
 // and passes the client's offer, which the server answers. The server opens a
 // "quake" channel of its own too, and sends on the client's when there is
 // one, or else on its own: FTE's native clients open none, and take the
@@ -120,6 +122,8 @@ typedef struct
 static struct
 {
 	netadr_t	adr;			// NA_RTC; NA_INVALID for none
+	char		broker[128];	// rtc://broker[:port] or rtcs://
+	bool		code;			// the room is the invitation code
 	int			ws;				// the broker's WebSocket, -1 for none
 	bool		greeted;		// the broker took the room
 	bool		failed;			// told it failed
@@ -128,6 +132,8 @@ static struct
 	char		info[2048];		// what the server tells the broker it is
 	rtcpeer_t	peers[MAX_RTCPEERS];
 } rtc_host = {.ws = -1};
+
+static char	rtc_code[9];		// this run's invitation code, once a room is
 
 static bool	rtc_initialized;
 
@@ -888,6 +894,23 @@ static void RTC_SendInfo (double now)
 	rtc_host.infosent = now;
 }
 
+static void RTC_NewCode (void)
+{
+	snprintf (rtc_code, sizeof(rtc_code), "%08u", Sys_Seed () % 100000000u);
+}
+
+// the room at the broker as an address; told when it isn't one
+static bool RTC_RoomAddress (const char *broker, const char *room, netadr_t *a)
+{
+	char	url[256];
+
+	if (NET_RoomURL (broker, room, url, sizeof(url)) && RTC_ResolveURL (url, a))
+		return true;
+	Con_Printf ("WebRTC: room %s at %s isn't a broker's room (rtc://broker[:port]/room)\n", room, broker);
+	a->type = NA_INVALID;
+	return false;
+}
+
 // "a.b.c.d:port" (or IPv6's "[::ffff:a.b.c.d]:port") as an NA_RTCCLIENT
 static bool RTC_ClientAddress (const char *s, netadr_t *a)
 {
@@ -987,7 +1010,9 @@ static void RTC_HostMessage (const char *data, int length, double now)
 	switch (message)
 	{
 	case ICEMSG_GREETING:	// the broker took the room
-		if (!rtc_host.greeted)
+		if (!rtc_host.greeted && rtc_host.code)
+			Con_Printf ("Invitation code: %.4s-%.4s\n", rtc_code, rtc_code + 4);
+		else if (!rtc_host.greeted)
 			Con_Printf ("WebRTC room %s is this server's\n", RTC_AdrToString (rtc_host.adr, true));
 		rtc_host.greeted = true;
 		rtc_host.failed = false;
@@ -1032,7 +1057,16 @@ static void RTC_HostMessage (const char *data, int length, double now)
 		break;
 
 	case ICEMSG_NAMEINUSE:
-		RTC_HostFail ("another server has the room");
+		// another server's code: another, taken at once
+		if (rtc_host.code)
+		{
+			RTC_NewCode ();
+			RTC_CloseBroker ();
+			RTC_RoomAddress (rtc_host.broker, rtc_code, &rtc_host.adr);
+			rtc_host.opened = now - HOST_REOPEN_TIME;
+		}
+		else
+			RTC_HostFail ("another server has the room");
 		break;
 	}
 }
@@ -1096,21 +1130,25 @@ static void RTC_HostPoll (double now)
 =============
 RTC_Host
 
-The room the server hosts, rtc://broker[:port]/room or rtcs://; NULL or ""
-for none. The same room again keeps its connection and its clients.
+The room the server hosts at the broker, rtc://broker[:port] or rtcs://: its
+name, or "" for the invitation code; NULL for none. The same room again keeps
+its connection and its clients.
 =============
 */
-bool RTC_Host (const char *url)
+bool RTC_Host (const char *broker, const char *room)
 {
 	netadr_t	adr = {.type = NA_INVALID};
+	bool		code = false;
 	int			i;
 
 	if (!rtc_initialized)
 		return false;
-	if (url && *url && !RTC_ResolveURL (url, &adr))
+	if (broker && room)
 	{
-		Con_Printf ("WebRTC: %s isn't a broker's room (rtc://broker[:port]/room)\n", url);
-		adr.type = NA_INVALID;
+		code = !*room;
+		if (code && !*rtc_code)
+			RTC_NewCode ();
+		RTC_RoomAddress (broker, code ? rtc_code : room, &adr);
 	}
 	if (NET_CompareAdr (adr, rtc_host.adr))
 		return adr.type == NA_RTC;
@@ -1120,6 +1158,8 @@ bool RTC_Host (const char *url)
 		if (rtc_host.peers[i].used)
 			RTC_ClosePeer (&rtc_host.peers[i]);
 	rtc_host.adr = adr;
+	rtc_host.code = code;
+	Q_strncpyz (rtc_host.broker, broker ? broker : "", sizeof(rtc_host.broker));
 	rtc_host.failed = false;
 	if (adr.type == NA_RTC)
 		RTC_OpenHost (Sys_DoubleTime ());
@@ -1251,7 +1291,7 @@ void RTC_Shutdown (void)
 
 	if (!rtc_initialized)
 		return;
-	RTC_Host (NULL);
+	RTC_Host (NULL, NULL);
 	for (i = 0 ; i < MAX_RTCCONNS ; i++)
 		if (rtc_conns[i].used)
 			RTC_Close (&rtc_conns[i]);

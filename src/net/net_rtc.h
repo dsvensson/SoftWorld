@@ -25,9 +25,10 @@ const char	*RTC_AdrToString (netadr_t a, bool port);
 bool	RTC_GetPacket (netsrc_t sock, netadr_t *from, sizebuf_t *msg);
 void	RTC_SendPacket (netsrc_t sock, const void *data, int length, const netadr_t *to);
 
-// the room the server hosts at a broker, its clients coming through it (NULL
-// or "" for none; the same room again keeps its clients); false where the
-// build has no WebRTC, or the URL isn't one. What the server tells the broker
-// it is, an info string, every 30 s.
-bool	RTC_Host (const char *url);
+// the room the server hosts at a broker (rtc://broker[:port] or rtcs://), its
+// clients coming through it: its name, or "" for the invitation code, eight
+// digits made once a run; NULL for none (the same room again keeps its
+// clients). False where the build has no WebRTC, or the broker isn't one.
+// What the server tells the broker it is, an info string, every 30 s.
+bool	RTC_Host (const char *broker, const char *room);
 void	RTC_HostInfo (const char *info);

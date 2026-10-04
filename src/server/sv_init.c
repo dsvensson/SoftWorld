@@ -404,8 +404,9 @@ void SV_SpawnServer (char *server)
 		NET_ListenWebSocket (svs.port);
 	else
 		NET_CloseWebSocket ();
-	// and clients over WebRTC, through a broker's room
-	NET_HostRTC (sv_webrtc.string);
+	// and clients over WebRTC, through a broker's room: its name, or the
+	// invitation code
+	NET_HostRTC (sv_public.value ? sv_webrtc_room.string : NULL);
 	
 	SV_SaveSpawnparms ();
 

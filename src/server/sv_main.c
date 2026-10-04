@@ -94,10 +94,14 @@ cvar_t	sv_websocket = {.name = "sv_websocket", .string = "1",
 	.values = (const cvar_value_t[]){{"0", "UDP only"}, {"1", "UDP, and WebSocket on TCP"}, {0}}};
 // clients over WebRTC, through a broker's room, as FTE's servers take them
 // (net_rtc.c)
-cvar_t	sv_webrtc = {.name = "sv_webrtc", .string = "",
-	.description = "Takes clients over WebRTC through a broker, as FTE's servers do: the room there, "
-		"rtc://broker[:port]/room or rtcs:// for a broker over TLS, which clients connect to by the same address; "
-		"empty for none. Read as a map opens the port."};
+cvar_t	sv_public = {.name = "sv_public", .string = "1",
+	.description = "Hosts the game at the WebRTC broker (net_webrtc_broker), on its list of servers, for clients "
+		"over WebRTC: in the room sv_webrtc_room, or else under an invitation code made once a run, which the "
+		"console tells and clients connect to (connect 1234-5678). Read as a map opens the port.",
+	.values = (const cvar_value_t[]){{"0", "Not at the broker"}, {"1", "At the broker"}, {0}}};
+cvar_t	sv_webrtc_room = {.name = "sv_webrtc_room", .string = "",
+	.description = "The room a public server (sv_public) hosts at the WebRTC broker, which clients connect to as "
+		"rtc://broker/room (rtcs:// over TLS); empty for the invitation code. Read as a map opens the port."};
 // the most bytes per second a client's rate may ask for, 0 no limit (FTE's)
 static cvar_t	sv_maxrate = {.name = "sv_maxrate", .string = "50000",
 	.description = "Most bytes per second a client's rate may ask for; 0 for no limit."};
@@ -178,7 +182,7 @@ static cvar_t	watervis = {.name = "watervis", .string = "0", .serverinfo = true,
 		"check it. Serverinfo.",
 	.values = (const cvar_value_t[]){{"0", "Water opaque"}, {"1", "Translucent water allowed"}, {0}}};
 
-static cvar_t	hostname = {.name = "hostname", .string = "unnamed", .serverinfo = true,
+static cvar_t	hostname = {.name = "hostname", .string = "SoftWorld", .serverinfo = true,
 	.description = "The server's name, as server browsers show it. Serverinfo."};
 
 
@@ -1554,7 +1558,8 @@ static void SV_InitLocal (void)
 	Cvar_RegisterVariable (&sv_maxtic);
 	Cvar_RegisterVariable (&sv_bigcoords);
 	Cvar_RegisterVariable (&sv_websocket);
-	Cvar_RegisterVariable (&sv_webrtc);
+	Cvar_RegisterVariable (&sv_public);
+	Cvar_RegisterVariable (&sv_webrtc_room);
 	Cvar_RegisterVariable (&sv_maxrate);
 	Cvar_RegisterVariable (&sv_maxdrate);
 	Cvar_RegisterVariable (&pm_ktjump);
@@ -1698,7 +1703,7 @@ static void SV_WebRTCInfo (void)
 	const char		*gamedir;
 	int				i, clients = 0;
 
-	if (!sv_webrtc.string[0] || host.realtime - made < 5)
+	if (!sv_public.value || host.realtime - made < 5)
 		return;
 	made = host.realtime;
 	for (i = 0 ; i < MAX_CLIENTS ; i++)

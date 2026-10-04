@@ -240,7 +240,8 @@ Worth knowing:
 | `r_profile 1`, `r_profile_show` | time a frame takes, by stage |
 | `cl_maxfps` | frame rate cap; 0 is none but the display's |
 | `sv_websocket` | the server takes browsers' clients over WebSocket, on TCP at its port (1, the default) |
-| `sv_webrtc` | the server takes clients over WebRTC in a broker's room, `rtc://broker[:port]/room`; empty (the default) for none |
+| `sv_public`, `sv_webrtc_room` | 1 (the default): the server takes clients over WebRTC at the broker, on its list, in the room `sv_webrtc_room` names or else under an invitation code made once a run, which the console tells; 0 not |
+| `net_webrtc_broker`, `connect 1234-5678` | the WebRTC broker public servers host at and invitation codes are rooms at, FTE's master `rtcs://master.frag-net.com` by default; join a server by its invitation code |
 | `cl_idlefps` | frame rate cap while the window isn't the focus, 50 by default; 0 is `cl_maxfps`'s |
 | `cl_truelightning` | how far the lightning beam of the player whose view you see (yours, or the one a demo or spectating follows) turns toward the view, hiding its lag; 1, the default, all the way |
 | `demo_speed`, `pause` | MVD playback speed, and pause |
@@ -311,11 +312,16 @@ packets then go between them over a data channel, unordered and never sent again
 unless the address names one. The room is the name the server took at the broker, or
 `udp/ip:port` for a server the broker knows by its address (FTE's master).
 
-A SoftWorld server takes a room with `sv_webrtc rtc://broker/room` (read as a map opens the
-port), and tells the broker what it is every 30 s, for its list. Clients come in by the same
-address: SoftWorld's, FTE's and browsers'. The server knows them by their IPv4 address, as its
-UDP clients, and talks to them from ports of their own, which a firewall must let through. A
-client already in stays when the broker goes; the server takes the room again when it is back.
+A SoftWorld server is public unless `sv_public 0`: as a map opens it takes a room at the broker
+`net_webrtc_broker` names, FTE's master `rtcs://master.frag-net.com` unless set, and tells the
+broker what it is every 30 s, for its list. The room is `sv_webrtc_room`, or else an invitation
+code made once a run, eight digits the console tells as `Invitation code: 1234-5678` (others,
+should another server have them). `connect 1234-5678` joins it, in the native programs and the
+page; FTE's clients connect by the room's address, `rtcs://master.frag-net.com/12345678`.
+
+The server knows its WebRTC clients by their IPv4 address, as its UDP clients, and talks to
+them from ports of their own, which a firewall must let through. A client already in stays when
+the broker goes; the server takes the room again when it is back.
 
 FTE's servers send a packet over WebRTC whole, and a big one is lost on the way: the client
 asks for them in pieces under 1384 bytes (FTE's fragmentation, which demos record put

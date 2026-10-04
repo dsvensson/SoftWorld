@@ -113,6 +113,10 @@ cvar_t	password = {.name = "password", .string = "", .userinfo = true,
 cvar_t	rcon_password = {.name = "rcon_password", .string = "",
 	.description = "The password rcon sends with remote commands; a server runs them only with its own, "
 		"and never when empty."};
+// FTE's master, a broker for its clients and servers
+static cvar_t	net_webrtc_broker = {.name = "net_webrtc_broker", .string = "rtcs://master.frag-net.com",
+	.description = "The WebRTC broker a public server (sv_public) hosts its room at, and invitation codes "
+		"(connect 1234-5678) are rooms at: rtc://broker[:port], or rtcs:// over TLS; the port 27950 unless given."};
 
 /*
 ====================
@@ -126,6 +130,7 @@ void NET_Init (void)
 	Netchan_Init ();
 	Cvar_RegisterVariable (&password);
 	Cvar_RegisterVariable (&rcon_password);
+	Cvar_RegisterVariable (&net_webrtc_broker);
 }
 
 void NET_Shutdown (void)
@@ -163,13 +168,47 @@ void NET_CloseSocket (netsrc_t sock)
 	if (sock == NS_SERVER)
 	{
 		NET_CloseWebSocket ();
-		RTC_Host (NULL);
+		RTC_Host (NULL, NULL);
 	}
 }
 
-bool NET_HostRTC (const char *url)
+bool NET_HostRTC (const char *room)
 {
-	return RTC_Host (url);
+	return RTC_Host (room ? net_webrtc_broker.string : NULL, room);
+}
+
+bool NET_RoomURL (const char *broker, const char *room, char *url, int size)
+{
+	const char	*host, *slash;
+	int			length = (int)strlen (broker);
+
+	if (!Q_strncasecmp (broker, "rtcs://", 7))
+		host = broker + 7;
+	else if (!Q_strncasecmp (broker, "rtc://", 6))
+		host = broker + 6;
+	else
+		return false;
+	// the broker's address alone, a '/' after it or none
+	if (length && broker[length - 1] == '/')
+		length--;
+	slash = strchr (host, '/');
+	if (!*host || (slash && slash - broker < length))
+		return false;
+	return snprintf (url, (size_t)size, "%.*s/%s", length, broker, room) < size;
+}
+
+// an invitation code, 1234-5678, as the room it is (its eight digits)
+static bool NET_InvitationRoom (const char *s, char *room)
+{
+	int		i, n = 0;
+
+	for (i = 0 ; i < 9 ; i++)
+		if (i == 4 ? s[i] != '-' : (s[i] < '0' || s[i] > '9'))
+			return false;
+		else if (i != 4)
+			room[n++] = s[i];
+	room[n] = 0;
+	return !s[9];
 }
 
 void NET_RTCInfo (const char *info)
@@ -317,11 +356,12 @@ idnewt:28000
 192.246.40.70:28000
 ws://idnewt:28000/path, wss://idnewt/path (where the platform's packets go to URLs: a browser's)
 rtc://broker/room, rtcs://broker:27950/udp/192.246.40.70:28000 (WebRTC)
+1234-5678 (an invitation code: room 12345678 at net_webrtc_broker)
 =============
 */
 bool NET_StringToAdr (const char *s, netadr_t *a)
 {
-	char			copy[128];
+	char			copy[128], room[9], url[256];
 	char			*colon;
 	unsigned short	port = 0;
 
@@ -331,6 +371,8 @@ bool NET_StringToAdr (const char *s, netadr_t *a)
 		a->type = NA_LOOPBACK;
 		return true;
 	}
+	if (NET_InvitationRoom (s, room))
+		return NET_RoomURL (net_webrtc_broker.string, room, url, sizeof(url)) && NET_StringToAdr (url, a);
 	if (strstr (s, "://"))
 		return RTC_ResolveURL (s, a) || UDP_ResolveURL (s, a);
 
