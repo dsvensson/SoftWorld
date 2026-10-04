@@ -48,9 +48,20 @@ typedef enum { NA_INVALID, NA_LOOPBACK, NA_IP, NA_WS, NA_URL, NA_RTC, NA_RTCCLIE
 typedef struct
 {
 	netadrtype_t	type;
-	byte	ip[4];
+	byte	ip[16];		// IPv6's, IPv4's as ::ffff:a.b.c.d (an NA_URL's and NA_RTC's number in two)
 	unsigned short	port;		// network byte order
 } netadr_t;
+
+// an address's ip: IPv4's (::ffff:a.b.c.d), and set from IPv4's four bytes
+bool	NET_IsIPv4 (netadr_t a);
+void	NET_SetIPv4 (netadr_t *a, const void *ip);
+// a numeric address, a.b.c.d or IPv6's (2001:db8::1, ::ffff:1.2.3.4), as an
+// ip; false for others (names)
+bool	NET_ParseIP (const char *s, byte ip[16]);
+// an ip's text: IPv4's dotted, IPv6's as RFC 5952 has it (lowercase hex, the
+// first longest run of two zero groups or more as ::), in a buffer the next
+// call writes over
+const char	*NET_IPToString (const byte ip[16]);
 
 // the passwords of a server, and the ones its clients give; a listen
 // server's own client uses the same ones
@@ -88,9 +99,12 @@ void	NET_SendPacket (netsrc_t sock, int length, const void *data, netadr_t to);
 bool	NET_CompareAdr (netadr_t a, netadr_t b);
 bool	NET_CompareBaseAdr (netadr_t a, netadr_t b);
 bool	NET_IsLocalAddress (netadr_t a);	// the loopback or this machine
+bool	NET_IsLoopback (netadr_t a);		// the loopback, 127.x.x.x or ::1
 char	*NET_AdrToString (netadr_t a);
 char	*NET_BaseAdrToString (netadr_t a);
-bool	NET_StringToAdr (const char *s, netadr_t *a);	// "local" is the loopback, ws:// a URL
+// "local" is the loopback, ws:// a URL; a name with both IPv4's and IPv6's
+// addresses is IPv4's unless net_prefer_ipv6
+bool	NET_StringToAdr (const char *s, netadr_t *a);
 
 // the mtu to ask a server for fragments of (FTE's PROTOCOL_VERSION_FRAGMENT) on
 // the path to it, 0 for none: WebRTC's, over which FTE's servers send a packet

@@ -31,7 +31,8 @@ void	UDP_Init (void);
 void	UDP_Shutdown (void);
 
 // a non-blocking socket that wakes Sys_WaitUntil when packets arrive;
-// NULL if the port can't be bound
+// NULL if the port can't be bound. It is IPv6's, taking IPv4's too, where
+// the system has IPv6 and -ip doesn't name an IPv4 address.
 udpsocket_t	*UDP_Open (int port);
 void	UDP_Close (udpsocket_t *s);
 netadr_t	UDP_Address (udpsocket_t *s);	// this machine's address and the socket's port
@@ -40,8 +41,9 @@ netadr_t	UDP_Address (udpsocket_t *s);	// this machine's address and the socket'
 int		UDP_Recv (udpsocket_t *s, byte *buf, int maxlen, netadr_t *from);
 void	UDP_Send (udpsocket_t *s, const void *data, int length, const netadr_t *to);
 
-// resolves a host name or dotted address, without a port
-bool	UDP_Resolve (const char *host, netadr_t *a);
+// resolves a host name or numeric address, without a port: for a name with
+// both, its IPv4 address, or its IPv6 one when ipv6 is preferred
+bool	UDP_Resolve (const char *host, bool ipv6, netadr_t *a);
 
 // a server by URL, ws:// or wss:// (its port as the URL has it), where the
 // platform's packets go to URLs (a browser's, where a bare host[:port] is one

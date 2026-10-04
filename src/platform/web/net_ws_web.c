@@ -307,9 +307,10 @@ netadr_t UDP_Address (udpsocket_t *s)
 }
 
 // no DNS in a page: hosts are a URL's (UDP_ResolveURL)
-bool UDP_Resolve (const char *host, netadr_t *a)
+bool UDP_Resolve (const char *host, bool ipv6, netadr_t *a)
 {
 	(void)host;
+	(void)ipv6;
 	memset (a, 0, sizeof(*a));
 	return false;
 }

@@ -1075,6 +1075,8 @@ removeip <ip>
 
 The ip address is specified in dot format, and any unspecified digits will match any value, so you can specify an entire class C network with "addip 192.246.40".
 
+An address with a prefix length matches its first bits: "addip 2001:db8::/32", "addip 10.0.0.0/8". An IPv6 address without one is the one address.
+
 Removeip will only remove an address specified exactly the same way.  You cannot addip a subnet, then removeip a single host.
 
 listip
@@ -1094,10 +1096,12 @@ If 0, then only addresses matching the list will be allowed.  This lets you easi
 */
 
 
+// an address matches when its bits under the mask are compare's; an IPv4
+// filter's mask holds all of ::ffff: before the address
 typedef struct
 {
-	unsigned	mask;
-	unsigned	compare;
+	byte	mask[16];
+	byte	compare[16];
 } ipfilter_t;
 
 #define	MAX_IPFILTERS	1024
@@ -1113,48 +1117,83 @@ static cvar_t	filterban = {.name = "filterban", .string = "1",
 /*
 =================
 StringToFilter
+
+IPv4's dotted, its numbers that are 0 or left out matching any (192.246.40);
+or an address and the bits of it to match, a.b.c.d/n or IPv6's
+2001:db8::/32 (all of an IPv6 address without them)
 =================
 */
-static bool StringToFilter (char *s, ipfilter_t *f)
+static bool StringToFilter (const char *s, ipfilter_t *f)
 {
-	char	num[128];
-	int		i, j;
-	byte	b[4];
-	byte	m[4];
-	
-	for (i=0 ; i<4 ; i++)
+	char		copy[64], *slash;
+	netadr_t	a = {.type = NA_IP};
+	int			bits, value, octet, i;
+
+	memset (f, 0, sizeof(*f));
+	Q_strncpyz (copy, s, sizeof(copy));
+	slash = strchr (copy, '/');
+	if (slash)
+		*slash++ = 0;
+
+	if (slash || strchr (copy, ':'))
 	{
-		b[i] = 0;
-		m[i] = 0;
+		if (!NET_ParseIP (copy, a.ip) || (slash && (*slash < '0' || *slash > '9')))
+			return false;
+		bits = slash ? atoi (slash) + (NET_IsIPv4 (a) ? 96 : 0) : 128;
+		if (bits > 128 || (slash && NET_IsIPv4 (a) && bits < 96))
+			return false;
+		for (i = 0 ; i < 16 ; i++, bits -= 8)
+		{
+			f->mask[i] = (byte)(bits >= 8 ? 0xff : bits > 0 ? 0xff << (8 - bits) : 0);
+			f->compare[i] = a.ip[i] & f->mask[i];
+		}
+		return true;
 	}
-	
-	for (i=0 ; i<4 ; i++)
+
+	// id's: up to four numbers, those 0 or left out matching any
+	NET_SetIPv4 (&a, (const byte[4]){0});
+	memset (f->mask, 0xff, 12);
+	memcpy (f->compare, a.ip, 12);
+	for (s = copy, octet = 0 ; octet < 4 ; octet++)
 	{
 		if (*s < '0' || *s > '9')
-		{
-			Con_Printf ("Bad filter address: %s\n", s);
 			return false;
-		}
-		
-		j = 0;
-		while (*s >= '0' && *s <= '9')
-		{
-			num[j++] = *s++;
-		}
-		num[j] = 0;
-		b[i] = (byte)atoi(num);
-		if (b[i] != 0)
-			m[i] = 255;
-
+		for (value = 0 ; *s >= '0' && *s <= '9' ; s++)
+			if (value <= 255)
+				value = value * 10 + *s - '0';
+		if (value > 255)
+			return false;
+		f->compare[12 + octet] = (byte)value;
+		f->mask[12 + octet] = value ? 0xff : 0;
 		if (!*s)
-			break;
-		s++;
+			return true;
+		if (*s++ != '.')
+			return false;
 	}
-	
-	f->mask = *(unsigned *)m;
-	f->compare = *(unsigned *)b;
-	
-	return true;
+	return false;
+}
+
+// a filter as addip takes it
+static const char *FilterToString (const ipfilter_t *f)
+{
+	static char	s[64];
+	netadr_t	a = {.type = NA_IP};
+	int			bits = 0, i, b;
+	bool		octets = true;		// every mask byte all or none: id's form
+
+	memcpy (a.ip, f->compare, sizeof(a.ip));
+	for (i = 0 ; i < 16 ; i++)
+	{
+		for (b = f->mask[i] ; b ; b &= b - 1)
+			bits++;
+		if (f->mask[i] && f->mask[i] != 0xff)
+			octets = false;
+	}
+	if (NET_IsIPv4 (a) && bits >= 96 && f->mask[11] == 0xff)
+		snprintf (s, sizeof(s), octets ? "%s" : "%s/%i", NET_BaseAdrToString (a), bits - 96);
+	else
+		snprintf (s, sizeof(s), bits == 128 ? "%s" : "%s/%i", NET_BaseAdrToString (a), bits);
+	return s;
 }
 
 /*
@@ -1164,23 +1203,19 @@ SV_AddIP_f
 */
 static void SV_AddIP_f (void)
 {
-	int		i;
-	
-	for (i=0 ; i<numipfilters ; i++)
-		if (ipfilters[i].compare == 0xffffffff)
-			break;		// free spot
-	if (i == numipfilters)
+	ipfilter_t	f;
+
+	if (!StringToFilter (Cmd_Argv(1), &f))
 	{
-		if (numipfilters == MAX_IPFILTERS)
-		{
-			Con_Printf ("IP filter list is full\n");
-			return;
-		}
-		numipfilters++;
+		Con_Printf ("Bad filter address: %s\n", Cmd_Argv(1));
+		return;
 	}
-	
-	if (!StringToFilter (Cmd_Argv(1), &ipfilters[i]))
-		ipfilters[i].compare = 0xffffffff;
+	if (numipfilters == MAX_IPFILTERS)
+	{
+		Con_Printf ("IP filter list is full\n");
+		return;
+	}
+	ipfilters[numipfilters++] = f;
 }
 
 /*
@@ -1194,10 +1229,12 @@ static void SV_RemoveIP_f (void)
 	int			i, j;
 
 	if (!StringToFilter (Cmd_Argv(1), &f))
+	{
+		Con_Printf ("Bad filter address: %s\n", Cmd_Argv(1));
 		return;
+	}
 	for (i=0 ; i<numipfilters ; i++)
-		if (ipfilters[i].mask == f.mask
-		&& ipfilters[i].compare == f.compare)
+		if (!memcmp (&ipfilters[i], &f, sizeof(f)))
 		{
 			for (j=i+1 ; j<numipfilters ; j++)
 				ipfilters[j-1] = ipfilters[j];
@@ -1216,14 +1253,10 @@ SV_ListIP_f
 static void SV_ListIP_f (void)
 {
 	int		i;
-	byte	b[4];
 
 	Con_Printf ("Filter list:\n");
 	for (i=0 ; i<numipfilters ; i++)
-	{
-		memcpy (b, &ipfilters[i].compare, 4);
-		Con_Printf ("%3i.%3i.%3i.%3i\n", b[0], b[1], b[2], b[3]);
-	}
+		Con_Printf ("%s\n", FilterToString (&ipfilters[i]));
 }
 
 /*
@@ -1235,7 +1268,6 @@ static void SV_WriteIP_f (void)
 {
 	FILE	*f;
 	char	name[MAX_OSPATH];
-	byte	b[4];
 	int		i;
 
 	snprintf (name, sizeof(name), "%s/listip.cfg", com_gamedir);
@@ -1250,10 +1282,7 @@ static void SV_WriteIP_f (void)
 	}
 	
 	for (i=0 ; i<numipfilters ; i++)
-	{
-		memcpy (b, &ipfilters[i].compare, 4);
-		fprintf (f, "addip %i.%i.%i.%i\n", b[0], b[1], b[2], b[3]);
-	}
+		fprintf (f, "addip %s\n", FilterToString (&ipfilters[i]));
 	
 	fclose (f);
 }
@@ -1282,14 +1311,15 @@ SV_FilterPacket
 */
 static bool SV_FilterPacket (void)
 {
-	int		i;
-	unsigned	in;
-	
-	in = *(unsigned *)svs.net_from.ip;
+	int		i, j;
 
 	for (i=0 ; i<numipfilters ; i++)
-		if ( (in & ipfilters[i].mask) == ipfilters[i].compare)
+	{
+		for (j = 0 ; j < 16 && (svs.net_from.ip[j] & ipfilters[i].mask[j]) == ipfilters[i].compare[j] ; j++)
+			;
+		if (j == 16)
 			return filterban.value;
+	}
 
 	return !filterban.value;
 }
@@ -1614,8 +1644,9 @@ static void SV_InitLocal (void)
 
 	Cvar_RegisterVariable (&pausable);
 
-	Cmd_AddCommand ("addip", SV_AddIP_f, "Adds an IP filter, which filterban makes a ban or an allowance; "
-		"octets that are 0 or left out match any value. Usage: addip <ip>");
+	Cmd_AddCommand ("addip", SV_AddIP_f, "Adds an IP filter, which filterban makes a ban or an allowance: "
+		"IPv4's octets that are 0 or left out match any value, and an address/bits its first bits "
+		"(2001:db8::/32). Usage: addip <ip>[/bits]");
 	Cmd_AddCommand ("removeip", SV_RemoveIP_f, "Removes an IP filter, given exactly as it was added. "
 		"Usage: removeip <ip>");
 	Cmd_AddCommand ("listip", SV_ListIP_f, "Lists the IP filters.");

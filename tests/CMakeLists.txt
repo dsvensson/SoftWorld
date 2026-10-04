@@ -55,6 +55,11 @@ sw_add_program(test_ws test_ws.c)
 target_link_libraries(test_ws PRIVATE sw_net sw_common)
 add_test(NAME ws COMMAND test_ws)
 
+# test_netadr reads and writes addresses, IPv4's and IPv6's (net_adr.c).
+sw_add_program(test_netadr test_netadr.c)
+target_link_libraries(test_netadr PRIVATE sw_net sw_common)
+add_test(NAME netadr COMMAND test_netadr)
+
 # test_markup reads ezQuake's and FTE's colors out of text.
 sw_add_program(test_markup test_markup.c)
 target_link_libraries(test_markup PRIVATE sw_common)

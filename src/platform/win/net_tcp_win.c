@@ -23,16 +23,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // The connections a port takes share its event: the waits have room for a few
 // handles (sys_win.c), and a server reads all its connections when any wakes it.
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#include "net_win.h"
 
-#include "args.h"
 #include "mem.h"
 #include "net_socket.h"
 #include "print.h"
 #include "win_local.h"
-
-#include <string.h>
 
 struct tcpsocket_s
 {
@@ -57,12 +53,14 @@ Starts a non-blocking connection
 */
 tcpsocket_t *TCP_Connect (const netadr_t *to)
 {
-	tcpsocket_t			*s;
-	struct sockaddr_in	addr = {.sin_family = AF_INET};
-	u_long				nonblocking = 1;
+	tcpsocket_t				*s;
+	struct sockaddr_storage	addr;
+	u_long					nonblocking = 1;
+	int						family = NET_IsIPv4 (*to) ? AF_INET : AF_INET6;
+	int						length = Win_ToSockaddr (to, family, &addr);
 
 	s = Mem_Calloc (1, sizeof(*s));
-	s->socket = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	s->socket = socket (family, SOCK_STREAM, IPPROTO_TCP);
 	if (s->socket == INVALID_SOCKET)
 	{
 		Mem_Free (s);
@@ -88,9 +86,7 @@ tcpsocket_t *TCP_Connect (const netadr_t *to)
 	}
 	Sys_AddWaitHandle (s->event);
 
-	memcpy (&addr.sin_addr, to->ip, 4);
-	addr.sin_port = to->port;
-	if (connect (s->socket, (struct sockaddr *)&addr, sizeof(addr)) == SOCKET_ERROR
+	if (connect (s->socket, (struct sockaddr *)&addr, length) == SOCKET_ERROR
 	 && WSAGetLastError () != WSAEWOULDBLOCK)
 	{
 		TCP_Close (s);
@@ -215,13 +211,12 @@ Binds to -ip if given, otherwise to every interface, as UDP_Open does
 */
 tcplisten_t *TCP_Listen (int port)
 {
-	tcplisten_t			*l;
-	struct sockaddr_in	address = {.sin_family = AF_INET};
-	u_long				nonblocking = 1;
-	int					i;
+	tcplisten_t				*l;
+	struct sockaddr_storage	address;
+	int						length;
 
 	l = Mem_Calloc (1, sizeof(*l));
-	l->socket = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	l->socket = Win_Socket (SOCK_STREAM, port, &address, &length);
 	if (l->socket == INVALID_SOCKET)
 	{
 		Con_Printf ("TCP port %i: Winsock error %i\n", port, WSAGetLastError ());
@@ -231,13 +226,7 @@ tcplisten_t *TCP_Listen (int port)
 	// no other program takes the port with this one
 	setsockopt (l->socket, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&(int){1}, sizeof(int));
 
-	if ((i = COM_CheckParm ("-ip")) != 0 && i + 1 < com_argc)
-		inet_pton (AF_INET, com_argv[i + 1], &address.sin_addr);
-	else
-		address.sin_addr.s_addr = INADDR_ANY;
-	address.sin_port = htons ((unsigned short)port);
-	if (ioctlsocket (l->socket, FIONBIO, &nonblocking) == SOCKET_ERROR
-		|| bind (l->socket, (struct sockaddr *)&address, sizeof(address)) == SOCKET_ERROR
+	if (bind (l->socket, (struct sockaddr *)&address, length) == SOCKET_ERROR
 		|| listen (l->socket, 16) == SOCKET_ERROR)
 	{
 		Con_Printf ("TCP port %i: Winsock error %i\n", port, WSAGetLastError ());
@@ -278,7 +267,7 @@ when none has
 */
 tcpsocket_t *TCP_Accept (tcplisten_t *l, netadr_t *from)
 {
-	struct sockaddr_in	addr;
+	struct sockaddr_storage	addr;
 	int					addrlen = sizeof(addr);
 	tcpsocket_t			*s;
 	SOCKET				accepted;
@@ -300,9 +289,6 @@ tcpsocket_t *TCP_Accept (tcplisten_t *l, netadr_t *from)
 	s->sharedevent = true;
 	s->connected = true;
 
-	memset (from, 0, sizeof(*from));
-	from->type = NA_IP;
-	memcpy (from->ip, &addr.sin_addr, 4);
-	from->port = addr.sin_port;
+	Win_FromSockaddr (&addr, from);
 	return s;
 }

@@ -310,8 +310,11 @@ static void CL_QTVPlay_f (void)
 		Con_Printf ("Bad stream name\n");
 		return;
 	}
-	if (!strchr (address, ':'))
+	// the relay's port unless given: host:port, [IPv6]:port, a URL's
+	if (address[0] == '[' ? !strstr (address, "]:") : !strchr (address, ':'))
 		Q_strncatz (address, va(":%i", QTV_PORT), sizeof(address));
+	else if (address[0] != '[' && !strstr (address, "://") && strchr (address, ':') != strrchr (address, ':'))
+		Q_strncpyz (address, va("[%s]:%i", address, QTV_PORT), sizeof(address));	// an IPv6 address alone
 	if (!NET_StringToAdr (address, &to))
 	{
 		Con_Printf ("Bad address %s\n", address);

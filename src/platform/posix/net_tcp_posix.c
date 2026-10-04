@@ -20,21 +20,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // net_tcp_posix.c -- TCP streams on BSD sockets (QTV, and the server's
 // WebSocket port), on macOS and Linux
 
-#include "args.h"
 #include "mem.h"
+#include "net_posix.h"
 #include "net_socket.h"
 #include "print.h"
 #include "posix_local.h"
 
-#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <signal.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <unistd.h>
 
 struct tcpsocket_s
@@ -57,11 +54,13 @@ Starts a non-blocking connection
 */
 tcpsocket_t *TCP_Connect (const netadr_t *to)
 {
-	tcpsocket_t			*s;
-	struct sockaddr_in	addr = {.sin_family = AF_INET};
+	tcpsocket_t				*s;
+	struct sockaddr_storage	addr;
+	int						family = NET_IsIPv4 (*to) ? AF_INET : AF_INET6;
+	socklen_t				length = Posix_ToSockaddr (to, family, &addr);
 
 	s = Mem_Calloc (1, sizeof(*s));
-	s->socket = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	s->socket = socket (family, SOCK_STREAM, IPPROTO_TCP);
 	if (s->socket < 0)
 	{
 		Mem_Free (s);
@@ -81,9 +80,7 @@ tcpsocket_t *TCP_Connect (const netadr_t *to)
 	// let Sys_WaitUntil wake up when the connection is made or data arrives
 	Sys_AddWaitFd (s->socket);
 
-	memcpy (&addr.sin_addr, to->ip, 4);
-	addr.sin_port = to->port;
-	if (connect (s->socket, (struct sockaddr *)&addr, sizeof(addr)) < 0 && errno != EINPROGRESS)
+	if (connect (s->socket, (struct sockaddr *)&addr, length) < 0 && errno != EINPROGRESS)
 	{
 		TCP_Close (s);
 		return NULL;
@@ -209,12 +206,12 @@ Binds to -ip if given, otherwise to every interface, as UDP_Open does
 */
 tcplisten_t *TCP_Listen (int port)
 {
-	tcplisten_t			*l;
-	struct sockaddr_in	address = {.sin_family = AF_INET};
-	int					i;
+	tcplisten_t				*l;
+	struct sockaddr_storage	address;
+	socklen_t				length;
 
 	l = Mem_Calloc (1, sizeof(*l));
-	l->socket = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	l->socket = Posix_Socket (SOCK_STREAM, port, &address, &length);
 	if (l->socket < 0)
 	{
 		Con_Printf ("TCP port %i: %s\n", port, strerror (errno));
@@ -226,13 +223,7 @@ tcplisten_t *TCP_Listen (int port)
 	setsockopt (l->socket, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
 	signal (SIGPIPE, SIG_IGN);
 
-	if ((i = COM_CheckParm ("-ip")) != 0 && i + 1 < com_argc)
-		inet_pton (AF_INET, com_argv[i + 1], &address.sin_addr);
-	else
-		address.sin_addr.s_addr = INADDR_ANY;
-	address.sin_port = htons ((unsigned short)port);
-	if (fcntl (l->socket, F_SETFL, fcntl (l->socket, F_GETFL) | O_NONBLOCK) < 0
-		|| bind (l->socket, (struct sockaddr *)&address, sizeof(address)) < 0 || listen (l->socket, 16) < 0)
+	if (bind (l->socket, (struct sockaddr *)&address, length) < 0 || listen (l->socket, 16) < 0)
 	{
 		Con_Printf ("TCP port %i: %s\n", port, strerror (errno));
 		close (l->socket);
@@ -261,7 +252,7 @@ A connection come, open and non-blocking; NULL when none has
 */
 tcpsocket_t *TCP_Accept (tcplisten_t *l, netadr_t *from)
 {
-	struct sockaddr_in	addr;
+	struct sockaddr_storage	addr;
 	socklen_t			addrlen = sizeof(addr);
 	tcpsocket_t			*s;
 	int					accepted;
@@ -283,9 +274,6 @@ tcpsocket_t *TCP_Accept (tcplisten_t *l, netadr_t *from)
 	s->connected = true;
 	Sys_AddWaitFd (accepted);
 
-	memset (from, 0, sizeof(*from));
-	from->type = NA_IP;
-	memcpy (from->ip, &addr.sin_addr, 4);
-	from->port = addr.sin_port;
+	Posix_FromSockaddr (&addr, from);
 	return s;
 }

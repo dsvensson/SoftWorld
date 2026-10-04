@@ -113,6 +113,11 @@ cvar_t	password = {.name = "password", .string = "", .userinfo = true,
 cvar_t	rcon_password = {.name = "rcon_password", .string = "",
 	.description = "The password rcon sends with remote commands; a server runs them only with its own, "
 		"and never when empty."};
+// most QuakeWorld servers listen on IPv4 alone, though their host has IPv6
+static cvar_t	net_prefer_ipv6 = {.name = "net_prefer_ipv6", .string = "0",
+	.description = "Which address a name with both IPv4's and IPv6's is reached at. Most QuakeWorld servers "
+		"listen on IPv4 alone.",
+	.values = (const cvar_value_t[]){{"0", "IPv4's"}, {"1", "IPv6's"}, {0}}};
 // FTE's master, a broker for its clients and servers
 static cvar_t	net_webrtc_broker = {.name = "net_webrtc_broker", .string = "rtcs://master.frag-net.com",
 	.description = "The WebRTC broker a public server (sv_public) hosts its room at, and invitation codes "
@@ -130,6 +135,7 @@ void NET_Init (void)
 	Netchan_Init ();
 	Cvar_RegisterVariable (&password);
 	Cvar_RegisterVariable (&rcon_password);
+	Cvar_RegisterVariable (&net_prefer_ipv6);
 	Cvar_RegisterVariable (&net_webrtc_broker);
 }
 
@@ -288,12 +294,23 @@ bool NET_CompareBaseAdr (netadr_t a, netadr_t b)
 		return false;
 	if (a.type == NA_LOOPBACK)
 		return true;
-	return memcmp (a.ip, b.ip, 4) == 0;
+	return memcmp (a.ip, b.ip, sizeof(a.ip)) == 0;
 }
 
 bool NET_CompareAdr (netadr_t a, netadr_t b)
 {
 	return NET_CompareBaseAdr (a, b) && (a.type == NA_LOOPBACK || a.port == b.port);
+}
+
+bool NET_IsLoopback (netadr_t a)
+{
+	static const byte	ipv6loopback[16] = {[15] = 1};
+
+	if (a.type == NA_LOOPBACK)
+		return true;
+	if (a.type != NA_IP && a.type != NA_WS && a.type != NA_RTCCLIENT)
+		return false;
+	return NET_IsIPv4 (a) ? a.ip[12] == 127 : !memcmp (a.ip, ipv6loopback, sizeof(a.ip));
 }
 
 bool NET_IsLocalAddress (netadr_t a)
@@ -305,12 +322,12 @@ bool NET_IsLocalAddress (netadr_t a)
 		return true;
 	if (a.type != NA_IP)
 		return false;
-	if (a.ip[0] == 127)
+	if (NET_IsLoopback (a))
 		return true;
 	for (i = 0; i < 2; i++)
 	{
 		own = NET_SocketAddress ((netsrc_t)i);
-		if (own.type == NA_IP && !memcmp (own.ip, a.ip, 4))
+		if (own.type == NA_IP && !memcmp (own.ip, a.ip, sizeof(a.ip)))
 			return true;
 	}
 	return false;
@@ -326,7 +343,8 @@ char *NET_AdrToString (netadr_t a)
 		return (char *)UDP_URLToString (a, true);
 	if (a.type == NA_RTC)
 		return (char *)RTC_AdrToString (a, true);
-	snprintf (s, sizeof(s), "%i.%i.%i.%i:%i", a.ip[0], a.ip[1], a.ip[2], a.ip[3],
+	// IPv6's in [ ], as its colons aren't the port's
+	snprintf (s, sizeof(s), NET_IsIPv4 (a) ? "%s:%i" : "[%s]:%i", NET_IPToString (a.ip),
 		(unsigned short)BigShort ((short)a.port));
 	return s;
 }
@@ -341,7 +359,7 @@ char *NET_BaseAdrToString (netadr_t a)
 		return (char *)UDP_URLToString (a, false);
 	if (a.type == NA_RTC)
 		return (char *)RTC_AdrToString (a, false);
-	snprintf (s, sizeof(s), "%i.%i.%i.%i", a.ip[0], a.ip[1], a.ip[2], a.ip[3]);
+	Q_strncpyz (s, NET_IPToString (a.ip), sizeof(s));
 	return s;
 }
 
@@ -354,6 +372,7 @@ idnewt
 idnewt:28000
 192.246.40.70
 192.246.40.70:28000
+2001:db8::1, [2001:db8::1]:28000 (IPv6's, its port after [ ])
 ws://idnewt:28000/path, wss://idnewt/path (where the platform's packets go to URLs: a browser's)
 rtc://broker/room, rtcs://broker:27950/udp/192.246.40.70:28000 (WebRTC)
 1234-5678 (an invitation code: room 12345678 at net_webrtc_broker)
@@ -362,7 +381,7 @@ rtc://broker/room, rtcs://broker:27950/udp/192.246.40.70:28000 (WebRTC)
 bool NET_StringToAdr (const char *s, netadr_t *a)
 {
 	char			copy[128], room[9], url[256];
-	char			*colon;
+	char			*host = copy, *colon, *end;
 	unsigned short	port = 0;
 
 	if (!strcmp (s, "local") || !strcmp (s, "loopback"))
@@ -378,8 +397,21 @@ bool NET_StringToAdr (const char *s, netadr_t *a)
 
 	Q_strncpyz (copy, s, sizeof(copy));
 
-	// strip off a trailing :port if present
-	colon = strrchr (copy, ':');
+	// strip off a trailing :port if present: after [ ] around an IPv6
+	// address, else after a host's one colon (an IPv6 address alone has more)
+	colon = NULL;
+	if (copy[0] == '[')
+	{
+		end = strchr (copy, ']');
+		if (!end || (end[1] && end[1] != ':'))
+			return false;
+		*end = 0;
+		host = copy + 1;
+		if (end[1])
+			colon = end + 1;
+	}
+	else if (strchr (copy, ':') == strrchr (copy, ':'))
+		colon = strchr (copy, ':');
 	if (colon)
 	{
 		*colon = 0;
@@ -387,7 +419,7 @@ bool NET_StringToAdr (const char *s, netadr_t *a)
 	}
 
 	// a browser has no UDP, nor DNS: a host there is a URL's
-	if (!UDP_Resolve (copy, a))
+	if (!UDP_Resolve (host, net_prefer_ipv6.value != 0, a))
 		return UDP_ResolveURL (s, a);
 	a->port = port;
 	return true;

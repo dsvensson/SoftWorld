@@ -242,6 +242,7 @@ Worth knowing:
 | `sv_websocket` | the server takes browsers' clients over WebSocket, on TCP at its port (1, the default) |
 | `sv_public`, `sv_webrtc_room` | 1 (the default): the server takes clients over WebRTC at the broker, on its list, in the room `sv_webrtc_room` names or else under an invitation code made once a run, which the console tells; 0 not |
 | `net_webrtc_broker`, `connect 1234-5678` | the WebRTC broker public servers host at and invitation codes are rooms at, FTE's master `rtcs://master.frag-net.com` by default; join a server by its invitation code |
+| `net_prefer_ipv6` | 1: a name with both IPv4 and IPv6 addresses is reached at its IPv6 one; 0 (the default) at its IPv4 one |
 | `cl_idlefps` | frame rate cap while the window isn't the focus, 50 by default; 0 is `cl_maxfps`'s |
 | `cl_truelightning` | how far the lightning beam of the player whose view you see (yours, or the one a demo or spectating follows) turns toward the view, hiding its lag; 1, the default, all the way |
 | `demo_speed`, `pause` | MVD playback speed, and pause |
@@ -250,6 +251,17 @@ Worth knowing:
 | `demo_itemtimers`, `demo_itemrings` | KTX's item announcements, as a list and as rings on the floor |
 | `f_version`, `f_system`, `f_modified` | answered in chat as ezQuake answers them; `f_modified` also as a command, and `allow_f_system 0` answers `f_system` with "disabled" |
 | `memstats` | memory by use |
+
+### IPv6
+
+The native programs take IPv6 with IPv4: a server listens on both at its port (UDP, and TCP for
+WebSocket), on one socket where the system has IPv6, and `-ip` binds one address of either.
+`connect 2001:db8::1`, or `[2001:db8::1]:27500` with a port, as `qtvplay` takes it too. A name
+with both addresses is reached at its IPv4 one, as most QuakeWorld servers listen there alone;
+`net_prefer_ipv6 1` takes the IPv6 one. A server's WebRTC clients come over either, so a server
+behind a carrier's NAT on IPv4 may still be reached on IPv6. `addip` bans IPv6 addresses and
+prefixes as IPv4's: `addip 2001:db8::1`, `addip 2001:db8::/32`, `addip 10.0.0.0/8`, and id's
+`addip 192.246.40`, where numbers that are 0 or left out match any.
 
 ### In a browser
 
@@ -319,8 +331,8 @@ code made once a run, eight digits the console tells as `Invitation code: 1234-5
 should another server have them). `connect 1234-5678` joins it, in the native programs and the
 page; FTE's clients connect by the room's address, `rtcs://master.frag-net.com/12345678`.
 
-The server knows its WebRTC clients by their IPv4 address, as its UDP clients, and talks to
-them from ports of their own, which a firewall must let through. A client already in stays when
+The server knows its WebRTC clients by their address, IPv4's or IPv6's, as its UDP clients,
+and talks to them from ports of their own, which a firewall must let through. A client already in stays when
 the broker goes; the server takes the room again when it is back.
 
 FTE's servers send a packet over WebRTC whole, and a big one is lost on the way: the client

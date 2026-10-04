@@ -17,47 +17,104 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// net_udp_posix.c -- UDP sockets over BSD sockets, on macOS and Linux
+// net_udp_posix.c -- UDP sockets over BSD sockets, on macOS and Linux, IPv4's
+// and IPv6's (net_posix.h)
 
 #include "args.h"
 #include "mem.h"
+#include "net_posix.h"
 #include "net_socket.h"
 #include "print.h"
 #include "sys.h"
 #include "posix_local.h"
 
-#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <netdb.h>
-#include <netinet/in.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <unistd.h>
 
 struct udpsocket_s
 {
 	int			socket;
+	int			family;		// AF_INET6, taking IPv4's too, or AF_INET
 	netadr_t	address;
 };
 
-static void NetadrToSockadr (const netadr_t *a, struct sockaddr_in *s)
+socklen_t Posix_ToSockaddr (const netadr_t *a, int family, struct sockaddr_storage *s)
 {
+	struct sockaddr_in	*in = (struct sockaddr_in *)s;
+	struct sockaddr_in6	*in6 = (struct sockaddr_in6 *)s;
+
 	// no sin_len: macOS takes the length from the call's
 	memset (s, 0, sizeof(*s));
-	s->sin_family = AF_INET;
-	memcpy (&s->sin_addr, a->ip, 4);
-	s->sin_port = a->port;
+	if (family == AF_INET6)
+	{
+		in6->sin6_family = AF_INET6;
+		memcpy (&in6->sin6_addr, a->ip, 16);
+		in6->sin6_port = a->port;
+		return sizeof(*in6);
+	}
+	if (!NET_IsIPv4 (*a))
+		return 0;
+	in->sin_family = AF_INET;
+	memcpy (&in->sin_addr, a->ip + 12, 4);
+	in->sin_port = a->port;
+	return sizeof(*in);
 }
 
-static void SockadrToNetadr (const struct sockaddr_in *s, netadr_t *a)
+void Posix_FromSockaddr (const struct sockaddr_storage *s, netadr_t *a)
 {
 	memset (a, 0, sizeof(*a));
 	a->type = NA_IP;
-	memcpy (a->ip, &s->sin_addr, 4);
-	a->port = s->sin_port;
+	if (s->ss_family == AF_INET6)
+	{
+		memcpy (a->ip, &((const struct sockaddr_in6 *)s)->sin6_addr, 16);
+		a->port = ((const struct sockaddr_in6 *)s)->sin6_port;
+	}
+	else
+	{
+		NET_SetIPv4 (a, &((const struct sockaddr_in *)s)->sin_addr);
+		a->port = ((const struct sockaddr_in *)s)->sin_port;
+	}
+}
+
+int Posix_Socket (int type, int port, struct sockaddr_storage *address, socklen_t *length)
+{
+	netadr_t	a = {.type = NA_IP};
+	int			s, i, family = AF_INET6;
+
+	//ZOID -- check for interface binding option
+	if ((i = COM_CheckParm ("-ip")) != 0 && i + 1 < com_argc)
+	{
+		if (!NET_ParseIP (com_argv[i + 1], a.ip))
+			Sys_Error ("Bad -ip address %s", com_argv[i + 1]);
+		if (type == SOCK_DGRAM)
+			Con_Printf ("Binding to IP Interface Address of %s\n", com_argv[i + 1]);
+		family = NET_IsIPv4 (a) ? AF_INET : AF_INET6;
+		s = socket (family, type, 0);
+	}
+	// every interface's, IPv6's (::) and IPv4's, where the system has IPv6
+	else if ((s = socket (AF_INET6, type, 0)) >= 0)
+		setsockopt (s, IPPROTO_IPV6, IPV6_V6ONLY, &(int){0}, sizeof(int));
+	else
+	{
+		family = AF_INET;
+		NET_SetIPv4 (&a, (const byte[4]){0});
+		s = socket (AF_INET, type, 0);
+	}
+	if (s < 0)
+		return -1;
+	if (fcntl (s, F_SETFL, fcntl (s, F_GETFL) | O_NONBLOCK) < 0)
+	{
+		close (s);
+		return -1;
+	}
+	a.port = port == PORT_ANY ? 0 : htons ((unsigned short)port);
+	*length = Posix_ToSockaddr (&a, family, address);
+	return s;
 }
 
 /*
@@ -78,17 +135,24 @@ void UDP_Shutdown (void)
 UDP_Resolve
 ====================
 */
-bool UDP_Resolve (const char *host, netadr_t *a)
+bool UDP_Resolve (const char *host, bool ipv6, netadr_t *a)
 {
-	struct addrinfo	hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
-	struct addrinfo	*result;
+	struct addrinfo	hints = {.ai_family = AF_UNSPEC, .ai_socktype = SOCK_DGRAM};
+	struct addrinfo	*result, *r;
 
 	if (getaddrinfo (host, NULL, &hints, &result) != 0 || !result)
 		return false;
 
-	SockadrToNetadr ((const struct sockaddr_in *)result->ai_addr, a);
+	// the family preferred, or else the other
+	for (r = result ; r && r->ai_family != (ipv6 ? AF_INET6 : AF_INET) ; r = r->ai_next)
+		;
+	if (!r)
+		for (r = result ; r && r->ai_family != AF_INET && r->ai_family != AF_INET6 ; r = r->ai_next)
+			;
+	if (r)
+		Posix_FromSockaddr ((const struct sockaddr_storage *)r->ai_addr, a);
 	freeaddrinfo (result);
-	return true;
+	return r != NULL;
 }
 
 // no URLs here: a browser's (net_ws_web.c)
@@ -116,36 +180,23 @@ Binds to -ip if given, otherwise to every interface
 udpsocket_t *UDP_Open (int port)
 {
 	udpsocket_t	*s;
-	struct sockaddr_in	address = {.sin_family = AF_INET};
+	struct sockaddr_storage	address;
 	struct ifaddrs	*interfaces, *ifa;
-	socklen_t	namelen;
-	int		i;
+	netadr_t	bound;
+	socklen_t	length, namelen;
 
 	s = Mem_Calloc (1, sizeof(*s));
 
-	s->socket = socket (PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	s->socket = Posix_Socket (SOCK_DGRAM, port, &address, &length);
 	if (s->socket < 0)
 		Sys_Error ("UDP_Open: socket: %s", strerror (errno));
-
-	if (fcntl (s->socket, F_SETFL, fcntl (s->socket, F_GETFL) | O_NONBLOCK) < 0)
-		Sys_Error ("UDP_Open: fcntl O_NONBLOCK: %s", strerror (errno));
+	s->family = address.ss_family;
 
 	// room for a burst of download chunks between two reads; the default
 	// holds a few dozen
 	setsockopt (s->socket, SOL_SOCKET, SO_RCVBUF, &(int){1 << 21}, sizeof(int));
 
-//ZOID -- check for interface binding option
-	if ((i = COM_CheckParm("-ip")) != 0 && i + 1 < com_argc)
-	{
-		if (inet_pton (AF_INET, com_argv[i+1], &address.sin_addr) != 1)
-			Sys_Error ("UDP_Open: bad -ip address %s", com_argv[i+1]);
-		Con_Printf("Binding to IP Interface Address of %s\n", com_argv[i+1]);
-	}
-	else
-		address.sin_addr.s_addr = INADDR_ANY;
-
-	address.sin_port = port == PORT_ANY ? 0 : htons ((unsigned short)port);
-	if (bind (s->socket, (struct sockaddr *)&address, sizeof(address)) < 0)
+	if (bind (s->socket, (struct sockaddr *)&address, length) < 0)
 	{
 		Con_Printf ("UDP port %i: %s\n", port, strerror (errno));
 		close (s->socket);
@@ -156,15 +207,16 @@ udpsocket_t *UDP_Open (int port)
 	// let Sys_WaitUntil wake up when a packet arrives
 	Sys_AddWaitFd (s->socket);
 
-	// this machine's address: the first interface that is up and not loopback
-	UDP_Resolve ("127.0.0.1", &s->address);
+	// this machine's address: the first IPv4 interface that is up and not
+	// loopback
+	UDP_Resolve ("127.0.0.1", false, &s->address);
 	if (!getifaddrs (&interfaces))
 	{
 		for (ifa = interfaces ; ifa ; ifa = ifa->ifa_next)
 			if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET
 				&& (ifa->ifa_flags & IFF_UP) && !(ifa->ifa_flags & IFF_LOOPBACK))
 			{
-				SockadrToNetadr ((const struct sockaddr_in *)ifa->ifa_addr, &s->address);
+				Posix_FromSockaddr ((const struct sockaddr_storage *)ifa->ifa_addr, &s->address);
 				break;
 			}
 		freeifaddrs (interfaces);
@@ -172,7 +224,8 @@ udpsocket_t *UDP_Open (int port)
 	namelen = sizeof(address);
 	if (getsockname (s->socket, (struct sockaddr *)&address, &namelen) < 0)
 		Sys_Error ("UDP_Open: getsockname: %s", strerror (errno));
-	s->address.port = address.sin_port;
+	Posix_FromSockaddr (&address, &bound);
+	s->address.port = bound.port;
 
 	return s;
 }
@@ -196,7 +249,7 @@ UDP_Recv
 */
 int UDP_Recv (udpsocket_t *s, byte *buf, int maxlen, netadr_t *from)
 {
-	struct sockaddr_in	addr;
+	struct sockaddr_storage	addr;
 	socklen_t	addrlen;
 	ssize_t		ret;
 
@@ -213,7 +266,7 @@ int UDP_Recv (udpsocket_t *s, byte *buf, int maxlen, netadr_t *from)
 			Sys_Error ("UDP_Recv: %s", strerror (errno));
 		}
 
-		SockadrToNetadr (&addr, from);
+		Posix_FromSockaddr (&addr, from);
 		// a datagram that didn't fit is cut to maxlen
 		if (ret == maxlen)
 		{
@@ -232,10 +285,14 @@ UDP_Send
 */
 void UDP_Send (udpsocket_t *s, const void *data, int length, const netadr_t *to)
 {
-	struct sockaddr_in	addr;
+	struct sockaddr_storage	addr;
+	socklen_t	addrlen;
 
-	NetadrToSockadr (to, &addr);
-	if (sendto (s->socket, data, (size_t)length, 0, (struct sockaddr *)&addr, sizeof(addr)) >= 0)
+	// an IPv6 address, and this socket IPv4's alone
+	addrlen = Posix_ToSockaddr (to, s->family, &addr);
+	if (!addrlen)
+		return;
+	if (sendto (s->socket, data, (size_t)length, 0, (struct sockaddr *)&addr, addrlen) >= 0)
 		return;
 
 	if (errno == EWOULDBLOCK || errno == EAGAIN || errno == ENOBUFS)

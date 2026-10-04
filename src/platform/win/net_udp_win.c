@@ -17,10 +17,9 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// net_udp_win.c -- UDP sockets over Winsock 2
+// net_udp_win.c -- UDP sockets over Winsock 2, IPv4's and IPv6's (net_win.h)
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#include "net_win.h"
 
 #include "args.h"
 #include "mem.h"
@@ -34,24 +33,84 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 struct udpsocket_s
 {
 	SOCKET	socket;
+	int		family;		// AF_INET6, taking IPv4's too, or AF_INET
 	HANDLE	event;		// auto reset, signaled when packets arrive
 	netadr_t	address;
 };
 
-static void NetadrToSockadr (const netadr_t *a, struct sockaddr_in *s)
+int Win_ToSockaddr (const netadr_t *a, int family, struct sockaddr_storage *s)
 {
+	struct sockaddr_in	*in = (struct sockaddr_in *)s;
+	struct sockaddr_in6	*in6 = (struct sockaddr_in6 *)s;
+
 	memset (s, 0, sizeof(*s));
-	s->sin_family = AF_INET;
-	memcpy (&s->sin_addr, a->ip, 4);
-	s->sin_port = a->port;
+	if (family == AF_INET6)
+	{
+		in6->sin6_family = AF_INET6;
+		memcpy (&in6->sin6_addr, a->ip, 16);
+		in6->sin6_port = a->port;
+		return sizeof(*in6);
+	}
+	if (!NET_IsIPv4 (*a))
+		return 0;
+	in->sin_family = AF_INET;
+	memcpy (&in->sin_addr, a->ip + 12, 4);
+	in->sin_port = a->port;
+	return sizeof(*in);
 }
 
-static void SockadrToNetadr (const struct sockaddr_in *s, netadr_t *a)
+void Win_FromSockaddr (const struct sockaddr_storage *s, netadr_t *a)
 {
 	memset (a, 0, sizeof(*a));
 	a->type = NA_IP;
-	memcpy (a->ip, &s->sin_addr, 4);
-	a->port = s->sin_port;
+	if (s->ss_family == AF_INET6)
+	{
+		memcpy (a->ip, &((const struct sockaddr_in6 *)s)->sin6_addr, 16);
+		a->port = ((const struct sockaddr_in6 *)s)->sin6_port;
+	}
+	else
+	{
+		NET_SetIPv4 (a, &((const struct sockaddr_in *)s)->sin_addr);
+		a->port = ((const struct sockaddr_in *)s)->sin_port;
+	}
+}
+
+SOCKET Win_Socket (int type, int port, struct sockaddr_storage *address, int *length)
+{
+	netadr_t	a = {.type = NA_IP};
+	SOCKET		s;
+	u_long		nonblocking = 1;
+	int			i, family = AF_INET6;
+
+	//ZOID -- check for interface binding option
+	if ((i = COM_CheckParm ("-ip")) != 0 && i + 1 < com_argc)
+	{
+		if (!NET_ParseIP (com_argv[i + 1], a.ip))
+			Sys_Error ("Bad -ip address %s", com_argv[i + 1]);
+		if (type == SOCK_DGRAM)
+			Con_Printf ("Binding to IP Interface Address of %s\n", com_argv[i + 1]);
+		family = NET_IsIPv4 (a) ? AF_INET : AF_INET6;
+		s = socket (family, type, 0);
+	}
+	// every interface's, IPv6's (::) and IPv4's, where the system has IPv6
+	else if ((s = socket (AF_INET6, type, 0)) != INVALID_SOCKET)
+		setsockopt (s, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&(int){0}, sizeof(int));
+	else
+	{
+		family = AF_INET;
+		NET_SetIPv4 (&a, (const byte[4]){0});
+		s = socket (AF_INET, type, 0);
+	}
+	if (s == INVALID_SOCKET)
+		return INVALID_SOCKET;
+	if (ioctlsocket (s, FIONBIO, &nonblocking) == SOCKET_ERROR)
+	{
+		closesocket (s);
+		return INVALID_SOCKET;
+	}
+	a.port = port == PORT_ANY ? 0 : htons ((unsigned short)port);
+	*length = Win_ToSockaddr (&a, family, address);
+	return s;
 }
 
 /*
@@ -77,17 +136,24 @@ void UDP_Shutdown (void)
 UDP_Resolve
 ====================
 */
-bool UDP_Resolve (const char *host, netadr_t *a)
+bool UDP_Resolve (const char *host, bool ipv6, netadr_t *a)
 {
-	struct addrinfo	hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
-	struct addrinfo	*result;
+	struct addrinfo	hints = {.ai_family = AF_UNSPEC, .ai_socktype = SOCK_DGRAM};
+	struct addrinfo	*result, *r;
 
 	if (getaddrinfo (host, NULL, &hints, &result) != 0 || !result)
 		return false;
 
-	SockadrToNetadr ((const struct sockaddr_in *)result->ai_addr, a);
+	// the family preferred, or else the other
+	for (r = result ; r && r->ai_family != (ipv6 ? AF_INET6 : AF_INET) ; r = r->ai_next)
+		;
+	if (!r)
+		for (r = result ; r && r->ai_family != AF_INET && r->ai_family != AF_INET6 ; r = r->ai_next)
+			;
+	if (r)
+		Win_FromSockaddr ((const struct sockaddr_storage *)r->ai_addr, a);
 	freeaddrinfo (result);
-	return true;
+	return r != NULL;
 }
 
 // no URLs here: a browser's (net_ws_web.c)
@@ -115,36 +181,23 @@ Binds to -ip if given, otherwise to every interface
 udpsocket_t *UDP_Open (int port)
 {
 	udpsocket_t	*s;
-	struct sockaddr_in	address = {.sin_family = AF_INET};
-	u_long	nonblocking = 1;
-	int		i, namelen;
+	struct sockaddr_storage	address;
+	netadr_t	bound;
+	int		length, namelen;
 	char	hostname[256];
 
 	s = Mem_Calloc (1, sizeof(*s));
 
-	s->socket = socket (PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	s->socket = Win_Socket (SOCK_DGRAM, port, &address, &length);
 	if (s->socket == INVALID_SOCKET)
 		Sys_Error ("UDP_Open: socket: Winsock error %i", WSAGetLastError ());
-
-	if (ioctlsocket (s->socket, FIONBIO, &nonblocking) == SOCKET_ERROR)
-		Sys_Error ("UDP_Open: ioctl FIONBIO: Winsock error %i", WSAGetLastError ());
+	s->family = address.ss_family;
 
 	// room for a burst of download chunks between two reads; the default
 	// 64 KB holds about 60
 	setsockopt (s->socket, SOL_SOCKET, SO_RCVBUF, (const char *)&(int){1 << 21}, sizeof(int));
 
-//ZOID -- check for interface binding option
-	if ((i = COM_CheckParm("-ip")) != 0 && i + 1 < com_argc)
-	{
-		if (inet_pton (AF_INET, com_argv[i+1], &address.sin_addr) != 1)
-			Sys_Error ("UDP_Open: bad -ip address %s", com_argv[i+1]);
-		Con_Printf("Binding to IP Interface Address of %s\n", com_argv[i+1]);
-	}
-	else
-		address.sin_addr.s_addr = INADDR_ANY;
-
-	address.sin_port = port == PORT_ANY ? 0 : htons ((unsigned short)port);
-	if (bind (s->socket, (struct sockaddr *)&address, sizeof(address)) == SOCKET_ERROR)
+	if (bind (s->socket, (struct sockaddr *)&address, length) == SOCKET_ERROR)
 	{
 		Con_Printf ("UDP port %i: Winsock error %i\n", port, WSAGetLastError ());
 		closesocket (s->socket);
@@ -159,12 +212,13 @@ udpsocket_t *UDP_Open (int port)
 	Sys_AddWaitHandle (s->event);
 
 	// determine my name & address
-	if (gethostname (hostname, sizeof(hostname)) != 0 || !UDP_Resolve (hostname, &s->address))
-		UDP_Resolve ("127.0.0.1", &s->address);
+	if (gethostname (hostname, sizeof(hostname)) != 0 || !UDP_Resolve (hostname, false, &s->address))
+		UDP_Resolve ("127.0.0.1", false, &s->address);
 	namelen = sizeof(address);
 	if (getsockname (s->socket, (struct sockaddr *)&address, &namelen) == SOCKET_ERROR)
 		Sys_Error ("UDP_Open: getsockname: Winsock error %i", WSAGetLastError ());
-	s->address.port = address.sin_port;
+	Win_FromSockaddr (&address, &bound);
+	s->address.port = bound.port;
 
 	return s;
 }
@@ -189,7 +243,7 @@ UDP_Recv
 */
 int UDP_Recv (udpsocket_t *s, byte *buf, int maxlen, netadr_t *from)
 {
-	struct sockaddr_in	addr;
+	struct sockaddr_storage	addr;
 	int		ret, addrlen, err;
 
 	while (1)
@@ -208,7 +262,7 @@ int UDP_Recv (udpsocket_t *s, byte *buf, int maxlen, netadr_t *from)
 			ret = maxlen;
 		}
 
-		SockadrToNetadr (&addr, from);
+		Win_FromSockaddr (&addr, from);
 		if (ret == maxlen)
 		{
 			Con_Printf ("Oversize packet from %s\n", NET_AdrToString (*from));
@@ -226,11 +280,14 @@ UDP_Send
 */
 void UDP_Send (udpsocket_t *s, const void *data, int length, const netadr_t *to)
 {
-	struct sockaddr_in	addr;
-	int		err;
+	struct sockaddr_storage	addr;
+	int		addrlen, err;
 
-	NetadrToSockadr (to, &addr);
-	if (sendto (s->socket, data, length, 0, (struct sockaddr *)&addr, sizeof(addr)) != SOCKET_ERROR)
+	// an IPv6 address, and this socket IPv4's alone
+	addrlen = Win_ToSockaddr (to, s->family, &addr);
+	if (!addrlen)
+		return;
+	if (sendto (s->socket, data, length, 0, (struct sockaddr *)&addr, addrlen) != SOCKET_ERROR)
 		return;
 
 	err = WSAGetLastError ();

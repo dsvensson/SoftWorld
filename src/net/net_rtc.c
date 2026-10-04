@@ -20,9 +20,8 @@
 // other side's (as FTE's servers in a browser send on theirs, which the
 // client reads beside its own). Every 30 s the server tells the broker
 // what it is (SERVERINFO), for the broker's list of servers. Its clients are
-// by the IPv4 address their packets come from (NA_RTCCLIENT; the server's ICE
-// is IPv4's alone), as its UDP clients are; a lost broker loses no client
-// already in.
+// by the address their packets come from, IPv4's or IPv6's (NA_RTCCLIENT), as
+// its UDP clients are; a lost broker loses no client already in.
 //
 // Nothing here waits: what libdatachannel's threads tell (the descriptions and
 // candidates to send, the connections' states, the clients' channels, its
@@ -911,31 +910,36 @@ static bool RTC_RoomAddress (const char *broker, const char *room, netadr_t *a)
 	return false;
 }
 
-// "a.b.c.d:port" (or IPv6's "[::ffff:a.b.c.d]:port") as an NA_RTCCLIENT
+// "address:port", IPv6's address in [ ] or not (its zone left out:
+// fe80::1%eth0), as an NA_RTCCLIENT
 static bool RTC_ClientAddress (const char *s, netadr_t *a)
 {
-	const char	*colon = strrchr (s, ':');
-	int			b[4], port, i, n = 0;
+	char		host[64];
+	const char	*colon = strrchr (s, ':'), *zone;
+	int			length, port;
 
 	if (!colon)
 		return false;
-	if (*s == '[')
+	length = (int)(colon - s);
+	if (*s == '[' && length >= 2 && s[length - 1] == ']')
+	{
 		s++;
-	if (!Q_strncasecmp (s, "::ffff:", 7))
-		s += 7;
-	if (sscanf (s, "%3d.%3d.%3d.%3d%n", &b[0], &b[1], &b[2], &b[3], &n) != 4 || (s[n] != ':' && s[n] != ']'))
+		length -= 2;
+	}
+	zone = memchr (s, '%', (size_t)(length > 0 ? length : 0));
+	if (zone)
+		length = (int)(zone - s);
+	if (length <= 0 || length >= (int)sizeof(host))
 		return false;
+	memcpy (host, s, (size_t)length);
+	host[length] = 0;
 	port = atoi (colon + 1);
 	if (port <= 0 || port > 65535)
 		return false;
 	memset (a, 0, sizeof(*a));
+	if (!NET_ParseIP (host, a->ip))
+		return false;
 	a->type = NA_RTCCLIENT;
-	for (i = 0 ; i < 4 ; i++)
-	{
-		if (b[i] < 0 || b[i] > 255)
-			return false;
-		a->ip[i] = (byte)b[i];
-	}
 	a->port = (unsigned short)BigShort ((short)port);
 	return true;
 }
@@ -977,8 +981,6 @@ static void RTC_NewPeer (int from, const char *relays, double now)
 	atomic_store (&p->channel, -1);
 
 	RTC_IceServers (&config, &servers, rtc_host.adr, relays);
-	// IPv4 alone: the clients are by their IPv4 addresses
-	config.bindAddress = "0.0.0.0";
 	p->pc = rtcCreatePeerConnection (&config);
 	if (p->pc < 0)
 	{
@@ -1108,7 +1110,7 @@ static void RTC_HostPoll (double now)
 			// by where its packets come from
 			if (rtcGetRemoteAddress (p->pc, address, sizeof(address)) < 0 || !RTC_ClientAddress (address, &p->adr))
 			{
-				RTC_Debug ("WebRTC: a client without an IPv4 address (%i)\n", p->peer);
+				RTC_Debug ("WebRTC: a client without an address (%i)\n", p->peer);
 				RTC_ClosePeer (p);
 				continue;
 			}

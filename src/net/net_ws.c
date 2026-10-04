@@ -107,24 +107,6 @@ static void WS_CloseWith (int i, int code)
 	WS_Close (i);
 }
 
-// a dotted IPv4 address
-static bool WS_ParseAddress (const char *s, byte ip[4])
-{
-	int		i, value;
-
-	for (i = 0 ; i < 4 ; i++)
-	{
-		if (*s < '0' || *s > '9')
-			return false;
-		for (value = 0 ; *s >= '0' && *s <= '9' && value <= 255 ; s++)
-			value = value * 10 + *s - '0';
-		if (value > 255 || (i < 3 && *s++ != '.'))
-			return false;
-		ip[i] = (byte)value;
-	}
-	return !*s;
-}
-
 static void WS_Accept (void)
 {
 	tcpsocket_t	*socket;
@@ -141,9 +123,9 @@ static void WS_Accept (void)
 				if (free < 0)
 					free = i;
 			}
-			else if (!ws_conns[i]->open && !memcmp (ws_conns[i]->adr.ip, from.ip, 4))
+			else if (!ws_conns[i]->open && !memcmp (ws_conns[i]->adr.ip, from.ip, sizeof(from.ip)))
 				handshakes++;
-		if (free < 0 || (handshakes >= WS_MAXHANDSHAKES && from.ip[0] != 127))
+		if (free < 0 || (handshakes >= WS_MAXHANDSHAKES && !NET_IsLoopback (from)))
 		{
 			TCP_Close (socket);
 			continue;
@@ -190,7 +172,7 @@ static bool WS_Handshake (int i)
 	wsconn_t	*c = ws_conns[i];
 	wsrequest_t	request;
 	char		reply[512];
-	byte		ip[4];
+	byte		ip[16];
 	int			length;
 
 	length = WS_ParseRequest ((const char *)c->in, c->inlength, &request);
@@ -208,8 +190,8 @@ static bool WS_Handshake (int i)
 		return false;
 	}
 	// a proxy here tells whose connection it is
-	if (c->adr.ip[0] == 127 && request.forwarded[0] && WS_ParseAddress (request.forwarded, ip))
-		memcpy (c->adr.ip, ip, 4);
+	if (NET_IsLoopback (c->adr) && request.forwarded[0] && NET_ParseIP (request.forwarded, ip))
+		memcpy (c->adr.ip, ip, sizeof(c->adr.ip));
 	c->open = true;
 	c->heard = Sys_DoubleTime ();
 	memmove (c->in, c->in + length, (size_t)(c->inlength - length));
@@ -363,7 +345,7 @@ void WS_SendPacket (const void *data, int length, const netadr_t *to)
 
 	for (i = 0 ; i < WS_MAXCONNS ; i++)
 		if (ws_conns[i] && ws_conns[i]->open && ws_conns[i]->adr.port == to->port
-			&& !memcmp (ws_conns[i]->adr.ip, to->ip, 4))
+			&& !memcmp (ws_conns[i]->adr.ip, to->ip, sizeof(to->ip)))
 		{
 			if (!WS_Send (ws_conns[i], WS_BINARY, data, length))
 				WS_Close (i);
