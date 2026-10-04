@@ -40,14 +40,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "cl_local.h"
 
-#define	DEM_CMD			0
-#define	DEM_READ		1
-#define	DEM_SET			2
-#define	DEM_MULTIPLE	3
-#define	DEM_SINGLE		4
-#define	DEM_STATS		5
-#define	DEM_ALL			6
-
 #define	MVD_MAXBLOCK	8192	// the writer's blocks are at most 8092 bytes
 #define	MVD_MAXLAG		1.0		// seconds: a recorded stall longer than this is skipped
 #define	MVD_SPACING		10000	// msec between keyframes

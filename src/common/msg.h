@@ -54,6 +54,7 @@ void	MSG_WriteString (sizebuf_t *sb, const char *s);
 void	MSG_WriteCoord (sizebuf_t *sb, float f);
 void	MSG_WriteAngle (sizebuf_t *sb, float f);
 void	MSG_WriteOrigin (sizebuf_t *sb, float f, unsigned mvdext1);
+void	MSG_WriteAngle16 (sizebuf_t *sb, float f);		// whatever the encoding
 void	MSG_WriteDeltaUsercmd (sizebuf_t *sb, struct usercmd_s *from, struct usercmd_s *cmd);
 
 // entity deltas (svc_packetentities, FTE's statics and baselines), for the

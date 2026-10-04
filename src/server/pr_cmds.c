@@ -301,6 +301,14 @@ static bool PF_centerprint (qcvm_t *vm)
 
 	ClientReliableWrite_Begin (cl, svc_centerprint, 2 + (int)strlen(s));
 	ClientReliableWrite_String (cl, s);
+	if (sv_mvd)
+	{
+		sizebuf_t	*msg = SV_MVDMessage ();
+
+		MSG_WriteByte (msg, svc_centerprint);
+		MSG_WriteString (msg, s);
+		SV_MVDSingle (cl, msg->data, msg->cursize);
+	}
 	return true;
 }
 
@@ -575,6 +583,14 @@ static bool PF_stuffcmd (qcvm_t *vm)
 
 	ClientReliableWrite_Begin (cl, svc_stufftext, 2+(int)strlen(str));
 	ClientReliableWrite_String (cl, str);
+	if (sv_mvd)
+	{
+		sizebuf_t	*msg = SV_MVDMessage ();
+
+		MSG_WriteByte (msg, svc_stufftext);
+		MSG_WriteString (msg, str);
+		SV_MVDSingle (cl, msg->data, msg->cursize);
+	}
 	return true;
 }
 
@@ -775,6 +791,15 @@ static bool PF_lightstyle (qcvm_t *vm)
 			ClientReliableWrite_Char (client, style);
 			ClientReliableWrite_String (client, pr_lightstyles[style]);
 		}
+	if (sv_mvd)
+	{
+		sizebuf_t	*msg = SV_MVDMessage ();
+
+		MSG_WriteByte (msg, svc_lightstyle);
+		MSG_WriteByte (msg, style);
+		MSG_WriteString (msg, pr_lightstyles[style]);
+		SV_MVDAll (msg->data, msg->cursize);
+	}
 	return true;
 }
 
@@ -1005,7 +1030,7 @@ static client_t *Write_GetClient (qcvm_t *vm)
 
 // where a Write* builtin writes: to a buffer, or for msg_entity's client
 // (MSG_ONE, *one) a message of its own, which PF_WriteDone gives to the
-// client's reliable stream; NULL after QC_Error
+// client's reliable stream and to its view on QTV; NULL after QC_Error
 static sizebuf_t *PF_WriteTo (qcvm_t *vm, client_t **one)
 {
 	static byte			data[MAX_MSGLEN];
@@ -1027,6 +1052,7 @@ static bool PF_WriteDone (client_t *one, sizebuf_t *msg)
 	{
 		ClientReliableCheckBlock (one, msg->cursize);
 		ClientReliableWrite_SZ (one, msg->data, msg->cursize);
+		SV_MVDSingle (one, msg->data, msg->cursize);
 	}
 	return true;
 }

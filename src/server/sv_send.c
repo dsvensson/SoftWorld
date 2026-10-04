@@ -135,7 +135,7 @@ EVENT MESSAGES
 =============================================================================
 */
 
-static void SV_PrintToClient(client_t *cl, int level, char *string)
+void SV_PrintToClient(client_t *cl, int level, const char *string)
 {
 	ClientReliableWrite_Begin (cl, svc_print, (int)strlen(string)+3);
 	ClientReliableWrite_Byte (cl, level);
@@ -163,6 +163,7 @@ void SV_ClientPrintf (client_t *cl, int level, char *fmt, ...)
 	va_end (argptr);
 
 	SV_PrintToClient(cl, level, string);
+	SV_MVDPrint (cl, level, string);
 }
 
 /*
@@ -184,6 +185,7 @@ void SV_BroadcastPrintf (int level, char *fmt, ...)
 	va_end (argptr);
 	
 	Sys_Printf ("%s", string);	// print to the console
+	SV_MVDPrint (NULL, level, string);
 
 	for (i=0, cl = svs.clients ; i<MAX_CLIENTS ; i++, cl++)
 	{
@@ -294,6 +296,8 @@ inrange:
 			SZ_Write (&client->datagram, sv.multicast.data, sv.multicast.cursize);
 	}
 
+	// QTV hears and sees it all, as mvdsv's demos do
+	SV_MVDAll (sv.multicast.data, sv.multicast.cursize);
 	SZ_Clear (&sv.multicast);
 }
 
@@ -433,9 +437,10 @@ SV_WriteClientdataToMessage
 */
 static void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
 {
-	int		i;
+	int		i, start;
 	edict_t	*other;
 	edict_t	*ent;
+	sizebuf_t	*mvdmsg;
 
 	ent = client->edict;
 
@@ -451,11 +456,13 @@ static void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
 	if (ent->v.dmg_take || ent->v.dmg_save)
 	{
 		other = PROG_TO_EDICT(ent->v.dmg_inflictor);
+		start = msg->cursize;
 		MSG_WriteByte (msg, svc_damage);
 		MSG_WriteByte (msg, (int)ent->v.dmg_save);
 		MSG_WriteByte (msg, (int)ent->v.dmg_take);
 		for (i=0 ; i<3 ; i++)
 			MSG_WriteCoord (msg, other->v.origin[i] + 0.5f*(other->v.mins[i] + other->v.maxs[i]));
+		SV_MVDSingle (client, msg->data + start, msg->cursize - start);
 	
 		ent->v.dmg_take = 0;
 		ent->v.dmg_save = 0;
@@ -469,6 +476,15 @@ static void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
 			MSG_WriteByte (msg, SV_NoteFixangle (client));
 		for (i=0 ; i < 3 ; i++)
 			MSG_WriteAngle (msg, ent->v.angles[i] );
+		if (sv_mvd && !client->spectator)
+		{	// QTV's names the player
+			mvdmsg = SV_MVDMessage ();
+			MSG_WriteByte (mvdmsg, svc_setangle);
+			MSG_WriteByte (mvdmsg, (int)(client - svs.clients));
+			for (i=0 ; i < 3 ; i++)
+				MSG_WriteAngle (mvdmsg, ent->v.angles[i]);
+			SV_MVDAll (mvdmsg->data, mvdmsg->cursize);
+		}
 		ent->v.fixangle = 0;
 	}
 
@@ -610,6 +626,7 @@ static void SV_UpdateToReliableMessages (void)
 	int			i, j;
 	client_t *client;
 	edict_t *ent;
+	sizebuf_t	*msg;
 
 // check for changes to be sent over the reliable streams to all clients
 	for (i=0, host_client = svs.clients ; i<MAX_CLIENTS ; i++, host_client++)
@@ -633,6 +650,14 @@ static void SV_UpdateToReliableMessages (void)
 			}
 
 			host_client->old_frags = (int)host_client->edict->v.frags;
+			if (sv_mvd)
+			{
+				msg = SV_MVDMessage ();
+				MSG_WriteByte (msg, svc_updatefrags);
+				MSG_WriteByte (msg, i);
+				MSG_WriteShort (msg, host_client->old_frags);
+				SV_MVDAll (msg->data, msg->cursize);
+			}
 		}
 
 		// maxspeed/entgravity changes
@@ -642,11 +667,25 @@ static void SV_UpdateToReliableMessages (void)
 			host_client->entgravity = E_FLOAT(ent, pr.fofs_gravity);
 			ClientReliableWrite_Begin(host_client, svc_entgravity, 5);
 			ClientReliableWrite_Float(host_client, host_client->entgravity);
+			if (sv_mvd)
+			{
+				msg = SV_MVDMessage ();
+				MSG_WriteByte (msg, svc_entgravity);
+				MSG_WriteFloat (msg, host_client->entgravity);
+				SV_MVDSingle (host_client, msg->data, msg->cursize);
+			}
 		}
 		if (pr.fofs_maxspeed && host_client->maxspeed != E_FLOAT(ent, pr.fofs_maxspeed)) {
 			host_client->maxspeed = E_FLOAT(ent, pr.fofs_maxspeed);
 			ClientReliableWrite_Begin(host_client, svc_maxspeed, 5);
 			ClientReliableWrite_Float(host_client, host_client->maxspeed);
+			if (sv_mvd)
+			{
+				msg = SV_MVDMessage ();
+				MSG_WriteByte (msg, svc_maxspeed);
+				MSG_WriteFloat (msg, host_client->maxspeed);
+				SV_MVDSingle (host_client, msg->data, msg->cursize);
+			}
 		}
 
 	}
@@ -670,6 +709,9 @@ static void SV_UpdateToReliableMessages (void)
 			, sv.datagram.cursize);
 	}
 
+	// and to QTV
+	SV_MVDAll (sv.reliable_datagram.data, sv.reliable_datagram.cursize);
+	SV_MVDAll (sv.datagram.data, sv.datagram.cursize);
 	SZ_Clear (&sv.reliable_datagram);
 	SZ_Clear (&sv.datagram);
 }
@@ -773,6 +815,9 @@ void SV_SendClientMessages (void)
 		if (sv.paused)
 			c->netchan.cleartime = host.realtime;
 	}
+
+	// and the frame to QTV's viewers, when one is due
+	SV_MVDFrame ();
 }
 
 

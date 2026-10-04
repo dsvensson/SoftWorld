@@ -93,12 +93,13 @@ cvar_t	sv_websocket = {.name = "sv_websocket", .string = "1",
 		"a binary message as FTE's. Read as a map opens the port; wss:// is a TLS proxy's in front.",
 	.values = (const cvar_value_t[]){{"0", "UDP only"}, {"1", "UDP, and WebSocket on TCP"}, {0}}};
 // clients over WebRTC, through a broker's room, as FTE's servers take them
-// (net_rtc.c)
+// (net_rtc.c); and the game to QTV's viewers (sv_mvd.c)
 cvar_t	sv_public = {.name = "sv_public", .string = "1",
 	.description = "Hosts the game at the WebRTC broker (net_webrtc_broker), on its list of servers, for clients "
 		"over WebRTC: in the room sv_webrtc_room, or else under an invitation code made once a run, which the "
-		"console tells and clients connect to (connect 1234-5678). Read as a map opens the port.",
-	.values = (const cvar_value_t[]){{"0", "Not at the broker"}, {"1", "At the broker"}, {0}}};
+		"console tells and clients connect to (connect 1234-5678). And streams it to QTV's viewers, on TCP at "
+		"the server's port number (qtvplay host:port), qtv_delay seconds behind. Read as a map opens the port.",
+	.values = (const cvar_value_t[]){{"0", "Not at the broker, no QTV"}, {"1", "At the broker, and QTV"}, {0}}};
 cvar_t	sv_webrtc_room = {.name = "sv_webrtc_room", .string = "",
 	.description = "The room a public server (sv_public) hosts at the WebRTC broker, which clients connect to as "
 		"rtc://broker/room (rtcs:// over TLS); empty for the invitation code. Read as a map opens the port."};
@@ -1590,6 +1591,7 @@ static void SV_InitLocal (void)
 	Cvar_RegisterVariable (&sv_websocket);
 	Cvar_RegisterVariable (&sv_public);
 	Cvar_RegisterVariable (&sv_webrtc_room);
+	SV_MVDInit ();
 	Cvar_RegisterVariable (&sv_maxrate);
 	Cvar_RegisterVariable (&sv_maxdrate);
 	Cvar_RegisterVariable (&pm_ktjump);

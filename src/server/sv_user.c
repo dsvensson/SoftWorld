@@ -1099,6 +1099,8 @@ static void SV_Say (bool team)
 	char	*p;
 	char	text[2048];
 	char	t1[32], *t2;
+	unsigned	mask;
+	sizebuf_t	*msg;
 
 	if (Cmd_Argc () < 2)
 		return;
@@ -1157,6 +1159,7 @@ static void SV_Say (bool team)
 
 	Sys_Printf ("%s", text);
 
+	mask = 0;
 	for (j = 0, client = svs.clients; j < MAX_CLIENTS; j++, client++)
 	{
 		if (client->state != cs_spawned)
@@ -1177,8 +1180,23 @@ static void SV_Say (bool team)
 					continue;	// on different teams
 			}
 		}
-		SV_ClientPrintf(client, PRINT_CHAT, "%s", text);
+		if (PRINT_CHAT >= client->messagelevel)
+			SV_PrintToClient (client, PRINT_CHAT, text);
+		mask |= 1u << j;
 	}
+
+	// to QTV once, as mvdsv writes it: what everybody may read to everybody,
+	// else to the views of the players it reached
+	if (!sv_mvd || !mask)
+		return;
+	msg = SV_MVDMessage ();
+	MSG_WriteByte (msg, svc_print);
+	MSG_WriteByte (msg, PRINT_CHAT);
+	MSG_WriteString (msg, text);
+	if (!team && (!host_client->spectator || sv_spectalk.value))
+		SV_MVDAll (msg->data, msg->cursize);
+	else
+		SV_MVDMultiple (mask, msg->data, msg->cursize);
 }
 
 
@@ -1274,6 +1292,14 @@ void SV_TogglePause (const char *msg)
 			continue;
 		ClientReliableWrite_Begin (cl, svc_setpause, 2);
 		ClientReliableWrite_Byte (cl, sv.paused);
+	}
+	if (sv_mvd)
+	{
+		sizebuf_t	*mvdmsg = SV_MVDMessage ();
+
+		MSG_WriteByte (mvdmsg, svc_setpause);
+		MSG_WriteByte (mvdmsg, sv.paused);
+		SV_MVDAll (mvdmsg->data, mvdmsg->cursize);
 	}
 }
 

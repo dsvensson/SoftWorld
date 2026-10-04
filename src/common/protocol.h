@@ -332,6 +332,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	PF_ONGROUND		(1<<22)		// ZQuake; bit 14 on the wire without FTE_PEXT_TRANS
 #define	PF_SOLID		(1<<23)		// ZQuake; bit 15 on the wire without FTE_PEXT_TRANS
 
+// an MVD's blocks: [msec][type | player<<3][dem_multiple: long mask][long
+// length][messages]. dem_read and dem_all go to everybody, dem_single and
+// dem_stats to one player's view, dem_multiple to the players in its mask
+// (none: mvdsv's hidden data)
+#define	DEM_CMD			0
+#define	DEM_READ		1
+#define	DEM_SET			2
+#define	DEM_MULTIPLE	3
+#define	DEM_SINGLE		4
+#define	DEM_STATS		5
+#define	DEM_ALL			6
+
 // an MVD's playerinfo flags: what is sent; the rest is as last sent
 #define	DF_ORIGIN		(1<<0)		// three bits, one per axis
 #define	DF_ANGLES		(1<<3)		// three bits

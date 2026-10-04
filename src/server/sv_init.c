@@ -392,6 +392,9 @@ void SV_SpawnServer (char *server)
 
 	Con_DPrintf ("SpawnServer: %s\n",server);
 
+	// the old level's last events out to QTV's viewers
+	SV_MVDEndLevel ();
+
 	// the first map opens the server's port; a listen server can do without
 	if (NET_SocketAddress (NS_SERVER).type == NA_INVALID && !NET_OpenSocket (NS_SERVER, svs.port))
 	{
@@ -541,6 +544,7 @@ void SV_SpawnServer (char *server)
 	sv.signon_buffer_size[sv.num_signon_buffers-1] = sv.signon.cursize;
 
 	Info_SetValueForKey (svs.info, "map", sv.name, MAX_SERVERINFO_STRING, SV_InfoCharset ());
+	SV_MVDNewLevel ();
 	Con_DPrintf ("Server spawned.\n");
 }
 

@@ -486,6 +486,7 @@ void SV_BroadcastPrintf (int level, char *fmt, ...);
 void SV_BroadcastCommand (char *fmt, ...);
 void SV_SendMessagesToAll (void);
 void SV_FindModelNumbers (void);
+void SV_PrintToClient (client_t *cl, int level, const char *string);	// whatever its messagelevel
 // the stats a client is shown: its player's, or the one's a spectator tracks
 void SV_ClientStats (const client_t *client, int stats[MAX_STATS]);
 
@@ -521,6 +522,23 @@ void SV_EntityState (const edict_t *ent, int number, entity_state_t *state);
 // the entities, as a delta from a frame the client has, or whole without one
 void SV_EmitPacketEntities (const client_t *client, const packet_entities_t *from, const packet_entities_t *to,
 	sizebuf_t *msg);
+
+//
+// sv_mvd.c: the game as an MVD for QTV's viewers, written while any watch
+// (sv_mvd). The game's events go to everybody, to a player's view (a player's
+// only), or to the views of a mask's players; SV_MVDMessage is a buffer to
+// write one in first.
+//
+extern bool sv_mvd;
+sizebuf_t *SV_MVDMessage (void);
+void SV_MVDAll (const void *data, int length);
+void SV_MVDSingle (const client_t *cl, const void *data, int length);
+void SV_MVDMultiple (unsigned mask, const void *data, int length);
+void SV_MVDPrint (const client_t *cl, int level, const char *text);	// cl NULL: to everybody
+void SV_MVDFrame (void);		// after the clients' messages
+void SV_MVDEndLevel (void);		// before a level spawns
+void SV_MVDNewLevel (void);		// after
+void SV_MVDInit (void);
 
 // sv_main.c: whether a client may join (spectator false) or observe; prints
 // the reason to it when not

@@ -16,6 +16,7 @@ server, a dedicated server, and the protocol extensions today's servers and clie
   to UDP: servers take browsers' clients on TCP at their port, as FTE's do. WebRTC to FTE's
   servers, through their brokers.
 - **Demos:** QWD and MVD playback, MVD seeking (`demo_jump`), QTV (`qtvplay`), item timers.
+  Servers stream their game to QTV's viewers at their port, as mvdsv's do.
 - **QuakeC:** a hardened VM with FTE's opcodes and builtins, multiprogs and threads; FTE's
   client-side QuakeC (CSQC), enough for KTX's weapon prediction.
 
@@ -240,7 +241,8 @@ Worth knowing:
 | `r_profile 1`, `r_profile_show` | time a frame takes, by stage |
 | `cl_maxfps` | frame rate cap; 0 is none but the display's |
 | `sv_websocket` | the server takes browsers' clients over WebSocket, on TCP at its port (1, the default) |
-| `sv_public`, `sv_webrtc_room` | 1 (the default): the server takes clients over WebRTC at the broker, on its list, in the room `sv_webrtc_room` names or else under an invitation code made once a run, which the console tells; 0 not |
+| `sv_public`, `sv_webrtc_room` | 1 (the default): the server takes clients over WebRTC at the broker, on its list, in the room `sv_webrtc_room` names or else under an invitation code made once a run, which the console tells, and streams its game to QTV's viewers; 0 not |
+| `qtv_delay` | seconds a server's QTV stream runs behind the game, so that a player can't watch their opponents through it; 10 by default, 0 none |
 | `net_webrtc_broker`, `connect 1234-5678` | the WebRTC broker public servers host at and invitation codes are rooms at, FTE's master `rtcs://master.frag-net.com` by default; join a server by its invitation code |
 | `net_prefer_ipv6` | 1: a name with both IPv4 and IPv6 addresses is reached at its IPv6 one; 0 (the default) at its IPv4 one |
 | `cl_idlefps` | frame rate cap while the window isn't the focus, 50 by default; 0 is `cl_maxfps`'s |
@@ -255,13 +257,23 @@ Worth knowing:
 ### IPv6
 
 The native programs take IPv6 with IPv4: a server listens on both at its port (UDP, and TCP for
-WebSocket), on one socket where the system has IPv6, and `-ip` binds one address of either.
+WebSocket and QTV), on one socket where the system has IPv6, and `-ip` binds one address of either.
 `connect 2001:db8::1`, or `[2001:db8::1]:27500` with a port, as `qtvplay` takes it too. A name
 with both addresses is reached at its IPv4 one, as most QuakeWorld servers listen there alone;
 `net_prefer_ipv6 1` takes the IPv6 one. A server's WebRTC clients come over either, so a server
 behind a carrier's NAT on IPv4 may still be reached on IPv6. `addip` bans IPv6 addresses and
 prefixes as IPv4's: `addip 2001:db8::1`, `addip 2001:db8::/32`, `addip 10.0.0.0/8`, and id's
 `addip 192.246.40`, where numbers that are 0 or left out match any.
+
+### QTV
+
+A public server (`sv_public 1`, the default) streams its game to QTV's viewers at its port, on
+TCP, as mvdsv's `qtv_streamport` does: `qtvplay host:27500` in SoftWorld, ezQuake or FTE, or a
+relay (qtv, qtv-go, fteqtv) with the server as its source. The stream runs `qtv_delay` seconds
+behind the game, 10 by default, so that a player can't watch their opponents through it, and a
+viewer joining starts from where the game was a second or less before that. A level change goes
+on in the same stream. The game is written once, however many watch; a viewer too slow for it is
+dropped rather than waited for. 64 watch at most: a relay in front serves more.
 
 ### In a browser
 
@@ -306,8 +318,9 @@ TLS proxy in front, which may say who its client is
 caddy reverse-proxy --from quake.example.com --to 127.0.0.1:27500
 ```
 
-QTV comes over WebSocket too, through a bridge in front of the relay:
-`websockify 27600 127.0.0.1:27599`, then `qtvplay 1@ws://host:27600`. TCP delays what comes
+QTV comes over WebSocket too: a SoftWorld server's at its port, `qtvplay ws://host:27500`
+(FTE's `faketcp` too), and a relay's through a bridge in front of it,
+`websockify 27600 127.0.0.1:27599`, then `qtvplay 1@ws://host:27600`.TCP delays what comes
 after a packet lost until it comes again, which UDP doesn't. The page's own server takes only
 its own client.
 

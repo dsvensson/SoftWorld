@@ -30,7 +30,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <string.h>
 
 static void	*SZ_GetSpace (sizebuf_t *buf, int length);
-static void	MSG_WriteAngle16 (sizebuf_t *sb, float f);
 
 usercmd_t	nullcmd;		// guaranteed to be zero
 
@@ -116,7 +115,7 @@ void MSG_WriteAngle (sizebuf_t *sb, float f)
 		MSG_WriteByte (sb, (int)(f*256/360) & 255);
 }
 
-static void MSG_WriteAngle16 (sizebuf_t *sb, float f)
+void MSG_WriteAngle16 (sizebuf_t *sb, float f)
 {
 	MSG_WriteShort (sb, (int)(f*65536/360) & 65535);
 }
