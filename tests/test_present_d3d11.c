@@ -23,7 +23,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // it, with and without gamma and a view blend; scaled by 2.5, sharp bilinear, each
 // pixel inside a texel that texel's, and each on an edge between its two; and in
 // linear HDR (scRGB), SDR white at paper white, the brightest light rolled off below
-// the peak, and the 2D at paper white. All of it read where the CPU wrote the layers,
+// the peak, and the 2D at paper white, each pixel as VID_FrameToPQ (HDR screenshots)
+// makes it. All of it read where the CPU wrote the layers,
 // if the driver lets a shader read them there (MapOnDefaultBuffers), and from copies
 // of them in the GPU's memory, as vid_d3d11.c has the two. On the GPU, else (or with
 // -warp) WARP.
@@ -429,6 +430,56 @@ static void TestHDR (bool inplace)
 	Expect ("HDR 2D white", out[12], 1.99f, 2.01f);
 }
 
+// PQ's code to cd/m² (SMPTE ST 2084)
+static double PQToNits (double e)
+{
+	const double	m1 = 2610.0 / 16384.0, m2 = 2523.0 / 4096.0 * 128.0;
+	const double	c1 = 3424.0 / 4096.0, c2 = 2413.0 / 4096.0 * 32.0, c3 = 2392.0 / 4096.0 * 32.0;
+	double			p = pow (e, 1 / m2);
+
+	return 10000 * pow (fmax (p - c1, 0) / (c2 - c3 * p), 1 / m1);
+}
+
+/*
+================
+TestShotHDR
+
+The shader's scRGB, as light over paper white at 203 cd/m² in BT.2020, against
+what VID_FrameToPQ (HDR screenshots) makes of the same frame, read back from PQ:
+within half a percent, or 0.05 cd/m² under 10
+================
+*/
+static void TestShotHDR (bool inplace, float paperwhite, float peak, const char *what)
+{
+	static const double	bt709to2020[3][3] = {
+		{0.627404, 0.329283, 0.043313},
+		{0.069097, 0.919541, 0.011362},
+		{0.016391, 0.088013, 0.895595}};
+	static float	out[WIDTH * HEIGHT * 4];
+	static uint16_t	pq[WIDTH * HEIGHT * 3];
+	const float		*o;
+	double			want, got, d, worst = 0;
+	int				i, c, off = 0;
+
+	Draw (inplace, VID_OUTPUT_LINEAR, paperwhite, peak, WIDTH, HEIGHT, out);
+	VID_FrameToPQ (pq);
+	for (i = 0 ; i < WIDTH * HEIGHT ; i++)
+		for (c = 0 ; c < 3 ; c++)
+		{
+			o = out + i * 4;
+			want = 203 * (bt709to2020[c][0] * o[0] + bt709to2020[c][1] * o[1] + bt709to2020[c][2] * o[2]) / paperwhite;
+			got = PQToNits (pq[i * 3 + c] / 65535.0);
+			d = fabs (got - want) / fmax (want, 10);
+			if (d > worst)
+				worst = d;
+			if (d > 0.005 && off++ < 5)
+				printf ("%s: pixel %d channel %d is %.2f cd/m2, VID_FrameToPQ %.2f\n", what, i, c, want, got);
+		}
+	if (off)
+		failures++;
+	printf ("%s: at most %.3f %% from VID_FrameToPQ, %d channels over 0.5 %%\n", what, worst * 100, off);
+}
+
 static void TestAll (bool inplace)
 {
 	printf ("present: the layers %s\n", inplace ? "read where the CPU wrote them" : "copied to the GPU's memory");
@@ -443,6 +494,12 @@ static void TestAll (bool inplace)
 
 	VID_SetPresent (&(vid_present_t){.gamma = 1});
 	TestHDR (inplace);
+
+	Fill ();
+	VID_SetPresent (&(vid_present_t){.blend = {0.5f, 0.2f, 0.1f, 0.3f}, .gamma = 0.8f});
+	TestShotHDR (inplace, 2.5f, 8, "HDR screenshot, rolled off, gamma 0.8 and a blend");
+	VID_SetPresent (&(vid_present_t){.gamma = 1});
+	TestShotHDR (inplace, 2, 2, "HDR screenshot, white fitted under a low peak");
 }
 
 int main (int argc, char **argv)

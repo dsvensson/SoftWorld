@@ -456,7 +456,8 @@ void SCR_Init (void)
 // register our commands
 //
 	Cmd_AddCommand ("screenshot",SCR_ScreenShot_f,
-		"Saves the screen as it looks in SDR as quakeNN.png (00 to 99) in the game directory.");
+		"Saves the screen as it looks as quakeNN.png (00 to 99) in the game directory: 8 bit sRGB, or while the "
+		"output is HDR, 16 bit HDR (PQ in BT.2020, SDR white at 203 nits).");
 	Cmd_AddCommand ("snap",SCR_RSShot_f,
 		"Uploads a PCX screenshot of at most 320x200, stamped with the time, server and name, as the server asks; "
 		"scr_allowsnap 0 refuses.");
@@ -723,6 +724,8 @@ static void SCR_ScreenShot_f (void)
 	char	filename[80];
 	char	path[MAX_OSPATH];
 	byte	*rgb;
+	uint16_t	*rgb16;
+	bool	written;
 
 //
 // find a file name to save it to
@@ -741,15 +744,26 @@ static void SCR_ScreenShot_f (void)
 	}
 
 //
-// save what the screen shows
+// save what the screen shows: in HDR, as it shows it in HDR
 //
-	rgb = Mem_Alloc ((size_t)vid.width * vid.height * 3);
-	VID_FrameToRGB (rgb, true);
-	if (PNG_WriteRGB (path, (int)vid.width, (int)vid.height, rgb, (int)vid.width * 3))
-		Con_Printf ("Wrote %s\n", filename);
+	if (VID_ShowsHDR ())
+	{
+		rgb16 = Mem_Alloc ((size_t)vid.width * vid.height * 3 * sizeof(*rgb16));
+		VID_FrameToPQ (rgb16);
+		written = PNG_WriteRGB16PQ (path, (int)vid.width, (int)vid.height, rgb16);
+		Mem_Free (rgb16);
+	}
+	else
+	{
+		rgb = Mem_Alloc ((size_t)vid.width * vid.height * 3);
+		VID_FrameToRGB (rgb, true);
+		written = PNG_WriteRGB (path, (int)vid.width, (int)vid.height, rgb, (int)vid.width * 3);
+		Mem_Free (rgb);
+	}
+	if (written)
+		Con_Printf ("Wrote %s%s\n", filename, VID_ShowsHDR () ? " (HDR)" : "");
 	else
 		Con_Printf ("Couldn't write %s\n", filename);
-	Mem_Free (rgb);
 }
 
 /*

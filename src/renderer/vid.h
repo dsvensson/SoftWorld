@@ -121,3 +121,8 @@ void	VID_SetPresent (const vid_present_t *present);
 // the frame with its 2D, 8 bit sRGB rows vid.width wide: as the screen shows it
 // in SDR, or if not shown as drawn (no blend or gamma, SDR white clipped)
 void	VID_FrameToRGB (byte *rgb, bool shown);
+// whether the screen shows the frame in HDR, and the frame with its 2D as it
+// does, 16 bit rows vid.width wide: PQ in BT.2020, SDR white at 203 cd/m²
+// (BT.2408's reference white) and the light over it as bright as shown
+bool	VID_ShowsHDR (void);
+void	VID_FrameToPQ (uint16_t *rgb);

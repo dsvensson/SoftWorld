@@ -17,7 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// png.c -- writes RGB images as PNG files, stored without compression
+// png.c -- writes RGB images as PNG files, stored without compression: 8 bit
+// sRGB, or 16 bit HDR
 
 #include "mem.h"
 #include "png.h"
@@ -74,34 +75,25 @@ static void PNG_Chunk (FILE *f, const char *type, const byte *data, uint32_t len
 
 /*
 ==============
-PNG_WriteRGB
+PNG_Write
 
-The image data is a zlib stream of stored deflate blocks: every row is
-a filter byte (none) and the row's pixels.
+An RGB image of 8 or 16 bit channels, its color space named by a cICP chunk
+when given. The image data is a zlib stream of stored deflate blocks: raw's
+rows, each a filter byte (none) and the row's pixels.
 ==============
 */
-bool PNG_WriteRGB (const char *path, int width, int height, const byte *rgb, int rowbytes)
+static bool PNG_Write (const char *path, int width, int height, int depth, const byte cicp[4], const byte *raw,
+	size_t rawsize)
 {
 	static const byte	signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
 	byte		header[13];
-	byte		*raw, *z, *out;
-	size_t		rawsize, zsize, done, block;
+	byte		*z, *out;
+	size_t		zsize, done, block;
 	uint32_t	a = 1, b = 0;
 	FILE		*f;
-	int			y;
 
 	if (!png_crctable[1])
 		PNG_InitCRC ();
-
-	rawsize = (size_t)height * (1 + (size_t)width * 3);
-	raw = Mem_Alloc (rawsize);
-	for (y = 0 ; y < height ; y++)
-	{
-		byte	*row = raw + (size_t)y * (1 + (size_t)width * 3);
-
-		row[0] = 0;
-		memcpy (row + 1, rgb + (size_t)y * rowbytes, (size_t)width * 3);
-	}
 
 	zsize = 2 + rawsize + (rawsize / 65535 + 1) * 5 + 4;
 	z = out = Mem_Alloc (zsize);
@@ -130,7 +122,7 @@ bool PNG_WriteRGB (const char *path, int width, int height, const byte *rgb, int
 
 	PNG_PutBE (header, (uint32_t)width);
 	PNG_PutBE (header + 4, (uint32_t)height);
-	header[8] = 8;		// bits per channel
+	header[8] = (byte)depth;	// bits per channel
 	header[9] = 2;		// RGB
 	header[10] = header[11] = header[12] = 0;	// deflate, adaptive filtering, no interlace
 
@@ -139,11 +131,53 @@ bool PNG_WriteRGB (const char *path, int width, int height, const byte *rgb, int
 	{
 		fwrite (signature, 1, sizeof(signature), f);
 		PNG_Chunk (f, "IHDR", header, sizeof(header));
+		if (cicp)
+			PNG_Chunk (f, "cICP", cicp, 4);
 		PNG_Chunk (f, "IDAT", z, (uint32_t)(out - z));
 		PNG_Chunk (f, "IEND", NULL, 0);
 		fclose (f);
 	}
 	Mem_Free (z);
-	Mem_Free (raw);
 	return f != NULL;
+}
+
+bool PNG_WriteRGB (const char *path, int width, int height, const byte *rgb, int rowbytes)
+{
+	size_t	rowsize = 1 + (size_t)width * 3, rawsize = (size_t)height * rowsize;
+	byte	*raw = Mem_Alloc (rawsize);
+	bool	written;
+	int		y;
+
+	for (y = 0 ; y < height ; y++)
+	{
+		raw[y * rowsize] = 0;
+		memcpy (raw + y * rowsize + 1, rgb + (size_t)y * rowbytes, (size_t)width * 3);
+	}
+	written = PNG_Write (path, width, height, 8, NULL, raw, rawsize);
+	Mem_Free (raw);
+	return written;
+}
+
+bool PNG_WriteRGB16PQ (const char *path, int width, int height, const uint16_t *rgb)
+{
+	// cICP: BT.2020's primaries (9), PQ (16), RGB (0), full range (1)
+	static const byte	cicp[4] = {9, 16, 0, 1};
+	size_t	rowsize = 1 + (size_t)width * 6, rawsize = (size_t)height * rowsize, i;
+	byte	*raw = Mem_Alloc (rawsize), *p;
+	bool	written;
+	int		y;
+
+	for (y = 0 ; y < height ; y++)
+	{
+		p = raw + y * rowsize;
+		*p++ = 0;
+		for (i = 0 ; i < (size_t)width * 3 ; i++, rgb++)
+		{
+			*p++ = (byte)(*rgb >> 8);		// big-endian
+			*p++ = (byte)*rgb;
+		}
+	}
+	written = PNG_Write (path, width, height, 16, cicp, raw, rawsize);
+	Mem_Free (raw);
+	return written;
 }

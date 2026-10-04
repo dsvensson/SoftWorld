@@ -1,6 +1,6 @@
 // vid_common.c -- what the video backends share (vid_common.h): the vid_ cvars,
 // the frame a window gets and where it is shown, the presenter's constants, and
-// the frame as the screen shows it in SDR, for screenshots and dumps
+// the frame as the screen shows it, in SDR or HDR, for screenshots and dumps
 
 #include "args.h"
 #include "print.h"
@@ -207,6 +207,16 @@ vid_fit_t VID_Fit (int clientwidth, int clientheight)
 	return fit;
 }
 
+// the output the presenter last drew to, for screenshots
+typedef struct
+{
+	int		output;			// VID_OUTPUT_*
+	float	paperwhite;		// in the output's values
+	float	peak;
+} vid_output_t;
+
+static vid_output_t	vid_shown = {VID_OUTPUT_SDR, 1, 1};
+
 void VID_FillConstants (vid_present_constants_t *constants, const vid_fit_t *fit, int output,
 	float paperwhite, float peak)
 {
@@ -225,6 +235,7 @@ void VID_FillConstants (vid_present_constants_t *constants, const vid_fit_t *fit
 	constants->paperwhite = paperwhite;
 	constants->peak = peak;
 	constants->pad[0] = constants->pad[1] = 0;
+	vid_shown = (vid_output_t){output, paperwhite, peak};
 }
 
 /*
@@ -240,6 +251,23 @@ THE FRAME AS SHOWN
 static double VID_LinearToSrgb (double l)
 {
 	return l <= 0.0031308 ? l * 12.92 : 1.055 * pow (l, 1 / 2.4) - 0.055;
+}
+
+static double VID_SrgbToLinear (double c)
+{
+	return c <= 0.04045 ? c / 12.92 : pow (fmax ((c + 0.055) / 1.055, 0), 2.4);
+}
+
+// light for SDR: what is brighter than white keeps its hue and goes toward
+// white the brighter it is; the rest is as it is
+static void VID_FitWhite (float light[3])
+{
+	float	m = fmaxf (light[0], fmaxf (light[1], light[2]));
+	int		i;
+
+	if (m > 1)
+		for (i = 0 ; i < 3 ; i++)
+			light[i] = light[i] / m + (1 - light[i] / m) * (1 - 1 / m);
 }
 
 // a channel of the view as linear light (vid.h)
@@ -267,7 +295,7 @@ void VID_FrameToRGB (byte *rgb, bool shown)
 	const hudpixel_t	*hud;
 	pixel_t		p;
 	hudpixel_t	h;
-	float		light[3], c, m, contrast;
+	float		light[3], c, contrast;
 	unsigned	x, y, a, i;
 	int			v;
 
@@ -297,11 +325,9 @@ void VID_FrameToRGB (byte *rgb, bool shown)
 					light[i] = powf (fmaxf (light[i], 0), vid_present.gamma);
 					light[i] = VID_MIDGRAY * powf (light[i] / VID_MIDGRAY, contrast);
 				}
-				m = fmaxf (light[0], fmaxf (light[1], light[2]));
+				VID_FitWhite (light);
 				for (i = 0 ; i < 3 ; i++)
 				{
-					if (m > 1)
-						light[i] = light[i] / m + (1 - light[i] / m) * (1 - 1 / m);
 					c = (float)VID_LinearToSrgb (fminf (light[i], 1));
 					c += (vid_present.blend[i] - c) * vid_present.blend[3];
 					rgb[i] = (byte)(255 * c + 0.5f);
@@ -313,5 +339,96 @@ void VID_FrameToRGB (byte *rgb, bool shown)
 			// premultiplied: the 2D's color, and the view's through the rest
 			for (i = 0 ; i < 3 ; i++)
 				rgb[i] = (byte)(((h >> (i * 8)) & 255) + (rgb[i] * (255 - a) + 127) / 255);
+		}
+}
+
+bool VID_ShowsHDR (void)
+{
+	return vid_shown.output != VID_OUTPUT_SDR;
+}
+
+// linear BT.709 light, 1 being SDR white at 203 cd/m², as PQ in BT.2020 (SMPTE
+// ST 2084), 16 bit
+static void VID_LightToPQ (const float light[3], uint16_t pq[3])
+{
+	static const double	bt709to2020[3][3] = {
+		{0.627404, 0.329283, 0.043313},
+		{0.069097, 0.919541, 0.011362},
+		{0.016391, 0.088013, 0.895595}};
+	const double	m1 = 2610.0 / 16384, m2 = 2523.0 / 4096 * 128;
+	const double	c1 = 3424.0 / 4096, c2 = 2413.0 / 4096 * 32, c3 = 2392.0 / 4096 * 32;
+	double			y, ym;
+	int				i;
+
+	for (i = 0 ; i < 3 ; i++)
+	{
+		y = bt709to2020[i][0] * light[0] + bt709to2020[i][1] * light[1] + bt709to2020[i][2] * light[2];
+		y = fmin (fmax (y * (203.0 / 10000), 0), 1);
+		ym = pow (y, m1);
+		pq[i] = (uint16_t)(65535 * pow ((c1 + c2 * ym) / (1 + c3 * ym), m2) + 0.5);
+	}
+}
+
+/*
+================
+VID_FrameToPQ
+
+What the present shaders do for HDR (in light the view's gamma and contrast,
+the view's blend over its sRGB values, SDR white at paper white and what is
+brighter rolled off toward the display's peak, the 2D over it in light at
+paper white), as light over the output's paper white, then PQ
+================
+*/
+void VID_FrameToPQ (uint16_t *rgb)
+{
+	const pixel_t		*frame;
+	const hudpixel_t	*hud;
+	pixel_t		p;
+	hudpixel_t	h;
+	float		light[3], white, peak, knee, span, contrast, a, s;
+	unsigned	x, y, i;
+
+	white = vid_shown.paperwhite > 0 ? vid_shown.paperwhite : 1;
+	peak = vid_shown.peak;
+	knee = fmaxf (white, 0.75f * peak);
+	span = fmaxf (peak - knee, 1e-3f);
+	contrast = vid_contrast.value > 0 ? vid_contrast.value : 1;
+	VID_ShownLayers (&frame, &hud);
+
+	for (y = 0 ; y < vid.height ; y++)
+		for (x = 0 ; x < vid.width ; x++, rgb += 3)
+		{
+			p = frame[y * vid.rowpixels + x];
+			h = hud[y * vid.rowpixels + x];
+			light[0] = VID_ChannelLight (RGB30_R (p));
+			light[1] = VID_ChannelLight (RGB30_G (p));
+			light[2] = VID_ChannelLight (RGB30_B (p));
+			for (i = 0 ; i < 3 ; i++)
+			{
+				light[i] = powf (fmaxf (light[i], 0), vid_present.gamma);
+				light[i] = VID_MIDGRAY * powf (fmaxf (light[i] / VID_MIDGRAY, 0), contrast);
+				s = (float)VID_LinearToSrgb (light[i]);
+				light[i] = (float)VID_SrgbToLinear (s + (vid_present.blend[i] - s) * vid_present.blend[3]);
+			}
+			if (peak <= white * 1.05f)
+			{
+				VID_FitWhite (light);
+				for (i = 0 ; i < 3 ; i++)
+					light[i] *= white;
+			}
+			else
+				for (i = 0 ; i < 3 ; i++)
+				{
+					light[i] *= white;
+					light[i] = fminf (light[i], knee) + span * (1 - expf (-fmaxf (light[i] - knee, 0) / span));
+				}
+			// the 2D, premultiplied, in light at paper white
+			a = HUD_A (h) / 255.0f;
+			for (i = 0 ; i < 3 ; i++)
+			{
+				s = (float)VID_SrgbToLinear (((h >> (i * 8)) & 255) / 255.0 / fmax (a, 1 / 255.0));
+				light[i] = (s * white * a + light[i] * (1 - a)) / white;
+			}
+			VID_LightToPQ (light, rgb);
 		}
 }

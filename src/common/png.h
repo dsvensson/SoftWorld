@@ -25,3 +25,5 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 // 8 bit RGB, rows rowbytes apart; false if the file can't be written
 bool	PNG_WriteRGB (const char *path, int width, int height, const byte *rgb, int rowbytes);
+// HDR: 16 bit RGB, PQ in BT.2020 (a cICP chunk says so), rows width pixels apart
+bool	PNG_WriteRGB16PQ (const char *path, int width, int height, const uint16_t *rgb);
