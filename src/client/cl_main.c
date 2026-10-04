@@ -58,7 +58,7 @@ static cvar_t	cl_maxfps	= {.name = "cl_maxfps", .string = "0", .archive = true,
 // FTE's name
 static cvar_t	cl_idlefps	= {.name = "cl_idlefps", .string = "50", .archive = true,
 	.description = "The most frames a second drawn while the window isn't the focus, to yield the CPU; 0 is "
-		"cl_maxfps's. Minimized, 20."};
+		"cl_maxfps's. Minimized, 20. Commands go and packets are read at their own rate still."};
 
 cvar_t	lookspring = {.name = "lookspring", .string = "0", .archive = true,
 	.description = "Recenters the view's pitch when +mlook is let go, with freelook off.",
@@ -148,6 +148,7 @@ static double			connect_time = -1;		// for connection retransmits
 
 static double		oldrealtime;			// last frame run
 static double		nextframe;				// when the next frame is due, at cl_maxfps
+static double		nextdraw;				// when the next is drawn, not watched (cl_idlefps)
 
 
 static cvar_t	host_speeds = {.name = "host_speeds", .string = "0",			// set for running times
@@ -1567,29 +1568,58 @@ static void CL_DecidePhysFrame (void)
 
 /*
 ==================
+CL_IdleFPS
+
+Frames a second drawn when nobody watches, to yield the CPU: a little while
+not the focus (cl_idlefps), fewer when minimized or paused; 0 when watched
+==================
+*/
+static float CL_IdleFPS (float fps)
+{
+	if (cls.timedemo)
+		return 0;
+	if ((VID_IsMinimized () || (cl.paused && !VID_IsActive ())) && (!fps || fps > 20))
+		return 20;
+	if (!VID_IsActive () && cl_idlefps.value > 0 && (!fps || fps > cl_idlefps.value))
+		return cl_idlefps.value;
+	return 0;
+}
+
+/*
+==================
 CL_FrameWait
 
-Seconds until CL_Frame will draw the next frame
+Seconds until CL_Frame has something to do: the next frame, at cl_maxfps;
+not watched, the next frame drawn, or the next command if sooner, as the
+commands keep their rate (a game on: not a demo, nor the menu)
 ==================
 */
 double CL_FrameWait (void)
 {
-	double	wait;
-	float	fps, idlefps = 0;
+	double	wait, command;
+	float	fps, idlefps;
 
-	fps = CL_MaxFPS ();
 	if (cls.timedemo)
 		return 0;
-
-// yield the CPU when nobody watches: a little while not the focus
-// (cl_idlefps), more when minimized or paused
-	if ((VID_IsMinimized () || (cl.paused && !VID_IsActive ())) && (!fps || fps > 20))
-		idlefps = 20;
-	else if (!VID_IsActive () && cl_idlefps.value > 0 && (!fps || fps > cl_idlefps.value))
-		idlefps = cl_idlefps.value;
+	fps = CL_MaxFPS ();
+	idlefps = CL_IdleFPS (fps);
 
 	if (idlefps)
-		wait = oldrealtime + 1.0 / idlefps - host.realtime;
+	{
+		// drawn on the first frame from nextdraw: a frame comes at cl_maxfps's pace
+		wait = nextdraw - host.realtime;
+		if (fps && wait < nextframe - host.realtime)
+			wait = nextframe - host.realtime;
+		if (cls.state != ca_disconnected && !cls.demoplayback)
+		{
+			// when the commands' time adds up to one, or every frame
+			command = CL_IndependentPhysics () ? oldrealtime + CL_PhysFrameTime () - cls.physaccum - host.realtime : 0;
+			if (fps && command < nextframe - host.realtime)
+				command = nextframe - host.realtime;
+			if (command < wait)
+				wait = command;
+		}
+	}
 	else if (fps)
 		wait = nextframe - host.realtime;
 	else
@@ -1601,7 +1631,8 @@ double CL_FrameWait (void)
 ==================
 CL_Frame
 
-Reads the server's packets, sends a command when one is due, and draws
+Reads the server's packets, sends a command when one is due, and draws; not
+watched, draws at cl_idlefps's pace alone
 ==================
 */
 void CL_Frame (void)
@@ -1609,15 +1640,17 @@ void CL_Frame (void)
 	static double		time1 = 0;
 	static double		time2 = 0;
 	static double		time3 = 0;
+	static bool			repredict;
 	int			pass1, pass2, pass3;
-	float fps;
+	float fps, idlefps;
 	int			oldincoming;
-	bool		repredict;
+	bool		draw;
 
 	if (oldrealtime > host.realtime)
-		oldrealtime = nextframe = 0;
+		oldrealtime = nextframe = nextdraw = 0;
 
 	fps = CL_MaxFPS ();
+	idlefps = CL_IdleFPS (fps);
 
 	if (!cls.timedemo && fps && host.realtime < nextframe)
 		return;			// framerate is too high
@@ -1628,6 +1661,10 @@ void CL_Frame (void)
 		nextframe += 1.0 / fps;
 	else
 		nextframe = host.realtime + (fps ? 1.0 / fps : 0);
+	// not watched, drawn at cl_idlefps's pace, as cl_maxfps's above
+	draw = !idlefps || host.realtime >= nextdraw;
+	if (draw && idlefps)
+		nextdraw = host.realtime - nextdraw < 1.0 / idlefps ? nextdraw + 1.0 / idlefps : host.realtime + 1.0 / idlefps;
 	// a timedemo draws as fast as it can: no cl_maxfps (above), no vsync
 	VID_SetUnpaced (cls.timedemo);
 
@@ -1657,13 +1694,24 @@ void CL_Frame (void)
 		IN_Move (&dummy);
 	}
 
-	// predict again when a command was made or the server said something new
-	repredict = cls.physframe || cls.netchan.incoming_sequence != oldincoming;
+	// predict again when a command was made or the server said something new,
+	// on this frame or one not drawn since
+	repredict |= cls.physframe || cls.netchan.incoming_sequence != oldincoming;
+
+	// a frame not drawn: the lights fade on, as they do drawn
+	if (!draw)
+	{
+		if (cls.state == ca_active)
+			CL_DecayLights ();
+		return;
+	}
+
 	if (repredict)
 		CL_SetUpPlayerPrediction(false);	// other players, without prediction
 	CL_PredictMove (repredict);
 	if (repredict)
 		CL_SetUpPlayerPrediction(true);		// other players, predicted
+	repredict = false;
 
 	// build a refresh entity list
 	CL_EmitEntities ();
