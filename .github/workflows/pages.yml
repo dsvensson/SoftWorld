@@ -1,0 +1,85 @@
+# The web build on the repository's GitHub Pages, deployed when asked
+# (Actions, Run workflow, which takes the workflow as master has it), and
+# from each push to the web branch, to try a page there first (that branch
+# must be let deploy to the github-pages environment).
+#
+# The site has the page (index.html), its workers and an empty manifest.json:
+# no Quake directory, so the page asks for the player's own paks and keeps
+# them in the browser (fs_web.js). Pages can't send the COOP and COEP headers
+# the page's shared memory needs; the service worker next to the page
+# (softworld-coi.js) hands the page its files with them.
+
+name: Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [web]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# one deployment at a time, the newest left to finish
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    env:
+      EMSDK_VERSION: 6.0.11
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # the Build workflow's, of the same version
+      - name: Cached emsdk
+        id: emsdk
+        uses: actions/cache@v6
+        with:
+          path: emsdk
+          key: emsdk-${{ env.EMSDK_VERSION }}
+
+      - name: emsdk
+        if: steps.emsdk.outputs.cache-hit != 'true'
+        run: |
+          git clone -q --depth 1 https://github.com/emscripten-core/emsdk.git
+          emsdk/emsdk install $EMSDK_VERSION
+          emsdk/emsdk activate $EMSDK_VERSION
+
+      - name: Build
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build
+          source emsdk/emsdk_env.sh
+          cmake --preset web
+          cmake --build --preset web --target softworld
+
+      - name: Site
+        run: |
+          mkdir -p site
+          cp build/web/Release/softworld.html build/web/Release/softworld.js build/web/Release/softworld.wasm \
+            build/web/Release/softworld-fs.js build/web/Release/softworld-sound.js \
+            build/web/Release/softworld-coi.js site/
+          cp site/softworld.html site/index.html
+          echo '{"files":[],"dirs":[]}' > site/manifest.json
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

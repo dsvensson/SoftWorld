@@ -20,16 +20,44 @@
 	#notice-capture { top: 50%; transform: translate(-50%, -50%); }
 	#notice-sound { bottom: 16px; }
 	#notice-error { top: 30%; color: #f99; pointer-events: auto; user-select: text; -webkit-user-select: text; }
+	#game-files { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+		background: #000; color: #ddd; font: 15px/1.5 system-ui, sans-serif; text-align: center; }
+	#game-files.open { display: flex; }
+	#game-files .zone { max-width: 32em; margin: 16px; padding: 28px 32px; border: 2px dashed #555;
+		border-radius: 10px; }
+	#game-files.over .zone { border-color: #c96; background: #1a1208; }
+	#game-files h1 { margin: 0 0 12px; font-size: 20px; font-weight: 600; color: #eee; }
+	#game-files p { margin: 8px 0; }
+	#game-files .small { color: #999; font-size: 13px; }
+	#game-files .problem { color: #f99; min-height: 1.5em; }
+	#game-files label { display: inline-block; margin-top: 10px; padding: 7px 16px; border-radius: 6px;
+		background: #333; color: #eee; cursor: pointer; }
+	#game-files label:hover { background: #444; }
+	#game-files input { display: none; }
+	code { font-family: ui-monospace, monospace; }
 </style>
 </head>
 <body>
 <div id="screen">
 	<canvas id="canvas" tabindex="-1"></canvas>
+	<div id="game-files">
+		<div class="zone">
+			<h1>SoftWorld needs Quake's game data</h1>
+			<p>Drag <code>pak0.pak</code> from your Quake directory's <code>id1</code> here, and <code>pak1.pak</code>
+				too if you have the full game. The shareware's <code>pak0.pak</code> will do.</p>
+			<label>Choose files<input type="file" id="game-files-input" multiple accept=".pak"></label>
+			<p class="problem" id="game-files-problem"></p>
+			<p class="small">They stay in this browser, for the next visit too; nothing is uploaded.
+				Clearing this site's data forgets them.</p>
+		</div>
+	</div>
 	<div class="notice" id="notice-status"></div>
 	<div class="notice" id="notice-capture"></div>
 	<div class="notice" id="notice-sound"></div>
 	<div class="notice" id="notice-error"></div>
 </div>
+<!-- the game's script, started once the page is cross-origin isolated -->
+<template id="game-script">{{{ SCRIPT }}}</template>
 <script>
 	'use strict';
 
@@ -46,6 +74,57 @@
 			e.textContent = text ?? '';
 	}
 
+	/*
+	The paks the player gives the page when the site serves no Quake
+	directory, as the project's own page doesn't (fs_web.js keeps them): those
+	dropped on the page or chosen, pak0.pak among them, each a pak (PACK at
+	its start). [{name, data}]
+	*/
+	function askForGame () {
+		var box = document.getElementById('game-files');
+		var input = document.getElementById('game-files-input');
+		var problem = document.getElementById('game-files-problem');
+
+		return new Promise((resolve) => {
+			async function take (files) {
+				var paks = [];
+
+				problem.textContent = '';
+				for (const file of files) {
+					var head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+
+					if (!/\.pak$/i.test(file.name) || String.fromCharCode(...head) != 'PACK') {
+						problem.textContent = `${file.name} isn't one of Quake's paks.`;
+						return;
+					}
+					paks.push(file);
+				}
+				if (!paks.some((file) => file.name.toLowerCase() == 'pak0.pak')) {
+					problem.textContent = 'pak0.pak is needed.';
+					return;
+				}
+				notice('status', 'Loading the game data...');
+				box.classList.remove('open');
+				resolve(await Promise.all(paks.map(async (file) =>
+					({name: file.name, data: new Uint8Array(await file.arrayBuffer())}))));
+			}
+
+			box.ondragover = (e) => {
+				e.preventDefault();
+				box.classList.add('over');
+			};
+			box.ondragleave = () => box.classList.remove('over');
+			box.ondrop = (e) => {
+				e.preventDefault();
+				box.classList.remove('over');
+				take(Array.from(e.dataTransfer.files));
+			};
+			input.onchange = () => take(Array.from(input.files));
+			notice('status', null);
+			box.classList.add('open');
+		});
+	}
+
 	var Module = {
 		arguments: commandLine(location.search),
 		canvas: document.getElementById('canvas'),
@@ -59,14 +138,45 @@
 		swNotice: notice,
 		swAssets: 'quake/',
 		swManifest: 'manifest.json',
+		swAskForGame: askForGame,
 	};
 
-	if (!globalThis.crossOriginIsolated)
+	function start () {
+		if (!document.createElement('canvas').getContext('webgl2'))
+			notice('error', 'This browser has no WebGL 2.');
+		else
+			document.body.appendChild(document.importNode(document.getElementById('game-script').content, true));
+	}
+
+	/*
+	The page's shared memory needs cross-origin isolation: the site's COOP and
+	COEP headers, or else the service worker next to the page (softworld-coi.js)
+	that hands the page the site's files with them, as on GitHub Pages. It
+	takes the page at its next load, so the page loads once more; a page still
+	not isolated after that says why.
+	*/
+	if (globalThis.crossOriginIsolated) {
+		sessionStorage.removeItem('softworld-isolating');
+		start();
+	}
+	else if (!window.isSecureContext || !navigator.serviceWorker)
 		notice('error', "This page needs cross-origin isolation (COOP and COEP headers) for its shared memory: "
-			+ "serve it with serve.py, or a server sending them.");
-	else if (!document.createElement('canvas').getContext('webgl2'))
-		notice('error', 'This browser has no WebGL 2.');
+			+ "serve it with serve.py, or a server sending them, or over https to a browser with service workers.");
+	else if (navigator.serviceWorker.controller && sessionStorage.getItem('softworld-isolating'))
+		notice('error', "This page couldn't be made cross-origin isolated, which its shared memory needs: "
+			+ "this browser doesn't take the isolation from a service worker. Try another browser.");
+	else {
+		notice('status', 'Setting the page up...');
+		sessionStorage.setItem('softworld-isolating', '1');
+		navigator.serviceWorker.register('softworld-coi.js').then((registration) => {
+			// the page loads again once the worker is active: at once if it is
+			// already (a load that passed it by), else when it takes the page
+			if (registration.active)
+				location.reload();
+			else
+				navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+		}).catch((e) => notice('error', `This page's service worker (softworld-coi.js) didn't start: ${e.message}`));
+	}
 </script>
-{{{ SCRIPT }}}
 </body>
 </html>

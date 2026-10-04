@@ -150,7 +150,8 @@ applications (`softworld.app`), whose programs run from a terminal too
 
 The two with a server carry its game inside them: a game directory without a `qwprogs.dat`
 runs the built-in one. The web build makes the two with a client as pages:
-`softworld.html` (with its `.js` and `.wasm`), `softworld-fs.js` and `softworld-sound.js`.
+`softworld.html` (with its `.js` and `.wasm`), `softworld-fs.js`, `softworld-sound.js` and
+`softworld-coi.js`.
 
 ## Running
 
@@ -263,7 +264,15 @@ and the page is at `http://localhost:8000/`. The address's query is the command 
 `softworld.html?+map dm4`, `softworld.html?-scale 3 +connect qw.example.com`. Browsers allow
 the shared memory over http on localhost alone; from elsewhere the page must come over https.
 Another server needs the same headers, and `manifest.json`, which lists the files (each path,
-size and modification time).
+size and modification time). A site that can't send the headers, as GitHub Pages can't, has
+them from `softworld-coi.js`, a service worker the page starts there; it takes the page at its
+next load, so the page loads once more (a browser without service workers, as Firefox's
+private windows, can't run it from such a site).
+
+A site without a Quake directory (`manifest.json` listing none) asks for the player's paks:
+`pak0.pak` dragged onto the page or chosen, and `pak1.pak` too for the full game. They are kept
+in the browser with what the game writes, so the next visit has them. The Pages workflow, run
+from Actions, puts the page on the repository's GitHub Pages so.
 
 The game's files come as the game reads them, a piece at a time, and the browser keeps the
 pieces for 30 days or until the file changes on the site. What the game writes (`config.cfg`,

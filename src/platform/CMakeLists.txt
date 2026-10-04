@@ -213,13 +213,15 @@ elseif(EMSCRIPTEN)
 	set(SW_HOST_DIR "${PROJECT_SOURCE_DIR}/src/host")
 
 	# client with a local server, and the client alone: softworld.html, .js and
-	# .wasm, and next to them the file system's fetch worker (softworld-fs.js)
-	# and the sound's AudioWorklet (softworld-sound.js)
+	# .wasm, and next to them the file system's fetch worker (softworld-fs.js),
+	# the sound's AudioWorklet (softworld-sound.js) and the service worker that
+	# isolates the page where the site can't (softworld-coi.js)
 	set(SW_WEB_LINK_OPTIONS -sENVIRONMENT=web,worker -sCASE_INSENSITIVE_FS=1
 		-sPTHREAD_POOL_SIZE=${SW_WEB_WORKERS} -sPTHREAD_POOL_SIZE_STRICT=2
 		"SHELL:--shell-file ${SW_WEB_DIR}/shell.html")
 	# the workers are copied as the programs are linked
-	set(SW_WEB_LINK_DEPENDS "${SW_WEB_DIR}/shell.html" "${SW_WEB_DIR}/fs_web_worker.js" "${SW_WEB_DIR}/snd_worklet.js")
+	set(SW_WEB_LINK_DEPENDS "${SW_WEB_DIR}/shell.html" "${SW_WEB_DIR}/fs_web_worker.js" "${SW_WEB_DIR}/snd_worklet.js"
+		"${SW_WEB_DIR}/coi_worker.js")
 	foreach(library ${SW_WEB_LIBRARIES})
 		list(APPEND SW_WEB_LINK_OPTIONS "SHELL:--js-library ${SW_WEB_DIR}/${library}")
 		list(APPEND SW_WEB_LINK_DEPENDS "${SW_WEB_DIR}/${library}")
@@ -236,6 +238,8 @@ elseif(EMSCRIPTEN)
 				"$<TARGET_FILE_DIR:${target}>/softworld-fs.js"
 			COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${SW_WEB_DIR}/snd_worklet.js"
 				"$<TARGET_FILE_DIR:${target}>/softworld-sound.js"
+			COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${SW_WEB_DIR}/coi_worker.js"
+				"$<TARGET_FILE_DIR:${target}>/softworld-coi.js"
 			VERBATIM)
 	endforeach()
 	target_link_libraries(softworld PRIVATE sw_server)

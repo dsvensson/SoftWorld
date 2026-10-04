@@ -67,8 +67,26 @@ addToLibrary({
 				FS.chdir(SWFS.ROOT);
 				navigator.storage?.persist?.().catch(() => {});
 				setInterval(SWFS.flushDirty, 30000);
-				removeRunDependency('swfs');
-			}).catch((e) => abort(`Can't reach the game's files: ${e.message}`));
+				return SWFS.askForGame();
+			}).then(() => removeRunDependency('swfs'))
+				.catch((e) => abort(`Can't reach the game's files: ${e.message}`));
+		},
+
+		// Without id1's pak0.pak (a site serving no Quake directory, as the
+		// project's own page): the paks the player gives the page
+		// (Module.swAskForGame, as [{name, data}]), in id1 and kept with the
+		// page's own files, so the next start has them
+		async askForGame() {
+			if (FS.analyzePath(SWFS.ROOT + '/id1/pak0.pak').exists || !Module['swAskForGame'])
+				return;
+			for (const {name, data} of await Module['swAskForGame']()) {
+				var [parent, base] = SWFS.parentOf('id1/' + name.toLowerCase());
+				var node = SWFS.child(parent, base) ?? SWFS.createNode(parent, base, 0o100666, 0);
+
+				SWFS.makeLocal(node, data);
+				node.atime = node.mtime = node.ctime = Date.now();
+				SWFS.keep(node);
+			}
 		},
 
 		// the tree of the site's files, the page's own over it

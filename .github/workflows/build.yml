@@ -417,7 +417,8 @@ jobs:
         run: |
           mkdir -p dist/SoftWorld-Web
           cp build/web/Release/softworld.html build/web/Release/softworld.js build/web/Release/softworld.wasm \
-            build/web/Release/softworld-fs.js build/web/Release/softworld-sound.js src/platform/web/serve.py \
+            build/web/Release/softworld-fs.js build/web/Release/softworld-sound.js \
+            build/web/Release/softworld-coi.js src/platform/web/serve.py \
             dist/SoftWorld-Web/
           (cd dist && zip -qr SoftWorld-Web.zip SoftWorld-Web)
 
