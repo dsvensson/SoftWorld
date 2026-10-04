@@ -83,7 +83,7 @@ static float		oldsbar;
 cvar_t		scr_viewsize = {.name = "viewsize", .string = "100", .archive = true,
 	.description = "How much of the screen the view takes, in percent, 30 to 120; 110 drops the inventory, "
 		"120 the status bar too."};
-static cvar_t		scr_fov = {.name = "fov", .string = "90",	// 10 - 170
+static cvar_t		scr_fov = {.name = "fov", .string = "90", .archive = true,	// 10 - 170
 	.description = "The horizontal field of view in degrees, 10 to 170, of the 320 wide layout; "
 		"a wider one sees more to the sides."};
 // the gun's own field of view, so it looks the same whatever fov is; 0 is fov's
