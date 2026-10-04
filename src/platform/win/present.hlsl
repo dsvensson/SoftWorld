@@ -138,9 +138,13 @@ float4 PSMain (VSOut i) : SV_Target
 		return float4(c * (1 - hud.a) + hud.rgb, 1);
 	}
 
-	// SDR white at paper white, linear up to near the peak; the 2D over it in linear light
+	// SDR white at paper white, linear up to near the peak (a peak at paper white as SDR
+	// has it, as present.glsl and present.metal do); the 2D over it in linear light
 	light = SrgbToLinear(lerp(LinearToSrgb(light), g_blend.rgb, g_blend.a));
-	light = RollOff(light * g_paperwhite, max(g_paperwhite, 0.75 * g_peak), g_peak);
+	if (g_peak <= g_paperwhite * 1.05)
+		light = FitWhite(light) * g_paperwhite;
+	else
+		light = RollOff(light * g_paperwhite, max(g_paperwhite, 0.75 * g_peak), g_peak);
 	float3 hudlin = SrgbToLinear(hud.rgb / max(hud.a, 1.0 / 255.0)) * g_paperwhite * hud.a;
 	return float4(hudlin + light * (1 - hud.a), 1);
 }
