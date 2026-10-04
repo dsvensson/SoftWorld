@@ -8,6 +8,13 @@
 // asks to be shown as soon as it is drawn (desynchronized), where the browser
 // allows. A canvas's context can't change that, so a new canvas takes the old
 // one's place when vid_vsync does.
+//
+// A desynchronized canvas may be drawn in the buffer on the screen (Chrome's,
+// with an overlay), so nothing is cleared before a frame: the canvas keeps
+// what was drawn (preserveDrawingBuffer), and the bars around the viewport are
+// cleared only when the canvas or the viewport change. A clear at each frame,
+// the browser's or ours, was on the screen now and then: the view flickered
+// black.
 
 addToLibrary({
 	$WebVid__deps: ['$UTF8ToString', '$stringToUTF8'],
@@ -28,6 +35,7 @@ addToLibrary({
 		ch: 0,
 		hudforce: true,			// the 2D copied at the next draw, changed or not
 		fence: null,			// the last draw's, without vsync
+		cleared: '',			// the canvas's size and the viewport when it was last cleared
 		lastdraw: 0,
 		drawn: 0,
 		skipped: 0,
@@ -44,7 +52,7 @@ addToLibrary({
 			canvas.tabIndex = -1;
 			canvas.addEventListener('webglcontextcreationerror', (e) => why = e.statusMessage || '');
 			gl = canvas.getContext('webgl2', {alpha: false, depth: false, stencil: false, antialias: false,
-				premultipliedAlpha: false, preserveDrawingBuffer: false, desynchronized: desync,
+				premultipliedAlpha: false, preserveDrawingBuffer: desync, desynchronized: desync,
 				failIfMajorPerformanceCaveat: false});
 			if (!gl) {
 				WebVid.error = why || 'no WebGL 2 context';
@@ -130,6 +138,7 @@ addToLibrary({
 			gl.bindVertexArray(WebVid.vao);
 			gl.disable(gl.DITHER);
 			gl.disable(gl.BLEND);
+			WebVid.cleared = '';
 
 			if (WebVid.width)
 				WebVid.textures(WebVid.width, WebVid.height);
@@ -204,7 +213,7 @@ addToLibrary({
 	// true if it did
 	web_vid_present__deps: ['$WebVid'],
 	web_vid_present: (view, hud, huddirty, rowpixels, constants, x, y, width, height, paced) => {
-		var gl = WebVid.gl, canvas = WebVid.canvas, now = performance.now();
+		var gl = WebVid.gl, canvas = WebVid.canvas, now = performance.now(), layout;
 
 		if (!gl || gl.isContextLost())
 			return false;
@@ -221,9 +230,16 @@ addToLibrary({
 			canvas.width = WebVid.cw;
 			canvas.height = WebVid.ch;
 		}
-		gl.viewport(0, 0, canvas.width, canvas.height);
-		gl.clearColor(0, 0, 0, 1);
-		gl.clear(gl.COLOR_BUFFER_BIT);
+		// the bars, when the canvas or the viewport changed: the frame is drawn
+		// over the viewport's pixels whole, and a canvas that doesn't keep them
+		// (with vsync) is cleared for each frame by the browser
+		layout = `${canvas.width}x${canvas.height} ${x},${y} ${width}x${height}`;
+		if (layout != WebVid.cleared) {
+			gl.viewport(0, 0, canvas.width, canvas.height);
+			gl.clearColor(0, 0, 0, 1);
+			gl.clear(gl.COLOR_BUFFER_BIT);
+			WebVid.cleared = layout;
+		}
 
 		gl.pixelStorei(gl.UNPACK_ROW_LENGTH, rowpixels);
 		gl.activeTexture(gl.TEXTURE0);
