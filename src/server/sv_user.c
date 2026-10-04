@@ -266,10 +266,9 @@ static void SV_Modellist_f (void)
 SV_WriteStatic
 ==================
 */
-static void SV_WriteStatic (client_t *client, const entity_state_t *s)
+void SV_WriteStatic (const client_t *client, sizebuf_t *msg, const entity_state_t *s)
 {
 	static const entity_state_t	nullstate = {0};
-	sizebuf_t	*msg = &client->netchan.message;
 	int			i;
 
 	if (!SV_EntityFits (client, s->number, s->modelindex))
@@ -297,10 +296,9 @@ static void SV_WriteStatic (client_t *client, const entity_state_t *s)
 SV_WriteBaseline
 ==================
 */
-static void SV_WriteBaseline (client_t *client, int entnum)
+void SV_WriteBaseline (const client_t *client, sizebuf_t *msg, int entnum)
 {
 	static const entity_state_t	nullstate = {0};
-	sizebuf_t		*msg = &client->netchan.message;
 	edict_t			*ent;
 	entity_state_t	base;
 	int				i;
@@ -392,9 +390,9 @@ static void SV_PreSpawn_f (void)
 	for ( ; buf < total && msg->cursize < msg->maxsize / 2 ; buf++)
 	{
 		if (buf < (unsigned)sv.num_static_entities)
-			SV_WriteStatic (host_client, &sv.static_entities[buf]);
+			SV_WriteStatic (host_client, msg, &sv.static_entities[buf]);
 		else if (buf < (unsigned)(sv.num_static_entities + sv.num_baselines))
-			SV_WriteBaseline (host_client, (int)buf - sv.num_static_entities);
+			SV_WriteBaseline (host_client, msg, (int)buf - sv.num_static_entities);
 		else
 		{
 			// a signon buffer whole, into a message with room for it

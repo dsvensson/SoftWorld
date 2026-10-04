@@ -486,6 +486,8 @@ void SV_BroadcastPrintf (int level, char *fmt, ...);
 void SV_BroadcastCommand (char *fmt, ...);
 void SV_SendMessagesToAll (void);
 void SV_FindModelNumbers (void);
+// the stats a client is shown: its player's, or the one's a spectator tracks
+void SV_ClientStats (const client_t *client, int stats[MAX_STATS]);
 
 //
 // sv_user.c
@@ -495,6 +497,9 @@ void SV_ExecuteClientMessage (client_t *cl);
 void SV_DownloadDatagram (client_t *cl, sizebuf_t *msg);
 void SV_UserInit (void);
 void SV_TogglePause (const char *msg);
+// a static entity and an entity's baseline, as the client's protocol takes them
+void SV_WriteStatic (const client_t *client, sizebuf_t *msg, const entity_state_t *s);
+void SV_WriteBaseline (const client_t *client, sizebuf_t *msg, int entnum);
 
 
 //
@@ -512,6 +517,10 @@ void SV_WriteDelta (const client_t *client, const entity_state_t *from, const en
 bool SV_EntityFits (const client_t *client, int number, int modelindex);
 void SV_EntityLook (const edict_t *ent, entity_state_t *s);
 void SV_ClientBaseline (const client_t *client, const edict_t *ent, entity_state_t *base);
+void SV_EntityState (const edict_t *ent, int number, entity_state_t *state);
+// the entities, as a delta from a frame the client has, or whole without one
+void SV_EmitPacketEntities (const client_t *client, const packet_entities_t *from, const packet_entities_t *to,
+	sizebuf_t *msg);
 
 // sv_main.c: whether a client may join (spectator false) or observe; prints
 // the reason to it when not

@@ -486,21 +486,16 @@ static void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
 
 /*
 =======================
-SV_UpdateClientStats
-
-Performs a delta update of the stats array.  This should only be performed
-when a reliable message can be delivered this frame.
+SV_ClientStats
 =======================
 */
-static void SV_UpdateClientStats (client_t *client)
+void SV_ClientStats (const client_t *client, int stats[MAX_STATS])
 {
 	edict_t	*ent;
-	int		stats[MAX_STATS];
-	int		i;
-	
+
 	ent = client->edict;
-	memset (stats, 0, sizeof(stats));
-	
+	memset (stats, 0, sizeof(stats[0]) * MAX_STATS);
+
 	// if we are a spectator and we are tracking a player, we get his stats
 	// so our status bar reflects his
 	if (client->spectator && client->spec_track > 0)
@@ -520,7 +515,22 @@ static void SV_UpdateClientStats (client_t *client)
 	stats[STAT_ITEMS] = (int)ent->v.items | ((int)pr.global_struct->serverflags << 28);
 	if (client->z_ext & Z_EXT_VIEWHEIGHT)
 		stats[STAT_VIEWHEIGHT] = (int)ent->v.view_ofs[2];
+}
 
+/*
+=======================
+SV_UpdateClientStats
+
+Performs a delta update of the stats array.  This should only be performed
+when a reliable message can be delivered this frame.
+=======================
+*/
+static void SV_UpdateClientStats (client_t *client)
+{
+	int		stats[MAX_STATS];
+	int		i;
+
+	SV_ClientStats (client, stats);
 	for (i=0 ; i<MAX_STATS ; i++)
 		if (stats[i] != client->stats[i])
 		{

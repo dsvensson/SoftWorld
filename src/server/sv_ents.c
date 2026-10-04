@@ -166,37 +166,52 @@ void SV_ClientBaseline (const client_t *client, const edict_t *ent, entity_state
 
 /*
 =============
+SV_EntityState
+
+An entity as the clients see it
+=============
+*/
+void SV_EntityState (const edict_t *ent, int number, entity_state_t *state)
+{
+	state->number = number;
+	state->flags = 0;
+	VectorCopy (ent->v.origin, state->origin);
+	VectorCopy (ent->v.angles, state->angles);
+	state->modelindex = (int)ent->v.modelindex;
+	state->frame = (int)ent->v.frame;
+	state->colormap = (int)ent->v.colormap;
+	state->skinnum = (int)ent->v.skin;
+	state->effects = (int)ent->v.effects;
+	SV_EntityLook (ent, state);
+}
+
+/*
+=============
 SV_EmitPacketEntities
 
-Writes a delta update of a packet_entities_t to the message.
+Writes a delta update of a packet_entities_t to the message, from a frame the
+client has (its delta_sequence's), or the whole of it without one.
 
 =============
 */
-static void SV_EmitPacketEntities (client_t *client, packet_entities_t *to, sizebuf_t *msg)
+void SV_EmitPacketEntities (const client_t *client, const packet_entities_t *from, const packet_entities_t *to,
+	sizebuf_t *msg)
 {
 	edict_t	*ent;
-	client_frame_t	*fromframe;
-	packet_entities_t *from;
 	int		oldindex, newindex;
 	int		oldnum, newnum;
 	int		oldmax;
 	entity_state_t	base;
 
-	// this is the frame that we are going to delta update from
-	if (client->delta_sequence != -1)
+	if (from)
 	{
-		fromframe = &client->frames[client->delta_sequence & UPDATE_MASK];
-		from = &fromframe->entities;
 		oldmax = from->num_entities;
-
 		MSG_WriteByte (msg, svc_deltapacketentities);
 		MSG_WriteByte (msg, client->delta_sequence);
 	}
 	else
 	{
 		oldmax = 0;	// no delta update
-		from = NULL;
-
 		MSG_WriteByte (msg, svc_packetentities);
 	}
 
@@ -453,7 +468,6 @@ void SV_WriteEntitiesToClient (client_t *client, sizebuf_t *msg)
 	packet_entities_t	*pack;
 	edict_t	*clent;
 	client_frame_t	*frame;
-	entity_state_t	*state;
 	int		maxentities;
 
 	// this is the frame we are creating
@@ -497,25 +511,14 @@ void SV_WriteEntitiesToClient (client_t *client, sizebuf_t *msg)
 		if (!SV_EntityFits (client, e, (int)ent->v.modelindex))
 			continue;
 
-		state = &pack->entities[pack->num_entities];
-		pack->num_entities++;
-
-		state->number = e;
-		state->flags = 0;
-		VectorCopy (ent->v.origin, state->origin);
-		VectorCopy (ent->v.angles, state->angles);
-		state->modelindex = (int)ent->v.modelindex;
-		state->frame = (int)ent->v.frame;
-		state->colormap = (int)ent->v.colormap;
-		state->skinnum = (int)ent->v.skin;
-		state->effects = (int)ent->v.effects;
-		SV_EntityLook (ent, state);
+		SV_EntityState (ent, e, &pack->entities[pack->num_entities++]);
 	}
 
 	// encode the packet entities as a delta from the
 	// last packetentities acknowledged by the client
 
-	SV_EmitPacketEntities (client, pack, msg);
+	SV_EmitPacketEntities (client, client->delta_sequence != -1
+		? &client->frames[client->delta_sequence & UPDATE_MASK].entities : NULL, pack, msg);
 
 	// now add the specialized nail update
 	SV_EmitNailUpdate (msg);

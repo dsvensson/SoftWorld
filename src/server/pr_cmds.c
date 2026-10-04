@@ -1003,140 +1003,120 @@ static client_t *Write_GetClient (qcvm_t *vm)
 	return &svs.clients[entnum-1];
 }
 
-// where a Write* builtin writes: to msg_entity's client (*cl) with room for
-// size bytes, or to a buffer (*sb); false after QC_Error
-static bool PF_WriteTo (qcvm_t *vm, int size, client_t **cl, sizebuf_t **sb)
+// where a Write* builtin writes: to a buffer, or for msg_entity's client
+// (MSG_ONE, *one) a message of its own, which PF_WriteDone gives to the
+// client's reliable stream; NULL after QC_Error
+static sizebuf_t *PF_WriteTo (qcvm_t *vm, client_t **one)
 {
-	*cl = NULL;
-	*sb = NULL;
-	if (QC_ArgFloat(vm, 0) == MSG_ONE)
+	static byte			data[MAX_MSGLEN];
+	static sizebuf_t	msg;
+
+	*one = NULL;
+	if (QC_ArgFloat(vm, 0) != MSG_ONE)
+		return WriteDest (vm);
+	if (!(*one = Write_GetClient (vm)))
+		return NULL;
+	msg = (sizebuf_t){.data = data, .maxsize = sizeof(data), .allowoverflow = true,
+		.floatcoords = (*one)->netchan.message.floatcoords};
+	return &msg;
+}
+
+static bool PF_WriteDone (client_t *one, sizebuf_t *msg)
+{
+	if (one)
 	{
-		if (!(*cl = Write_GetClient (vm)))
-			return false;
-		ClientReliableCheckBlock (*cl, size);
-		return true;
+		ClientReliableCheckBlock (one, msg->cursize);
+		ClientReliableWrite_SZ (one, msg->data, msg->cursize);
 	}
-	return (*sb = WriteDest (vm)) != NULL;
+	return true;
 }
 
 static bool PF_WriteByte (qcvm_t *vm)
 {
-	int			c = PF_ArgTrunc(vm, 1);
-	client_t	*cl;
+	client_t	*one;
 	sizebuf_t	*sb;
 
-	if (!PF_WriteTo (vm, 1, &cl, &sb))
+	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
-	if (cl)
-		ClientReliableWrite_Byte(cl, c);
-	else
-		MSG_WriteByte (sb, c);
-	return true;
+	MSG_WriteByte (sb, PF_ArgTrunc(vm, 1));
+	return PF_WriteDone (one, sb);
 }
 
 static bool PF_WriteChar (qcvm_t *vm)
 {
-	int			c = PF_ArgTrunc(vm, 1);
-	client_t	*cl;
+	client_t	*one;
 	sizebuf_t	*sb;
 
-	if (!PF_WriteTo (vm, 1, &cl, &sb))
+	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
-	if (cl)
-		ClientReliableWrite_Char(cl, c);
-	else
-		MSG_WriteChar (sb, c);
-	return true;
+	MSG_WriteChar (sb, PF_ArgTrunc(vm, 1));
+	return PF_WriteDone (one, sb);
 }
 
 static bool PF_WriteShort (qcvm_t *vm)
 {
-	int			c = PF_ArgTrunc(vm, 1);
-	client_t	*cl;
+	client_t	*one;
 	sizebuf_t	*sb;
 
-	if (!PF_WriteTo (vm, 2, &cl, &sb))
+	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
-	if (cl)
-		ClientReliableWrite_Short(cl, c);
-	else
-		MSG_WriteShort (sb, c);
-	return true;
+	MSG_WriteShort (sb, PF_ArgTrunc(vm, 1));
+	return PF_WriteDone (one, sb);
 }
 
 static bool PF_WriteLong (qcvm_t *vm)
 {
-	int			c = PF_ArgTrunc(vm, 1);
-	client_t	*cl;
+	client_t	*one;
 	sizebuf_t	*sb;
 
-	if (!PF_WriteTo (vm, 4, &cl, &sb))
+	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
-	if (cl)
-		ClientReliableWrite_Long(cl, c);
-	else
-		MSG_WriteLong (sb, c);
-	return true;
+	MSG_WriteLong (sb, PF_ArgTrunc(vm, 1));
+	return PF_WriteDone (one, sb);
 }
 
 static bool PF_WriteAngle (qcvm_t *vm)
 {
-	float		f = QC_ArgFloat(vm, 1);
-	client_t	*cl;
+	client_t	*one;
 	sizebuf_t	*sb;
 
-	if (!PF_WriteTo (vm, 1, &cl, &sb))
+	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
-	if (cl)
-		ClientReliableWrite_Angle(cl, f);
-	else
-		MSG_WriteAngle (sb, f);
-	return true;
+	MSG_WriteAngle (sb, QC_ArgFloat(vm, 1));
+	return PF_WriteDone (one, sb);
 }
 
 static bool PF_WriteCoord (qcvm_t *vm)
 {
-	float		f = QC_ArgFloat(vm, 1);
-	client_t	*cl;
+	client_t	*one;
 	sizebuf_t	*sb;
 
-	if (!PF_WriteTo (vm, 4, &cl, &sb))		// 2, or 4 as a float
+	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
-	if (cl)
-		ClientReliableWrite_Coord(cl, f);
-	else
-		MSG_WriteCoord (sb, f);
-	return true;
+	MSG_WriteCoord (sb, QC_ArgFloat(vm, 1));
+	return PF_WriteDone (one, sb);
 }
 
 static bool PF_WriteString (qcvm_t *vm)
 {
-	const char	*s = QC_ArgString(vm, 1);
-	client_t	*cl;
+	client_t	*one;
 	sizebuf_t	*sb;
 
-	if (!PF_WriteTo (vm, 1+(int)strlen(s), &cl, &sb))
+	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
-	if (cl)
-		ClientReliableWrite_String(cl, s);
-	else
-		MSG_WriteString (sb, s);
-	return true;
+	MSG_WriteString (sb, QC_ArgString(vm, 1));
+	return PF_WriteDone (one, sb);
 }
 
 static bool PF_WriteEntity (qcvm_t *vm)
 {
-	int			e = PF_ArgEdictNum(vm, 1);
-	client_t	*cl;
+	client_t	*one;
 	sizebuf_t	*sb;
 
-	if (!PF_WriteTo (vm, 2, &cl, &sb))
+	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
-	if (cl)
-		ClientReliableWrite_Short(cl, e);
-	else
-		MSG_WriteShort (sb, e);
-	return true;
+	MSG_WriteShort (sb, PF_ArgEdictNum(vm, 1));
+	return PF_WriteDone (one, sb);
 }
 
 //=============================================================================
