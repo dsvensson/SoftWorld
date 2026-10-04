@@ -428,7 +428,11 @@ static void SV_Status_f (void)
 				Con_Printf("\n");
 
 			s = NET_BaseAdrToString ( cl->netchan.remote_address);
-			Con_Printf ("  %-16.16s", s);
+			// an address too long for its column (IPv6's) has a line of its own
+			if (strlen (s) > 16)
+				Con_Printf ("  %s\n%18s", s, "");
+			else
+				Con_Printf ("  %-16.16s", s);
 			if (cl->state == cs_connected)
 			{
 				Con_Printf ("CONNECTING\n");
