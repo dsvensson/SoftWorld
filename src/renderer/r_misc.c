@@ -413,6 +413,9 @@ r_drawflat.value = 0;
 
 	R_SetUpFrustumIndexes ();
 
+	// the last frame's surfaces didn't fit in the cache at once
+	if (r_cache_thrash)
+		D_GrowCache ();
 	r_cache_thrash = false;
 
 // clear frame counts

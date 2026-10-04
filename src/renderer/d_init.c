@@ -97,27 +97,15 @@ void D_SetupFrame (void)
 ===============
 R_SetRenderSize
 
-Allocates the z-buffer, the surface cache and every table of a width x
-height frame
+Allocates the z-buffer, the surface cache (D_AllocCache, which may grow it
+later) and every table of a width x height frame
 ===============
 */
 void R_SetRenderSize (int width, int height, int scale)
 {
-	static byte	*buffers;
-	int			zbuffersize, cacheoffset, cachesize;
-
-	if (buffers)
-	{
-		D_FlushCaches ();	// the surfaces forget their cache blocks
-		Mem_FreeAligned (buffers);
-	}
-
-	cachesize = D_SurfaceCacheForRes (width, height);
-	zbuffersize = width * height * (int)sizeof (*d_pzbuffer);
-	cacheoffset = (zbuffersize + 63) & ~63;		// the cache's blocks hold pointers
-	buffers = Mem_AllocAligned ((size_t)cacheoffset + (size_t)cachesize, 64);
-	d_pzbuffer = (float *)buffers;
-	D_InitCaches (buffers + cacheoffset, cachesize);
+	Mem_FreeAligned (d_pzbuffer);
+	d_pzbuffer = Mem_AllocAligned ((size_t)width * height * sizeof (*d_pzbuffer), 64);
+	D_AllocCache (D_SurfaceCacheForRes (width, height));
 
 	Mem_Free (d_scantable);
 	Mem_Free (zspantable);

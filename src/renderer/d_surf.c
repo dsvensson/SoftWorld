@@ -34,20 +34,32 @@ static bool		sc_resumewrapped;	// the allocation the batch stopped had wrapped t
 static int                                     sc_size;
 surfcache_t *sc_rover;
 static surfcache_t *sc_base;
+static bool		sc_fixed;			// -surfcachesize: the cache keeps the size it names
 
 #define GUARDSIZE       4
 
+// the most the cache grows to (D_GrowCache)
+#define	SURFCACHE_MAX	((sizeof (void *) > 4 ? 512 : 128) << 20)
 
+/*
+================
+D_SurfaceCacheForRes
+
+The cache's first size, in bytes: id's for the frame's size, or
+-surfcachesize's (in kilobytes), which it keeps
+================
+*/
 int     D_SurfaceCacheForRes (int width, int height)
 {
 	int             size, pix;
 
-	if (COM_CheckParm ("-surfcachesize"))
+	sc_fixed = COM_CheckParm ("-surfcachesize") != 0;
+	if (sc_fixed)
 	{
 		size = Q_atoi(com_argv[COM_CheckParm("-surfcachesize")+1]) * 1024;
 		return size;
 	}
-	
+
 	size = SURFCACHE_SIZE_AT_320X200;
 
 	pix = width*height;
@@ -85,10 +97,8 @@ D_InitCaches
 
 ================
 */
-void D_InitCaches (void *buffer, int size)
+static void D_InitCaches (void *buffer, int size)
 {
-//		Con_Printf ("%ik surface cache\n", size/1024);
-
 	sc_size = size - GUARDSIZE;
 	sc_base = (surfcache_t *)buffer;
 	sc_rover = sc_base;
@@ -123,6 +133,43 @@ void D_FlushCaches (void)
 	sc_base->next = NULL;
 	sc_base->owner = NULL;
 	sc_base->size = sc_size;
+}
+
+/*
+================
+D_AllocCache
+
+The surface cache, size bytes of it, the surfaces' blocks forgotten
+================
+*/
+void D_AllocCache (int size)
+{
+	D_FlushCaches ();
+	Mem_FreeAligned (sc_base);
+	sc_base = NULL;
+	D_InitCaches (Mem_AllocAligned ((size_t)size, 64), size);	// the blocks hold pointers
+}
+
+/*
+================
+D_GrowCache
+
+After a frame the cache ran out in (its surfaces took each other's blocks,
+so they were all drawn again each frame), twice the room, up to
+SURFCACHE_MAX. id sized the cache for 1996's maps; the large textures of
+today's take some twice that (aztec), and how many depends on the map.
+Between frames, when no block is drawn in.
+================
+*/
+void D_GrowCache (void)
+{
+	int		size = sc_size + GUARDSIZE;
+
+	if (sc_fixed || size >= SURFCACHE_MAX)
+		return;
+	size = size > SURFCACHE_MAX / 2 ? SURFCACHE_MAX : size * 2;
+	D_AllocCache (size);
+	Con_DPrintf ("The surface cache grew to %i KB\n", size / 1024);
 }
 
 /*

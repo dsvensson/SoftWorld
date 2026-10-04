@@ -209,7 +209,8 @@ extern bool	r_cache_thrash;	// set if thrashing the surface cache
 
 int	D_SurfaceCacheForRes (int width, int height);
 void D_FlushCaches (void);
-void D_InitCaches (void *buffer, int size);
+void D_AllocCache (int size);	// the cache, size bytes, flushed
+void D_GrowCache (void);		// after a frame it ran out in: twice the room, up to a limit
 
 // allocates the z-buffer and surface cache for a width x height view buffer
 // allocates everything that depends on the size of the frame; scale is
