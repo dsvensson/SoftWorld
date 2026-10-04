@@ -1,6 +1,6 @@
 # WebRTC over libdatachannel where the build has it (SW_WEBRTC_FOUND, cmake/webrtc.cmake)
 sw_add_module(sw_net
-	net_adr.c net_chan.c net_main.c net_ws.c net_wsproto.c
+	net_adr.c net_chan.c net_main.c net_qtv.c net_qtvproto.c net_ws.c net_wsproto.c
 	$<IF:$<BOOL:${SW_WEBRTC_FOUND}>,net_rtc.c,net_rtc_none.c>)
 target_link_libraries(sw_net PUBLIC sw_common)
 if(SW_WEBRTC_FOUND)

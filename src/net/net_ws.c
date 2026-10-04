@@ -1,5 +1,8 @@
-// net_ws.c -- the server's WebSocket connections: browsers' clients, which
-// can't send UDP, on TCP at the server's port number (sv_websocket)
+// net_ws.c -- the server's TCP port, at its port number: WebSocket
+// connections, browsers' clients, which can't send UDP (sv_websocket); and
+// QTV's viewers (sv_public), handed to net_qtv.c: a connection whose first
+// bytes are "QTV", or a WebSocket one whose first message is (a game client's
+// is a connectionless packet, 0xffffffff)
 //
 // A connection is accepted, sends its upgrade request (net_wsproto.c) within
 // WS_REQUESTTIME, and then a packet a binary message, as FTE's clients do. Its
@@ -16,6 +19,7 @@
 // is (X-Forwarded-For, taken only from this machine).
 
 #include "mem.h"
+#include "net_qtv.h"
 #include "net_socket.h"
 #include "net_ws.h"
 #include "print.h"
@@ -37,6 +41,7 @@ typedef struct
 	tcpsocket_t	*socket;
 	netadr_t	adr;				// NA_WS
 	bool		open;				// upgraded
+	bool		passed;				// a message passed on
 	double		started, heard;
 	byte		in[WS_INMAX];		// the request, then frames
 	int			inlength;
@@ -49,6 +54,7 @@ typedef struct
 
 static tcplisten_t	*ws_listen;
 static int			ws_port;
+static bool			ws_websocket, ws_qtv;	// what the port takes
 static wsconn_t		*ws_conns[WS_MAXCONNS];
 static bool			ws_round;			// accepted and expired for this round of reads
 
@@ -201,6 +207,38 @@ static bool WS_Handshake (int i)
 
 /*
 ================
+WS_Classify
+
+What a connection not yet upgraded has sent: QTV's request, the connection
+handed over; else a WebSocket upgrade's. False when it is gone.
+================
+*/
+static bool WS_Classify (int i)
+{
+	wsconn_t	*c = ws_conns[i];
+
+	if (memcmp (c->in, "QTV", c->inlength < 3 ? (size_t)c->inlength : 3))
+	{
+		if (ws_websocket)
+			return WS_Handshake (i);
+		WS_Close (i);
+		return false;
+	}
+	if (c->inlength < 3)
+		return true;
+	if (!ws_qtv)
+	{
+		WS_Close (i);
+		return false;
+	}
+	QTV_Adopt (c->socket, c->adr, false, c->in, c->inlength, NULL, 0);
+	Mem_Free (c);
+	ws_conns[i] = NULL;
+	return false;
+}
+
+/*
+================
 WS_ReadMessage
 
 The connection's next packet from what it has sent: true with it in msg;
@@ -264,6 +302,20 @@ static bool WS_ReadMessage (int i, netadr_t *from, sizebuf_t *msg)
 			c->messagelength = 0;
 			if (!length || length > msg->maxsize)
 				continue;
+			// a viewer's QTV request first: the connection is QTV's
+			if (!c->passed && length >= 3 && !memcmp (c->message, "QTV", 3))
+			{
+				if (!ws_qtv)
+				{
+					WS_CloseWith (i, 1008);
+					return false;
+				}
+				QTV_Adopt (c->socket, c->adr, true, c->message, length, c->in, c->inlength);
+				Mem_Free (c);
+				ws_conns[i] = NULL;
+				return false;
+			}
+			c->passed = true;
 			memcpy (msg->data, c->message, (size_t)length);
 			msg->cursize = length;
 			*from = c->adr;
@@ -307,7 +359,7 @@ static bool WS_Read (int i, netadr_t *from, sizebuf_t *msg)
 		if (!got)
 			return false;
 		c->inlength += got;
-		if (!c->open && !WS_Handshake (i))
+		if (!c->open && !WS_Classify (i))
 			return false;
 	}
 }
@@ -353,28 +405,49 @@ void WS_SendPacket (const void *data, int length, const netadr_t *to)
 		}
 }
 
-bool NET_ListenWebSocket (int port)
+bool NET_ListenTCP (int port, bool websocket, bool qtv)
 {
-	if (ws_listen && ws_port == port)
-		return true;
-	NET_CloseWebSocket ();
-	ws_listen = TCP_Listen (port);
-	if (!ws_listen)
+	int		i;
+
+	if (!websocket && !qtv)
+	{
+		NET_CloseTCP ();
 		return false;
-	ws_port = port;
-	Con_Printf ("Server WebSocket on TCP port %i\n", port);
+	}
+	// what the port no longer takes goes
+	if (!websocket)
+		for (i = 0 ; i < WS_MAXCONNS ; i++)
+			if (ws_conns[i] && ws_conns[i]->open)
+				WS_CloseWith (i, 1001);
+	if (!qtv)
+		QTV_CloseAll ();
+	if (ws_listen && ws_port == port && websocket == ws_websocket && qtv == ws_qtv)
+		return true;
+	if (!ws_listen || ws_port != port)
+	{
+		NET_CloseTCP ();
+		ws_listen = TCP_Listen (port);
+		if (!ws_listen)
+			return false;
+		ws_port = port;
+	}
+	ws_websocket = websocket;
+	ws_qtv = qtv;
+	Con_Printf ("Server TCP port %i:%s%s\n", port, websocket ? " WebSocket" : "", qtv ? " QTV" : "");
 	return true;
 }
 
-void NET_CloseWebSocket (void)
+void NET_CloseTCP (void)
 {
 	int		i;
 
 	for (i = 0 ; i < WS_MAXCONNS ; i++)
 		if (ws_conns[i])
 			WS_CloseWith (i, 1001);
+	QTV_CloseAll ();
 	if (ws_listen)
 		TCP_CloseListen (ws_listen);
 	ws_listen = NULL;
+	ws_websocket = ws_qtv = false;
 	ws_round = false;
 }

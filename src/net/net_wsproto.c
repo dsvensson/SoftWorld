@@ -4,8 +4,9 @@
 // A request is an HTTP GET asking to upgrade (Upgrade: websocket, Connection
 // with the token upgrade, Sec-WebSocket-Version 13, a Sec-WebSocket-Key), at
 // any path, so a proxy may put the server under one. Of the subprotocols it
-// offers "fteqw" is taken (FTE's QuakeWorld packets), else "binary"; none
-// offered is none answered; others alone are refused. A plain request (a
+// offers "fteqw" is taken (FTE's QuakeWorld packets), else "binary", else
+// "faketcp" (FTE's TCP stream, for QTV); none offered is none answered;
+// others alone are refused. A plain request (a
 // browser opening the port as a page) is told it is a WebSocket port.
 //
 // A client's frames are masked, and the payloads are unmasked in place; FTE's
@@ -168,8 +169,10 @@ int WS_ParseRequest (const char *text, int length, wsrequest_t *request)
 			offered = true;
 			if (WS_HasToken (value, valuelength, "fteqw"))
 				strcpy (request->protocol, "fteqw");
-			else if (WS_HasToken (value, valuelength, "binary") && !request->protocol[0])
+			else if (WS_HasToken (value, valuelength, "binary") && strcmp (request->protocol, "fteqw"))
 				strcpy (request->protocol, "binary");
+			else if (WS_HasToken (value, valuelength, "faketcp") && !request->protocol[0])
+				strcpy (request->protocol, "faketcp");
 		}
 		else if (WS_SameText (line, namelength, "X-Forwarded-For"))
 		{

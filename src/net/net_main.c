@@ -173,7 +173,7 @@ void NET_CloseSocket (netsrc_t sock)
 	net_sockets[sock] = NULL;
 	if (sock == NS_SERVER)
 	{
-		NET_CloseWebSocket ();
+		NET_CloseTCP ();
 		RTC_Host (NULL, NULL);
 	}
 }

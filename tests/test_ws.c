@@ -1,8 +1,9 @@
 // test_ws.c -- the WebSocket handshake and frames as the server takes them
 // (net_wsproto.c): RFC 6455's examples, the requests browsers and FTE send and
 // others refused, and frames whole, cut anywhere, fragmented, unmasked (FTE's)
-// and broken
+// and broken; and the QTV requests the same port takes (net_qtv.c)
 
+#include "net_qtv.h"
 #include "net_ws.h"
 
 #include <stdio.h>
@@ -51,13 +52,19 @@ static void TestRequests (void)
 
 	CHECK (Parse (firefox, &r) > 0 && r.status == 101 && !strcmp (r.protocol, "fteqw"));
 
-	// none offered, none answered; binary taken; quake alone refused
+	// none offered, none answered; binary taken; FTE's faketcp (QTV) taken; quake alone refused
 	CHECK (Parse ("GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"
 		"Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\n\r\n", &r) > 0 && r.status == 101 && !r.protocol[0]);
 	WS_Reply (&r, reply, sizeof(reply));
 	CHECK (!strstr (reply, "Sec-WebSocket-Protocol"));
 	CHECK (Parse ("GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"
 		"Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\nSec-WebSocket-Protocol: binary\r\n\r\n", &r) > 0
+		&& r.status == 101 && !strcmp (r.protocol, "binary"));
+	CHECK (Parse ("GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"
+		"Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\nSec-WebSocket-Protocol: faketcp\r\n\r\n", &r) > 0
+		&& r.status == 101 && !strcmp (r.protocol, "faketcp"));
+	CHECK (Parse ("GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"
+		"Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\nSec-WebSocket-Protocol: faketcp, binary\r\n\r\n", &r) > 0
 		&& r.status == 101 && !strcmp (r.protocol, "binary"));
 	CHECK (Parse ("GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"
 		"Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\nSec-WebSocket-Protocol: quake\r\n\r\n", &r) > 0
@@ -173,16 +180,48 @@ static void TestFrames (void)
 	CHECK (WS_FrameHeader (header, WS_BINARY, 65536) == 10 && header[1] == 127 && header[7] == 1 && header[9] == 0);
 }
 
+static int ParseQTV (const char *text, qtvrequest_t *request)
+{
+	return QTV_ParseRequest (text, (int)strlen (text), request);
+}
+
+// QTV's requests: ours (cl_qtv.c), ezQuake's and FTE's, cut short, CRLF,
+// another version, RAW, and what isn't one
+static void TestQTV (void)
+{
+	qtvrequest_t	r;
+	char			big[QTV_REQUESTMAX + 64];
+	const char		*ours = "QTV\nVERSION: 1\nUSERINFO: \\name\\viewer\\rate\\25000\n\n";
+	const char		*ezquake = "QTV\nVERSION: 1.1\nQTV_EZQUAKE_EXT: 7\nUSERINFO: \\name\\ez\x01q\n\n";
+	int				i;
+
+	CHECK (ParseQTV (ours, &r) == (int)strlen (ours) && r.version == 1 && !r.raw && !strcmp (r.name, "viewer"));
+	CHECK (ParseQTV (ezquake, &r) == (int)strlen (ezquake) && r.version == 1 && !strcmp (r.name, "ezq"));
+	CHECK (ParseQTV ("QTV\r\nVERSION: 1\r\nSOURCE: 1\r\nRAW: 1\r\n\r\nmore", &r) == 38 && r.version == 1 && r.raw);
+	CHECK (ParseQTV ("QTV\nUSERINFO: \"\\name\\quoted\\team\\red\"\n\n", &r) > 0 && !strcmp (r.name, "quoted"));
+	CHECK (ParseQTV ("QTV\nVERSION: 2\n\n", &r) > 0 && r.version == 2);
+	CHECK (ParseQTV ("QTV\n\n", &r) > 0 && r.version == 0 && !r.name[0]);
+	CHECK (ParseQTV ("QTV\nVERSION: 1\n", &r) == 0);
+	CHECK (ParseQTV ("QTV", &r) == 0);
+	CHECK (ParseQTV ("QTVSV 1\n\n", &r) == -1);
+	CHECK (ParseQTV ("GET / HTTP/1.1\n\n", &r) == -1);
+	for (i = 0 ; i < (int)sizeof(big) - 1 ; i++)
+		big[i] = i < 4 ? "QTV\n"[i] : 'x';
+	big[sizeof(big) - 1] = 0;
+	CHECK (ParseQTV (big, &r) == -1);
+}
+
 int main (void)
 {
 	TestAcceptKey ();
 	TestRequests ();
 	TestFrames ();
+	TestQTV ();
 	if (failures)
 	{
 		printf ("%d failures\n", failures);
 		return 1;
 	}
-	printf ("WebSocket: RFC 6455's handshake and frames\n");
+	printf ("WebSocket: RFC 6455's handshake and frames; QTV's requests\n");
 	return 0;
 }

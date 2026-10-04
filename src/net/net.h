@@ -77,11 +77,21 @@ bool	NET_OpenSocket (netsrc_t sock, int port);
 void	NET_CloseSocket (netsrc_t sock);
 netadr_t	NET_SocketAddress (netsrc_t sock);	// type NA_INVALID without a socket, or a browser's
 
-// the server's WebSocket port (net_ws.c): TCP at the port number of its UDP,
-// for browsers' clients; true if it listens there. Closing the server's socket
-// closes it too.
-bool	NET_ListenWebSocket (int port);
-void	NET_CloseWebSocket (void);
+// the server's TCP port (net_ws.c), at the port number of its UDP: browsers'
+// clients over WebSocket, and QTV's viewers (net_qtv.c), each if asked for;
+// true if it listens there. Closing the server's socket closes it too.
+bool	NET_ListenTCP (int port, bool websocket, bool qtv);
+void	NET_CloseTCP (void);
+// the game to QTV's viewers, as an MVD the server writes: the viewers there
+// are; a level's start, its gamestate's fixed part; a frame, with the whole
+// state after it as a snapshot every so often (viewers join at one), or none.
+// NET_QTVSend lets out what was written delay seconds ago and writes to a
+// few viewers. NET_QTVReset lets go of what was written, for the next start.
+int		NET_QTVViewers (void);
+void	NET_QTVLevel (const void *data, int length);
+void	NET_QTVFrame (const void *data, int length, const void *snapshot, int snaplength);
+void	NET_QTVSend (double delay);
+void	NET_QTVReset (void);
 // the room the server takes clients in over WebRTC at net_webrtc_broker: its
 // name, "" for this run's invitation code, NULL for none (the same room again
 // keeps it), and what the server tells the broker it is, an info string
