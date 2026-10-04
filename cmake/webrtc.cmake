@@ -38,10 +38,6 @@ string(SUBSTRING "${sw_webrtc_hash}" 0 12 sw_webrtc_hash)
 set(sw_webrtc_prefix "${sw_deps_dir}/webrtc-${sw_webrtc_hash}")
 list(PREPEND CMAKE_PREFIX_PATH "${sw_webrtc_prefix}")
 
-# what the programs' configurations link: Debug's own, the others Release's
-set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
-set(CMAKE_MAP_IMPORTED_CONFIG_MINSIZEREL Release)
-
 macro(sw_find_libdatachannel)
 	find_package(Threads)
 	find_package(MbedTLS 3 CONFIG QUIET)
@@ -131,6 +127,21 @@ if(NOT LibDataChannel_FOUND AND SW_WEBRTC STREQUAL "ON")
 endif()
 
 if(LibDataChannel_FOUND)
+	# what the programs' configurations link from a package built as Debug
+	# and Release (SW_WEBRTC=ON's, vcpkg's): Debug's own, the others Release's,
+	# where CMake would take the first there is, Debug's. Only on those: a
+	# distribution's package has the one configuration it was built as (Arch's
+	# and Debian's None), which CMake takes for all, and a find module's
+	# library (Vulkan's) has none
+	get_directory_property(sw_imported IMPORTED_TARGETS)
+	foreach(target IN LISTS sw_imported)
+		get_target_property(configs ${target} IMPORTED_CONFIGURATIONS)
+		if("RELEASE" IN_LIST configs)
+			set_target_properties(${target} PROPERTIES
+				MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release MAP_IMPORTED_CONFIG_MINSIZEREL Release)
+		endif()
+	endforeach()
+
 	set(SW_WEBRTC_FOUND ON)
 	message(STATUS "WebRTC: libdatachannel ${LibDataChannel_VERSION} (${LibDataChannel_DIR})")
 else()
