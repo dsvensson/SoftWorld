@@ -1,5 +1,6 @@
 // sb_players.qc -- the server browser's players: every player of the servers
-// listed, by sb_sortplayers, and a search through their names
+// listed but the bots (where their servers say which are), by sb_sortplayers,
+// and a search through their names
 
 typedef struct
 {
@@ -60,6 +61,8 @@ void() SB_ReadPlayers =
 		{
 			if (!SB_ReadPlayer (i, r, &p))
 				break;
+			if (p.bot)
+				continue;
 			pl_players[pl_count].server = i;
 			pl_players[pl_count].name = p.name;
 			pl_order[pl_count] = pl_count;

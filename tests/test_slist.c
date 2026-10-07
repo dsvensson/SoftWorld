@@ -147,6 +147,8 @@ static void TestStatus (void)
 		"2 -9999 3 -40 \"\\s\\watcher\" \"\" 0 0 \"\"\n"
 		"3 -9999 3 -40 \"old(s)\" \"\" 0 0\n"
 		"4 0 0 20 \"hairdo(s)\" \"\" 0 0 \"\"\n"
+		"5 30 5 7 \"ElonMusk\" \"base\" 7 8 \"\" \"b\"\n"
+		"6 10 4 4 \"human\" \"base\" 5 9 \"blue\" \"h\"\n"
 		"garbage\n";
 	char		info[256];
 	slplayer_t	roster[8];
@@ -154,7 +156,10 @@ static void TestStatus (void)
 
 	SL_ParseStatus (text, strlen (text) + 1, info, sizeof(info), roster, 8, &count);
 	CHECK (!strcmp (info, "\\hostname\\x\\maxclients\\16"));
-	CHECK (count == 4);
+	CHECK (count == 6);
+	// mvdsv's client type, where it gives one: bots told from people
+	CHECK (roster[4].bot && !strcmp (roster[4].name, "ElonMusk") && roster[4].frags == 30);
+	CHECK (!roster[5].bot && !strcmp (roster[5].team, "blue") && !roster[0].bot);
 	CHECK (!strcmp (roster[0].name, "player") && !roster[0].spectator && roster[0].frags == 12);
 	CHECK (!strcmp (roster[0].team, "red") && roster[0].ping == 27);
 	CHECK (!strcmp (roster[1].name, "watcher") && roster[1].spectator && roster[1].ping == 40);

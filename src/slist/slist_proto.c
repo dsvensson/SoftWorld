@@ -40,7 +40,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 const byte	sl_masterquery[3] = {'c', '\n', 0};
 const byte	sl_pingquery[6] = {0xff, 0xff, 0xff, 0xff, 'k', '\n'};
-const byte	sl_statusquery[14] = {0xff, 0xff, 0xff, 0xff, 's', 't', 'a', 't', 'u', 's', ' ', '2', '3', '\n'};
+const byte	sl_statusquery[15] = {0xff, 0xff, 0xff, 0xff, 's', 't', 'a', 't', 'u', 's', ' ', '1', '5', '1', '\n'};
 const byte	sl_tablequery[14] = {0xff, 0xff, 0xff, 0xff, 'p', 'i', 'n', 'g', 's', 't', 'a', 't', 'u', 's'};
 
 #define	SL_SPECTATORFRAGS	-9999	// what a spectator's frags are given as
@@ -169,18 +169,23 @@ static bool SL_Quoted (slfields_t *f, char *out, size_t size)
 	return true;
 }
 
-// a client's line: userid frags time ping "name" "skin" top bottom ["team"]
+// a client's line: userid frags time ping "name" "skin" top bottom ["team"
+// ["type"]], the type mvdsv's b for a bot, h for a human
 static bool SL_ParsePlayer (const char *line, const char *end, slplayer_t *p)
 {
 	slfields_t	f = {line, end};
 	size_t		n;
+	char		type[4];
 
 	memset (p, 0, sizeof(*p));
 	if (!SL_Int (&f, &p->userid) || !SL_Int (&f, &p->frags) || !SL_Int (&f, &p->time) || !SL_Int (&f, &p->ping)
 		|| !SL_Quoted (&f, p->name, sizeof(p->name)) || !SL_Quoted (&f, p->skin, sizeof(p->skin))
 		|| !SL_Int (&f, &p->topcolor) || !SL_Int (&f, &p->bottomcolor))
 		return false;
-	SL_Quoted (&f, p->team, sizeof(p->team));	// a server that ignored the team bit ends here
+	// a server that ignored the team bit ends here, one older than mvdsv's
+	// client type bit after the team
+	if (SL_Quoted (&f, p->team, sizeof(p->team)) && SL_Quoted (&f, type, sizeof(type)))
+		p->bot = type[0] == 'b';
 
 	// a spectator's ping comes negative, its frags as SL_SPECTATORFRAGS, and its
 	// name in \s\ (older servers: name(s), only believed of a spectator's line)

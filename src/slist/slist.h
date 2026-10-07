@@ -121,6 +121,7 @@ typedef struct
 	int		ping;			// ms, never negative (a spectator's comes so)
 	int		topcolor, bottomcolor;
 	bool	spectator;
+	bool	bot;			// mvdsv says so (status 128); false where a server doesn't
 	char	name[32], skin[32], team[16];	// Quake's characters
 } slplayer_t;
 
@@ -179,7 +180,8 @@ PACKETS (slist_proto.c)
 
 extern const byte	sl_masterquery[3];		// c \n \0: a master's question, its NUL too
 extern const byte	sl_pingquery[6];		// ff ff ff ff k \n
-extern const byte	sl_statusquery[14];		// ff ff ff ff status 23 \n: info, players, spectators, teams
+extern const byte	sl_statusquery[15];		// ff ff ff ff status 151 \n: info, players, spectators, teams,
+											// and which are bots (mvdsv's 128)
 extern const byte	sl_tablequery[14];		// ff ff ff ff pingstatus: a relay's pings
 
 // a master's reply: each IPv4 server it names to server, until a port 0 or the

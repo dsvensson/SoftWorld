@@ -163,7 +163,7 @@ It is the checklist for the rest of CSQC.
   sources, the marked sources' servers, the scans asked for), `gethostcacheindexforkey` (FTE's
   names, `player<N>`, `state` for cached, alive and dead, `qtv` for its game's stream on QTV as
   `qtvplay` takes it, and any serverinfo key), `gethostcachestring` and `gethostcachenumber` (a
-  player as FTE spells one, its team after), the masks as FTE tests them (in order, ANDed, or ORed
+  player as FTE spells one, its team and "b" for a bot after), the masks as FTE tests them (in order, ANDed, or ORed
   with mask 512), `sethostcachesort` (and its flag 8, a key after the others), `resorthostcache` and
   `refreshhostcache`. SoftWorld's own, by name: `gethostcacheindexforaddress`,
   `refreshhostcacheentry` (a server asked again ahead of the rest), `hostcacheinsource`,

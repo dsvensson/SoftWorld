@@ -310,12 +310,13 @@ string(float i) SB_FraglimitText = { return SB_Limit (SB_Num (key_fraglimit, i))
 string(float i) SB_TimelimitText = { return SB_Limit (SB_Num (key_timelimit, i)); };
 
 // a player as the list gives player<N> (FTE's spelling, its team after):
-// userid frags time ping "name" "skin" 'top' 'bottom' "team", the colours
-// vectors a word each to tokenize
+// userid frags time ping "name" "skin" 'top' 'bottom' "team" "b", b for a
+// bot where its server says, the colours vectors a word each to tokenize
 typedef struct
 {
 	float	frags, time, ping;
 	float	spec;				// frags -9999
+	float	bot;
 	string	name, team;
 	vector	top, bottom;		// 0 to 1
 } player_t;
@@ -336,6 +337,7 @@ float(float i, float r, player_t *p) SB_ReadPlayer =
 	p->top = stov (argv (6));
 	p->bottom = stov (argv (7));
 	p->team = argv (8);
+	p->bot = argv (9) == "b";
 	return TRUE;
 };
 

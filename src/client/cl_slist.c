@@ -473,8 +473,9 @@ static void SB_Colour (int c, float rgb[3])
 }
 
 // string gethostcachestring(float key, float hostnr): FTE's player<N> as
-// "userid frags time ping "name" "skin" 'top' 'bottom'", and its team after;
-// a spectator's frags -9999, as servers give them
+// "userid frags time ping "name" "skin" 'top' 'bottom'", and its team after,
+// then "b" for a bot (where the server says); a spectator's frags -9999, as
+// servers give them
 static bool SB_GetHostCacheString (qcvm_t *vm)
 {
 	const slserver_t	*s = SB_Server (vm, 1);
@@ -491,9 +492,9 @@ static bool SB_GetHostCacheString (qcvm_t *vm)
 			p = &s->roster[key - SLK_PLAYER0];
 			SB_Colour (p->topcolor, top);
 			SB_Colour (p->bottomcolor, bottom);
-			snprintf (text, sizeof(text), "%i %i %i %i \"%s\" \"%s\" '%g %g %g' '%g %g %g' \"%s\"", p->userid,
+			snprintf (text, sizeof(text), "%i %i %i %i \"%s\" \"%s\" '%g %g %g' '%g %g %g' \"%s\" \"%s\"", p->userid,
 				p->spectator ? -9999 : p->frags, p->time, p->ping, p->name, p->skin, top[0], top[1], top[2], bottom[0],
-				bottom[1], bottom[2], p->team);
+				bottom[1], bottom[2], p->team, p->bot ? "b" : "");
 		}
 	}
 	else if (s)
