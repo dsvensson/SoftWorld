@@ -23,7 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // entities offered to CSQC first, and the view CSQC draws.
 
 #include "cl_local.h"
-#include "qcvm.h"
+#include "cl_qc.h"
 
 cvar_t	cl_nocsqc = {.name = "cl_nocsqc", .string = "0",
 	.description = "Keeps client-side QuakeC (CSQC) from loading: a server's csprogs.dat, which some servers need "
@@ -56,7 +56,7 @@ enum
 
 static struct
 {
-	qcvm_t			*vm;
+	clqc_t			qc;					// the VM, the calls in progress, the commands
 	qc_builtins_t	*builtins;
 
 	// what the server offers, as CSQC_Init was last given it
@@ -68,11 +68,6 @@ static struct
 	bool			worldloaded;
 	char			*entitydata;		// what getentitytoken parses next, or NULL
 	char			*entitycopy;		// QuakeC's own text for it
-
-	char			*commands[256];		// QuakeC registered them
-	int				numcommands;
-
-	int				calls;				// the client's calls into QuakeC in progress
 
 	qc_ent_t		ents[MAX_EDICTS];	// the server's entities CSQC holds, by number; 0 none
 	bool			mayread;			// QuakeC reads the server's message (the Read builtins)
@@ -123,125 +118,6 @@ THE HOST
 ==============================================================================
 */
 
-static void CSQC_Warning (void *ctx, const qc_warning_t *w)
-{
-	char	text[1024];
-
-	(void)ctx;
-	Con_DPrintf ("CSQC: %s\n", QC_WarningText (w, text, sizeof(text)));
-}
-
-static void CSQC_Print (void *ctx, const char *text)
-{
-	(void)ctx;
-	Con_Printf ("%s", text);
-}
-
-static void CSQC_CenterPrint (void *ctx, const char *text)
-{
-	(void)ctx;
-	SCR_CenterPrint ((char *)text);
-}
-
-static void CSQC_Dump (void *ctx, qc_dumpkind_t kind, const char *text)
-{
-	(void)kind;
-	CSQC_Print (ctx, text);
-}
-
-static void CSQC_Localcmd (void *ctx, const char *text)
-{
-	(void)ctx;
-	Cbuf_AddText ((char *)text);
-}
-
-static float CSQC_CvarFloat (void *ctx, const char *varname)
-{
-	(void)ctx;
-	return Cvar_VariableValue ((char *)varname);
-}
-
-static const char *CSQC_CvarString (void *ctx, const char *varname)
-{
-	cvar_t	*var = Cvar_FindVar ((char *)varname);
-
-	(void)ctx;
-	return var ? var->string : NULL;
-}
-
-static void CSQC_CvarSet (void *ctx, const char *varname, const char *value)
-{
-	(void)ctx;
-	if (Cvar_FindVar ((char *)varname))
-		Cvar_Set ((char *)varname, (char *)value);
-}
-
-// checkcommand: 1 a command, 2 an alias, 3 a cvar
-static uint32_t CSQC_CheckCommand (void *ctx, const char *cmd)
-{
-	(void)ctx;
-	if (Cmd_Exists ((char *)cmd))
-		return 1;
-	if (Cmd_AliasExists (cmd))
-		return 2;
-	return Cvar_FindVar ((char *)cmd) ? 3 : 0;
-}
-
-// a command QuakeC registered: its whole line goes to CSQC_ConsoleCommand
-static void CSQC_ConsoleCommand_f (void)
-{
-	qc_value_t	arg;
-	qc_func_t	f;
-	char		*line;
-	bool		ok;
-
-	if (!csqc.vm || !(f = CSQC_Entry ("CSQC_ConsoleCommand")))
-		return;
-	line = va ("%s %s", Cmd_Argv (0), Cmd_Args ());
-	arg = QC_ValWord (QC_TempString (csqc.vm, line, strlen (line)));
-	csqc.calls++;
-	ok = QC_Call (csqc.vm, f, 1, &arg, NULL);
-	csqc.calls--;
-	if (!ok)
-		CSQC_Failed ();
-}
-
-// registercommand: a console command for CSQC_ConsoleCommand, unless the name
-// is taken
-static void CSQC_RegisterCommand (void *ctx, const char *cmd)
-{
-	char	*copy;
-	int		i;
-
-	(void)ctx;
-	if (!*cmd || Cmd_Exists ((char *)cmd) || Cvar_FindVar ((char *)cmd) || Cmd_AliasExists (cmd))
-		return;
-	for (i = 0 ; i < csqc.numcommands ; i++)
-		if (!strcmp (csqc.commands[i], cmd))
-			return;
-	if (csqc.numcommands == (int)(sizeof(csqc.commands) / sizeof(csqc.commands[0])))
-	{
-		Con_Printf ("CSQC: too many commands, %s left out\n", cmd);
-		return;
-	}
-	copy = Mem_Alloc (strlen (cmd) + 1);
-	strcpy (copy, cmd);
-	csqc.commands[csqc.numcommands++] = copy;
-	Cmd_AddCommand (copy, CSQC_ConsoleCommand_f, "A command of the client-side QuakeC.");
-}
-
-static float CSQC_IsDemo (void *ctx)
-{
-	(void)ctx;
-	return cls.demoplayback ? cls.mvdplayback ? 2.0f : 1.0f : 0.0f;
-}
-
-static bool CSQC_IsServer (void *ctx)
-{
-	(void)ctx;
-	return SV_Active ();
-}
-
 // another progs for addprogs, from the game directory
 static qc_progs_t *CSQC_LoadAddon (void *ctx, const char *file)
 {
@@ -267,12 +143,6 @@ static qc_progs_t *CSQC_LoadAddon (void *ctx, const char *file)
 	return p;
 }
 
-static void CSQC_Trace (void *ctx, const char *line)
-{
-	(void)ctx;
-	Con_Printf ("%s\n", line);
-}
-
 // an entity going: its trail ends, and if it is one of the server's, CSQC no
 // longer holds it (its next update makes it anew)
 static bool CSQC_OnRemove (void *ctx, qcvm_t *vm, qc_ent_t e)
@@ -289,24 +159,8 @@ static bool CSQC_OnRemove (void *ctx, qcvm_t *vm, qc_ent_t e)
 	return true;
 }
 
-static const qc_host_t	csqc_host = {
-	.warning = CSQC_Warning,
-	.print = CSQC_Print,
-	.dprint = CSQC_Print,
-	.centerprint = CSQC_CenterPrint,
-	.localcmd = CSQC_Localcmd,
-	.dump = CSQC_Dump,
-	.cvar_float = CSQC_CvarFloat,
-	.cvar_string = CSQC_CvarString,
-	.cvar_set = CSQC_CvarSet,
-	.check_command = CSQC_CheckCommand,
-	.register_command = CSQC_RegisterCommand,
-	.is_demo = CSQC_IsDemo,
-	.is_server = CSQC_IsServer,
-	.load_progs = CSQC_LoadAddon,
-	.trace = CSQC_Trace,
-	.on_remove = CSQC_OnRemove,
-};
+// the shared host's callbacks (cl_qc.c), and these (CSQC_RegisterVariables)
+static qc_host_t	csqc_host;
 
 /*
 ==============================================================================
@@ -317,17 +171,6 @@ Those that need neither the CSQC networking nor drawing.
 
 ==============================================================================
 */
-
-// a string result: null for empty text, as FTE returns them
-static bool CS_ReturnText (qcvm_t *vm, const char *text)
-{
-	if (!*text)
-	{
-		QC_ReturnWord (vm, 0);
-		return true;
-	}
-	return QC_ReturnString (vm, text, strlen (text));
-}
 
 // FTE's serverkey: a few keys about the connection, else the serverinfo's
 static const char *CS_ServerKey (const char *key)
@@ -355,7 +198,7 @@ static const char *CS_ServerKey (const char *key)
 // string serverkey(string key)
 static bool CS_ServerKeyBuiltin (qcvm_t *vm)
 {
-	return CS_ReturnText (vm, CS_ServerKey (QC_ArgString (vm, 0)));
+	return CLQC_ReturnText (vm, CS_ServerKey (QC_ArgString (vm, 0)));
 }
 
 // float serverkeyfloat(string key, optional float default)
@@ -402,7 +245,7 @@ static const char *CS_PlayerKey (int pnum, const char *key)
 // string getplayerkeyvalue(float playernum, string key)
 static bool CS_GetPlayerKeyValue (qcvm_t *vm)
 {
-	return CS_ReturnText (vm, CS_PlayerKey (QC_DoubleToInt (QC_ArgFloat (vm, 0)), QC_ArgString (vm, 1)));
+	return CLQC_ReturnText (vm, CS_PlayerKey (QC_DoubleToInt (QC_ArgFloat (vm, 0)), QC_ArgString (vm, 1)));
 }
 
 // float getplayerkeyfloat(float playernum, string key, optional float default)
@@ -482,7 +325,7 @@ static bool CS_GetStatS (qcvm_t *vm)
 	char	text[17];
 
 	if (n >= 0 && (cls.fteext & FTE_PEXT_CSQC))
-		return CS_ReturnText (vm, cl.statsstr[n] ? cl.statsstr[n] : "");
+		return CLQC_ReturnText (vm, cl.statsstr[n] ? cl.statsstr[n] : "");
 	if (n < 0 || n > MAX_CL_STATS - 4)
 	{
 		if (n >= 0)
@@ -570,7 +413,7 @@ static bool CS_Field (const char *field, uint32_t type, uint32_t *ofs)
 {
 	uint32_t	t;
 
-	return QC_FindField (csqc.vm, field, ofs, &t) && t == type;
+	return QC_FindField (csqc.qc.vm, field, ofs, &t) && t == type;
 }
 
 static float CS_GetFloat (qc_ent_t e, const char *field)
@@ -579,7 +422,7 @@ static float CS_GetFloat (qc_ent_t e, const char *field)
 	qc_word_t	w = {0};
 
 	if (CS_Field (field, QC_EV_FLOAT, &ofs))
-		QC_GetField (csqc.vm, e, ofs, 1, &w.u);
+		QC_GetField (csqc.qc.vm, e, ofs, 1, &w.u);
 	return w.f;
 }
 
@@ -589,7 +432,7 @@ static void CS_GetVector (qc_ent_t e, const char *field, float v[3])
 	qc_word_t	w[3] = {0};
 
 	if (CS_Field (field, QC_EV_VECTOR, &ofs))
-		QC_GetField (csqc.vm, e, ofs, 3, &w[0].u);
+		QC_GetField (csqc.qc.vm, e, ofs, 3, &w[0].u);
 	v[0] = w[0].f;
 	v[1] = w[1].f;
 	v[2] = w[2].f;
@@ -604,7 +447,7 @@ static void CS_SetVector (qc_ent_t e, const char *field, const float v[3])
 	w[1].f = v[1];
 	w[2].f = v[2];
 	if (CS_Field (field, QC_EV_VECTOR, &ofs))
-		QC_SetField (csqc.vm, e, ofs, 3, &w[0].u);
+		QC_SetField (csqc.qc.vm, e, ofs, 3, &w[0].u);
 }
 
 static void CS_SetWord (qc_ent_t e, const char *field, uint32_t type, uint32_t word)
@@ -612,7 +455,7 @@ static void CS_SetWord (qc_ent_t e, const char *field, uint32_t type, uint32_t w
 	uint32_t	ofs;
 
 	if (CS_Field (field, type, &ofs))
-		QC_SetField (csqc.vm, e, ofs, 1, &word);
+		QC_SetField (csqc.qc.vm, e, ofs, 1, &word);
 }
 
 /*
@@ -971,7 +814,7 @@ static float CS_EntFloat (qc_ent_t e, uint32_t ofs)
 	qc_word_t	w = {0};
 
 	if (ofs != NOFIELD)
-		QC_GetField (csqc.vm, e, ofs, 1, &w.u);
+		QC_GetField (csqc.qc.vm, e, ofs, 1, &w.u);
 	return w.f;
 }
 
@@ -980,7 +823,7 @@ static void CS_EntVector (qc_ent_t e, uint32_t ofs, vec3_t v)
 	qc_word_t	w[3] = {0};
 
 	if (ofs != NOFIELD)
-		QC_GetField (csqc.vm, e, ofs, 3, &w[0].u);
+		QC_GetField (csqc.qc.vm, e, ofs, 3, &w[0].u);
 	v[0] = w[0].f;
 	v[1] = w[1].f;
 	v[2] = w[2].f;
@@ -1658,13 +1501,7 @@ RUNNING
 // client carries on without it
 static void CSQC_Failed (void)
 {
-	const qc_error_t	*e = QC_LastError (csqc.vm);
-	char				text[1024];
-	char				*trace = Mem_Alloc (16384);
-
-	Con_Printf ("%s", QC_BacktraceText (&e->backtrace, trace, 16384));
-	Mem_Free (trace);
-	Con_Printf ("CSQC: %s\n", QC_ErrorText (e, text, sizeof(text)));
+	CLQC_Failed (&csqc.qc);
 	Con_Printf ("CSQC shut down\n");
 	CSQC_Destroy ();
 }
@@ -1675,8 +1512,8 @@ static qc_func_t CSQC_Entry (const char *entry)
 	uint32_t	pr;
 	qc_func_t	f;
 
-	for (pr = 0 ; pr < QC_NumProgs (csqc.vm) ; pr++)
-		if ((f = QC_FindFunctionIn (csqc.vm, pr, entry)))
+	for (pr = 0 ; pr < QC_NumProgs (csqc.qc.vm) ; pr++)
+		if ((f = QC_FindFunctionIn (csqc.qc.vm, pr, entry)))
 			return f;
 	return 0;
 }
@@ -1689,13 +1526,13 @@ static bool CSQC_CallRet (qc_func_t f, int argc, const qc_value_t *args, qc_valu
 
 	if (ret)
 		memset (ret, 0, sizeof(*ret));
-	if (!csqc.vm)
+	if (!csqc.qc.vm)
 		return false;
 	if (!f)
 		return true;
-	csqc.calls++;
-	ok = QC_Call (csqc.vm, f, argc, args, ret);
-	csqc.calls--;
+	csqc.qc.calls++;
+	ok = QC_Call (csqc.qc.vm, f, argc, args, ret);
+	csqc.qc.calls--;
 	if (!ok)
 		CSQC_Failed ();
 	return ok;
@@ -1704,6 +1541,14 @@ static bool CSQC_CallRet (qc_func_t f, int argc, const qc_value_t *args, qc_valu
 static bool CSQC_Call (qc_func_t f, int argc, const qc_value_t *args)
 {
 	return CSQC_CallRet (f, argc, args, NULL);
+}
+
+// a command QuakeC registered: its whole line goes to CSQC_ConsoleCommand
+static void CSQC_Command (clqc_t *qc, const char *line)
+{
+	qc_value_t	arg = QC_ValWord (QC_TempString (qc->vm, line, strlen (line)));
+
+	CSQC_Call (CSQC_Entry ("CSQC_ConsoleCommand"), 1, &arg);
 }
 
 // a float result
@@ -1719,8 +1564,8 @@ static void CSQC_SetFloat (const char *global, float value)
 {
 	uint32_t	word, type;
 
-	if (QC_FindGlobal (csqc.vm, global, &word, &type) && type == QC_EV_FLOAT)
-		QC_Globals (csqc.vm)[word].f = value;
+	if (QC_FindGlobal (csqc.qc.vm, global, &word, &type) && type == QC_EV_FLOAT)
+		QC_Globals (csqc.qc.vm)[word].f = value;
 }
 
 static void CSQC_SetVector (const char *global, const vec3_t v)
@@ -1728,9 +1573,9 @@ static void CSQC_SetVector (const char *global, const vec3_t v)
 	uint32_t	word, type;
 	qc_word_t	*g;
 
-	if (QC_FindGlobal (csqc.vm, global, &word, &type) && type == QC_EV_VECTOR)
+	if (QC_FindGlobal (csqc.qc.vm, global, &word, &type) && type == QC_EV_VECTOR)
 	{
-		g = QC_Globals (csqc.vm) + word;
+		g = QC_Globals (csqc.qc.vm) + word;
 		g[0].f = v[0];
 		g[1].f = v[1];
 		g[2].f = v[2];
@@ -1742,16 +1587,16 @@ static void CSQC_SetGlobalWord (const char *global, uint32_t value)
 {
 	uint32_t	word, type;
 
-	if (QC_FindGlobal (csqc.vm, global, &word, &type) && type != QC_EV_FLOAT && type != QC_EV_VECTOR)
-		QC_Globals (csqc.vm)[word].u = value;
+	if (QC_FindGlobal (csqc.qc.vm, global, &word, &type) && type != QC_EV_FLOAT && type != QC_EV_VECTOR)
+		QC_Globals (csqc.qc.vm)[word].u = value;
 }
 
 static void CSQC_SetString (const char *global, const char *text)
 {
 	uint32_t	word, type;
 
-	if (QC_FindGlobal (csqc.vm, global, &word, &type) && type == QC_EV_STRING)
-		QC_Globals (csqc.vm)[word].u = QC_Intern (csqc.vm, text, strlen (text));
+	if (QC_FindGlobal (csqc.qc.vm, global, &word, &type) && type == QC_EV_STRING)
+		QC_Globals (csqc.qc.vm)[word].u = QC_Intern (csqc.qc.vm, text, strlen (text));
 }
 
 // a field of the world, if the progs has it
@@ -1759,8 +1604,8 @@ static void CSQC_SetWorldField (const char *field, uint32_t want, qc_value_t val
 {
 	uint32_t	ofs, type;
 
-	if (QC_FindField (csqc.vm, field, &ofs, &type) && type == want)
-		QC_SetField (csqc.vm, 0, ofs, 1, value.w);
+	if (QC_FindField (csqc.qc.vm, field, &ofs, &type) && type == want)
+		QC_SetField (csqc.qc.vm, 0, ofs, 1, value.w);
 }
 
 // a float field of an entity, if the progs has it
@@ -1769,8 +1614,8 @@ static void CSQC_SetEntityFloat (qc_ent_t e, const char *field, float value)
 	uint32_t	ofs, type;
 	qc_value_t	v = QC_ValFloat (value);
 
-	if (QC_FindField (csqc.vm, field, &ofs, &type) && type == QC_EV_FLOAT)
-		QC_SetField (csqc.vm, e, ofs, 1, v.w);
+	if (QC_FindField (csqc.qc.vm, field, &ofs, &type) && type == QC_EV_FLOAT)
+		QC_SetField (csqc.qc.vm, e, ofs, 1, v.w);
 }
 
 /*
@@ -1818,13 +1663,13 @@ static bool CSQC_CallEach (const char *entry, uint32_t from)
 	uint32_t	pr;
 	qc_value_t	arg;
 
-	for (pr = from ; csqc.vm && pr < QC_NumProgs (csqc.vm) ; pr++)
+	for (pr = from ; csqc.qc.vm && pr < QC_NumProgs (csqc.qc.vm) ; pr++)
 	{
 		arg = QC_ValFloat ((float)pr - 1);
-		if (!CSQC_Call (QC_FindFunctionIn (csqc.vm, pr, entry), 1, &arg))
+		if (!CSQC_Call (QC_FindFunctionIn (csqc.qc.vm, pr, entry), 1, &arg))
 			return false;
 	}
-	return csqc.vm != NULL;
+	return csqc.qc.vm != NULL;
 }
 
 /*
@@ -1838,7 +1683,7 @@ the player can set it; it stays when CSQC goes, as FTE's do
 */
 static void CSQC_RegisterAutocvars (uint32_t pr)
 {
-	const qc_progs_t	*p = QC_LoadedProgs (csqc.vm, pr);
+	const qc_progs_t	*p = QC_LoadedProgs (csqc.qc.vm, pr);
 	qc_definfo_t		d;
 	qc_word_t			v[3];
 	uint32_t			i, j;
@@ -1892,8 +1737,8 @@ static void CSQC_CvarChanged (cvar_t *var)
 {
 	char	text[1024];
 
-	if (csqc.vm && !QC_SyncAutocvar (csqc.vm, var->name))
-		Con_Printf ("CSQC: autocvar_%s: %s\n", var->name, QC_ErrorText (QC_LastError (csqc.vm), text, sizeof(text)));
+	if (csqc.qc.vm && !QC_SyncAutocvar (csqc.qc.vm, var->name))
+		Con_Printf ("CSQC: autocvar_%s: %s\n", var->name, QC_ErrorText (QC_LastError (csqc.qc.vm), text, sizeof(text)));
 }
 
 /*
@@ -1934,7 +1779,7 @@ bool CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t
 	cheats = cls.demoplayback || !Q_strcasecmp ((char *)s, "ON") || atoi (s)
 		|| (SV_Active () && atoi (Info_ValueForKey (cl.serverinfo, "maxclients")) == 1);
 
-	if (csqc.vm)
+	if (csqc.qc.vm)
 		return true;
 	if (cl_nocsqc.value)
 	{
@@ -1972,9 +1817,9 @@ bool CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t
 
 	QC_DefaultConfig (&config, QC_CSQC);
 	config.developer = developer.value != 0;
-	csqc.vm = QC_Create (main, csqc.builtins, &config, &csqc_host, NULL, &err);
+	csqc.qc.vm = QC_Create (main, csqc.builtins, &config, &csqc_host, &csqc.qc, &err);
 	QC_ReleaseProgs (main);
-	if (!csqc.vm)
+	if (!csqc.qc.vm)
 	{
 		Con_Printf ("CSQC: %s\n", QC_ErrorText (&err, text, sizeof(text)));
 		QC_FreeError (&err);
@@ -1982,11 +1827,11 @@ bool CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t
 			QC_ReleaseProgs (addon);
 		return false;
 	}
-	csqc.trailcarry = Mem_Calloc (QC_MaxEdicts (csqc.vm), sizeof(*csqc.trailcarry));
+	csqc.trailcarry = Mem_Calloc (QC_MaxEdicts (csqc.qc.vm), sizeof(*csqc.trailcarry));
 
 	// the add-on's init runs as it is added, after the csprogs' own
 	CSQC_RegisterAutocvars (0);
-	if (!QC_SyncAutocvars (csqc.vm))
+	if (!QC_SyncAutocvars (csqc.qc.vm))
 	{
 		CSQC_Failed ();
 		if (addon)
@@ -2001,9 +1846,9 @@ bool CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t
 	}
 	if (addon)
 	{
-		csqc.calls++;
-		ok = QC_AddProgs (csqc.vm, addon, &pr);
-		csqc.calls--;
+		csqc.qc.calls++;
+		ok = QC_AddProgs (csqc.qc.vm, addon, &pr);
+		csqc.qc.calls--;
 		QC_ReleaseProgs (addon);
 		if (!ok)
 		{
@@ -2011,7 +1856,7 @@ bool CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t
 			return false;
 		}
 		CSQC_RegisterAutocvars (pr);
-		if (!QC_SyncAutocvars (csqc.vm))
+		if (!QC_SyncAutocvars (csqc.qc.vm))
 		{
 			CSQC_Failed ();
 			return false;
@@ -2023,7 +1868,7 @@ bool CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t
 	csqc.starttime = host.realtime;
 
 	// what FTE sets before CSQC_Init
-	CSQC_SetWorldField ("message", QC_EV_STRING, QC_ValWord (QC_Intern (csqc.vm, cl.levelname, strlen (cl.levelname))));
+	CSQC_SetWorldField ("message", QC_EV_STRING, QC_ValWord (QC_Intern (csqc.qc.vm, cl.levelname, strlen (cl.levelname))));
 	s = Info_ValueForKey (cl.serverinfo, "map");
 	CSQC_SetString ("mapname", *s ? s : *cl.model_name[1] ? cl.model_name[1] : "unknown");
 	CSQC_SetFloat ("deathmatch", (float)atoi (Info_ValueForKey (cl.serverinfo, "deathmatch")));
@@ -2033,7 +1878,7 @@ bool CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t
 	CSQC_SetFrameGlobals ();
 
 	args[0] = QC_ValFloat (CSQC_API_VERSION);
-	args[1] = QC_ValWord (QC_TempString (csqc.vm, "SoftWorld", 9));
+	args[1] = QC_ValWord (QC_TempString (csqc.qc.vm, "SoftWorld", 9));
 	args[2] = QC_ValFloat ((float)VERSION);
 	if (!CSQC_Call (CSQC_Entry ("CSQC_Init"), 3, args))
 		return false;
@@ -2052,20 +1897,20 @@ world is read only
 */
 void CSQC_WorldLoaded (void)
 {
-	if (!csqc.vm || csqc.worldloaded)
+	if (!csqc.qc.vm || csqc.worldloaded)
 		return;
 	csqc.worldloaded = true;
 
-	QC_SetProtected (csqc.vm, 0, false);
+	QC_SetProtected (csqc.qc.vm, 0, false);
 	CSQC_SetWorldField ("solid", QC_EV_FLOAT, QC_ValFloat (SOLID_BSP));
 	CSQC_SetWorldField ("modelindex", QC_EV_FLOAT, QC_ValFloat (1));
-	CSQC_SetWorldField ("model", QC_EV_STRING, QC_ValWord (QC_HostString (csqc.vm, cl.model_name[1])));
+	CSQC_SetWorldField ("model", QC_EV_STRING, QC_ValWord (QC_HostString (csqc.qc.vm, cl.model_name[1])));
 
 	csqc.entitydata = cl.map ? CM_EntityString (cl.map) : NULL;
 	CSQC_Call (CSQC_Entry ("CSQC_WorldLoaded"), 0, NULL);
 	csqc.entitydata = NULL;
-	if (csqc.vm)
-		QC_SetProtected (csqc.vm, 0, true);
+	if (csqc.qc.vm)
+		QC_SetProtected (csqc.qc.vm, 0, true);
 }
 
 /*
@@ -2082,12 +1927,12 @@ void CSQC_Announce (void)
 	if (!(cls.fteext & FTE_PEXT_CSQC) || cls.demoplayback)
 		return;
 	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
-	MSG_WriteString (&cls.netchan.message, csqc.vm ? "enablecsqc" : "disablecsqc");
+	MSG_WriteString (&cls.netchan.message, csqc.qc.vm ? "enablecsqc" : "disablecsqc");
 }
 
 bool CSQC_Inited (void)
 {
-	return csqc.vm != NULL;
+	return csqc.qc.vm != NULL;
 }
 
 /*
@@ -2102,15 +1947,15 @@ static void CSQC_SetSelf (qc_ent_t e)
 {
 	uint32_t	word, type;
 
-	if (QC_FindGlobal (csqc.vm, "self", &word, &type))
-		QC_Globals (csqc.vm)[word].u = e;
+	if (QC_FindGlobal (csqc.qc.vm, "self", &word, &type))
+		QC_Globals (csqc.qc.vm)[word].u = e;
 }
 
 static qc_ent_t CSQC_Self (void)
 {
 	uint32_t	word, type;
 
-	return QC_FindGlobal (csqc.vm, "self", &word, &type) ? QC_Globals (csqc.vm)[word].u : 0;
+	return QC_FindGlobal (csqc.qc.vm, "self", &word, &type) ? QC_Globals (csqc.qc.vm)[word].u : 0;
 }
 
 // an entity the server removed: CSQC_Ent_Remove's to remove, else gone
@@ -2120,7 +1965,7 @@ static void CSQC_EntRemove (qc_ent_t e)
 
 	if (!f)
 	{
-		QC_Remove (csqc.vm, e, false);
+		QC_Remove (csqc.qc.vm, e, false);
 		return;
 	}
 	CSQC_SetSelf (e);
@@ -2155,7 +2000,7 @@ void CSQC_ParseEntities (bool sized)
 	qc_value_t	arg;
 	qc_ent_t	e;
 
-	if (!csqc.vm)
+	if (!csqc.qc.vm)
 		Host_EndGame ("The server sends CSQC entities, but CSQC isn't running");
 	update = CSQC_Entry ("CSQC_Ent_Update");
 	if (!update)
@@ -2183,7 +2028,7 @@ void CSQC_ParseEntities (bool sized)
 			csqc.ents[num] = 0;
 			if (e)
 				CSQC_EntRemove (e);
-			if (!csqc.vm)
+			if (!csqc.qc.vm)
 				Host_EndGame ("CSQC failed removing entity %u", num);
 			continue;
 		}
@@ -2207,7 +2052,7 @@ void CSQC_ParseEntities (bool sized)
 					Host_EndGame ("CSQC failed making entity %u", num);
 				e = CSQC_Self ();
 			}
-			else if (!QC_Spawn (csqc.vm, &e))
+			else if (!QC_Spawn (csqc.qc.vm, &e))
 				Host_EndGame ("CSQC has no room for entity %u", num);
 			else
 				CSQC_SetEntityFloat (e, "entnum", (float)num);
@@ -2218,7 +2063,7 @@ void CSQC_ParseEntities (bool sized)
 		csqc.mayread = true;
 		CSQC_Call (update, 1, &arg);
 		csqc.mayread = false;
-		if (!csqc.vm)
+		if (!csqc.qc.vm)
 			Host_EndGame ("CSQC failed reading entity %u", num);
 		if (spawn)
 			csqc.ents[num] = CSQC_Self ();	// it may have made another
@@ -2241,7 +2086,7 @@ void CSQC_ParseEvent (bool sized)
 	qc_func_t	f = 0;
 	int			start = 0, size = 0;
 
-	if (csqc.vm && !(f = CSQC_Entry ("CSQC_Parse_Event")))
+	if (csqc.qc.vm && !(f = CSQC_Entry ("CSQC_Parse_Event")))
 		f = CSQC_Entry ("CSQC_Parse_TempEntity");
 
 	if (sized)
@@ -2252,7 +2097,7 @@ void CSQC_ParseEvent (bool sized)
 	if (!f)
 	{
 		if (!sized)
-			Host_EndGame ("The server sends CSQC events, but %s", csqc.vm ? "CSQC has no CSQC_Parse_Event"
+			Host_EndGame ("The server sends CSQC events, but %s", csqc.qc.vm ? "CSQC has no CSQC_Parse_Event"
 				: "CSQC isn't running");
 		msg_readcount = start + size;
 		return;
@@ -2261,7 +2106,7 @@ void CSQC_ParseEvent (bool sized)
 	csqc.mayread = true;
 	CSQC_Call (f, 0, NULL);
 	csqc.mayread = false;
-	if (!csqc.vm && !sized)
+	if (!csqc.qc.vm && !sized)
 		Host_EndGame ("CSQC failed reading an event");
 	if (sized)
 		CSQC_EndSized ("event", 0, start, size);
@@ -2277,7 +2122,7 @@ the temp entity; else the client reads it from the start, as FTE has it
 */
 bool CSQC_ParseTempEntity (void)
 {
-	qc_func_t	f = csqc.vm ? CSQC_Entry ("CSQC_Parse_TempEntity") : 0;
+	qc_func_t	f = csqc.qc.vm ? CSQC_Entry ("CSQC_Parse_TempEntity") : 0;
 	int			start = msg_readcount;
 	qc_value_t	ret;
 	bool		ok;
@@ -2306,7 +2151,7 @@ CSQC holds it, as FTE calls it; true if CSQC took the sound
 */
 bool CSQC_EventSound (int ent, int channel, const char *sample, float vol, float attenuation, const vec3_t pos)
 {
-	qc_func_t	f = csqc.vm ? CSQC_Entry ("CSQC_Event_Sound") : 0;
+	qc_func_t	f = csqc.qc.vm ? CSQC_Entry ("CSQC_Event_Sound") : 0;
 	qc_value_t	args[8], ret;
 
 	if (!f)
@@ -2315,7 +2160,7 @@ bool CSQC_EventSound (int ent, int channel, const char *sample, float vol, float
 	CSQC_SetSelf (ent > 0 && ent < MAX_EDICTS ? csqc.ents[ent] : 0);
 	args[0] = QC_ValFloat ((float)ent);
 	args[1] = QC_ValFloat ((float)channel);
-	args[2] = QC_ValWord (QC_TempString (csqc.vm, sample, strlen (sample)));
+	args[2] = QC_ValWord (QC_TempString (csqc.qc.vm, sample, strlen (sample)));
 	args[3] = QC_ValFloat (vol);
 	args[4] = QC_ValFloat (attenuation);
 	args[5] = QC_ValVector (pos[0], pos[1], pos[2]);
@@ -2334,7 +2179,7 @@ which it may change, as FTE has it
 */
 void CSQC_InputFrame (usercmd_t *cmd)
 {
-	qc_func_t	f = csqc.vm ? CSQC_Entry ("CSQC_Input_Frame") : 0;
+	qc_func_t	f = csqc.qc.vm ? CSQC_Entry ("CSQC_Input_Frame") : 0;
 	uint32_t	word, type;
 	qc_word_t	*g;
 	float		msec;
@@ -2346,27 +2191,27 @@ void CSQC_InputFrame (usercmd_t *cmd)
 	if (!CSQC_Call (f, 0, NULL))
 		return;
 
-	g = QC_Globals (csqc.vm);
-	if (QC_FindGlobal (csqc.vm, "input_timelength", &word, &type) && type == QC_EV_FLOAT)
+	g = QC_Globals (csqc.qc.vm);
+	if (QC_FindGlobal (csqc.qc.vm, "input_timelength", &word, &type) && type == QC_EV_FLOAT)
 	{
 		msec = g[word].f * 1000;
 		cmd->msec = (byte)(msec < 0 ? 0 : msec > 255 ? 255 : msec);
 	}
-	if (QC_FindGlobal (csqc.vm, "input_angles", &word, &type) && type == QC_EV_VECTOR)
+	if (QC_FindGlobal (csqc.qc.vm, "input_angles", &word, &type) && type == QC_EV_VECTOR)
 	{
 		cmd->angles[0] = g[word].f;
 		cmd->angles[1] = g[word + 1].f;
 		cmd->angles[2] = g[word + 2].f;
 	}
-	if (QC_FindGlobal (csqc.vm, "input_movevalues", &word, &type) && type == QC_EV_VECTOR)
+	if (QC_FindGlobal (csqc.qc.vm, "input_movevalues", &word, &type) && type == QC_EV_VECTOR)
 	{
 		cmd->forwardmove = (short)g[word].f;
 		cmd->sidemove = (short)g[word + 1].f;
 		cmd->upmove = (short)g[word + 2].f;
 	}
-	if (QC_FindGlobal (csqc.vm, "input_buttons", &word, &type) && type == QC_EV_FLOAT)
+	if (QC_FindGlobal (csqc.qc.vm, "input_buttons", &word, &type) && type == QC_EV_FLOAT)
 		cmd->buttons = (byte)g[word].f;
-	if (QC_FindGlobal (csqc.vm, "input_impulse", &word, &type) && type == QC_EV_FLOAT)
+	if (QC_FindGlobal (csqc.qc.vm, "input_impulse", &word, &type) && type == QC_EV_FLOAT)
 		cmd->impulse = (byte)g[word].f;
 }
 
@@ -2381,7 +2226,7 @@ THE VIEW
 // CSQC draws the view (it has CSQC_UpdateView)
 bool CSQC_DrawsView (void)
 {
-	return csqc.vm && CSQC_Entry ("CSQC_UpdateView");
+	return csqc.qc.vm && CSQC_Entry ("CSQC_UpdateView");
 }
 
 /*
@@ -2396,7 +2241,7 @@ after all. *sbar is whether the status bar is drawn.
 */
 bool CSQC_DrawView (bool *sbar)
 {
-	qc_func_t	f = csqc.vm ? CSQC_Entry ("CSQC_UpdateView") : 0;
+	qc_func_t	f = csqc.qc.vm ? CSQC_Entry ("CSQC_UpdateView") : 0;
 	qc_value_t	args[3];
 	bool		ok;
 
@@ -2443,10 +2288,8 @@ bool CSQC_DrawView (bool *sbar)
 // the VM and everything of it gone
 static void CSQC_Destroy (void)
 {
-	int		i;
-
-	QC_Destroy (csqc.vm);
-	csqc.vm = NULL;
+	QC_Destroy (csqc.qc.vm);
+	csqc.qc.vm = NULL;
 	if (csqc.trailcarry)
 		Mem_Free (csqc.trailcarry);
 	csqc.trailcarry = NULL;
@@ -2461,12 +2304,7 @@ static void CSQC_Destroy (void)
 	if (csqc.entitycopy)
 		Mem_Free (csqc.entitycopy);
 	csqc.entitycopy = NULL;
-	for (i = 0 ; i < csqc.numcommands ; i++)
-	{
-		Cmd_RemoveCommand (csqc.commands[i]);
-		Mem_Free (csqc.commands[i]);
-	}
-	csqc.numcommands = 0;
+	CLQC_RemoveCommands (&csqc.qc);
 }
 
 /*
@@ -2479,14 +2317,14 @@ QuakeC's CSQC_Shutdown runs first, unless a longjmp left it running
 */
 void CSQC_Shutdown (void)
 {
-	if (!csqc.vm)
+	if (!csqc.qc.vm)
 		return;
 	// an error the client longjmped out of while QuakeC ran: its calls are
 	// abandoned, and QuakeC isn't called again
-	if (csqc.calls)
+	if (csqc.qc.calls)
 	{
-		QC_Abandon (csqc.vm);
-		csqc.calls = 0;
+		QC_Abandon (csqc.qc.vm);
+		csqc.qc.calls = 0;
 		CSQC_Destroy ();
 		return;
 	}
@@ -2505,7 +2343,7 @@ running CSQC, or of a progs file.
 */
 static void CSQC_Builtins_f (void)
 {
-	qcvm_t			*vm = csqc.vm;
+	qcvm_t			*vm = csqc.qc.vm;
 	qc_progs_t		*p = NULL;
 	qc_config_t		config;
 	qc_unbound_t	*list;
@@ -2552,7 +2390,7 @@ static void CSQC_Builtins_f (void)
 			Con_Printf ("      %s\n", list[i].name);
 	Con_Printf ("%u builtins %s the client lacks\n", n, all ? "declared" : "called");
 	Mem_Free (list);
-	if (vm != csqc.vm)
+	if (vm != csqc.qc.vm)
 		QC_Destroy (vm);
 }
 
@@ -2566,6 +2404,13 @@ void CSQC_RegisterVariables (void)
 		"client lacks, of the running CSQC or of a progs file; with all, those it declares. "
 		"Usage: csqc_builtins [<progs.dat>] [all]");
 	Cvar_AddChangeHook (CSQC_CvarChanged);
+
+	csqc.qc.name = "CSQC";
+	csqc.qc.description = "A command of the client-side QuakeC.";
+	csqc.qc.command = CSQC_Command;
+	CLQC_InitHost (&csqc_host);
+	csqc_host.load_progs = CSQC_LoadAddon;
+	csqc_host.on_remove = CSQC_OnRemove;
 
 	csqc.builtins = QC_BuiltinsStandard (QC_NUMBERING_CSQC);
 	if (!csqc.builtins)
