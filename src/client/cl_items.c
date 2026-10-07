@@ -28,9 +28,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // list up to it, so a seek has nothing to put back (qualia's item board). It
 // is shown as a list beside the view, and as qualia shows it in the world: a
 // ring on the floor where an item is missing, lit as its return comes nearer,
-// and a faint ghost of the item. Whether an item is missing is the server's
-// word, not the clock's: a ring and a ghost stand while the item's entity
-// isn't sent.
+// and a faint ghost of the item, where the item lies once it has dropped to
+// the floor. Whether an item is missing is the server's word, not the
+// clock's: a ring and a ghost stand while the item's entity isn't sent.
 
 #include "cl_local.h"
 
@@ -60,7 +60,13 @@ static const float	item_colors[][3] = {
 #define	RING_RADIUS		22			// just clear of an item's 32 wide box
 #define	RING_SPIN		100			// degrees a second, as the items turn
 #define	FLOOR_REACH		256			// how far below an item its floor is looked for
-#define	GHOST_ALPHA		64			// a quarter: an annotation, fainter than anything a server makes
+
+// the items' boxes, as id's items.qc sets their sizes, all 32 wide: the
+// artifacts' hang from their middle, a megahealth's box from its corner
+static const vec3_t	item_mins[] = {
+	{0, 0, 0}, {-16, -16, -24}, {-16, -16, -24}, {-16, -16, -24}, {-16, -16, -24}, {0, 0, 0},
+	{-16, -16, 0}, {-16, -16, 0}, {-16, -16, 0}, {-16, -16, 0}, {-16, -16, 0}
+};
 
 typedef struct
 {
@@ -80,8 +86,10 @@ static cvar_t	demo_itemtimers = {.name = "demo_itemtimers", .string = "quad pent
 		"is back, by name: quad, pent, ring, suit, mega, ra, ya, ga, rl, lg. Empty for none."};
 static cvar_t	demo_itemrings = {.name = "demo_itemrings", .string = "1", .archive = true,
 	.description = "Marks where an item was taken in a KTX MVD or QTV stream with a ring, lit as it nears return, "
-		"and a faint ghost of it.",
+		"and a faint ghost of it (demo_itemghosts).",
 	.values = (const cvar_value_t[]){{"0", "Not marked"}, {"1", "Marked"}, {0}}};
+static cvar_t	demo_itemghosts = {.name = "demo_itemghosts", .string = "0.20", .archive = true,
+	.description = "How solid the ghost of an item taken is, under its ring (demo_itemrings): 0 none, to 1 solid."};
 
 void CL_ItemsClear (void)
 {
@@ -236,40 +244,53 @@ static bool Items_Present (int entity)
 
 /*
 ==================
-Items_RingCentre
+Items_Drop
 
-Where an item's ring lies: under the middle of it, on the floor. A brush
-model's origin (the megahealth's box) is a corner of it, so its middle is
-the middle of its bounds. The floor is traced for, not too far down; an item
-hung in the air keeps its ring.
+Where an item lies: QuakeC drops items to the floor (PlaceItem's
+droptofloor) after the baseline is made, so a baseline's origin is where the
+map put the item, in the air on some maps. As the server drops it: from 6 up,
+its box down at most FLOOR_REACH through the player's hull (an item is 32
+wide), the trace moved by the hull's offset from the box; one with no floor
+under it stays.
 ==================
 */
-static void Items_RingCentre (const entity_state_t *base, vec3_t centre)
+static void Items_Drop (const entity_state_t *base, item_t item, vec3_t origin)
 {
-	const model_t	*model = CL_Model (base->modelindex);
 	const hull_t	*hull;
 	trace_t			trace;
-	vec3_t			down;
+	vec3_t			offset, start, end;
 
-	VectorCopy (base->origin, centre);
+	VectorCopy (base->origin, origin);
+	if (!cl.clipmodels[1])
+		return;
+	hull = &cl.clipmodels[1]->hulls[1];
+	VectorSubtract (hull->clip_mins, item_mins[item], offset);
+	VectorSubtract (origin, offset, start);
+	start[2] += 6;
+	VectorCopy (start, end);
+	end[2] -= FLOOR_REACH;
+	memset (&trace, 0, sizeof(trace));
+	trace.fraction = 1;
+	trace.allsolid = true;
+	VectorCopy (end, trace.endpos);
+	CM_RecursiveHullCheck (hull, hull->firstclipnode, 0, 1, start, end, &trace);
+	if (!trace.allsolid && trace.fraction < 1)
+		VectorAdd (trace.endpos, offset, origin);
+}
+
+// an item's ring: on the floor its box rests on, under its middle (a brush
+// model's, the megahealth's, is the middle of its bounds)
+static void Items_RingCentre (const entity_state_t *base, item_t item, const vec3_t origin, vec3_t centre)
+{
+	const model_t	*model = CL_Model (base->modelindex);
+
+	VectorCopy (origin, centre);
 	if (model && model->type == mod_brush)
 	{
 		centre[0] += (model->mins[0] + model->maxs[0]) * 0.5f;
 		centre[1] += (model->mins[1] + model->maxs[1]) * 0.5f;
 	}
-	if (!cl.clipmodels[1])
-		return;
-
-	hull = &cl.clipmodels[1]->hulls[0];
-	VectorCopy (centre, down);
-	down[2] -= FLOOR_REACH;
-	memset (&trace, 0, sizeof(trace));
-	trace.fraction = 1;
-	trace.allsolid = true;
-	VectorCopy (down, trace.endpos);
-	CM_RecursiveHullCheck (hull, hull->firstclipnode, 0, 1, centre, down, &trace);
-	if (!trace.startsolid && trace.fraction < 1)
-		VectorCopy (trace.endpos, centre);
+	centre[2] += item_mins[item][2];
 }
 
 /*
@@ -287,7 +308,9 @@ void CL_LinkItems (void)
 	entity_t	*ent;
 	r_ring_t	*ring;
 	model_t		*model;
+	vec3_t		origin;
 	double		now = cl.time;
+	float		ghost = fminf (fmaxf (demo_itemghosts.value, 0), 1);
 	int			i, n;
 
 	r_scene.rings = rings;
@@ -305,24 +328,25 @@ void CL_LinkItems (void)
 		if (!model)
 			continue;
 
+		Items_Drop (base, away[i].item, origin);
 		ring = &rings[r_scene.numrings++];
-		Items_RingCentre (base, ring->centre);
+		Items_RingCentre (base, away[i].item, origin, ring->centre);
 		ring->radius = RING_RADIUS;
 		ring->fill = away[i].due < 0 ? 0 : away[i].due <= away[i].taken ? 1
 			: (float)((now - away[i].taken) / (away[i].due - away[i].taken));
 		ring->phase = (float)(fmod (RING_SPIN * now, 360.0) * Q_PI / 180);
 		VectorCopy (item_colors[away[i].item], ring->color);
 
-		if (cl.numvisedicts == MAX_VISEDICTS)
+		if (!ghost || cl.numvisedicts == MAX_VISEDICTS)
 			continue;
 		ent = &cl.visedicts[cl.numvisedicts++];
 		memset (ent, 0, sizeof(*ent));
 		ent->keynum = away[i].entity;
 		ent->model = model;
-		ent->alpha = GHOST_ALPHA;
+		ent->alpha = (byte)fmaxf (fminf (ghost * 254, 254), 1);		// 0 is solid
 		ent->skinnum = base->skinnum;
 		ent->frame = base->frame;
-		VectorCopy (base->origin, ent->origin);
+		VectorCopy (origin, ent->origin);
 		if (model->flags & EF_ROTATE)
 			ent->angles[1] = anglemod ((float)(RING_SPIN * now));
 		else
@@ -413,4 +437,5 @@ void CL_InitItems (void)
 {
 	Cvar_RegisterVariable (&demo_itemtimers);
 	Cvar_RegisterVariable (&demo_itemrings);
+	Cvar_RegisterVariable (&demo_itemghosts);
 }
