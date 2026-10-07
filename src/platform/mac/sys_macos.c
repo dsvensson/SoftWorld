@@ -4,6 +4,8 @@
 #include "sys.h"
 #include "posix_local.h"
 
+#include <Security/Security.h>
+
 #include <errno.h>
 #include <stdatomic.h>
 #include <string.h>
@@ -173,4 +175,31 @@ int Sys_ReadWaitQueue (bool block)
 	for (i = 0 ; i < n ; i++)
 		what |= events[i].filter == EVFILT_TIMER ? SYS_WAIT_TIMER : SYS_WAIT_FD;
 	return what;
+}
+
+/*
+================
+Sys_TrustedRoots
+
+The system's anchors (Security's), each as DER
+================
+*/
+bool Sys_TrustedRoots (void (*add) (void *ctx, const void *data, size_t length), void *ctx)
+{
+	CFArrayRef	anchors = NULL;
+	CFDataRef	der;
+	CFIndex		i;
+	bool		any = false;
+
+	if (SecTrustCopyAnchorCertificates (&anchors) != errSecSuccess || !anchors)
+		return false;
+	for (i = 0 ; i < CFArrayGetCount (anchors) ; i++)
+		if ((der = SecCertificateCopyData ((SecCertificateRef)CFArrayGetValueAtIndex (anchors, i))))
+		{
+			add (ctx, CFDataGetBytePtr (der), (size_t)CFDataGetLength (der));
+			CFRelease (der);
+			any = true;
+		}
+	CFRelease (anchors);
+	return any;
 }

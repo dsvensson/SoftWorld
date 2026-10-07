@@ -72,6 +72,19 @@ if(NOT EMSCRIPTEN)
 	add_test(NAME udp COMMAND test_udp)
 endif()
 
+# test_stream connects, writes and reads the TCP streams with deadlines (the
+# server list's downloads) over the loopback, and asks for the roots the system
+# trusts; not on the web, which has neither.
+if(NOT EMSCRIPTEN)
+	sw_add_program(test_stream test_stream.c)
+	if(WIN32)
+		target_link_libraries(test_stream PRIVATE sw_platform_win sw_net sw_common)
+	else()
+		target_link_libraries(test_stream PRIVATE sw_platform_posix sw_net sw_common)
+	endif()
+	add_test(NAME stream COMMAND test_stream)
+endif()
+
 # test_markup reads ezQuake's and FTE's colors out of text.
 sw_add_program(test_markup test_markup.c)
 target_link_libraries(test_markup PRIVATE sw_common)

@@ -267,3 +267,54 @@ int Sys_ReadWaitQueue (bool block)
 	}
 	return what;
 }
+
+// a bundle of PEM roots, handed to add whole; false if it doesn't read
+static bool Sys_AddBundle (const char *path, void (*add) (void *ctx, const void *data, size_t length), void *ctx)
+{
+	FILE	*f = fopen (path, "rb");
+	char	*pem = NULL;
+	long	length;
+	bool	ok = false;
+
+	if (!f)
+		return false;
+	if (!fseek (f, 0, SEEK_END) && (length = ftell (f)) > 0 && length < 16 << 20 && !fseek (f, 0, SEEK_SET)
+		&& (pem = malloc ((size_t)length + 1)) && fread (pem, 1, (size_t)length, f) == (size_t)length)
+	{
+		pem[length] = 0;
+		add (ctx, pem, (size_t)length + 1);
+		ok = true;
+	}
+	free (pem);
+	fclose (f);
+	return ok;
+}
+
+/*
+================
+Sys_TrustedRoots
+
+The distribution's bundle of roots, as PEM: SSL_CERT_FILE's, else the first
+of the usual places that reads
+================
+*/
+bool Sys_TrustedRoots (void (*add) (void *ctx, const void *data, size_t length), void *ctx)
+{
+	static const char	*const bundles[] =
+	{
+		"/etc/ssl/certs/ca-certificates.crt",					// Debian, Ubuntu, Arch, Gentoo
+		"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",	// Fedora, RHEL
+		"/etc/pki/tls/certs/ca-bundle.crt",						// older Fedora, RHEL
+		"/etc/ssl/ca-bundle.pem",								// openSUSE
+		"/etc/ssl/cert.pem",									// Alpine, Void
+	};
+	const char	*path = getenv ("SSL_CERT_FILE");
+	size_t		i;
+
+	if (path && *path && Sys_AddBundle (path, add, ctx))
+		return true;
+	for (i = 0 ; i < sizeof(bundles) / sizeof(bundles[0]) ; i++)
+		if (Sys_AddBundle (bundles[i], add, ctx))
+			return true;
+	return false;
+}

@@ -44,7 +44,7 @@ if(WIN32)
 	# Windows services shared by every program
 	sw_add_module(sw_platform_win
 		win/sys_win.c win/sys_memory_win.c win/sys_win_workers.c win/net_udp_win.c win/net_tcp_win.c)
-	target_link_libraries(sw_platform_win PUBLIC sw_net sw_common ws2_32 synchronization)
+	target_link_libraries(sw_platform_win PUBLIC sw_net sw_common ws2_32 synchronization crypt32)
 
 	set(SW_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 	file(MAKE_DIRECTORY "${SW_SHADER_DIR}")
@@ -109,7 +109,8 @@ elseif(APPLE)
 		${SW_POSIX_SOURCES}
 		mac/sys_macos.c mac/sys_workers_macos.c)
 	target_include_directories(sw_platform_posix PUBLIC posix PRIVATE "${SW_CPU_RELAX_DIR}")
-	target_link_libraries(sw_platform_posix PUBLIC sw_net sw_common)
+	# Security for the roots HTTPS trusts (Sys_TrustedRoots)
+	target_link_libraries(sw_platform_posix PUBLIC sw_net sw_common "-framework Security" "-framework CoreFoundation")
 
 	# the console of the dedicated server
 	sw_add_module(sw_platform_con

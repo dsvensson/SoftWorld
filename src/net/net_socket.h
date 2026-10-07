@@ -75,6 +75,17 @@ bool	TCP_Send (tcpsocket_t *s, const void *data, int length);
 // when the connection failed
 int		TCP_Write (tcpsocket_t *s, const void *data, int length);
 
+// A TCP stream for a thread of its own (the server list's downloads): it waits
+// until deadlines (Sys_DoubleTime's) rather than waking the main loop, and
+// fails rather than stopping the program. Not on the web.
+typedef struct tcpstream_s tcpstream_t;
+
+tcpstream_t	*TCP_StreamOpen (const netadr_t *to, double deadline);	// NULL if not connected by then
+// the bytes read, 0 when the other end closed, -1 on an error or at the deadline
+int		TCP_StreamRead (tcpstream_t *s, void *buf, int size, double deadline);
+bool	TCP_StreamWrite (tcpstream_t *s, const void *data, int size, double deadline);	// all of it
+void	TCP_StreamClose (tcpstream_t *s);
+
 // a TCP port listened on (the server's WebSocket port), bound as UDP_Open
 // binds (-ip); NULL when it can't be. TCP_Accept takes a connection come,
 // open and non-blocking, NULL when none has; the listening and the

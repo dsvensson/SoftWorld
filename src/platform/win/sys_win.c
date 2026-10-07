@@ -8,6 +8,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <wincrypt.h>
 
 int Sys_FileTime (char *path)
 {
@@ -266,4 +267,35 @@ void Sys_WaitUntil (double time, bool exact)
 		return;
 	while (Sys_DoubleTime () < time)
 		YieldProcessor ();
+}
+
+/*
+================
+Sys_TrustedRoots
+
+The ROOT store's certificates: the user's (which shows the machine's too),
+else the machine's, opened read-only
+================
+*/
+bool Sys_TrustedRoots (void (*add) (void *ctx, const void *data, size_t length), void *ctx)
+{
+	HCERTSTORE		store;
+	PCCERT_CONTEXT	cert = NULL;
+	bool			any = false;
+
+	store = CertOpenStore (CERT_STORE_PROV_SYSTEM_W, 0, 0,
+		CERT_SYSTEM_STORE_CURRENT_USER | CERT_STORE_READONLY_FLAG | CERT_STORE_OPEN_EXISTING_FLAG, L"ROOT");
+	if (!store)
+		store = CertOpenStore (CERT_STORE_PROV_SYSTEM_W, 0, 0,
+			CERT_SYSTEM_STORE_LOCAL_MACHINE | CERT_STORE_READONLY_FLAG | CERT_STORE_OPEN_EXISTING_FLAG, L"ROOT");
+	if (!store)
+		return false;
+	while ((cert = CertEnumCertificatesInStore (store, cert)))
+		if (cert->dwCertEncodingType & X509_ASN_ENCODING)
+		{
+			add (ctx, cert->pbCertEncoded, cert->cbCertEncoded);
+			any = true;
+		}
+	CertCloseStore (store, 0);
+	return any;
 }

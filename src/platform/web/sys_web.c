@@ -141,3 +141,11 @@ void Sys_NameThread (const char *name)
 {
 	(void)name;
 }
+
+// the browser trusts its own roots, and fetches for the page
+bool Sys_TrustedRoots (void (*add) (void *ctx, const void *data, size_t length), void *ctx)
+{
+	(void)add;
+	(void)ctx;
+	return false;
+}

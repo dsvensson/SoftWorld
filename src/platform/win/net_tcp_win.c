@@ -28,7 +28,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mem.h"
 #include "net_socket.h"
 #include "print.h"
+#include "sys.h"
 #include "win_local.h"
+
+#include <stdlib.h>
 
 struct tcpsocket_s
 {
@@ -291,4 +294,98 @@ tcpsocket_t *TCP_Accept (tcplisten_t *l, netadr_t *from)
 
 	Win_FromSockaddr (&addr, from);
 	return s;
+}
+
+/*
+===============================================================================
+
+STREAMS WITH DEADLINES
+
+For a thread of its own (the server list's downloads): blocking until a
+deadline, waking nothing
+
+===============================================================================
+*/
+
+struct tcpstream_s
+{
+	SOCKET	socket;
+};
+
+// until the socket is ready for events or the deadline; false at the deadline
+static bool TCP_Poll (SOCKET socket, short events, double deadline)
+{
+	WSAPOLLFD	fd = {.fd = socket, .events = events};
+	double		left = deadline - Sys_DoubleTime ();
+
+	if (left <= 0)
+		return false;
+	return WSAPoll (&fd, 1, (INT)(left * 1000 + 0.999)) > 0;
+}
+
+tcpstream_t *TCP_StreamOpen (const netadr_t *to, double deadline)
+{
+	tcpstream_t				*s;
+	struct sockaddr_storage	addr;
+	u_long					nonblocking = 1;
+	int						family = NET_IsIPv4 (*to) ? AF_INET : AF_INET6;
+	int						length = Win_ToSockaddr (to, family, &addr), error = 0, errorlength = sizeof(error);
+
+	s = calloc (1, sizeof(*s));
+	if (!s)
+		return NULL;
+	s->socket = socket (family, SOCK_STREAM, IPPROTO_TCP);
+	if (s->socket == INVALID_SOCKET)
+	{
+		free (s);
+		return NULL;
+	}
+	if (ioctlsocket (s->socket, FIONBIO, &nonblocking) == SOCKET_ERROR
+		|| (connect (s->socket, (struct sockaddr *)&addr, length) == SOCKET_ERROR
+			&& (WSAGetLastError () != WSAEWOULDBLOCK || !TCP_Poll (s->socket, POLLWRNORM, deadline)
+				|| getsockopt (s->socket, SOL_SOCKET, SO_ERROR, (char *)&error, &errorlength) == SOCKET_ERROR
+				|| error)))
+	{
+		TCP_StreamClose (s);
+		return NULL;
+	}
+	return s;
+}
+
+int TCP_StreamRead (tcpstream_t *s, void *buf, int size, double deadline)
+{
+	int		n;
+
+	for (;;)
+	{
+		n = recv (s->socket, buf, size, 0);
+		if (n >= 0)
+			return n;
+		if (WSAGetLastError () != WSAEWOULDBLOCK || !TCP_Poll (s->socket, POLLRDNORM, deadline))
+			return -1;
+	}
+}
+
+bool TCP_StreamWrite (tcpstream_t *s, const void *data, int size, double deadline)
+{
+	int		n;
+
+	while (size > 0)
+	{
+		n = send (s->socket, data, size, 0);
+		if (n > 0)
+		{
+			data = (const char *)data + n;
+			size -= n;
+		}
+		else if (WSAGetLastError () != WSAEWOULDBLOCK || !TCP_Poll (s->socket, POLLWRNORM, deadline))
+			return false;
+	}
+	return true;
+}
+
+void TCP_StreamClose (tcpstream_t *s)
+{
+	closesocket (s->socket);
+	free (s);
 }

@@ -25,12 +25,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "net_socket.h"
 #include "print.h"
 #include "posix_local.h"
+#include "sys.h"
 
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -276,4 +278,107 @@ tcpsocket_t *TCP_Accept (tcplisten_t *l, netadr_t *from)
 
 	Posix_FromSockaddr (&addr, from);
 	return s;
+}
+
+/*
+===============================================================================
+
+STREAMS WITH DEADLINES
+
+For a thread of its own (the server list's downloads): blocking until a
+deadline, waking nothing
+
+===============================================================================
+*/
+
+struct tcpstream_s
+{
+	int		socket;
+};
+
+// until the socket is ready for events or the deadline; false at the deadline
+static bool TCP_Poll (int socket, short events, double deadline)
+{
+	struct pollfd	fd = {.fd = socket, .events = events};
+	double			left;
+
+	for (;;)
+	{
+		left = deadline - Sys_DoubleTime ();
+		if (left <= 0)
+			return false;
+		if (poll (&fd, 1, (int)(left * 1000 + 0.999)) >= 0 || errno != EINTR)
+			return fd.revents != 0;
+	}
+}
+
+tcpstream_t *TCP_StreamOpen (const netadr_t *to, double deadline)
+{
+	tcpstream_t				*s;
+	struct sockaddr_storage	addr;
+	int						family = NET_IsIPv4 (*to) ? AF_INET : AF_INET6, error = 0;
+	socklen_t				length = Posix_ToSockaddr (to, family, &addr), errorlength = sizeof(error);
+
+	// a write to a closed connection is an error, not SIGPIPE
+	signal (SIGPIPE, SIG_IGN);
+	s = calloc (1, sizeof(*s));
+	if (!s)
+		return NULL;
+	s->socket = socket (family, SOCK_STREAM, IPPROTO_TCP);
+	if (s->socket < 0)
+	{
+		free (s);
+		return NULL;
+	}
+	if (fcntl (s->socket, F_SETFL, fcntl (s->socket, F_GETFL) | O_NONBLOCK) < 0
+		|| (connect (s->socket, (struct sockaddr *)&addr, length) < 0
+			&& (errno != EINPROGRESS || !TCP_Poll (s->socket, POLLOUT, deadline)
+				|| getsockopt (s->socket, SOL_SOCKET, SO_ERROR, &error, &errorlength) < 0 || error)))
+	{
+		TCP_StreamClose (s);
+		return NULL;
+	}
+	return s;
+}
+
+int TCP_StreamRead (tcpstream_t *s, void *buf, int size, double deadline)
+{
+	ssize_t	n;
+
+	for (;;)
+	{
+		n = recv (s->socket, buf, (size_t)size, 0);
+		if (n >= 0)
+			return (int)n;
+		if (errno == EINTR)
+			continue;
+		if ((errno != EWOULDBLOCK && errno != EAGAIN) || !TCP_Poll (s->socket, POLLIN, deadline))
+			return -1;
+	}
+}
+
+bool TCP_StreamWrite (tcpstream_t *s, const void *data, int size, double deadline)
+{
+	ssize_t	n;
+
+	while (size > 0)
+	{
+		n = send (s->socket, data, (size_t)size, 0);
+		if (n > 0)
+		{
+			data = (const char *)data + n;
+			size -= (int)n;
+		}
+		else if (n < 0 && errno == EINTR)
+			continue;
+		else if ((errno != EWOULDBLOCK && errno != EAGAIN) || !TCP_Poll (s->socket, POLLOUT, deadline))
+			return false;
+	}
+	return true;
+}
+
+void TCP_StreamClose (tcpstream_t *s)
+{
+	close (s->socket);
+	free (s);
 }

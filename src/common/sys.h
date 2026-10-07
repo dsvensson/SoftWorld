@@ -91,6 +91,11 @@ void	Sys_SendKeyEvents (void);
 // returns the clipboard's text as a malloc'd string the caller frees, or NULL
 char	*Sys_GetClipboardText (void);
 
+// the root certificates the system trusts (for HTTPS), each handed to add as
+// it is: DER, or PEM text whose length counts its ending NUL (a bundle of
+// them); false where there are none to give (the web). From any thread.
+bool	Sys_TrustedRoots (void (*add) (void *ctx, const void *data, size_t length), void *ctx);
+
 //
 // the machine, as f_version and f_system tell it
 //
