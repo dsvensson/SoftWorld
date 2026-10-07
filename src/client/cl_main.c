@@ -1323,6 +1323,7 @@ static void CL_InitLocal (void)
 	CL_InitTEnts ();
 	CL_InitPrediction ();
 	CL_InitCam ();
+	SB_Init ();
 	CL_InitFChecks ();
 	
 //
@@ -1709,6 +1710,9 @@ void CL_Frame (void)
 	if (cls.mvdplayback)
 		CL_MVDAdvance ();
 	CL_ReadPackets ();
+	// the server browser's scans wait while a connection is made
+	SB_Frame (cls.state == ca_connected || cls.state == ca_onserver
+		|| (cls.state == ca_disconnected && connect_time != -1));
 
 	// send intentions now
 	CL_SendChatState ();
@@ -1859,6 +1863,7 @@ CL_Shutdown
 void CL_Shutdown (void)
 {
 	M_Shutdown ();
+	SB_Shutdown ();		// before the network goes
 	CSQC_Shutdown ();
 	CL_WriteConfiguration ();
 	S_Shutdown ();

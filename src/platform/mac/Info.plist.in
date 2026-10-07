@@ -26,5 +26,7 @@
 	<string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>SoftWorld's server browser asks the game servers it lists how far away they are, those on your local network too.</string>
 </dict>
 </plist>

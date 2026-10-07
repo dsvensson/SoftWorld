@@ -50,3 +50,7 @@ void	CLQC_RemoveCommands (clqc_t *qc);
 
 // a string result: null for empty text, as FTE returns them
 bool	CLQC_ReturnText (qcvm_t *vm, const char *text);
+
+// the server browser's hostcache builtins (cl_slist.c), into a host's; false
+// when there is no room
+bool	SB_Builtins (qc_builtins_t *b);

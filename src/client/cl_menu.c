@@ -133,6 +133,7 @@ void M_Draw (void)
 	M_Check ();
 	if (!menu.qc.vm || cls.key_dest != key_menu || !menu.draw)
 		return;
+	SB_Adopt ();		// the server list, as the keys after this draw find it
 	QC_RunThreads (menu.qc.vm, NULL);
 	if (menu.drawfloats)
 	{
@@ -810,6 +811,8 @@ void M_Init (void)
 	for (i = 0 ; i < sizeof(menu_builtins) / sizeof(menu_builtins[0]) ; i++)
 		if (!QC_BuiltinsSet (menu.builtins, menu_builtins[i].name, menu_builtins[i].func))
 			Sys_Error ("M_Init: out of memory");
+	if (!SB_Builtins (menu.builtins))
+		Sys_Error ("M_Init: out of memory");
 }
 
 /*

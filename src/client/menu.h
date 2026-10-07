@@ -33,3 +33,11 @@ void M_Keydown (int key, int character);	// the key, and the character it types 
 void M_Keyup (int key);
 void M_ToggleMenu_f (void);	// Escape and togglemenu
 bool M_QuitPrompt (void);	// quit asks the menu: false if it can't
+
+//
+// the server browser's list for the menu (cl_slist.c)
+//
+void SB_Init (void);			// the sb_* cvars
+void SB_Adopt (void);			// the newest list, at the top of M_Draw
+void SB_Frame (bool connecting);	// each frame: no scan while connecting
+void SB_Shutdown (void);
