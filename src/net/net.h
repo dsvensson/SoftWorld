@@ -62,6 +62,8 @@ bool	NET_ParseIP (const char *s, byte ip[16]);
 // first longest run of two zero groups or more as ::), in a buffer the next
 // call writes over
 const char	*NET_IPToString (const byte ip[16]);
+// the same in s (48 bytes at least), from any thread
+const char	*NET_IPToBuf (const byte ip[16], char *s, size_t size);
 
 // the passwords of a server, and the ones its clients give; a listen
 // server's own client uses the same ones
@@ -112,6 +114,9 @@ bool	NET_IsLocalAddress (netadr_t a);	// the loopback or this machine
 bool	NET_IsLoopback (netadr_t a);		// the loopback, 127.x.x.x or ::1
 char	*NET_AdrToString (netadr_t a);
 char	*NET_BaseAdrToString (netadr_t a);
+// NET_AdrToString's text in s (64 bytes at least): for UDP's addresses (and the
+// loopback's) from any thread
+char	*NET_AdrToBuf (netadr_t a, char *s, size_t size);
 // "local" is the loopback, ws:// a URL; a name with both IPv4's and IPv6's
 // addresses is IPv4's unless net_prefer_ipv6
 bool	NET_StringToAdr (const char *s, netadr_t *a);

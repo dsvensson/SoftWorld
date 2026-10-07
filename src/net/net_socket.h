@@ -37,6 +37,14 @@ udpsocket_t	*UDP_Open (int port);
 void	UDP_Close (udpsocket_t *s);
 netadr_t	UDP_Address (udpsocket_t *s);	// this machine's address and the socket's port
 
+// A socket for a thread of its own (the server list's), at a port the system
+// picks: it wakes nothing, prints nothing, and its reads and sends skip what
+// fails rather than stopping the program; NULL if it can't be had. Its
+// address is 127.0.0.1's at its port. Not on the web.
+udpsocket_t	*UDP_OpenQuiet (void);
+// until a packet waits on one of the sockets (up to 32), or the seconds pass
+bool	UDP_Wait (udpsocket_t *const *s, int n, double seconds);
+
 // the next packet's length, 0 when there is none
 int		UDP_Recv (udpsocket_t *s, byte *buf, int maxlen, netadr_t *from);
 void	UDP_Send (udpsocket_t *s, const void *data, int length, const netadr_t *to);

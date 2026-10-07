@@ -60,6 +60,18 @@ sw_add_program(test_netadr test_netadr.c)
 target_link_libraries(test_netadr PRIVATE sw_net sw_common)
 add_test(NAME netadr COMMAND test_netadr)
 
+# test_udp sends, reads and waits on the quiet UDP sockets (the server list's)
+# over the loopback; not on the web, which has no UDP.
+if(NOT EMSCRIPTEN)
+	sw_add_program(test_udp test_udp.c)
+	if(WIN32)
+		target_link_libraries(test_udp PRIVATE sw_platform_win sw_net sw_common)
+	else()
+		target_link_libraries(test_udp PRIVATE sw_platform_posix sw_net sw_common)
+	endif()
+	add_test(NAME udp COMMAND test_udp)
+endif()
+
 # test_markup reads ezQuake's and FTE's colors out of text.
 sw_add_program(test_markup test_markup.c)
 target_link_libraries(test_markup PRIVATE sw_common)

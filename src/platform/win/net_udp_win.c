@@ -28,14 +28,26 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "sys.h"
 #include "win_local.h"
 
+#include <mstcpip.h>
+#include <stdlib.h>
 #include <string.h>
+
+// ICMP's refusals and expiries reported to a socket's reads, which a quiet one
+// turns off (mstcpip.h has them for later Windows versions only)
+#ifndef SIO_UDP_CONNRESET
+#define	SIO_UDP_CONNRESET	_WSAIOW (IOC_VENDOR, 12)
+#endif
+#ifndef SIO_UDP_NETRESET
+#define	SIO_UDP_NETRESET	_WSAIOW (IOC_VENDOR, 15)
+#endif
 
 struct udpsocket_s
 {
 	SOCKET	socket;
 	int		family;		// AF_INET6, taking IPv4's too, or AF_INET
-	HANDLE	event;		// auto reset, signaled when packets arrive
+	HANDLE	event;		// auto reset, signaled when packets arrive; NULL for a quiet socket
 	netadr_t	address;
+	bool	quiet;		// UDP_OpenQuiet's: no wake, no print, no error
 };
 
 int Win_ToSockaddr (const netadr_t *a, int family, struct sockaddr_storage *s)
@@ -87,8 +99,6 @@ SOCKET Win_Socket (int type, int port, struct sockaddr_storage *address, int *le
 	{
 		if (!NET_ParseIP (com_argv[i + 1], a.ip))
 			Sys_Error ("Bad -ip address %s", com_argv[i + 1]);
-		if (type == SOCK_DGRAM)
-			Con_Printf ("Binding to IP Interface Address of %s\n", com_argv[i + 1]);
 		family = NET_IsIPv4 (a) ? AF_INET : AF_INET6;
 		s = socket (family, type, 0);
 	}
@@ -192,6 +202,8 @@ udpsocket_t *UDP_Open (int port)
 	if (s->socket == INVALID_SOCKET)
 		Sys_Error ("UDP_Open: socket: Winsock error %i", WSAGetLastError ());
 	s->family = address.ss_family;
+	if (COM_CheckParm ("-ip"))
+		Con_Printf ("Binding to IP Interface Address of %s\n", com_argv[COM_CheckParm ("-ip") + 1]);
 
 	// room for a burst of download chunks between two reads; the default
 	// 64 KB holds about 60
@@ -223,12 +235,82 @@ udpsocket_t *UDP_Open (int port)
 	return s;
 }
 
+/*
+====================
+UDP_OpenQuiet
+
+A socket for a thread of its own (the server list's): no wake, no print, no
+error; ICMP's refusals and expiries don't reach its reads
+====================
+*/
+udpsocket_t *UDP_OpenQuiet (void)
+{
+	udpsocket_t	*s;
+	struct sockaddr_storage	address;
+	netadr_t	bound;
+	int		length, namelen;
+	DWORD	bytes;
+
+	s = calloc (1, sizeof(*s));
+	if (!s)
+		return NULL;
+	s->quiet = true;
+	s->socket = Win_Socket (SOCK_DGRAM, PORT_ANY, &address, &length);
+	if (s->socket == INVALID_SOCKET)
+	{
+		free (s);
+		return NULL;
+	}
+	s->family = address.ss_family;
+	setsockopt (s->socket, SOL_SOCKET, SO_RCVBUF, (const char *)&(int){1 << 18}, sizeof(int));
+	WSAIoctl (s->socket, SIO_UDP_CONNRESET, &(BOOL){FALSE}, sizeof(BOOL), NULL, 0, &bytes, NULL, NULL);
+	WSAIoctl (s->socket, SIO_UDP_NETRESET, &(BOOL){FALSE}, sizeof(BOOL), NULL, 0, &bytes, NULL, NULL);
+	namelen = sizeof(address);
+	if (bind (s->socket, (struct sockaddr *)&address, length) == SOCKET_ERROR
+		|| getsockname (s->socket, (struct sockaddr *)&address, &namelen) == SOCKET_ERROR)
+	{
+		closesocket (s->socket);
+		free (s);
+		return NULL;
+	}
+	Win_FromSockaddr (&address, &bound);
+	NET_SetIPv4 (&s->address, (const byte[4]){127, 0, 0, 1});
+	s->address.type = NA_IP;
+	s->address.port = bound.port;
+	return s;
+}
+
 void UDP_Close (udpsocket_t *s)
 {
+	if (s->quiet)
+	{
+		closesocket (s->socket);
+		free (s);
+		return;
+	}
 	Sys_RemoveWaitHandle (s->event);
 	CloseHandle (s->event);
 	closesocket (s->socket);
 	Mem_Free (s);
+}
+
+/*
+====================
+UDP_Wait
+
+Until a packet waits on one of the sockets, or the seconds pass
+====================
+*/
+bool UDP_Wait (udpsocket_t *const *s, int n, double seconds)
+{
+	WSAPOLLFD	fds[32];
+	int			i;
+
+	if (n > 32)
+		n = 32;
+	for (i = 0 ; i < n ; i++)
+		fds[i] = (WSAPOLLFD){.fd = s[i]->socket, .events = POLLRDNORM};
+	return WSAPoll (fds, (ULONG)n, seconds > 0 ? (INT)(seconds * 1000 + 0.999) : 0) > 0;
 }
 
 netadr_t UDP_Address (udpsocket_t *s)
@@ -255,17 +337,22 @@ int UDP_Recv (udpsocket_t *s, byte *buf, int maxlen, netadr_t *from)
 			err = WSAGetLastError ();
 			if (err == WSAEWOULDBLOCK)
 				return 0;
-			if (err == WSAECONNRESET)
-				continue;		// an earlier send was refused
+			if (err == WSAECONNRESET || err == WSAENETRESET)
+				continue;		// an earlier send was refused, or expired on the way
 			if (err != WSAEMSGSIZE)
+			{
+				if (s->quiet)
+					return 0;
 				Sys_Error ("UDP_Recv: Winsock error %i", err);
+			}
 			ret = maxlen;
 		}
 
 		Win_FromSockaddr (&addr, from);
 		if (ret == maxlen)
 		{
-			Con_Printf ("Oversize packet from %s\n", NET_AdrToString (*from));
+			if (!s->quiet)
+				Con_Printf ("Oversize packet from %s\n", NET_AdrToString (*from));
 			continue;
 		}
 		if (ret > 0)
@@ -291,7 +378,7 @@ void UDP_Send (udpsocket_t *s, const void *data, int length, const netadr_t *to)
 		return;
 
 	err = WSAGetLastError ();
-	if (err == WSAEWOULDBLOCK)
+	if (err == WSAEWOULDBLOCK || s->quiet)
 		return;		// silent
 	if (err == WSAEADDRNOTAVAIL)
 		Con_DPrintf ("UDP_Send: Winsock error %i\n", err);

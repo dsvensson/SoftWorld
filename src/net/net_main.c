@@ -333,20 +333,29 @@ bool NET_IsLocalAddress (netadr_t a)
 	return false;
 }
 
+char *NET_AdrToBuf (netadr_t a, char *s, size_t size)
+{
+	char	ip[48];
+
+	if (a.type == NA_LOOPBACK)
+		Q_strncpyz (s, "loopback", size);
+	else if (a.type == NA_URL)
+		Q_strncpyz (s, UDP_URLToString (a, true), size);
+	else if (a.type == NA_RTC)
+		Q_strncpyz (s, RTC_AdrToString (a, true), size);
+	else	// IPv6's in [ ], as its colons aren't the port's
+		snprintf (s, size, NET_IsIPv4 (a) ? "%s:%i" : "[%s]:%i", NET_IPToBuf (a.ip, ip, sizeof(ip)),
+			(unsigned short)BigShort ((short)a.port));
+	return s;
+}
+
 char *NET_AdrToString (netadr_t a)
 {
 	static	char	s[64];
 
 	if (a.type == NA_LOOPBACK)
 		return "loopback";
-	if (a.type == NA_URL)
-		return (char *)UDP_URLToString (a, true);
-	if (a.type == NA_RTC)
-		return (char *)RTC_AdrToString (a, true);
-	// IPv6's in [ ], as its colons aren't the port's
-	snprintf (s, sizeof(s), NET_IsIPv4 (a) ? "%s:%i" : "[%s]:%i", NET_IPToString (a.ip),
-		(unsigned short)BigShort ((short)a.port));
-	return s;
+	return NET_AdrToBuf (a, s, sizeof(s));
 }
 
 char *NET_BaseAdrToString (netadr_t a)

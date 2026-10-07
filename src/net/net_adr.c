@@ -101,14 +101,13 @@ bool NET_ParseIP (const char *s, byte ip[16])
 	return true;
 }
 
-const char *NET_IPToString (const byte ip[16])
+const char *NET_IPToBuf (const byte ip[16], char *s, size_t size)
 {
-	static char	s[48];
 	int			groups[8], best = -1, bestlength = 1, run, length = 0, i;
 
 	if (!memcmp (ip, net_ipv4prefix, sizeof(net_ipv4prefix)))
 	{
-		snprintf (s, sizeof(s), "%i.%i.%i.%i", ip[12], ip[13], ip[14], ip[15]);
+		snprintf (s, size, "%i.%i.%i.%i", ip[12], ip[13], ip[14], ip[15]);
 		return s;
 	}
 	for (i = 0 ; i < 8 ; i++)
@@ -126,14 +125,21 @@ const char *NET_IPToString (const byte ip[16])
 	for (i = 0 ; i < 8 ; )
 		if (i == best)
 		{
-			length += snprintf (s + length, sizeof(s) - (size_t)length, "::");
+			length += snprintf (s + length, size - (size_t)length, "::");
 			i += bestlength;
 		}
 		else
 		{
-			length += snprintf (s + length, sizeof(s) - (size_t)length, "%s%x",
+			length += snprintf (s + length, size - (size_t)length, "%s%x",
 				i && i != best + bestlength ? ":" : "", groups[i]);
 			i++;
 		}
 	return s;
+}
+
+const char *NET_IPToString (const byte ip[16])
+{
+	static char	s[48];
+
+	return NET_IPToBuf (ip, s, sizeof(s));
 }

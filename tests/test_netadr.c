@@ -98,12 +98,25 @@ static void TestIPv4 (void)
 	CHECK (NET_ParseIP ("::1", a.ip) && !NET_IsIPv4 (a));
 }
 
+// the caller's buffer: what NET_IPToString's holds, and none of it shared
+static void TestIPToBuf (void)
+{
+	byte	one[16], two[16];
+	char	a[48], b[48];
+
+	CHECK (NET_ParseIP ("2001:db8::1:0:0:1", one) && NET_ParseIP ("10.0.0.7", two));
+	CHECK (NET_IPToBuf (one, a, sizeof(a)) == a && NET_IPToBuf (two, b, sizeof(b)) == b);
+	CHECK (!strcmp (a, "2001:db8::1:0:0:1") && !strcmp (b, "10.0.0.7"));
+	CHECK (!strcmp (a, NET_IPToString (one)));
+}
+
 int main (void)
 {
 	TestRead ();
 	TestWrite ();
 	TestNotAddresses ();
 	TestIPv4 ();
+	TestIPToBuf ();
 	if (failures)
 	{
 		printf ("%d failures\n", failures);

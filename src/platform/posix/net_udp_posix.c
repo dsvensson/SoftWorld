@@ -33,6 +33,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <netdb.h>
+#include <poll.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -41,6 +43,7 @@ struct udpsocket_s
 	int			socket;
 	int			family;		// AF_INET6, taking IPv4's too, or AF_INET
 	netadr_t	address;
+	bool		quiet;		// UDP_OpenQuiet's: no wake, no print, no error
 };
 
 socklen_t Posix_ToSockaddr (const netadr_t *a, int family, struct sockaddr_storage *s)
@@ -91,8 +94,6 @@ int Posix_Socket (int type, int port, struct sockaddr_storage *address, socklen_
 	{
 		if (!NET_ParseIP (com_argv[i + 1], a.ip))
 			Sys_Error ("Bad -ip address %s", com_argv[i + 1]);
-		if (type == SOCK_DGRAM)
-			Con_Printf ("Binding to IP Interface Address of %s\n", com_argv[i + 1]);
 		family = NET_IsIPv4 (a) ? AF_INET : AF_INET6;
 		s = socket (family, type, 0);
 	}
@@ -191,6 +192,8 @@ udpsocket_t *UDP_Open (int port)
 	if (s->socket < 0)
 		Sys_Error ("UDP_Open: socket: %s", strerror (errno));
 	s->family = address.ss_family;
+	if (COM_CheckParm ("-ip"))
+		Con_Printf ("Binding to IP Interface Address of %s\n", com_argv[COM_CheckParm ("-ip") + 1]);
 
 	// room for a burst of download chunks between two reads; the default
 	// holds a few dozen
@@ -230,11 +233,78 @@ udpsocket_t *UDP_Open (int port)
 	return s;
 }
 
+/*
+====================
+UDP_OpenQuiet
+
+A socket for a thread of its own (the server list's): no wake, no print, no
+error
+====================
+*/
+udpsocket_t *UDP_OpenQuiet (void)
+{
+	udpsocket_t	*s;
+	struct sockaddr_storage	address;
+	netadr_t	bound;
+	socklen_t	length, namelen;
+
+	s = calloc (1, sizeof(*s));
+	if (!s)
+		return NULL;
+	s->quiet = true;
+	s->socket = Posix_Socket (SOCK_DGRAM, PORT_ANY, &address, &length);
+	if (s->socket < 0)
+	{
+		free (s);
+		return NULL;
+	}
+	s->family = address.ss_family;
+	setsockopt (s->socket, SOL_SOCKET, SO_RCVBUF, &(int){1 << 18}, sizeof(int));
+	namelen = sizeof(address);
+	if (bind (s->socket, (struct sockaddr *)&address, length) < 0
+		|| getsockname (s->socket, (struct sockaddr *)&address, &namelen) < 0)
+	{
+		close (s->socket);
+		free (s);
+		return NULL;
+	}
+	Posix_FromSockaddr (&address, &bound);
+	NET_SetIPv4 (&s->address, (const byte[4]){127, 0, 0, 1});
+	s->address.type = NA_IP;
+	s->address.port = bound.port;
+	return s;
+}
+
 void UDP_Close (udpsocket_t *s)
 {
+	if (s->quiet)
+	{
+		close (s->socket);
+		free (s);
+		return;
+	}
 	Sys_RemoveWaitFd (s->socket);
 	close (s->socket);
 	Mem_Free (s);
+}
+
+/*
+====================
+UDP_Wait
+
+Until a packet waits on one of the sockets, or the seconds pass
+====================
+*/
+bool UDP_Wait (udpsocket_t *const *s, int n, double seconds)
+{
+	struct pollfd	fds[32];
+	int				i;
+
+	if (n > 32)
+		n = 32;
+	for (i = 0 ; i < n ; i++)
+		fds[i] = (struct pollfd){.fd = s[i]->socket, .events = POLLIN};
+	return poll (fds, (nfds_t)n, seconds > 0 ? (int)(seconds * 1000 + 0.999) : 0) > 0;
 }
 
 netadr_t UDP_Address (udpsocket_t *s)
@@ -263,6 +333,8 @@ int UDP_Recv (udpsocket_t *s, byte *buf, int maxlen, netadr_t *from)
 				return 0;
 			if (errno == ECONNREFUSED || errno == EINTR)
 				continue;		// an earlier send was refused
+			if (s->quiet)
+				return 0;
 			Sys_Error ("UDP_Recv: %s", strerror (errno));
 		}
 
@@ -270,7 +342,8 @@ int UDP_Recv (udpsocket_t *s, byte *buf, int maxlen, netadr_t *from)
 		// a datagram that didn't fit is cut to maxlen
 		if (ret == maxlen)
 		{
-			Con_Printf ("Oversize packet from %s\n", NET_AdrToString (*from));
+			if (!s->quiet)
+				Con_Printf ("Oversize packet from %s\n", NET_AdrToString (*from));
 			continue;
 		}
 		if (ret > 0)
@@ -295,7 +368,7 @@ void UDP_Send (udpsocket_t *s, const void *data, int length, const netadr_t *to)
 	if (sendto (s->socket, data, (size_t)length, 0, (struct sockaddr *)&addr, addrlen) >= 0)
 		return;
 
-	if (errno == EWOULDBLOCK || errno == EAGAIN || errno == ENOBUFS)
+	if (errno == EWOULDBLOCK || errno == EAGAIN || errno == ENOBUFS || s->quiet)
 		return;		// silent
 	if (errno == EADDRNOTAVAIL || errno == EHOSTUNREACH || errno == ENETUNREACH)
 		Con_DPrintf ("UDP_Send: %s\n", strerror (errno));
