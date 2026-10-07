@@ -4,6 +4,7 @@
 add_subdirectory(common)
 add_subdirectory(qcvm)
 add_subdirectory(net)
+add_subdirectory(slist)
 add_subdirectory(game)
 add_subdirectory(simd)
 add_subdirectory(server)

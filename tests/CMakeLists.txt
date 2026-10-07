@@ -85,6 +85,13 @@ if(NOT EMSCRIPTEN)
 	add_test(NAME stream COMMAND test_stream)
 endif()
 
+# test_slist runs the server list's parts without a network (src/slist):
+# packets, sources, the cache, the scheduler with the time handed in, routes
+# and the view.
+sw_add_program(test_slist test_slist.c)
+target_link_libraries(test_slist PRIVATE sw_slist sw_net sw_common)
+add_test(NAME slist COMMAND test_slist)
+
 # test_markup reads ezQuake's and FTE's colors out of text.
 sw_add_program(test_markup test_markup.c)
 target_link_libraries(test_markup PRIVATE sw_common)
