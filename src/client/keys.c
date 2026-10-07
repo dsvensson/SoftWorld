@@ -1275,16 +1275,19 @@ void Key_Event (int key, bool down)
 	if (down)
 	{
 		key_repeats[key]++;
-		if (key != K_BACKSPACE 
-			&& key != K_PAUSE 
-			&& key != K_PGUP 
+		if (key != K_BACKSPACE
+			&& key != K_PAUSE
+			&& key != K_PGUP
 			&& key != K_PGDN
 			&& !(cls.key_dest == key_console && (key == K_LEFTARROW || key == K_RIGHTARROW || key == K_DEL
 				|| (keydown[K_CTRL] && key != K_CTRL)))
+			&& !(cls.key_dest == key_menu && (key == K_UPARROW || key == K_DOWNARROW || key == K_LEFTARROW
+				|| key == K_RIGHTARROW))
 			&& key_repeats[key] > 1)
-			return;	// ignore most autorepeats; the line's editing keys repeat
-			
-		if (key >= 200 && !keybindings[key])
+			return;	// ignore most autorepeats; the line's editing keys repeat, and the menu's arrows
+
+		// the menu's mouse buttons and wheel are its own
+		if (key >= 200 && !keybindings[key] && cls.key_dest != key_menu)
 			Con_Printf ("%s is unbound, hit F4 to set.\n", Key_KeynumToString (key) );
 	}
 
@@ -1375,10 +1378,20 @@ void Key_Event (int key, bool down)
 	if (!down)
 		return;		// other systems only care about key down events
 
-	// the menu gets the key as it is and the character it types
+	// the menu gets the key as it is, and the character it types from
+	// Key_CharEvent (the layout's, as FTE's text events): a printable key's
+	// none here, unless with Ctrl, which types none
 	if (cls.key_dest == key_menu)
 	{
-		M_Keydown (key, shift_down ? keyshift[key] : key);
+		if (key >= 32 && key < 127 && !keydown[K_CTRL])
+		{
+			M_Keydown (key, 0);
+			// what it types is the menu's, the console's not when it closed the menu
+			if (cls.key_dest != key_menu)
+				key_char_eaten = true;
+		}
+		else
+			M_Keydown (key, shift_down ? keyshift[key] : key);
 		return;
 	}
 
@@ -1428,8 +1441,9 @@ void Key_ClearStates (void)
 ===================
 Key_CharEvent
 
-Typed text for the console and the message line. Key_Event handles their
-editing keys; printable characters come from here, after the keyboard layout.
+Typed text for the console, the message line and the menu. Key_Event handles
+their editing keys; printable characters come from here, after the keyboard
+layout.
 ===================
 */
 void Key_CharEvent (int ch)
@@ -1453,6 +1467,9 @@ void Key_CharEvent (int ch)
 	case key_game:
 		if (cls.state != ca_active)
 			Key_ConsoleText (ch);		// the console fills the screen
+		break;
+	case key_menu:
+		M_Keydown (0, ch);				// a character without a key, as FTE's are
 		break;
 	default:
 		break;

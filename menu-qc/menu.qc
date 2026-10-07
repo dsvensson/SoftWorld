@@ -724,6 +724,8 @@ void(vector size) m_draw =
 
 void(float scan, float chr) m_keydown =
 {
+	if (!scan)
+		return;		// a character typed, which these menus have no text to take
 	switch (m_state)
 	{
 	case M_MAIN:
