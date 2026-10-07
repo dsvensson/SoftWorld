@@ -1,15 +1,15 @@
 // menu.qc -- id's QuakeWorld menus, as the C menu had them: main, options,
-// keys, help, single and multiplayer, and the quit screen; and the entry
-// points the engine calls
+// keys, help, single player, and the quit screen; multiplayer is the server
+// browser (slist.qc); and the entry points the engine calls
 
 #define	M_NONE			0
 #define	M_MAIN			1
 #define	M_SINGLEPLAYER	2
-#define	M_MULTIPLAYER	3
 #define	M_OPTIONS		4
 #define	M_KEYS			5
 #define	M_HELP			6
 #define	M_QUIT			7
+#define	M_SLIST			8
 
 float	m_state;
 float	m_entersound;		// played after drawing a frame, so caching won't disrupt the sound
@@ -20,6 +20,12 @@ void() M_Menu_Keys_f;
 void() M_Menu_Help_f;
 void() M_Menu_Quit_f;
 void(float state) M_DrawState;
+
+// the server browser (slist.qc)
+void() SB_Open;
+void(vector size) SB_Draw;
+void(float scan, float chr) SB_KeyDown;
+void(float scan) SB_KeyUp;
 
 /*
 ==============================================================================
@@ -79,7 +85,7 @@ void(float key) M_Main_Key =
 			m_state = M_SINGLEPLAYER;
 			break;
 		case 1:
-			m_state = M_MULTIPLAYER;
+			SB_Open ();
 			break;
 		case 2:
 			M_Menu_Options_f ();
@@ -526,7 +532,7 @@ void(float key) M_Help_Key =
 /*
 ==============================================================================
 
-SINGLE AND MULTIPLAYER
+SINGLE PLAYER
 
 What QuakeWorld has instead
 
@@ -541,21 +547,6 @@ void() M_SinglePlayer_Draw =
 	M_DrawTextBox (60, 10 * 8, 23, 4);
 	M_PrintWhite (92, 12 * 8, "QuakeWorld is for");
 	M_PrintWhite (88, 13 * 8, "Internet play only");
-};
-
-void() M_MultiPlayer_Draw =
-{
-	M_DrawPic (16, 4, "gfx/qplaque.lmp");
-	M_DrawTitle ("gfx/p_multi.lmp");
-
-	M_DrawTextBox (46, 8 * 8, 27, 9);
-	M_PrintWhite (72, 10 * 8, "If you want to find QW  ");
-	M_PrintWhite (72, 11 * 8, "games, head on over to: ");
-	     M_Print (72, 12 * 8, "   www.quakeworld.net   ");
-	M_PrintWhite (72, 13 * 8, "          or            ");
-	     M_Print (72, 14 * 8, "   www.quakespy.com     ");
-	M_PrintWhite (72, 15 * 8, "For pointers on getting ");
-	M_PrintWhite (72, 16 * 8, "        started!        ");
 };
 
 // Escape or Enter: back to the main menu
@@ -675,9 +666,6 @@ void(float state) M_DrawState =
 	case M_SINGLEPLAYER:
 		M_SinglePlayer_Draw ();
 		break;
-	case M_MULTIPLAYER:
-		M_MultiPlayer_Draw ();
-		break;
 	case M_OPTIONS:
 		M_Options_Draw ();
 		break;
@@ -696,6 +684,9 @@ void(float state) M_DrawState =
 void() m_init =
 {
 	registercommand ("menu_main");
+	registercommand ("menu_multiplayer");
+	registercommand ("menu_slist");
+	registercommand ("addserver");
 	registercommand ("menu_options");
 	registercommand ("menu_keys");
 	registercommand ("help");
@@ -711,9 +702,14 @@ void(vector size) m_draw =
 	if (m_state == M_NONE || getkeydest () != KEY_MENU)
 		return;
 
-	menu_x = floor ((size_x - 320) / 2);
-	Backdrop_Draw (size);
-	M_DrawState (m_state);
+	if (m_state == M_SLIST)
+		SB_Draw (size);
+	else
+	{
+		menu_x = floor ((size_x - 320) / 2);
+		Backdrop_Draw (size);
+		M_DrawState (m_state);
+	}
 
 	if (m_entersound)
 	{
@@ -724,6 +720,11 @@ void(vector size) m_draw =
 
 void(float scan, float chr) m_keydown =
 {
+	if (m_state == M_SLIST)
+	{
+		SB_KeyDown (scan, chr);
+		return;
+	}
 	if (!scan)
 		return;		// a character typed, which these menus have no text to take
 	switch (m_state)
@@ -732,7 +733,6 @@ void(float scan, float chr) m_keydown =
 		M_Main_Key (scan);
 		break;
 	case M_SINGLEPLAYER:
-	case M_MULTIPLAYER:
 		M_TextScreen_Key (scan);
 		break;
 	case M_OPTIONS:
@@ -752,6 +752,8 @@ void(float scan, float chr) m_keydown =
 
 void(float scan, float chr) m_keyup =
 {
+	if (m_state == M_SLIST)
+		SB_KeyUp (scan);
 };
 
 // Escape and togglemenu: the main menu opens, from another menu goes back to
@@ -780,6 +782,16 @@ float(string cmd) m_consolecommand =
 	{
 	case "menu_main":
 		M_Menu_Main_f ();
+		return TRUE;
+	case "menu_multiplayer":
+	case "menu_slist":
+		SB_Open ();
+		return TRUE;
+	case "addserver":
+		if (argv (1) == "")
+			print ("Usage: addserver <address>\n");
+		else if (!addhostcacheserver (argv (1)))
+			print (sprintf ("%s isn't an address\n", argv (1)));
 		return TRUE;
 	case "menu_options":
 		M_Menu_Options_f ();

@@ -78,6 +78,20 @@ static void CLQC_CvarSet (void *ctx, const char *varname, const char *value)
 		Cvar_Set ((char *)varname, (char *)value);
 }
 
+// cvar_type, cvar_defstring and cvar_description: the engine's cvars all
+static bool CLQC_CvarInfo (void *ctx, const char *varname, qc_cvarinfo_t *info)
+{
+	cvar_t	*var = Cvar_FindVar ((char *)varname);
+
+	(void)ctx;
+	if (!var)
+		return false;
+	info->flags = 1 | (var->archive ? 2 : 0) | 8 | (var->description ? 16 : 0);
+	info->defaultvalue = var->defaultstring;
+	info->description = var->description;
+	return true;
+}
+
 // checkcommand: 1 a command, 2 an alias, 3 a cvar
 static uint32_t CLQC_CheckCommand (void *ctx, const char *cmd)
 {
@@ -168,6 +182,7 @@ void CLQC_InitHost (qc_host_t *h)
 	h->cvar_float = CLQC_CvarFloat;
 	h->cvar_string = CLQC_CvarString;
 	h->cvar_set = CLQC_CvarSet;
+	h->cvar_info = CLQC_CvarInfo;
 	h->check_command = CLQC_CheckCommand;
 	h->register_command = CLQC_RegisterCommand;
 	h->is_demo = CLQC_IsDemo;
