@@ -840,12 +840,15 @@ static void Key_Message (int key)
 
 	if (key == K_ENTER)
 	{
-		if (key_input.chat_team)
-			Cbuf_AddText ("say_team \"");
-		else
-			Cbuf_AddText ("say \"");
-		Cbuf_AddText(key_input.chat_buffer);
-		Cbuf_AddText("\"\n");
+		if (key_input.chat_bufferlen)	// an empty line says nothing
+		{
+			if (key_input.chat_team)
+				Cbuf_AddText ("say_team \"");
+			else
+				Cbuf_AddText ("say \"");
+			Cbuf_AddText(key_input.chat_buffer);
+			Cbuf_AddText("\"\n");
+		}
 
 		cls.key_dest = key_game;
 		key_input.chat_bufferlen = 0;
