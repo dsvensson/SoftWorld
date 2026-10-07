@@ -325,6 +325,15 @@ typedef struct
 	float		value;
 } qc_spawndefault_t;
 
+// a field where the host's struct has it: the progs' field of the name is
+// moved there (FTE's QC_RegisterFieldVar)
+typedef struct
+{
+	const char	*name;
+	uint32_t	type;			// QC_EV_*
+	uint32_t	ofs;			// words from the start of the fields
+} qc_hostfield_t;
+
 typedef struct
 {
 	qc_kind_t		kind;
@@ -345,6 +354,13 @@ typedef struct
 	// Bytes of each entity block that belong to the host, before the fields:
 	// QuakeC cannot address them, and the VM never writes them. A multiple of 4.
 	uint32_t		entity_header_bytes;
+	// The host's field layout, so one struct reads progs laid out differently:
+	// the main progs' fields of these names move to these words, and its others
+	// go after the host's. The host's words exist whether or not the progs has
+	// the fields. A progs field of another size under one of the names fails
+	// the load. None: the fields as the progs lays them out.
+	const qc_hostfield_t	*host_fields;
+	uint32_t		num_host_fields;
 	// globals copied between progs when execution passes from one to another,
 	// besides those the compiler flagged as shared; NULL-terminated
 	const char		*const *shared_globals;
@@ -633,7 +649,8 @@ bool		QC_FindField (const qcvm_t *vm, const char *name, uint32_t *ofs, uint32_t 
 // false if it exists with another size or the reserve is spent
 bool		QC_EnsureField (qcvm_t *vm, const char *name, uint32_t type, uint32_t *ofs);
 
-// the field table: every field the VM knows, the main progs' first
+// the field table: every field the VM knows, the host's first when it lays
+// them out, then the main progs'
 uint32_t	QC_NumFields (const qcvm_t *vm);
 bool		QC_FieldAt (const qcvm_t *vm, uint32_t i, const char **name, uint32_t *type, uint32_t *ofs);
 uint32_t	QC_FieldWords (const qcvm_t *vm);		// words of fields each entity has

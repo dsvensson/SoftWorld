@@ -427,8 +427,60 @@ static bool QC_OutOfMemory (qcvm_t *vm, qc_resource_t r)
 	return QC_Fail (vm, QC_ERR_OUT_OF_MEMORY, r, NULL);
 }
 
-// lays out memory for the main progs and initializes it
-static bool QC_BuildCore (qcvm_t *vm)
+// a progs mapped onto the host's fields has them mapped word by word: one
+// claiming more words than this (4 MiB an entity) is refused before that
+#define MAX_MAPPED_FIELD_WORDS	(1u << 20)
+
+// The main progs' fields in the VM's table: as the progs lays them out, or the
+// host's first and the progs' mapped onto them by name (map, which its field
+// globals then go through).
+static bool QC_LayFields (qcvm_t *vm, const qc_progs_t *p, qc_wordmap_t *map)
+{
+	const qc_hostfield_t	*h;
+	const qc_fieldentry_t	*f;
+	const char				*name;
+	uint32_t				i, end;
+
+	if (!vm->config.num_host_fields)
+	{
+		vm->fields.words = p->entityfields;
+		for (i = 0 ; i < p->numfielddefs ; i++)
+			if (!QC_AddFieldEntry (&vm->fields, QC_Cstr (p, p->fielddefs[i].name), p->fielddefs[i].type,
+				p->fielddefs[i].ofs))
+				return QC_OutOfMemory (vm, QC_RES_FIELDS);
+		return true;
+	}
+
+	vm->fields.words = 0;
+	for (i = 0 ; i < vm->config.num_host_fields ; i++)
+	{
+		h = &vm->config.host_fields[i];
+		end = h->ofs + QC_FieldWordsOf (h->type);
+		if (end < h->ofs || end > MAX_MAPPED_FIELD_WORDS)
+			return QC_Fail (vm, QC_ERR_HOST, 0, "the host's field %s is out of range", h->name);
+		if (!QC_AddFieldEntry (&vm->fields, h->name, h->type, h->ofs))
+			return QC_OutOfMemory (vm, QC_RES_FIELDS);
+		if (end > vm->fields.words)
+			vm->fields.words = end;
+	}
+	for (i = 0 ; i < p->numfielddefs ; i++)
+	{
+		name = QC_Cstr (p, p->fielddefs[i].name);
+		f = QC_FieldEntry (vm, name);
+		if (f && QC_FieldWordsOf (f->type) != QC_FieldWordsOf (p->fielddefs[i].type))
+			return QC_Fail (vm, QC_ERR_HOST, 0, "the progs' field %s is of another size than the host's", name);
+	}
+	if (p->entityfields > MAX_MAPPED_FIELD_WORDS)
+		return QC_OutOfMemory (vm, QC_RES_FIELDS);
+	vm->mem.field_capacity = UINT32_MAX;		// the room is set once they are laid out
+	if (!QC_MapFields (vm, p, map))
+		return QC_OutOfMemory (vm, QC_RES_FIELDS);
+	return true;
+}
+
+// lays out memory for the main progs, its fields laid out (map: how they
+// moved, if they did), and initializes it
+static bool QC_BuildMemory (qcvm_t *vm, const qc_wordmap_t *map)
 {
 	const qc_limits_t	*limits = &vm->config.limits;
 	qc_progs_t			*p = vm->main;
@@ -454,7 +506,7 @@ static bool QC_BuildCore (qcvm_t *vm)
 
 	// region E: blocks of a power-of-two stride, the host's header first, with
 	// room for fields added later and a zero word after the most there can be
-	field_bytes = (uint64_t)p->entityfields * 4;
+	field_bytes = (uint64_t)vm->fields.words * 4;
 	reserve = vm->config.field_reserve_bytes > field_bytes / 2 ? vm->config.field_reserve_bytes : field_bytes / 2;
 	stride = QC_NextPow2 (header + field_bytes + reserve);
 	while (stride && header + field_bytes + 4 > stride)
@@ -504,13 +556,11 @@ static bool QC_BuildCore (qcvm_t *vm)
 	if (!vm->frames || !QC_StringsInit (&vm->strings, limits->temp_strings, limits->temp_string_bytes))
 		return QC_OutOfMemory (vm, QC_RES_PROGS);
 
+	// field globals hold where the fields went (the strings and functions are
+	// where the progs has them)
+	if (map->slots && !QC_RelocateGlobals (vm, p, 0, (uint32_t)gbase, 0, map))
+		return QC_OutOfMemory (vm, QC_RES_PROGS);
 	QC_FixupGlobals (vm, p, (uint32_t)gbase, 0);
-
-	vm->fields.words = p->entityfields;
-	for (i = 0 ; i < p->numfielddefs ; i++)
-		if (!QC_AddFieldEntry (&vm->fields, QC_Cstr (p, p->fielddefs[i].name), p->fielddefs[i].type,
-			p->fielddefs[i].ofs))
-			return QC_OutOfMemory (vm, QC_RES_FIELDS);
 
 	vm->progs = calloc (vm->config.limits.progs ? vm->config.limits.progs : 1, sizeof(*vm->progs));
 	if (!vm->progs)
@@ -556,6 +606,16 @@ static bool QC_BuildCore (qcvm_t *vm)
 		return false;
 	QC_ApplySpawnDefaults (vm, 0);
 	return true;
+}
+
+// the main progs' fields, then the memory
+static bool QC_BuildCore (qcvm_t *vm)
+{
+	qc_wordmap_t	map = {0};
+	bool			ok = QC_LayFields (vm, vm->main, &map) && QC_BuildMemory (vm, &map);
+
+	free (map.slots);
+	return ok;
 }
 
 static char *QC_CopyString (const char *s)
@@ -617,6 +677,18 @@ static bool QC_CopyConfig (qcvm_t *vm, const qc_config_t *config)
 		d->field = config->spawn_defaults[i].field ? QC_CopyString (config->spawn_defaults[i].field) : NULL;
 		d->global = config->spawn_defaults[i].global ? QC_CopyString (config->spawn_defaults[i].global) : NULL;
 	}
+	vm->host_list = calloc (config->num_host_fields + 1, sizeof(*vm->host_list));
+	if (!vm->host_list)
+		return false;
+	vm->config.host_fields = vm->host_list;
+	vm->config.num_host_fields = 0;
+	for (i = 0 ; i < config->num_host_fields ; i++)
+	{
+		vm->host_list[i] = config->host_fields[i];
+		if (!(vm->host_list[i].name = QC_CopyString (config->host_fields[i].name)))
+			return false;
+		vm->config.num_host_fields++;
+	}
 	return true;
 }
 
@@ -632,8 +704,12 @@ static void QC_FreeConfig (qcvm_t *vm)
 		free ((char *)vm->spawn_list[i].global);
 	}
 	free (vm->spawn_list);
+	for (i = 0 ; vm->host_list && i < vm->config.num_host_fields ; i++)
+		free ((char *)vm->host_list[i].name);
+	free (vm->host_list);
 	vm->shared_names = vm->clear_names = NULL;
 	vm->spawn_list = NULL;
+	vm->host_list = NULL;
 }
 
 qcvm_t *QC_Create (qc_progs_t *progs, const qc_builtins_t *builtins, const qc_config_t *config,

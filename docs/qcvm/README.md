@@ -83,7 +83,10 @@ it returns false after `QC_Error` (FTE's builtin error, only a warning in develo
 `QC_HostError` or `QC_Abort` (FTE's `abort`). Globals and entity fields never move: the host
 keeps pointers to them (`QC_Globals`, `QC_Edicts`), and the configuration can give each entity
 a header of the host's own before its fields (`entity_header_bytes`). That is how the server's
-`edict_t` sits on the VM's entities. Further progs come in with `QC_AddProgs`. The host resumes
+`edict_t` sits on the VM's entities. The host can also lay the fields out (`host_fields`, FTE's
+`QC_RegisterFieldVar`): the main progs' fields of those names move where the host's struct has
+them, the rest go after, so one struct reads progs that order their fields differently. Further
+progs come in with `QC_AddProgs`, their fields unified with these by name. The host resumes
 sleeping threads with `QC_RunThreads` once a frame, and copies its cvars into autocvars with
 `QC_SyncAutocvars`.
 

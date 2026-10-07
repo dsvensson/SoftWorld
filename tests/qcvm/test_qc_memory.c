@@ -1,7 +1,7 @@
 // test_qc_memory.c -- the VM's memory before anything runs: its layout, where
-// addresses land, the host's header in each entity, entity slots and their
-// reuse, fields added later, the heap, temp and static strings and their
-// collection
+// addresses land, the host's header in each entity and its field layout, entity
+// slots and their reuse, fields added later, the heap, temp and static strings
+// and their collection
 
 #include "qc_asm.h"
 #include "qc_local.h"
@@ -500,6 +500,106 @@ static void TestHostHeader (void)
 	QA_Free (a);
 }
 
+// a progs with fields mana, health and origin (with a global for origin_y), and
+// functions reading self.health and self.origin_y and writing self.mana; health
+// of the type given
+static qc_asm_t *HostFieldsProgs (uint32_t health_type)
+{
+	static const uint8_t	one_parm[] = {1};
+	qc_asm_t	*a = QA_New ();
+	uint32_t	self_g, mana, health, origin, origin_y, ptr;
+	qa_func_t	f;
+
+	self_g = QA_Global (a, "self", QC_EV_ENTITY, NULL, 0);
+	QA_Field (a, "mana", QC_EV_FLOAT, &mana);
+	QA_Field (a, "health", health_type, &health);
+	origin = QA_Field (a, "origin", QC_EV_VECTOR, NULL);
+	origin_y = QA_Global1 (a, "origin_y", QC_EV_FIELD, origin + 1);
+	f = QA_Function (a, "get_health", NULL, 0, 0);
+	QA_Emit (a, QOP_LOAD_F, self_g, health, QA_OFS_RETURN);
+	QA_Emit (a, QOP_RETURN, QA_OFS_RETURN, 0, 0);
+	f = QA_Function (a, "get_origin_y", NULL, 0, 0);
+	QA_Emit (a, QOP_LOAD_F, self_g, origin_y, QA_OFS_RETURN);
+	QA_Emit (a, QOP_RETURN, QA_OFS_RETURN, 0, 0);
+	f = QA_Function (a, "set_mana", one_parm, 1, 1);
+	ptr = QA_Local (f, 1);
+	QA_Emit (a, QOP_ADDRESS, self_g, mana, ptr);
+	QA_Emit (a, QOP_STOREP_F, QA_Local (f, 0), ptr, 0);
+	QA_Emit (a, QOP_DONE, 0, 0, 0);
+	return a;
+}
+
+static float CallFloat (qcvm_t *vm, const char *name, uint32_t argc, float arg)
+{
+	qc_value_t	in = QC_ValFloat (arg), out = {0};
+
+	QT_CHECK (QC_Call (vm, QC_FindFunction (vm, name), argc, &in, &out));
+	return QC_BitsFloat (out.w[0]);
+}
+
+// The host lays out the fields: the progs' move to the host's words by name
+// (its field globals with them), the rest go after, the host's own exist
+// without the progs, and a field of another size under a host's name fails.
+static void TestHostFields (void)
+{
+	qc_hostfield_t	host[] = {
+		{"origin", QC_EV_VECTOR, 0},
+		{"health", QC_EV_FLOAT, 3},
+		{"lastruntime", QC_EV_FLOAT, 4},
+	};
+	qc_asm_t	*a = HostFieldsProgs (QC_EV_FLOAT);
+	qc_config_t	config;
+	qcvm_t		*vm;
+	qc_ent_t	e;
+	uint32_t	in[3] = {QC_FloatBits (1), QC_FloatBits (2), QC_FloatBits (3)}, type, self_word;
+
+	QC_DefaultConfig (&config, QC_SSQC);
+	config.host_fields = host;
+	config.num_host_fields = 3;
+	vm = QA_CreateVM (a, &config, NULL, NULL, NULL);
+	host[1].ofs = 99;		// the VM holds its own copy
+
+	QT_EQ_U (Field (vm, "origin"), 0);
+	QT_EQ_U (Field (vm, "origin_y"), 1);
+	QT_EQ_U (Field (vm, "health"), 3);
+	QT_CHECK (QC_FindField (vm, "lastruntime", NULL, &type) && type == QC_EV_FLOAT);
+	QT_EQ_U (Field (vm, "lastruntime"), 4);
+	QT_EQ_U (Field (vm, "mana"), 5);
+	QT_CHECK (QC_FieldWords (vm) >= 6);
+
+	// QuakeC reads and writes where the host does
+	QT_CHECK (QC_Spawn (vm, &e));
+	QT_CHECK (QC_FindGlobal (vm, "self", &self_word, NULL));
+	QC_Globals (vm)[self_word].u = e;
+	SetFloat (vm, e, 3, 42);
+	QT_CHECK (QC_SetField (vm, e, 0, 3, in));
+	QT_EQ_F (CallFloat (vm, "get_health", 0, 0), 42);
+	QT_EQ_F (CallFloat (vm, "get_origin_y", 0, 0), 2);
+	CallFloat (vm, "set_mana", 1, 7);
+	QT_EQ_F (GetFloat (vm, e, 5), 7);
+
+	// a reset lays them out the same
+	QT_CHECK (QC_Reset (vm));
+	QT_EQ_U (Field (vm, "health"), 3);
+	QT_EQ_U (Field (vm, "mana"), 5);
+	QC_Destroy (vm);
+	QA_Free (a);
+
+	// health as a vector doesn't fit the host's float
+	host[1].ofs = 3;
+	a = HostFieldsProgs (QC_EV_VECTOR);
+	{
+		qc_progs_t	*p = QA_Load (a, QC_FORMAT_FTE16);
+		qc_error_t	error;
+
+		QT_CHECK (!QC_Create (p, NULL, &config, NULL, NULL, &error));
+		QT_EQ_U (error.kind, QC_ERR_HOST);
+		QC_FreeError (&error);
+		QC_ReleaseProgs (p);
+	}
+	QA_Free (a);
+}
+
 // spawn defaults, remove's cleared fields, and the hooks
 static void TestSpawnRemoveHooks (void)
 {
@@ -689,6 +789,7 @@ int main (void)
 	TestSerials ();
 	TestEnsureField ();
 	TestHostHeader ();
+	TestHostFields ();
 	TestSpawnRemoveHooks ();
 	TestVMStrings ();
 	TestHostAlloc ();

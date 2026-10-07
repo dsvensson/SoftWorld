@@ -570,8 +570,8 @@ typedef struct
 	uint32_t	ofs;
 } qc_fieldentry_t;
 
-// the VM-wide entity field layout: the main progs' fields, then those added by
-// the host or by later progs
+// the VM-wide entity field layout: the host's fields when it lays them out,
+// the main progs', then those added by the host or by later progs
 typedef struct
 {
 	qc_fieldentry_t	*entries;
@@ -630,8 +630,9 @@ struct qcvm_s
 
 	qc_config_t			config;			// its lists are the VM's own copies:
 	char				**shared_names;	// shared_globals,
-	char				**clear_names;	// remove_clears
-	qc_spawndefault_t	*spawn_list;	// and spawn_defaults
+	char				**clear_names;	// remove_clears,
+	qc_spawndefault_t	*spawn_list;	// spawn_defaults
+	qc_hostfield_t		*host_list;		// and host_fields
 
 	qc_warning_t		*warnings;
 	uint32_t			numwarnings, warningsize;
@@ -713,6 +714,27 @@ bool		QC_Suspend (qcvm_t *vm, float delay, const uint32_t resume[3], bool *suspe
 bool	QC_InitProgState (qcvm_t *vm, qc_progstate_t *ps, qc_progs_t *p, uint32_t sbase, uint32_t gbase);
 void	QC_FixupGlobals (qcvm_t *vm, const qc_progs_t *p, uint32_t gbase, uint32_t prnum);
 bool	QC_RegisterShared (qcvm_t *vm, uint32_t pr);
+
+// a progs' field words, mapped to the VM's (qc_multiprogs.c)
+typedef struct
+{
+	uint32_t	key, value;
+	bool		used;
+} qc_wordslot_t;
+
+typedef struct
+{
+	qc_wordslot_t	*slots;
+	uint32_t		mask, count;
+} qc_wordmap_t;
+
+// Maps a progs' field words onto the VM's layout, adding the fields it brings
+// in the room the fields have (vm->mem.field_capacity); false if they don't fit.
+bool	QC_MapFields (qcvm_t *vm, const qc_progs_t *p, qc_wordmap_t *map);
+// relocates the typed globals of a progs laid out at sbase and gbase: strings
+// by sbase, functions by its number, fields by the map
+bool	QC_RelocateGlobals (qcvm_t *vm, const qc_progs_t *p, uint32_t sbase, uint32_t gbase, uint32_t pr,
+	const qc_wordmap_t *map);
 
 /*
 ==============================================================================

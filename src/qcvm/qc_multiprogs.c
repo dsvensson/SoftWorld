@@ -6,8 +6,9 @@
 // relocated. Function values carry the progs number in their top byte. Entity
 // fields are unified by name: a later progs' fields map onto the layout there
 // is, and new ones take words from the room each entity reserves, so entity
-// data never moves. The shared globals (qc_vm.c) are copied between progs
-// whenever execution passes from one to another.
+// data never moves (the main progs' map onto the host's fields the same way,
+// when it lays them out). The shared globals (qc_vm.c) are copied between
+// progs whenever execution passes from one to another.
 
 #include "qc_local.h"
 
@@ -22,22 +23,10 @@
 
 FIELD WORDS
 
-A later progs' field words, mapped to the VM's.
+A progs' field words, mapped to the VM's.
 
 ==============================================================================
 */
-
-typedef struct
-{
-	uint32_t	key, value;
-	bool		used;
-} qc_wordslot_t;
-
-typedef struct
-{
-	qc_wordslot_t	*slots;
-	uint32_t		mask, count;
-} qc_wordmap_t;
 
 static uint32_t QC_WordHash (uint32_t k)
 {
@@ -136,11 +125,12 @@ static bool QC_TakeFieldWords (qcvm_t *vm, uint32_t words, uint32_t *at)
 	return true;
 }
 
-// Maps a later progs' field words onto the VM's layout, adding the fields it
-// brings. False if they don't fit the room each entity reserves; the room is
-// checked as words are taken, so a huge field count in the header costs no
-// more than the room before it is refused.
-static bool QC_MapFields (qcvm_t *vm, const qc_progs_t *p, qc_wordmap_t *map)
+// Maps a progs' field words onto the VM's layout (a later progs', or the main
+// progs' onto the host's fields), adding the fields it brings. False if they
+// don't fit the room the fields have; the room is checked as words are taken,
+// so a huge field count in the header costs no more than the room before it
+// is refused.
+bool QC_MapFields (qcvm_t *vm, const qc_progs_t *p, qc_wordmap_t *map)
 {
 	const qc_fieldentry_t	*existing;
 	const qc_def_t			*d;
@@ -265,7 +255,7 @@ ADDING PROGS
 // relocates the typed globals of a progs laid out at sbase and gbase: strings
 // by where its strings are, functions by its number, fields by the field map;
 // each word once, whatever definitions share it
-static bool QC_RelocateGlobals (qcvm_t *vm, const qc_progs_t *p, uint32_t sbase, uint32_t gbase, uint32_t pr,
+bool QC_RelocateGlobals (qcvm_t *vm, const qc_progs_t *p, uint32_t sbase, uint32_t gbase, uint32_t pr,
 	const qc_wordmap_t *map)
 {
 	const qc_def_t	*d;
