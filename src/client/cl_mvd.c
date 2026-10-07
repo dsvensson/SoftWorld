@@ -240,6 +240,8 @@ A timedemo takes one frame each time.
 */
 void CL_MVDAdvance (void)
 {
+	if (CL_Downloading ())
+		return;		// the moment played waits for a map from the web
 	if (cls.timedemo)
 	{
 		mvd.logical = mvd.next;

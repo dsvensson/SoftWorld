@@ -311,8 +311,9 @@ Handles recording and playback of demos, on top of NET_ code
 */
 bool CL_GetMessage (void)
 {
+	// a recording waits for a map it needs from the web
 	if	(cls.demoplayback)
-		return cls.mvdplayback ? CL_GetMVDMessage () : CL_GetDemoMessage ();
+		return !CL_Downloading () && (cls.mvdplayback ? CL_GetMVDMessage () : CL_GetDemoMessage ());
 
 	if (!NET_GetPacket (NS_CLIENT, &cls.net_from, &cls.net_message))
 		return false;

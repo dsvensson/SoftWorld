@@ -518,7 +518,7 @@ void Con_DrawConsole (int lines)
 		return;
 
 // draw the background
-	Draw_ConsoleBackground (lines, cls.download != NULL);
+	Draw_ConsoleBackground (lines, CL_Downloading ());
 
 // draw the text
 	con.vislines = lines;
@@ -556,7 +556,7 @@ void Con_DrawConsole (int lines)
 
 	// draw the download bar
 	// figure out width
-	if (cls.download) {
+	if (CL_Downloading ()) {
 		if ((text = strrchr(cls.downloadname, '/')) != NULL)
 			text++;
 		else

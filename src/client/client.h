@@ -582,6 +582,9 @@ int CL_DownloadRequests (void);			// how many chunks to ask for this frame
 int CL_WriteDownloadRequests (sizebuf_t *buf, int want);	// returns how many went in
 void CL_StopDownload (void);
 const char *CL_DownloadSpeed (void);	// for the download bar, in a fixed width
+void CL_InitDownloads (void);
+bool CL_Downloading (void);				// a file on its way, from the server or the web
+void CL_DownloadFrame (void);			// a web download's progress, and its end
 
 //
 // view.c

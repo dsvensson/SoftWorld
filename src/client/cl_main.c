@@ -887,7 +887,7 @@ drop to full console
 */
 static void CL_Changing_f (void)
 {
-	if (cls.download)  // don't change when downloading
+	if (CL_Downloading ())  // don't change when downloading
 		return;
 
 	S_StopAllSounds (true);
@@ -906,7 +906,7 @@ The server is changing levels
 */
 static void CL_Reconnect_f (void)
 {
-	if (cls.download)  // don't change when downloading
+	if (CL_Downloading ())  // don't change when downloading
 		return;
 	if (cls.demoplayback)	// a recording goes on to its next level itself
 		return;
@@ -1423,6 +1423,7 @@ static void CL_InitLocal (void)
 	CL_InitDemo ();
 	CL_InitMVD ();
 	CL_InitItems ();
+	CL_InitDownloads ();
 	CL_InitQTV ();
 
 	Cmd_AddCommand ("skins", Skin_Skins_f, "Reloads the players' skins, downloading those missing.");
@@ -1721,6 +1722,7 @@ void CL_Frame (void)
 
 	// fetch results from server
 	oldincoming = cls.netchan.incoming_sequence;
+	CL_DownloadFrame ();
 	CL_QTVFrame ();
 	if (cls.mvdplayback)
 		CL_MVDAdvance ();

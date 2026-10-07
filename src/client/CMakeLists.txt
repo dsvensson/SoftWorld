@@ -6,6 +6,8 @@ target_link_libraries(sw_client PUBLIC sw_render sw_sound sw_game sw_slist sw_ne
 target_include_directories(sw_client PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # the client may stop a local server (sv_public.h); which server it gets is the program's choice
 target_include_directories(sw_client PRIVATE ${PROJECT_SOURCE_DIR}/src/server)
+# C11's atomics, which MSVC has behind a switch (a web download's thread, cl_download.c)
+target_compile_options(sw_client PRIVATE $<$<C_COMPILER_ID:MSVC>:/experimental:c11atomics>)
 
 # the menu the client runs when the game directory has none: menu-qc, built
 # in, the version the program tells (SW_VERSION) in it

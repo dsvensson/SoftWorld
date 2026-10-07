@@ -35,8 +35,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // per chunk that lands and drops by two percent when requests go unanswered.
 // The requests ride on the move packets; before the client is in the game,
 // what does not fit goes in packets of its own.
+//
+// A map the server can't give, or a recording or QTV stream needs, comes
+// from the web (cl_download_mapsrc).
 
 #include "cl_local.h"
+
+#include "net_http.h"
+#include "sys.h"
+
+#include <stdatomic.h>
 
 #define DL_MAXREQUESTS	256		// requests in flight at most
 #define DL_RETRY		10		// our packets the server acknowledges before an unanswered request is lost
@@ -286,6 +294,15 @@ static void CL_BeginDownload (const char *file, const char *local)
 	MSG_WriteString (&cls.netchan.message, va("download %s", cls.downloadname));
 }
 
+// the counters the download bar's speed is worked out from
+static void CL_DownloadStarted (void)
+{
+	dl.received = 0;
+	dl.started = dl.sampletime = host.realtime;
+	dl.samplebytes = 0;
+	dl.speed = 0;
+}
+
 static bool CL_OpenDownload (void)
 {
 	char	path[MAX_OSPATH];
@@ -298,10 +315,7 @@ static bool CL_OpenDownload (void)
 		Con_Printf ("Failed to open %s\n", path);
 		return false;
 	}
-	dl.received = 0;
-	dl.started = dl.sampletime = host.realtime;
-	dl.samplebytes = 0;
-	dl.speed = 0;
+	CL_DownloadStarted ();
 	return true;
 }
 
@@ -368,6 +382,203 @@ static void CL_CloseDownload (void)
 }
 
 /*
+===============================================================================
+
+FROM THE WEB
+
+A map the server can't give, or a recording or QTV stream needs, as FTE's
+cl_download_mapsrc has it: <url><map>.bsp, over HTTP or HTTPS on a thread of
+its own, which writes the temp file. The download bar follows it, and a
+recording waits for it.
+
+===============================================================================
+*/
+
+#define WEB_TIMEOUT		20		// seconds without a byte
+
+static cvar_t	cl_download_mapsrc = {.name = "cl_download_mapsrc", .string = "https://maps.quakeworld.nu/all/",
+	.archive = true,
+	.description = "Where a map comes from that the server doesn't give (it has no downloads, or doesn't have the "
+		"map), or that a demo or QTV stream needs: a URL the maps are under, as <url><map>.bsp (FTE's). Empty for "
+		"none."};
+
+enum { WEB_RUNNING, WEB_DONE, WEB_ABANDONED };
+
+// a map on its way; its thread frees it where it was abandoned
+typedef struct
+{
+	char			url[MAX_OSPATH * 2];
+	char			path[MAX_OSPATH];		// the temp file
+	FILE			*file;
+	systhread_t		*thread;
+	atomic_llong	received;
+	atomic_llong	total;					// -1 where the answer gives none
+	atomic_int		state;
+	atomic_bool		cancel;
+	bool			ok;						// once it is done
+	char			error[256];
+} webdownload_t;
+
+static webdownload_t	*web;		// the one on its way
+
+void CL_InitDownloads (void)
+{
+	Cvar_RegisterVariable (&cl_download_mapsrc);
+}
+
+bool CL_Downloading (void)
+{
+	return cls.download || web;
+}
+
+static bool CL_WebBody (void *ctx, const void *data, size_t length, long long total)
+{
+	webdownload_t	*w = ctx;
+
+	if (atomic_load (&w->cancel))
+		return false;
+	if (fwrite (data, 1, length, w->file) != length)
+	{
+		snprintf (w->error, sizeof(w->error), "can't write the file");
+		return false;
+	}
+	atomic_store (&w->total, total);
+	atomic_fetch_add (&w->received, (long long)length);
+	return true;
+}
+
+static void CL_WebThread (void *arg)
+{
+	webdownload_t	*w = arg;
+
+	if (!(w->file = fopen (w->path, "wb")))
+		snprintf (w->error, sizeof(w->error), "can't create the file");
+	else
+	{
+		w->ok = HTTP_Get (w->url, WEB_TIMEOUT, CL_WebBody, w, w->error, sizeof(w->error));
+		if (fclose (w->file) && w->ok)
+		{
+			w->ok = false;
+			snprintf (w->error, sizeof(w->error), "can't write the file");
+		}
+	}
+	if (!w->ok)
+		remove (w->path);
+	if (atomic_exchange (&w->state, WEB_DONE) == WEB_ABANDONED)
+	{	// nothing waits for it
+		remove (w->path);
+		free (w);
+	}
+}
+
+/*
+================
+CL_WebDownload
+
+A map from cl_download_mapsrc, saved as local; false where local isn't a map,
+there is no such URL, or no thread for it
+================
+*/
+static bool CL_WebDownload (const char *local)
+{
+	const char		*src = cl_download_mapsrc.string, *dot = strrchr (local, '.');
+	webdownload_t	*w;
+
+	if (strncmp (local, "maps/", 5) || strchr (local + 5, '/') || !dot || Q_strcasecmp (dot, ".bsp")
+		|| (Q_strncasecmp (src, "http://", 7) && Q_strncasecmp (src, "https://", 8)))
+		return false;
+	if (!(w = calloc (1, sizeof(*w))))
+		return false;
+
+	Q_strncpyz (cls.downloadname, local, sizeof(cls.downloadname));
+	Q_strncpyz (cls.downloadlocalname, local, sizeof(cls.downloadlocalname));
+	COM_StripExtension (cls.downloadlocalname, cls.downloadtempname);
+	Q_strncatz (cls.downloadtempname, ".tmp", sizeof(cls.downloadtempname));
+	snprintf (w->url, sizeof(w->url), "%s%s", src, local + 5);
+	CL_DownloadPath (cls.downloadtempname, w->path, sizeof(w->path));
+	COM_CreatePath (w->path);
+	atomic_store (&w->total, -1);
+	atomic_store (&w->state, WEB_RUNNING);
+	if (!(w->thread = Sys_StartThread ("download", CL_WebThread, w)))
+	{
+		free (w);
+		return false;
+	}
+	web = w;
+	CL_DownloadStarted ();
+	Con_Printf ("Downloading %s from %s...\n", local, w->url);
+	return true;
+}
+
+/*
+================
+CL_DownloadFrame
+
+Once a frame: the web download's bar, and its end, as one from the server
+ends: renamed into place, then the next file
+================
+*/
+void CL_DownloadFrame (void)
+{
+	char		oldn[MAX_OSPATH], newn[MAX_OSPATH], error[256];
+	long long	total;
+	double		took;
+	bool		ok;
+
+	if (!web)
+		return;
+	dl.received = (int)atomic_load (&web->received);
+	total = atomic_load (&web->total);
+	cls.downloadpercent = total > 0 ? (int)(dl.received * 100LL / total) : 0;
+	if (atomic_load (&web->state) != WEB_DONE)
+		return;
+
+	Sys_JoinThread (web->thread);
+	ok = web->ok;
+	Q_strncpyz (error, web->error, sizeof(error));
+	free (web);
+	web = NULL;
+	cls.downloadpercent = 0;
+
+	took = host.realtime - dl.started;
+	CL_DownloadPath (cls.downloadtempname, oldn, sizeof(oldn));
+	CL_DownloadPath (cls.downloadlocalname, newn, sizeof(newn));
+	if (!ok)
+		Con_Printf ("Couldn't download %s: %s\n", cls.downloadname, error);
+	else
+	{
+		remove (newn);
+		if (rename (oldn, newn))
+			Con_Printf ("failed to rename %s\n", oldn);
+		else
+			Con_Printf ("%s: %d bytes in %.1f s, %s\n", cls.downloadname, dl.received, took,
+				CL_RateText (dl.received / fmax (took, 0.001)));
+	}
+	CL_RequestNextDownload ();
+}
+
+// the web download dropped: its thread ends on its own, and cleans up after
+static void CL_AbandonWeb (void)
+{
+	systhread_t	*thread;
+
+	if (!web)
+		return;
+	thread = web->thread;
+	atomic_store (&web->cancel, true);
+	if (atomic_exchange (&web->state, WEB_ABANDONED) == WEB_DONE)
+	{
+		Sys_JoinThread (thread);
+		remove (web->path);
+		free (web);
+	}
+	else
+		Sys_DetachThread (thread);
+	web = NULL;
+	cls.downloadpercent = 0;
+}
+
+/*
 ================
 CL_StopDownload
 
@@ -376,17 +587,23 @@ The connection is going away
 */
 void CL_StopDownload (void)
 {
+	CL_AbandonWeb ();
 	CL_CloseDownload ();
 	dl.rate = 1;
 	dl.slop = 0;
 	dl.congested = false;
 }
 
+// a map the server can't give comes from the web, where it is there
 static void CL_DownloadFailed (const char *reason)
 {
+	char	local[MAX_OSPATH];
+
 	Con_Printf ("Couldn't download %s: %s\n", cls.downloadname, reason);
+	Q_strncpyz (local, cls.downloadlocalname, sizeof(local));
 	CL_CloseDownload ();
-	CL_RequestNextDownload ();
+	if (!CL_WebDownload (local))
+		CL_RequestNextDownload ();
 }
 
 static void CL_FinishDownload (void)
@@ -462,9 +679,15 @@ bool	CL_CheckOrDownloadFileAs (const char *remote, const char *local)
 		Con_Printf("Unable to download %s in record mode.\n", remote);
 		return true;
 	}
-	//ZOID - can't download when playback
+	// a recording or a QTV stream has no server to ask: a map comes from the
+	// web, where it is there, the recording waiting for it
 	if (cls.demoplayback)
-		return true;
+	{
+		if (!CL_WebDownload (local))
+			return true;
+		cls.downloadnumber++;
+		return false;
+	}
 
 	// before printing: the names may be va()'s buffer, which printing reuses
 	CL_BeginDownload (remote, local);
@@ -493,7 +716,7 @@ void CL_Download_f (void)
 		return;
 	}
 
-	if (cls.download || dl.awaiting)
+	if (CL_Downloading () || dl.awaiting)
 	{
 		Con_Printf ("Already downloading %s\n", cls.downloadname);
 		return;
