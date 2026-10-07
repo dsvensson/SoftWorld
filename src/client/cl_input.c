@@ -73,18 +73,13 @@ static kbutton_t	in_up, in_down;
 
 static int			in_impulse;
 
+#define	MAX_FIREWEAPONS	10
+static int			in_fireorder[MAX_FIREWEAPONS];	// the weapons +fire last listed, the best first
 
-static void KeyDown (kbutton_t *b)
+
+// k: the key that pressed it, -1 typed manually at the console for continuous down
+static void KeyDownNum (kbutton_t *b, int k)
 {
-	int		k;
-	char	*c;
-	
-	c = Cmd_Argv(1);
-	if (c[0])
-		k = atoi(c);
-	else
-		k = -1;		// typed manually at the console for continuous down
-
 	if (k == b->down[0] || k == b->down[1])
 		return;		// repeating key
 	
@@ -103,15 +98,17 @@ static void KeyDown (kbutton_t *b)
 	b->state |= 1 + 2;	// down + impulse down
 }
 
-static void KeyUp (kbutton_t *b)
+static void KeyDown (kbutton_t *b)
 {
-	int		k;
-	char	*c;
-	
-	c = Cmd_Argv(1);
-	if (c[0])
-		k = atoi(c);
-	else
+	char	*c = Cmd_Argv(1);
+
+	KeyDownNum (b, c[0] ? atoi(c) : -1);
+}
+
+// k: the key that released it, -1 typed manually at the console
+static void KeyUpNum (kbutton_t *b, int k)
+{
+	if (k == -1)
 	{ // typed manually at the console, assume for unsticking, so clear all
 		b->down[0] = b->down[1] = 0;
 		b->state = 4;	// impulse up
@@ -131,6 +128,13 @@ static void KeyUp (kbutton_t *b)
 		return;		// still up (this should not happen)
 	b->state &= ~1;		// now up
 	b->state |= 4; 		// impulse up
+}
+
+static void KeyUp (kbutton_t *b)
+{
+	char	*c = Cmd_Argv(1);
+
+	KeyUpNum (b, c[0] ? atoi(c) : -1);
 }
 
 static void IN_KLookDown (void) {KeyDown(&in_klook);}
@@ -212,6 +216,66 @@ static void IN_JumpUp (void)
 }
 
 static void IN_Impulse (void) {in_impulse=Q_atoi(Cmd_Argv(1));}
+
+/*
+===============
+IN_BestWeapon
+
+ezQuake's: the first weapon +fire listed that the player has, with the ammo a
+shot takes; the first listed where there is none
+===============
+*/
+static int IN_BestWeapon (void)
+{
+	static const struct { int item, stat, ammo; }	weapons[9] = {
+		{0, 0, 0}, {IT_AXE, 0, 0}, {IT_SHOTGUN, STAT_SHELLS, 1}, {IT_SUPER_SHOTGUN, STAT_SHELLS, 2},
+		{IT_NAILGUN, STAT_NAILS, 1}, {IT_SUPER_NAILGUN, STAT_NAILS, 2}, {IT_GRENADE_LAUNCHER, STAT_ROCKETS, 1},
+		{IT_ROCKET_LAUNCHER, STAT_ROCKETS, 1}, {IT_LIGHTNING, STAT_CELLS, 1}};
+	int		i, w;
+
+	for (i=0 ; i<MAX_FIREWEAPONS ; i++)
+	{
+		w = in_fireorder[i];
+		if (w >= 1 && w <= 8 && (cl.stats[STAT_ITEMS] & weapons[w].item)
+			&& (!weapons[w].ammo || cl.stats[weapons[w].stat] >= weapons[w].ammo))
+			return w;
+	}
+	return in_fireorder[0];
+}
+
+// the key a binding appends to +fire's weapons, last; as ezQuake tells it
+// from a weapon, 32 or more; -1 none
+static int IN_FireKey (void)
+{
+	int		last = Cmd_Argc () - 1;
+
+	return last >= 1 && Q_atoi (Cmd_Argv (last)) >= 32 ? Q_atoi (Cmd_Argv (last)) : -1;
+}
+
+/*
+===============
+IN_FireDown
+
+ezQuake's +fire w1 [w2 ...]: the best of the weapons listed selected with
+the attack it starts
+===============
+*/
+static void IN_FireDown (void)
+{
+	int		key = IN_FireKey (), weapons = Cmd_Argc () - 1 - (key != -1), i;
+
+	if (Cmd_Argc () < 2)
+	{
+		Con_Printf ("Usage: %s <weapon> [weapon ...]\n", Cmd_Argv (0));
+		return;
+	}
+	for (i=0 ; i<MAX_FIREWEAPONS ; i++)
+		in_fireorder[i] = i < weapons ? Q_atoi (Cmd_Argv (i + 1)) : 0;
+	in_impulse = IN_BestWeapon ();
+	KeyDownNum (&in_attack, key);
+}
+
+static void IN_FireUp (void) {KeyUpNum (&in_attack, IN_FireKey ());}
 
 /*
 ===============
@@ -791,6 +855,10 @@ void CL_InitInput (void)
 	Cmd_AddCommand ("+attack", IN_AttackDown,
 		"Fires while held; as a spectator it toggles following a player, and in an MVD flying the camera.");
 	Cmd_AddCommand ("-attack", IN_AttackUp, "Releases +attack.");
+	Cmd_AddCommand ("+fire", IN_FireDown,
+		"Fires while held with the first of the weapons listed that you have, with ammo for a shot, as ezQuake's: "
+		"+fire 7 8 3 2. Usage: +fire <weapon> [weapon ...]");
+	Cmd_AddCommand ("-fire", IN_FireUp, "Releases +fire.");
 	Cmd_AddCommand ("+use", IN_UseDown, "Does nothing: QuakeWorld sends no use button; kept for configs that bind it.");
 	Cmd_AddCommand ("-use", IN_UseUp, "Releases +use.");
 	Cmd_AddCommand ("+jump", IN_JumpDown,

@@ -255,6 +255,7 @@ Worth knowing:
 | `net_prefer_ipv6` | 1: a name with both IPv4 and IPv6 addresses is reached at its IPv6 one; 0 (the default) at its IPv4 one |
 | `cl_idlefps` | frame rate cap while the window isn't the focus, 50 by default; 0 is `cl_maxfps`'s |
 | `cl_truelightning` | how far the lightning beam of the player whose view you see (yours, or the one a demo or spectating follows) turns toward the view, hiding its lag; 1, the default, all the way |
+| `+fire w1 [w2 ...]` | as ezQuake's: fires while held with the first of the weapons listed that you have, with ammo for a shot (`bind mouse1 "+fire 7 8 3 2"`) |
 | `demo_speed`, `pause` | MVD playback speed, and pause |
 | `demo_jump [+\|-][m:]s` | seek in an MVD |
 | `track [name]`, jump, attack | in an MVD or QTV: follow a player, the next one; attack flies the camera and gives it back |
