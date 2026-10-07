@@ -293,9 +293,11 @@ watches, Ctrl+C copies the address, Ins adds a server) and its `sb_*` cvars, wit
 defaults. Its list is found as qualia's is: last time's servers are shown at once, the masters and
 lists are asked, every server is pinged (`sb_pings` sweeps at `sb_pingspersec`), and those that
 answer are asked what they are (`sb_infospersec`), the list filling as they do; qizmo's and qwfwd's
-tables of pings find shorter ways round. The selection stays on its server as the list changes.
-Which servers' games are on QTV, and where, is the QTV list's that ezQuake reads (`qtv_api_url`,
-qtvapi.quakeworld.nu's), read with each scan and kept with the servers.
+tables of pings find shorter ways round. The list is found when the browser first opens, or as the
+client starts with `sb_fetch_on_startup 1`, so it is ready by then, and not while a connection is
+made. The selection stays on its server as the list changes. Which servers' games are on QTV, and
+where, is the QTV list's that ezQuake reads (`qtv_api_url`, qtvapi.quakeworld.nu's), read with each
+scan and kept with the servers.
 
 The sources are ezQuake's `sources.txt` (`master`, `file` and `url` lines, and `server` ones),
 `<basedir>/qw/sb/sources.txt`, else ezQuake's own (`<basedir>/ezquake/sb/sources.txt`, its lists

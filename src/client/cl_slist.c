@@ -108,13 +108,17 @@ static cvar_t	qtv_api_url = {.name = "qtv_api_url", .string = "http://qtvapi.qua
 	.description = "The list of the game servers' QTV streams, as ezQuake's: the server browser's q watches a "
 		"server's game through its stream. Empty for none."};
 
+static cvar_t	sb_fetch_on_startup = {.name = "sb_fetch_on_startup", .string = "0", .archive = true,
+	.description = "The server browser's list is found as the client starts (not in a timedemo), so it is ready "
+		"when the browser opens; 0 when it opens first."};
+
 static cvar_t	*const sb_cvars[] =
 {
 	&sb_status, &sb_showping, &sb_showaddress, &sb_showmap, &sb_showgamedir, &sb_showplayers, &sb_showfraglimit,
 	&sb_showtimelimit, &sb_pingtimeout, &sb_pingspersec, &sb_pings, &sb_infotimeout, &sb_inforetries, &sb_infospersec,
 	&sb_proxinfopersec, &sb_proxretries, &sb_proxtimeout, &sb_mastertimeout, &sb_masterretries, &sb_liveupdate,
 	&sb_sortservers, &sb_sortplayers, &sb_sortsources, &sb_autohide, &sb_hideempty, &sb_hidenotempty, &sb_hidefull,
-	&sb_hidedead, &sb_hidehighping, &sb_pinglimit, &sb_showproxies, &qtv_api_url,
+	&sb_hidedead, &sb_hidehighping, &sb_pinglimit, &sb_showproxies, &qtv_api_url, &sb_fetch_on_startup,
 };
 
 static struct
@@ -127,6 +131,8 @@ static struct
 	slsnapshot_t	*snap;			// the list as the menu sees it, to the next M_Draw
 	slview_t		view;
 	bool			paused;
+	bool			begun;			// the first frame's been, the configs run
+	int				scans;			// asked for this run
 } sb;
 
 /*
@@ -278,6 +284,7 @@ static void SB_Refresh (void)
 		return;
 	SB_Config (&c);
 	SL_Refresh (sb.sources, sb.numsources, &c);
+	sb.scans++;
 }
 
 static void SB_Arrange (void)
@@ -311,14 +318,21 @@ void SB_Adopt (void)
 ================
 SB_Frame
 
-Each client frame: no scan while a connection is made, and what the list's
-threads have to say
+Each client frame: the first, after the configs, finds the list
+(sb_fetch_on_startup); no scan while a connection is made; and what the
+list's threads have to say
 ================
 */
 void SB_Frame (bool connecting)
 {
 	char	message[256];
 
+	if (!sb.begun)
+	{
+		sb.begun = true;
+		if (sb_fetch_on_startup.value && !cls.timedemo)
+			SB_Refresh ();
+	}
 	if (!sb.started)
 		return;
 	if (connecting != sb.paused)
@@ -412,6 +426,7 @@ static bool SB_GetHostCacheValue (qcvm_t *vm)
 				n++;
 		v = (float)n;
 		break;
+	case 114:	v = (float)sb.scans; break;			// the scans asked for this run
 	default:	break;
 	}
 	QC_ReturnFloat (vm, v);

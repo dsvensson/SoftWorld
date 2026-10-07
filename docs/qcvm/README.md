@@ -160,11 +160,11 @@ It is the checklist for the rest of CSQC.
 - **The server list:** FTE's hostcache builtins (611 to 622) over the client's (`cl_slist.c`):
   `gethostcachevalue` (FTE's 0 to 7, and SoftWorld's from 100: whether it scans, the sweep and
   sweeps, pings sent and to send, servers alive, dead and described, the list's generation, the
-  sources, the marked sources' servers), `gethostcacheindexforkey` (FTE's names, `player<N>`,
-  `state` for cached, alive and dead, `qtv` for its game's stream on QTV as `qtvplay` takes it, and
-  any serverinfo key), `gethostcachestring` and `gethostcachenumber` (a player as FTE spells one,
-  its team after), the masks as FTE tests them (in order, ANDed, or ORed with mask 512),
-  `sethostcachesort` (and its flag 8, a key after the others), `resorthostcache` and
+  sources, the marked sources' servers, the scans asked for), `gethostcacheindexforkey` (FTE's
+  names, `player<N>`, `state` for cached, alive and dead, `qtv` for its game's stream on QTV as
+  `qtvplay` takes it, and any serverinfo key), `gethostcachestring` and `gethostcachenumber` (a
+  player as FTE spells one, its team after), the masks as FTE tests them (in order, ANDed, or ORed
+  with mask 512), `sethostcachesort` (and its flag 8, a key after the others), `resorthostcache` and
   `refreshhostcache`. SoftWorld's own, by name: `gethostcacheindexforaddress`,
   `refreshhostcacheentry` (a server asked again ahead of the rest), `hostcacheinsource`,
   `gethostcachesource`, `sethostcachesourcemark`, `addhostcachesource`, `removehostcachesource` and

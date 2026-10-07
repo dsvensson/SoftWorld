@@ -15,6 +15,7 @@
 #define	SLIST_GENERATION			108
 #define	SLIST_SOURCES				109
 #define	SLIST_MARKEDSERVERS			113
+#define	SLIST_SCANS					114
 
 // FTE's mask tests (sethostcachemask*), and the OR of mask 512
 #define	SLIST_TEST_CONTAINS			0
@@ -2355,11 +2356,13 @@ void() SB_Open =
 	sb_dialog = SBD_NONE;
 	SB_Keys ();
 	sb_settings = "";
-	// the cache shows at once, and the first time it opens the list is scanned
+	// the cache shows at once, and the first time it opens the list is scanned,
+	// where it wasn't as the client started (sb_fetch_on_startup)
 	if (!sb_scanned)
 	{
 		sb_scanned = TRUE;
-		refreshhostcache ();
+		if (!gethostcachevalue (SLIST_SCANS))
+			refreshhostcache ();
 	}
 };
 
