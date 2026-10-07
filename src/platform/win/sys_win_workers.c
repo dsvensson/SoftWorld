@@ -152,3 +152,82 @@ void Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx)
 	while (pool.active)
 		YieldProcessor ();
 }
+
+/*
+===============================================================================
+
+THREADS OF THEIR OWN
+
+===============================================================================
+*/
+
+struct systhread_s
+{
+	HANDLE	handle;
+};
+
+// what the thread runs: its own copy, which it frees, so detaching never
+// races its start
+typedef struct
+{
+	void	(*func) (void *arg);
+	void	*arg;
+} threadstart_t;
+
+static DWORD WINAPI Sys_ThreadMain (void *p)
+{
+	threadstart_t	start = *(threadstart_t *)p;
+
+	free (p);
+	start.func (start.arg);
+	return 0;
+}
+
+// a name debuggers and profilers show, where Windows has SetThreadDescription (10, 1607)
+static void Sys_NameThread (HANDLE thread, const char *name)
+{
+	typedef HRESULT (WINAPI *setdescription_t) (HANDLE, PCWSTR);
+	setdescription_t	set;
+	wchar_t				wide[64];
+
+	set = (setdescription_t)(void *)GetProcAddress (GetModuleHandleW (L"kernel32.dll"), "SetThreadDescription");
+	if (set && MultiByteToWideChar (CP_UTF8, 0, name, -1, wide, 64))
+		set (thread, wide);
+}
+
+systhread_t *Sys_StartThread (const char *name, void (*func) (void *arg), void *arg)
+{
+	systhread_t		*t = malloc (sizeof(*t));
+	threadstart_t	*start = malloc (sizeof(*start));
+
+	if (!t || !start)
+	{
+		free (t);
+		free (start);
+		return NULL;
+	}
+	start->func = func;
+	start->arg = arg;
+	t->handle = CreateThread (NULL, 0, Sys_ThreadMain, start, 0, NULL);
+	if (!t->handle)
+	{
+		free (t);
+		free (start);
+		return NULL;
+	}
+	Sys_NameThread (t->handle, name);
+	return t;
+}
+
+void Sys_JoinThread (systhread_t *t)
+{
+	WaitForSingleObject (t->handle, INFINITE);
+	CloseHandle (t->handle);
+	free (t);
+}
+
+void Sys_DetachThread (systhread_t *t)
+{
+	CloseHandle (t->handle);
+	free (t);
+}

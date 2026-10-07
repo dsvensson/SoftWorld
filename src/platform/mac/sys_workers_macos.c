@@ -37,3 +37,8 @@ void Sys_WorkerThreadAttr (pthread_attr_t *attr)
 {
 	pthread_attr_set_qos_class_np (attr, QOS_CLASS_USER_INTERACTIVE, 0);
 }
+
+void Sys_NameThread (const char *name)
+{
+	pthread_setname_np (name);
+}

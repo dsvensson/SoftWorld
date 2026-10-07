@@ -118,3 +118,8 @@ void Sys_WorkerThreadAttr (pthread_attr_t *attr)
 {
 	(void)attr;
 }
+
+void Sys_NameThread (const char *name)
+{
+	pthread_setname_np (pthread_self (), name);
+}

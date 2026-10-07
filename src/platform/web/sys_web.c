@@ -135,3 +135,9 @@ void Sys_WorkerThreadAttr (pthread_attr_t *attr)
 {
 	(void)attr;
 }
+
+// a Web Worker's name is the page's to give
+void Sys_NameThread (const char *name)
+{
+	(void)name;
+}

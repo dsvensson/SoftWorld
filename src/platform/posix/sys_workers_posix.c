@@ -20,6 +20,8 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 // the most Sys_SetWorkers starts; in a browser the ones made ahead (the build
 // sets it to the page's pool), as a thread started later waits for the page to
@@ -152,4 +154,78 @@ void Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx)
 	atomic_store (&pool.running, 0);
 	while (atomic_load (&pool.active))
 		Sys_CpuRelax ();
+}
+
+/*
+===============================================================================
+
+THREADS OF THEIR OWN
+
+===============================================================================
+*/
+
+struct systhread_s
+{
+	pthread_t	thread;
+};
+
+// what the thread runs: its own copy, which it frees, so detaching never
+// races its start
+typedef struct
+{
+	void	(*func) (void *arg);
+	void	*arg;
+	char	name[16];		// Linux's limit, the end included
+} threadstart_t;
+
+static void *Sys_ThreadMain (void *p)
+{
+	threadstart_t	start = *(threadstart_t *)p;
+
+	free (p);
+	Sys_NameThread (start.name);
+	start.func (start.arg);
+	return NULL;
+}
+
+// not Sys_WorkerThreadAttr's: the workers run as the frame is drawn, these don't
+systhread_t *Sys_StartThread (const char *name, void (*func) (void *arg), void *arg)
+{
+	systhread_t		*t = malloc (sizeof(*t));
+	threadstart_t	*start = malloc (sizeof(*start));
+	pthread_attr_t	attr;
+	int				failed;
+
+	if (!t || !start)
+	{
+		free (t);
+		free (start);
+		return NULL;
+	}
+	start->func = func;
+	start->arg = arg;
+	snprintf (start->name, sizeof(start->name), "%s", name);
+	pthread_attr_init (&attr);
+	pthread_attr_setstacksize (&attr, WORKER_STACK);
+	failed = pthread_create (&t->thread, &attr, Sys_ThreadMain, start);
+	pthread_attr_destroy (&attr);
+	if (failed)
+	{
+		free (t);
+		free (start);
+		return NULL;
+	}
+	return t;
+}
+
+void Sys_JoinThread (systhread_t *t)
+{
+	pthread_join (t->thread, NULL);
+	free (t);
+}
+
+void Sys_DetachThread (systhread_t *t)
+{
+	pthread_detach (t->thread);
+	free (t);
 }

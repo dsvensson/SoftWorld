@@ -122,3 +122,18 @@ void	Sys_SetWorkers (int workers);
 // the workers in no particular order; returns once all have finished. Jobs
 // must not call Sys_Parallel, Sys_SetWorkers or Sys_Error.
 void	Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx);
+
+//
+// threads of their own (the server list's), apart from the workers
+//
+
+typedef struct systhread_s systhread_t;
+
+// func (arg) on a thread of its own, named so for debuggers; NULL if it can't
+// be started (on the web, whose threads are the workers'). The thread must not
+// call Sys_Error.
+systhread_t	*Sys_StartThread (const char *name, void (*func) (void *arg), void *arg);
+// waits for the thread's func to return, and frees it
+void	Sys_JoinThread (systhread_t *t);
+// lets the thread run on alone: it goes when its func returns
+void	Sys_DetachThread (systhread_t *t);
