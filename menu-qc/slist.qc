@@ -23,6 +23,7 @@
 #define	SLIST_TEST_EQUAL			4
 #define	SLIST_TEST_GREATER			5
 #define	SLIST_TEST_NOTEQUAL			7
+#define	SLIST_TEST_NOTSTARTSWITH	9
 #define	SLIST_MASK_AND				0
 #define	SLIST_MASK_OR				512
 
@@ -581,6 +582,9 @@ void() SB_Arrange =
 		sethostcachemasknumber (SLIST_MASK_AND, key_isproxy, 0, SLIST_TEST_EQUAL);
 	else if (proxies == 2)
 		sethostcachemasknumber (SLIST_MASK_AND, key_isproxy, 0, SLIST_TEST_NOTEQUAL);
+	// QTV's relays (QTV, QTVGO) by what they answer: SoftWorld's, ezQuake lists them
+	if (cvar ("sb_hideqtv"))
+		sethostcachemaskstring (SLIST_MASK_AND, key_version, "QTV", SLIST_TEST_NOTSTARTSWITH);
 	if (cvar ("sb_hidedead"))
 		sethostcachemasknumber (SLIST_MASK_AND, key_state, SL_DEAD, SLIST_TEST_NOTEQUAL);
 	if (cvar ("sb_hidehighping"))
@@ -612,7 +616,8 @@ void() SB_CheckSettings =
 	string	s = strcat (cvar_string ("sb_sortservers"), " ", cvar_string ("sb_hideempty"), cvar_string ("sb_hidenotempty"),
 		cvar_string ("sb_hidefull"), cvar_string ("sb_hidedead"), cvar_string ("sb_hidehighping"));
 
-	s = strcat (s, " ", cvar_string ("sb_pinglimit"), " ", cvar_string ("sb_showproxies"), " ", sb_search);
+	s = strcat (s, " ", cvar_string ("sb_pinglimit"), " ", cvar_string ("sb_showproxies"), cvar_string ("sb_hideqtv"),
+		" ", sb_search);
 	if (s == sb_settings)
 		return;
 	sb_settings = strzone (s);
@@ -1497,23 +1502,23 @@ ezQuake's settings page: its sections, switches, named values and sliders
 #define	OPT_BOOL		1
 #define	OPT_NAMED		2
 #define	OPT_NUMBER		3
-#define	OPT_COUNT		26
+#define	OPT_COUNT		27
 
 string	opt_label[OPT_COUNT] = {"Server Filters", "Hide Empty", "Hide Full", "Hide Not Empty", "Hide Dead",
-	"Hide High Ping", "Show Proxies", "Display Columns", "Show Ping", "Show Map", "Show Gamedir", "Show Players",
-	"Show Timelimit", "Show Fraglimit", "Show Server Address", "Display", "Server Status", "Network Filters",
-	"Ping Timeout", "Pings Per Server", "Pings Per Second", "Master Timeout", "Master Retries", "Info Timeout",
-	"Info Retries", "Infos Per Second"};
+	"Hide High Ping", "Hide QTV", "Show Proxies", "Display Columns", "Show Ping", "Show Map", "Show Gamedir",
+	"Show Players", "Show Timelimit", "Show Fraglimit", "Show Server Address", "Display", "Server Status",
+	"Network Filters", "Ping Timeout", "Pings Per Server", "Pings Per Second", "Master Timeout", "Master Retries",
+	"Info Timeout", "Info Retries", "Infos Per Second"};
 string	opt_cvar[OPT_COUNT] = {"", "sb_hideempty", "sb_hidefull", "sb_hidenotempty", "sb_hidedead", "sb_hidehighping",
-	"sb_showproxies", "", "sb_showping", "sb_showmap", "sb_showgamedir", "sb_showplayers", "sb_showtimelimit",
-	"sb_showfraglimit", "sb_showaddress", "", "sb_status", "", "sb_pingtimeout", "sb_pings", "sb_pingspersec",
-	"sb_mastertimeout", "sb_masterretries", "sb_infotimeout", "sb_inforetries", "sb_infospersec"};
-float	opt_kind[OPT_COUNT] = {OPT_SEPARATOR, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_NAMED,
+	"sb_hideqtv", "sb_showproxies", "", "sb_showping", "sb_showmap", "sb_showgamedir", "sb_showplayers",
+	"sb_showtimelimit", "sb_showfraglimit", "sb_showaddress", "", "sb_status", "", "sb_pingtimeout", "sb_pings",
+	"sb_pingspersec", "sb_mastertimeout", "sb_masterretries", "sb_infotimeout", "sb_inforetries", "sb_infospersec"};
+float	opt_kind[OPT_COUNT] = {OPT_SEPARATOR, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_NAMED,
 	OPT_SEPARATOR, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_BOOL, OPT_SEPARATOR, OPT_BOOL,
 	OPT_SEPARATOR, OPT_NUMBER, OPT_NUMBER, OPT_NUMBER, OPT_NUMBER, OPT_NUMBER, OPT_NUMBER, OPT_NUMBER, OPT_NUMBER};
-float	opt_min[OPT_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 1, 10, 50, 1, 50, 0, 10};
-float	opt_max[OPT_COUNT] = {0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1000, 5, 300, 1000, 5, 1000, 4, 1000};
-float	opt_step[OPT_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 1, 10, 50, 1, 50, 1, 10};
+float	opt_min[OPT_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 1, 10, 50, 1, 50, 0, 10};
+float	opt_max[OPT_COUNT] = {0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1000, 5, 300, 1000, 5, 1000, 4, 1000};
+float	opt_step[OPT_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 1, 10, 50, 1, 50, 1, 10};
 string	opt_proxies[3] = {"hide", "show", "exclusively"};
 
 var float	opt_pos = 1;

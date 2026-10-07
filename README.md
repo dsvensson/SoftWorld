@@ -297,7 +297,7 @@ tables of pings find shorter ways round. The list is found when the browser firs
 client starts with `sb_fetch_on_startup 1`, so it is ready by then, and not while a connection is
 made. The selection stays on its server as the list changes. Which servers' games are on QTV, and
 where, is the QTV list's that ezQuake reads (`qtv_api_url`, qtvapi.quakeworld.nu's), read with each
-scan and kept with the servers.
+scan and kept with the servers. QTV's relays themselves aren't listed (`sb_hideqtv 0` lists them).
 
 The sources are ezQuake's `sources.txt` (`master`, `file` and `url` lines, and `server` ones),
 `<basedir>/qw/sb/sources.txt`, else ezQuake's own (`<basedir>/ezquake/sb/sources.txt`, its lists
