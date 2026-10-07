@@ -35,6 +35,17 @@ bool QC_LibHeapFree (qcvm_t *vm, uint32_t p)
 	return p >= vm->mem.h_base && QC_HeapRelease (&vm->mem.heap, p - vm->mem.h_base);
 }
 
+// the host's blocks, memalloc's (0 bytes are 1)
+qc_ptr_t QC_Alloc (qcvm_t *vm, size_t n)
+{
+	return n <= QC_MAX_ALLOC ? QC_LibHeapAlloc (vm, n ? (uint32_t)n : 1) : 0;
+}
+
+bool QC_Free (qcvm_t *vm, qc_ptr_t p)
+{
+	return QC_LibHeapFree (vm, p);
+}
+
 // memalloc's and memrealloc's size: 0 is 1; negative or past 16 MiB refused (-1)
 static int64_t QC_AllocSize (int32_t size)
 {
@@ -513,13 +524,13 @@ static bool QC_Base64decodeBuiltin (qcvm_t *vm)
 	if (!p || data.failed)
 	{
 		QC_SinkFree (&data);
-		QC_LibSetArgWord (vm, 1, 0);
+		QC_SetArgWord (vm, 1, 0);
 		QC_ReturnZero (vm);
 		return QC_LibSoftError (vm, "base64decode: out of memory");
 	}
 	if (data.len)
 		QC_WriteBytes (&vm->mem, p, data.buf, (uint32_t)data.len, NULL);
-	QC_LibSetArgWord (vm, 1, (uint32_t)data.len);
+	QC_SetArgWord (vm, 1, (uint32_t)data.len);
 	QC_SinkFree (&data);
 	QC_ReturnWord (vm, p);
 	return true;

@@ -112,9 +112,6 @@ float	QC_LibOptFloat (const qcvm_t *vm, int i, float def);	// def if not passed
 // an entity argument; past the entities, a warning and the world
 uint32_t	QC_LibEntArg (qcvm_t *vm, int i);
 
-// the first word of parameter slot i: an __out parameter the compiler copies back
-void	QC_LibSetArgWord (qcvm_t *vm, int i, uint32_t word);
-
 void	QC_LibReturnBool (qcvm_t *vm, bool b);
 
 // Returns text as a temp string, or null for NULL; false past the limits

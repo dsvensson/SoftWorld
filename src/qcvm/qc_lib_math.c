@@ -282,6 +282,7 @@ static const qc_libentry_t	qc_math[] = {
 	{"anglesub", QC_Anglesub, NULL, 0},
 	{"random", QC_Random, NULL, 0},
 	{"randomvec", QC_Randomvec, NULL, 0},
+	{"randomvector", QC_Randomvec, NULL, 0},	// menu QuakeC's name (#41), numbered as an alias isn't
 };
 
 bool QC_RegisterMath (qc_builtins_t *b)

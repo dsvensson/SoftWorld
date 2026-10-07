@@ -256,6 +256,12 @@ static void TestRandomvec (void)
 		}
 	}
 	QH_Free (h);
+
+	// menu QuakeC's name for it, its #41
+	h = QH_New (QC_NUMBERING_MENU, NULL, NULL, NULL);
+	QH_Vector (h, v, "randomvector", NOARGS);
+	QT_CHECK (v[0] * v[0] + v[1] * v[1] + v[2] * v[2] < 1);
+	QH_Free (h);
 }
 
 int main (void)

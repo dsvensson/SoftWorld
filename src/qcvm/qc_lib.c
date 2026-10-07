@@ -254,7 +254,7 @@ uint32_t QC_LibEntArg (qcvm_t *vm, int i)
 	return 0;
 }
 
-void QC_LibSetArgWord (qcvm_t *vm, int i, uint32_t word)
+void QC_SetArgWord (qcvm_t *vm, int i, uint32_t word)
 {
 	if (i >= 0 && i < 8)
 		QC_SetS (&vm->mem, (uint64_t)QC_GBase (vm) + QC_OFS_PARM0 + (uint64_t)i * 12, word);

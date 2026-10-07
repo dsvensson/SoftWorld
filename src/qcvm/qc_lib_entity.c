@@ -107,7 +107,7 @@ static bool QC_ReturnList (qcvm_t *vm, qc_entlist_t *l, int count_arg)
 	free (l->e);
 	if (!ref)
 		return false;
-	QC_LibSetArgWord (vm, count_arg, l->count);
+	QC_SetArgWord (vm, count_arg, l->count);
 	QC_ReturnWord (vm, ref);
 	return true;
 }
@@ -373,7 +373,7 @@ static bool QC_FindList (qcvm_t *vm)
 	words = QC_ListTypeWords (type);
 	if (!words || !QC_LibFieldOk (vm, f, words))
 	{
-		QC_LibSetArgWord (vm, 3, 0);
+		QC_SetArgWord (vm, 3, 0);
 		QC_ReturnRaw (vm, zero);
 		return true;
 	}

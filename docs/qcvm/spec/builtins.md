@@ -531,7 +531,7 @@ Menu numbers of the class A and B builtins:
 | 26, 27 | `findchain`, `findchainfloat` |
 | 30–33 | `coredump`, `traceon`, `traceoff`, `eprint` |
 | 34–37 | `rint`, `floor`, `ceil`, `nextent` |
-| 38–41 | `sin`, `cos`, `sqrt`, `randomvec` |
+| 38–41 | `sin`, `cos`, `sqrt`, `randomvector` (`randomvec`) |
 | 42–46 | `registercvar`, `min`, `max`, `bound`, `pow` |
 | 47 | `copyentity` |
 | 52–57 | `strlen`, `strcat`, `substring`, `stov`, `strzone`, `strunzone` |

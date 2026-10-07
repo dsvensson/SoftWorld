@@ -636,6 +636,30 @@ static void TestVMStrings (void)
 	QA_Free (a);
 }
 
+// the host's blocks of the QuakeC heap: memalloc's, zeroed, freed once
+static void TestHostAlloc (void)
+{
+	qc_asm_t	*a = QA_New ();
+	qcvm_t		*vm = QA_CreateVM (a, NULL, NULL, NULL, NULL);
+	qc_ptr_t	p, q;
+	uint8_t		bytes[16], zero[16] = {0};
+
+	p = QC_Alloc (vm, 16);
+	QT_CHECK (p != 0);
+	QT_CHECK (QC_ReadMemory (vm, p, bytes, 16) && !memcmp (bytes, zero, 16));
+	memset (bytes, 7, 16);
+	QT_CHECK (QC_WriteMemory (vm, p, bytes, 16));
+	q = QC_Alloc (vm, 0);		// a byte
+	QT_CHECK (q != 0 && q != p);
+	QT_EQ_U (QC_Alloc (vm, 0x01000001), 0);		// past memalloc's 16 MiB
+	QT_CHECK (QC_Free (vm, p));
+	QT_CHECK (!QC_Free (vm, p));
+	QT_CHECK (QC_Free (vm, q));
+	QT_CHECK (!QC_Free (vm, 4));
+	QC_Destroy (vm);
+	QA_Free (a);
+}
+
 // the temp string limits, through the VM
 static void TestTempLimits (void)
 {
@@ -667,6 +691,7 @@ int main (void)
 	TestHostHeader ();
 	TestSpawnRemoveHooks ();
 	TestVMStrings ();
+	TestHostAlloc ();
 	TestTempLimits ();
 	return QT_Finish ("memory", "regions, entities, the heap and strings hold");
 }

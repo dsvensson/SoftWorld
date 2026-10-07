@@ -647,6 +647,12 @@ bool		QC_SetField (qcvm_t *vm, qc_ent_t e, uint32_t ofs, uint32_t words, const u
 bool		QC_ReadMemory (const qcvm_t *vm, qc_ptr_t p, void *out, size_t len);
 bool		QC_WriteMemory (qcvm_t *vm, qc_ptr_t p, const void *in, size_t len);
 
+// n zeroed bytes of the QuakeC heap, as memalloc gives them (up to 16 MiB),
+// for the host to hand QuakeC: the pointer, or 0; and freeing a block, as
+// memfree does
+qc_ptr_t	QC_Alloc (qcvm_t *vm, size_t n);
+bool		QC_Free (qcvm_t *vm, qc_ptr_t p);
+
 /*
 ------------------------------------------------------------------------------
 entities
@@ -904,6 +910,10 @@ int32_t		QC_ArgInt (const qcvm_t *vm, int i);
 uint32_t	QC_ArgWord (const qcvm_t *vm, int i);		// any raw word: entity, string, pointer...
 void		QC_ArgVector (const qcvm_t *vm, int i, float out[3]);
 const char	*QC_ArgString (qcvm_t *vm, int i);			// "" for null or invalid; see QC_String
+
+// the first word of argument slot i: an __out parameter, which the compiler
+// copies back after the call
+void		QC_SetArgWord (qcvm_t *vm, int i, uint32_t word);
 
 void		QC_ReturnValue (qcvm_t *vm, qc_value_t v);
 void		QC_ReturnFloat (qcvm_t *vm, float f);

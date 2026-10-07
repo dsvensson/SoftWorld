@@ -541,6 +541,38 @@ static void TestArgumentsAndSelf (void)
 	QA_Free (a);
 }
 
+// an __out parameter: the builtin writes its slot, which the caller copies back
+static bool B_Double (qcvm_t *vm)
+{
+	QC_SetArgWord (vm, 1, QC_FloatBits (QC_ArgFloat (vm, 0) * 2));
+	QC_SetArgWord (vm, 8, 0);		// past the slots: nothing
+	return true;
+}
+
+static void TestOutArgument (void)
+{
+	qc_asm_t		*a = QA_New ();
+	qc_builtins_t	*b = QC_BuiltinsCreate (QC_NUMBERING_NONE);
+	uint32_t		twice, twice_g, three;
+	host_t			h = {0};
+	qcvm_t			*vm;
+	float			r = 0;
+
+	twice = QA_Builtin (a, "twice", 0, 2);
+	twice_g = QA_Global1 (a, "twice_g", QC_EV_FUNCTION, twice);
+	three = QA_Float (a, 3);
+	QA_Function (a, "main", NULL, 0, 0);
+	QA_Emit (a, QOP_STORE_F, three, QA_PARM (0), 0);
+	QA_Emit (a, QOP_CALL2, twice_g, 0, 0);
+	QA_Emit (a, QOP_RETURN, QA_PARM (1), 0, 0);
+	QC_BuiltinsSet (b, "twice", B_Double);
+	vm = MakeVM (a, b, &h);
+	QT_CHECK (CallF (vm, "main", 0, NULL, &r) && r == 6);
+	QC_Destroy (vm);
+	QC_BuiltinsFree (b);
+	QA_Free (a);
+}
+
 static void TestReachableUnbound (void)
 {
 	qc_asm_t		*a = QA_New ();
@@ -1287,6 +1319,7 @@ int main (void)
 	TestNullAndInvalid ();
 	TestEntitiesAndFields ();
 	TestArgumentsAndSelf ();
+	TestOutArgument ();
 	TestReachableUnbound ();
 	TestBadEntityAccess ();
 	TestTempStrings ();
