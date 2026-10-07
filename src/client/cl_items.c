@@ -75,9 +75,9 @@ static int		nummarks, maxmarks;
 
 static r_ring_t	rings[MAX_AWAY];
 
-static cvar_t	demo_itemtimers = {.name = "demo_itemtimers", .string = "1", .archive = true,
-	.description = "Lists items taken in a KTX MVD or QTV stream beside the view, and the seconds until each is back.",
-	.values = (const cvar_value_t[]){{"0", "Not listed"}, {"1", "Listed"}, {0}}};
+static cvar_t	demo_itemtimers = {.name = "demo_itemtimers", .string = "quad pent", .archive = true,
+	.description = "The items taken in a KTX MVD or QTV stream listed beside the view, with the seconds until each "
+		"is back, by name: quad, pent, ring, suit, mega, ra, ya, ga, rl, lg. Empty for none."};
 static cvar_t	demo_itemrings = {.name = "demo_itemrings", .string = "1", .archive = true,
 	.description = "Marks where an item was taken in a KTX MVD or QTV stream with a ring, lit as it nears return, "
 		"and a faint ghost of it.",
@@ -332,10 +332,40 @@ void CL_LinkItems (void)
 
 /*
 ==================
+Items_Listed
+
+The items demo_itemtimers names, a bit each; "1", the switch it was before it
+took names (and which config.cfg keeps), the ones it lists by default
+==================
+*/
+static unsigned Items_Listed (void)
+{
+	const char	*s = demo_itemtimers.string;
+	unsigned	listed = 0;
+	size_t		len;
+	int			i;
+
+	if (!strcmp (s, "1"))
+		s = demo_itemtimers.defaultstring;
+	for ( ; *s ; s += len)
+	{
+		while (*s && (byte)*s <= ' ')
+			s++;
+		for (len = 0 ; (byte)s[len] > ' ' ; len++)
+			;
+		for (i=ITEM_QUAD ; i<(int)(sizeof(item_names)/sizeof(item_names[0])) ; i++)
+			if (len == strlen (item_names[i]) && !Q_strncasecmp (s, item_names[i], len))
+				listed |= 1u << i;
+	}
+	return listed;
+}
+
+/*
+==================
 CL_DrawItemTimers
 
-Beside the view, the items away at the moment played, the soonest back
-first; one still held (a megahealth) last
+Beside the view, the items demo_itemtimers names that are away at the moment
+played, the soonest back first; one still held (a megahealth) last
 ==================
 */
 void CL_DrawItemTimers (void)
@@ -343,16 +373,20 @@ void CL_DrawItemTimers (void)
 	away_t		away[MAX_AWAY];
 	char		num[16];
 	double		now, left;
+	unsigned	listed;
 	int			i, j, n, x, y;
 
-	if (!cls.mvdplayback || !demo_itemtimers.value || cls.state != ca_active || cl.intermission)
+	if (!cls.mvdplayback || cls.state != ca_active || cl.intermission)
+		return;
+	listed = Items_Listed ();
+	if (!listed)
 		return;
 
-	// the ones not back yet
+	// the ones named, not back yet
 	now = cl.time;
 	n = Items_Away (away, now);
 	for (i=j=0 ; i<n ; i++)
-		if (away[i].due < 0 || away[i].due > now)
+		if ((listed & (1u << away[i].item)) && (away[i].due < 0 || away[i].due > now))
 			away[j++] = away[i];
 	n = j;
 

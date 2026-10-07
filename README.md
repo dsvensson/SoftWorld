@@ -258,7 +258,7 @@ Worth knowing:
 | `demo_speed`, `pause` | MVD playback speed, and pause |
 | `demo_jump [+\|-][m:]s` | seek in an MVD |
 | `track [name]`, jump, attack | in an MVD or QTV: follow a player, the next one; attack flies the camera and gives it back |
-| `demo_itemtimers`, `demo_itemrings` | KTX's item announcements, as a list and as rings on the floor |
+| `demo_itemtimers`, `demo_itemrings` | KTX's item announcements: a list of the items `demo_itemtimers` names (`quad pent` by default, of quad, pent, ring, suit, mega, ra, ya, ga, rl and lg; empty for none), and rings on the floor |
 | `f_version`, `f_system`, `f_modified` | answered in chat as ezQuake answers them; `f_modified` also as a command, and `allow_f_system 0` answers `f_system` with "disabled" |
 | `memstats` | memory by use |
 
