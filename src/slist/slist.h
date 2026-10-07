@@ -300,3 +300,56 @@ const char	*SL_KeyString (const slview_t *v, const slserver_t *s, int key, char 
 // the masks, as FTE has them (each in order: AND, or OR), sorted by the keys
 // and then by address, into shown; their number
 int		SL_Arrange (slview_t *v, const slserver_t *servers, int count, uint64_t sources);
+
+/*
+==============================================================================
+
+THE LIST (slist_engine.c, and slist_none.c on the web)
+
+The scans run on a thread of their own, the sources are read on another; what
+they find is handed over as snapshots, taken by the main thread
+
+==============================================================================
+*/
+
+typedef enum { SLSRC_IDLE, SLSRC_ASKING, SLSRC_ANSWERED, SLSRC_FAILED } slsourcestate_t;
+
+typedef struct
+{
+	slsourcestate_t	state;
+	int		servers;		// the servers it named (the cache's before it answers)
+	int64_t	updated;		// unix seconds it last answered; 0 not this run
+} slsourcestatus_t;
+
+typedef struct
+{
+	unsigned	generation;		// one more each snapshot
+	bool		scanning, paused;
+	int			round, rounds;			// the sweep of pings
+	int			pingssent, pingstotal;	// how far the sweeps have gone
+	int			alive, dead, described, relays, routed;
+	slsourcestatus_t	sources[SL_MAXSOURCES];	// by index
+	int			numservers;
+	slserver_t	*servers;
+} slsnapshot_t;
+
+// starts the list's thread, last time's servers from cachepath its first
+// snapshot; the sources' files are read from dir. False where it can't be.
+bool	SL_Start (const char *dir, const char *cachepath, const slsource_t *sources, int numsources);
+bool	SL_Running (void);
+// a scan of the marked sources' servers, from what was found before
+// (unconfirmed again); the sources may have changed, matched by name
+void	SL_Refresh (const slsource_t *sources, int numsources, const slconfig_t *c);
+// one server asked what it is ahead of the rest (a row the browser shows)
+void	SL_Describe (netadr_t a);
+// nothing sent while paused (a connection being made)
+void	SL_Pause (bool paused);
+// the thread stopped, the cache saved; a source being read finishes alone
+void	SL_Shutdown (void);
+// the newest snapshot published since the last taken, or NULL: the caller's,
+// freed with SL_FreeSnapshot
+slsnapshot_t	*SL_TakeSnapshot (void);
+void	SL_FreeSnapshot (slsnapshot_t *s);
+// a message for the console from the list's threads (a source that couldn't
+// be read), in buf; false when there is none
+bool	SL_TakeMessage (char *buf, size_t size);

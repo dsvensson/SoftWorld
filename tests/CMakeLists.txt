@@ -92,6 +92,19 @@ sw_add_program(test_slist test_slist.c)
 target_link_libraries(test_slist PRIVATE sw_slist sw_net sw_common)
 add_test(NAME slist COMMAND test_slist)
 
+# test_slist_loopback runs the list's threads against a fake master, servers
+# and lists on the loopback; not on the web, whose list is empty.
+if(NOT EMSCRIPTEN)
+	sw_add_program(test_slist_loopback test_slist_loopback.c)
+	if(WIN32)
+		target_link_libraries(test_slist_loopback PRIVATE sw_slist sw_platform_win sw_net sw_common)
+	else()
+		target_link_libraries(test_slist_loopback PRIVATE sw_slist sw_platform_posix sw_net sw_common)
+	endif()
+	target_compile_options(test_slist_loopback PRIVATE $<$<C_COMPILER_ID:MSVC>:/experimental:c11atomics>)
+	add_test(NAME slist_loopback COMMAND test_slist_loopback)
+endif()
+
 # test_markup reads ezQuake's and FTE's colors out of text.
 sw_add_program(test_markup test_markup.c)
 target_link_libraries(test_markup PRIVATE sw_common)
