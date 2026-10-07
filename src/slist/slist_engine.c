@@ -37,6 +37,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "slist_local.h"
 
+#include "net_http.h"
 #include "net_socket.h"
 #include "q_endian.h"
 #include "q_string.h"
@@ -56,6 +57,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define SL_MAXMESSAGE	192
 #define SL_MAXDESCRIBES	16
 #define SL_MAXLIST		(4 << 20)	// a list's bytes, a file's or a URL's
+#define SL_FETCHTIME	20			// seconds a URL may go without a byte
 
 // a scan asked for
 typedef struct
@@ -433,7 +435,7 @@ static void SL_ReadSource (slinbox_t *inbox, const slsource_t *s, slbatch_t *b)
 		break;
 	case SL_URL:
 	default:
-		if (!(data = SL_HttpGet (s->location, SL_MAXLIST, &length, error, sizeof(error))))
+		if (!(data = HTTP_GetAll (s->location, SL_MAXLIST, SL_FETCHTIME, &length, error, sizeof(error))))
 		{
 			snprintf (b->message, sizeof(b->message), "Server browser: \"%s\": %s\n", s->name, error);
 			return;
@@ -480,7 +482,7 @@ static slbatch_t *SL_ReadQTVList (const char *url)
 	if (!b)
 		return NULL;
 	b->source = SL_QTVBATCH;
-	if (!(data = SL_HttpGet (url, SL_MAXLIST, &length, error, sizeof(error))))
+	if (!(data = HTTP_GetAll (url, SL_MAXLIST, SL_FETCHTIME, &length, error, sizeof(error))))
 		snprintf (b->message, sizeof(b->message), "Server browser: the QTV list: %s\n", error);
 	else if (!(b->ok = SL_ParseQTVList (data, length, SL_Streamed, b) >= 0))
 		snprintf (b->message, sizeof(b->message), "Server browser: the QTV list (%s) isn't one\n", url);

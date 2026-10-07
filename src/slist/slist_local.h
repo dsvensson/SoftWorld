@@ -167,16 +167,3 @@ bool	SLS_Finished (const slsched_t *s, double now);
 // what never answered is gone; the routes worked out a last time
 void	SLS_Finalize (slsched_t *s);
 int		SLS_Round (const slsched_t *s);		// the sweep, from 1
-
-/*
-==============================================================================
-
-HTTP (slist_http.c)
-
-==============================================================================
-*/
-
-// a URL's body, http:// or https:// (redirects followed, five at most), up to
-// max bytes, in 20 seconds at most (5 to connect): malloc'd and ended with a
-// NUL, its length in length; NULL with why in error
-char	*SL_HttpGet (const char *url, size_t max, size_t *length, char *error, size_t errorsize);

@@ -17,18 +17,19 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// slist_http.c -- a url source's list, over HTTP or HTTPS
+// net_http.c -- GETs over HTTP or HTTPS (net_http.h)
 //
 // A GET as HTTP/1.0 has it (the body to the connection's end, no chunks to put
 // together), a Host for the name's servers, and redirects followed, from
-// http:// to https:// too. TLS is mbedTLS's (the one a program has, WebRTC's
-// where it is in), the server's certificate checked against the roots the
-// system trusts and the name asked for (SNI). TLS 1.2 at most: 1.3 needs
-// mbedTLS's PSA key store, which isn't safe from two threads (libdatachannel
-// has its own on its threads).
+// http:// to https:// too. The body is handed on as it comes. TLS is mbedTLS's
+// (the one a program has, WebRTC's where it is in), the server's certificate
+// checked against the roots the system trusts and the name asked for (SNI).
+// TLS 1.2 at most: 1.3 needs mbedTLS's PSA key store, which isn't safe from
+// two threads (libdatachannel has its own on its threads).
 
-#include "slist_local.h"
+#include "net_http.h"
 
+#include "net.h"
 #include "net_socket.h"
 #include "q_endian.h"
 #include "q_string.h"
@@ -47,10 +48,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdlib.h>
 #include <string.h>
 
-#define SL_CONNECTTIME	5		// seconds to connect
-#define SL_FETCHTIME	20		// to have it all
-#define SL_REDIRECTS	5
-#define SL_MAXHEADERS	16384
+#define HTTP_CONNECTTIME	5		// seconds to connect
+#define HTTP_REDIRECTS		5
+#define HTTP_MAXHEAD		16384	// the status line and headers
 
 typedef struct
 {
@@ -62,31 +62,31 @@ typedef struct
 	mbedtls_ctr_drbg_context	drbg;
 	mbedtls_entropy_context		entropy;
 	mbedtls_x509_crt			roots;
-} slhttp_t;
+} http_t;
 
-static int SL_BioSend (void *ctx, const unsigned char *buf, size_t length)
+static int HTTP_BioSend (void *ctx, const unsigned char *buf, size_t length)
 {
-	slhttp_t	*h = ctx;
-	int			n = length > INT_MAX ? INT_MAX : (int)length;
+	http_t	*h = ctx;
+	int		n = length > INT_MAX ? INT_MAX : (int)length;
 
 	return TCP_StreamWrite (h->stream, buf, n, h->deadline) ? n : MBEDTLS_ERR_NET_SEND_FAILED;
 }
 
-static int SL_BioRecv (void *ctx, unsigned char *buf, size_t length)
+static int HTTP_BioRecv (void *ctx, unsigned char *buf, size_t length)
 {
-	slhttp_t	*h = ctx;
-	int			n = TCP_StreamRead (h->stream, buf, length > INT_MAX ? INT_MAX : (int)length, h->deadline);
+	http_t	*h = ctx;
+	int		n = TCP_StreamRead (h->stream, buf, length > INT_MAX ? INT_MAX : (int)length, h->deadline);
 
 	return n < 0 ? MBEDTLS_ERR_NET_RECV_FAILED : n;
 }
 
 // a root the system trusts; one that doesn't parse is left out
-static void SL_AddRoot (void *ctx, const void *data, size_t length)
+static void HTTP_AddRoot (void *ctx, const void *data, size_t length)
 {
 	mbedtls_x509_crt_parse (ctx, data, length);
 }
 
-static void SL_Close (slhttp_t *h)
+static void HTTP_Close (http_t *h)
 {
 	if (h->tls)
 	{
@@ -103,9 +103,9 @@ static void SL_Close (slhttp_t *h)
 }
 
 // the handshake, the certificate checked; false with why in error
-static bool SL_StartTLS (slhttp_t *h, const char *host, char *error, size_t errorsize)
+static bool HTTP_StartTLS (http_t *h, const char *host, char *error, size_t errorsize)
 {
-	static const char	personal[] = "softworld-slist";
+	static const char	personal[] = "softworld-http";
 	char				why[128];
 	uint32_t			flags;
 	int					ret;
@@ -117,7 +117,7 @@ static bool SL_StartTLS (slhttp_t *h, const char *host, char *error, size_t erro
 	mbedtls_entropy_init (&h->entropy);
 	mbedtls_x509_crt_init (&h->roots);
 
-	if (!Sys_TrustedRoots (SL_AddRoot, &h->roots) || !h->roots.raw.len)
+	if (!Sys_TrustedRoots (HTTP_AddRoot, &h->roots) || !h->roots.raw.len)
 	{
 		snprintf (error, errorsize, "the certificates the system trusts can't be read");
 		return false;
@@ -133,7 +133,7 @@ static bool SL_StartTLS (slhttp_t *h, const char *host, char *error, size_t erro
 	mbedtls_ssl_conf_max_tls_version (&h->conf, MBEDTLS_SSL_VERSION_TLS1_2);
 	if ((ret = mbedtls_ssl_setup (&h->ssl, &h->conf)) || (ret = mbedtls_ssl_set_hostname (&h->ssl, host)))
 		goto failed;
-	mbedtls_ssl_set_bio (&h->ssl, h, SL_BioSend, SL_BioRecv, NULL);
+	mbedtls_ssl_set_bio (&h->ssl, h, HTTP_BioSend, HTTP_BioRecv, NULL);
 	while ((ret = mbedtls_ssl_handshake (&h->ssl)))
 		if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE)
 		{
@@ -154,7 +154,7 @@ failed:
 	return false;
 }
 
-static bool SL_Write (slhttp_t *h, const char *data, size_t length)
+static bool HTTP_Write (http_t *h, const char *data, size_t length)
 {
 	int		ret;
 
@@ -175,7 +175,7 @@ static bool SL_Write (slhttp_t *h, const char *data, size_t length)
 }
 
 // the bytes read, 0 at the end, -1 on an error or at the deadline
-static int SL_Read (slhttp_t *h, char *buf, size_t size)
+static int HTTP_Read (http_t *h, char *buf, size_t size)
 {
 	int		ret;
 
@@ -208,9 +208,9 @@ typedef struct
 	char	host[256];
 	int		port;
 	char	path[1024];
-} slurl_t;
+} httpurl_t;
 
-static bool SL_ParseURL (const char *url, slurl_t *u)
+static bool HTTP_ParseURL (const char *url, httpurl_t *u)
 {
 	const char	*authority, *end, *at, *close, *colon;
 	size_t		n;
@@ -277,7 +277,7 @@ static bool SL_ParseURL (const char *url, slurl_t *u)
 }
 
 // where a redirect leads from base: a URL, or one relative to base's
-static void SL_ResolveURL (const slurl_t *base, const char *location, char *out, size_t size)
+static void HTTP_ResolveURL (const httpurl_t *base, const char *location, char *out, size_t size)
 {
 	char	origin[300], dir[1024], *slash;
 
@@ -303,7 +303,7 @@ static void SL_ResolveURL (const slurl_t *base, const char *location, char *out,
 }
 
 // a header's value of the response's head, NULL if it has none
-static const char *SL_Header (const char *head, const char *name, char *value, size_t size)
+static const char *HTTP_Header (const char *head, const char *name, char *value, size_t size)
 {
 	const char	*line, *end;
 	size_t		namelength = strlen (name), n;
@@ -335,36 +335,64 @@ THE GET
 ==============================================================================
 */
 
-typedef enum { SL_GOT, SL_REDIRECTED, SL_FAILED } slgot_t;
+typedef enum { HTTP_GOT, HTTP_REDIRECTED, HTTP_FAILED } httpgot_t;
 
-// one GET of the URL: its body, or where it moved to (in location)
-static slgot_t SL_Get (const slurl_t *u, size_t max, char **body, size_t *length, char *location, size_t locationsize,
-	char *error, size_t errorsize, double started)
+// the head of the answer, to its blank line: its length with the line, the
+// body that came with it after; 0 with why in error
+static size_t HTTP_ReadHead (http_t *h, const httpurl_t *u, double timeout, char *head, size_t *have,
+	char *error, size_t errorsize)
 {
-	slhttp_t	h = {0};
-	netadr_t	a;
-	char		request[1536], hostport[300], value[64], *data = NULL, *grown, *head;
-	size_t		have = 0, room = 0, headlength;
-	int			n, status;
-	long		contentlength;
+	char	*end;
+	int		n;
 
-	if (!SL_ParseAddress (u->host, u->port, &a) && !UDP_Resolve (u->host, false, &a))
+	for (*have = 0 ; ; *have += (size_t)n)
+	{
+		head[*have] = 0;
+		if ((end = strstr (head, "\r\n\r\n")))
+			return (size_t)(end - head) + 4;
+		if (*have == HTTP_MAXHEAD)
+		{
+			snprintf (error, errorsize, "%s's answer isn't HTTP", u->host);
+			return 0;
+		}
+		h->deadline = Sys_DoubleTime () + timeout;
+		n = HTTP_Read (h, head + *have, HTTP_MAXHEAD - *have);
+		if (n <= 0)
+		{
+			snprintf (error, errorsize, n ? "%s stopped answering" : "%s answered nothing", u->host);
+			return 0;
+		}
+	}
+}
+
+// one GET of the URL: its body handed to body, or where it moved to (in location)
+static httpgot_t HTTP_Fetch (const httpurl_t *u, double timeout, httpbody_t body, void *ctx,
+	char *location, size_t locationsize, char *error, size_t errorsize)
+{
+	http_t		h = {0};
+	netadr_t	a;
+	char		request[1536], hostport[300], value[64], head[HTTP_MAXHEAD + 1], buf[16384];
+	size_t		have, headlength;
+	long long	total = -1, got;
+	int			n, status;
+
+	if (!UDP_Resolve (u->host, false, &a))
 	{
 		snprintf (error, errorsize, "%s isn't found", u->host);
-		return SL_FAILED;
+		return HTTP_FAILED;
 	}
 	a.type = NA_IP;
 	a.port = (unsigned short)BigShort ((short)u->port);
-	if (!(h.stream = TCP_StreamOpen (&a, Sys_DoubleTime () + SL_CONNECTTIME)))
+	if (!(h.stream = TCP_StreamOpen (&a, Sys_DoubleTime () + HTTP_CONNECTTIME)))
 	{
 		snprintf (error, errorsize, "%s doesn't answer", u->host);
-		return SL_FAILED;
+		return HTTP_FAILED;
 	}
-	h.deadline = started + SL_FETCHTIME;
-	if (u->tls && !SL_StartTLS (&h, u->host, error, errorsize))
+	h.deadline = Sys_DoubleTime () + timeout;
+	if (u->tls && !HTTP_StartTLS (&h, u->host, error, errorsize))
 	{
-		SL_Close (&h);
-		return SL_FAILED;
+		HTTP_Close (&h);
+		return HTTP_FAILED;
 	}
 
 	snprintf (hostport, sizeof(hostport), strchr (u->host, ':') ? "[%s]" : "%s", u->host);
@@ -372,32 +400,43 @@ static slgot_t SL_Get (const slurl_t *u, size_t max, char **body, size_t *length
 		snprintf (hostport + strlen (hostport), sizeof(hostport) - strlen (hostport), ":%i", u->port);
 	snprintf (request, sizeof(request), "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: SoftWorld/%4.2f\r\n"
 		"Accept: */*\r\nConnection: close\r\n\r\n", u->path, hostport, VERSION);
-	if (!SL_Write (&h, request, strlen (request)))
+	if (!HTTP_Write (&h, request, strlen (request)))
 	{
 		snprintf (error, errorsize, "%s stopped answering", u->host);
-		SL_Close (&h);
-		return SL_FAILED;
+		HTTP_Close (&h);
+		return HTTP_FAILED;
 	}
 
-	// all of it, to the connection's end
+	// the status line and headers
+	if (!(headlength = HTTP_ReadHead (&h, u, timeout, head, &have, error, errorsize)))
+		goto failed;
+	head[headlength - 4] = 0;
+	if (sscanf (head, "HTTP/%*d.%*d %d", &status) != 1)
+	{
+		snprintf (error, errorsize, "%s's answer isn't HTTP", u->host);
+		goto failed;
+	}
+	if (status >= 300 && status < 400 && HTTP_Header (head, "Location", location, locationsize))
+	{
+		HTTP_Close (&h);
+		return HTTP_REDIRECTED;
+	}
+	if (status < 200 || status >= 300)
+	{
+		snprintf (error, errorsize, "%s answered %i", u->host, status);
+		goto failed;
+	}
+	if (HTTP_Header (head, "Content-Length", value, sizeof(value)))
+		total = atoll (value);
+
+	// the body: what came with the head, then the rest to the connection's end
+	got = (long long)(have - headlength);
+	if (got && !body (ctx, head + headlength, (size_t)got, total))
+		goto failed;		// why is body's to say
 	for (;;)
 	{
-		if (have + 4096 + 1 > room)
-		{
-			if (have > max + SL_MAXHEADERS)
-			{
-				snprintf (error, errorsize, "the list is too long");
-				goto failed;
-			}
-			room = room ? room * 2 : 65536;
-			if (!(grown = realloc (data, room)))
-			{
-				snprintf (error, errorsize, "out of memory");
-				goto failed;
-			}
-			data = grown;
-		}
-		n = SL_Read (&h, data + have, room - have - 1);
+		h.deadline = Sys_DoubleTime () + timeout;
+		n = HTTP_Read (&h, buf, sizeof(buf));
 		if (!n)
 			break;
 		if (n < 0)
@@ -405,85 +444,107 @@ static slgot_t SL_Get (const slurl_t *u, size_t max, char **body, size_t *length
 			snprintf (error, errorsize, "%s stopped answering", u->host);
 			goto failed;
 		}
-		have += (size_t)n;
+		got += n;
+		if (!body (ctx, buf, (size_t)n, total))
+			goto failed;
 	}
-	SL_Close (&h);
-	if (!data)
+	HTTP_Close (&h);
+	if (total >= 0 && got < total)
 	{
-		snprintf (error, errorsize, "%s answered nothing", u->host);
-		return SL_FAILED;
+		snprintf (error, errorsize, "%s's answer was cut short", u->host);
+		return HTTP_FAILED;
 	}
-	data[have] = 0;
-
-	// the status line and headers, then the body
-	if (!(head = strstr (data, "\r\n\r\n")) || sscanf (data, "HTTP/%*d.%*d %d", &status) != 1)
-	{
-		snprintf (error, errorsize, "%s's answer isn't HTTP", u->host);
-		free (data);
-		return SL_FAILED;
-	}
-	*head = 0;
-	headlength = (size_t)(head - data) + 4;
-	if (status >= 300 && status < 400 && SL_Header (data, "Location", location, locationsize))
-	{
-		free (data);
-		return SL_REDIRECTED;
-	}
-	if (status < 200 || status >= 300)
-	{
-		snprintf (error, errorsize, "%s answered %i", u->host, status);
-		free (data);
-		return SL_FAILED;
-	}
-	if (SL_Header (data, "Content-Length", value, sizeof(value)) && (contentlength = atol (value)) >= 0
-		&& (size_t)contentlength > have - headlength)
-	{
-		snprintf (error, errorsize, "%s's list was cut short", u->host);
-		free (data);
-		return SL_FAILED;
-	}
-	*length = have - headlength;
-	if (*length > max)
-		*length = max;
-	memmove (data, data + headlength, *length);
-	data[*length] = 0;
-	*body = data;
-	return SL_GOT;
+	return HTTP_GOT;
 
 failed:
-	SL_Close (&h);
-	free (data);
-	return SL_FAILED;
+	HTTP_Close (&h);
+	return HTTP_FAILED;
 }
 
-char *SL_HttpGet (const char *url, size_t max, size_t *length, char *error, size_t errorsize)
+bool HTTP_Get (const char *url, double timeout, httpbody_t body, void *ctx, char *error, size_t errorsize)
 {
 	char		current[2048], location[2048];
-	char		*body = NULL;
-	double		started = Sys_DoubleTime ();
-	slurl_t		u;
+	httpurl_t	u;
 	int			redirects;
 
 	Q_strncpyz (current, url, sizeof(current));
-	for (redirects = 0 ; redirects <= SL_REDIRECTS ; redirects++)
+	for (redirects = 0 ; redirects <= HTTP_REDIRECTS ; redirects++)
 	{
-		if (!SL_ParseURL (current, &u))
+		if (!HTTP_ParseURL (current, &u))
 		{
 			snprintf (error, errorsize, "%s isn't an http:// or https:// URL", current);
-			return NULL;
+			return false;
 		}
-		switch (SL_Get (&u, max, &body, length, location, sizeof(location), error, errorsize, started))
+		switch (HTTP_Fetch (&u, timeout, body, ctx, location, sizeof(location), error, errorsize))
 		{
-		case SL_GOT:
-			return body;
-		case SL_REDIRECTED:
-			SL_ResolveURL (&u, location, current, sizeof(current));
+		case HTTP_GOT:
+			return true;
+		case HTTP_REDIRECTED:
+			HTTP_ResolveURL (&u, location, current, sizeof(current));
 			break;
-		case SL_FAILED:
+		case HTTP_FAILED:
 		default:
-			return NULL;
+			return false;
 		}
 	}
 	snprintf (error, errorsize, "%s redirected too often", url);
-	return NULL;
+	return false;
+}
+
+/*
+==============================================================================
+
+THE WHOLE BODY
+
+==============================================================================
+*/
+
+typedef struct
+{
+	char	*data;
+	size_t	have, room, max;
+} httpall_t;
+
+static bool HTTP_Collect (void *ctx, const void *data, size_t length, long long total)
+{
+	httpall_t	*all = ctx;
+	char		*grown;
+
+	(void)total;
+	if (length > all->max - all->have)
+		return false;
+	if (all->have + length + 1 > all->room)
+	{
+		all->room = all->room ? all->room * 2 : 65536;
+		while (all->room < all->have + length + 1)
+			all->room *= 2;
+		if (!(grown = realloc (all->data, all->room)))
+			return false;
+		all->data = grown;
+	}
+	memcpy (all->data + all->have, data, length);
+	all->have += length;
+	return true;
+}
+
+char *HTTP_GetAll (const char *url, size_t max, double timeout, size_t *length, char *error, size_t errorsize)
+{
+	httpall_t	all = {.max = max};
+
+	error[0] = 0;
+	if (!HTTP_Get (url, timeout, HTTP_Collect, &all, error, errorsize))
+	{
+		if (!error[0])
+			snprintf (error, errorsize, "the answer is longer than %zu bytes, or there's no memory for it", max);
+		free (all.data);
+		return NULL;
+	}
+	if (!all.data && !(all.data = malloc (1)))
+	{
+		snprintf (error, errorsize, "out of memory");
+		return NULL;
+	}
+	all.data[all.have] = 0;
+	*length = all.have;
+	return all.data;
 }
