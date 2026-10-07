@@ -4,4 +4,12 @@ defs.qc
 draw.qc
 backdrop.qc
 menu.qc
-slist.qc
+sb.qc
+sb_dialogs.qc
+sb_info.qc
+sb_servers.qc
+sb_sources.qc
+sb_players.qc
+sb_options.qc
+sb_browser.qc
+main.qc

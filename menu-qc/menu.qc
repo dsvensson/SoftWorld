@@ -1,31 +1,75 @@
-// menu.qc -- id's QuakeWorld menus, as the C menu had them: main, options,
-// keys, help, single player, and the quit screen; multiplayer is the server
-// browser (slist.qc); and the entry points the engine calls
+// menu.qc -- id's QuakeWorld menus, as the C menu had them: main, single
+// player, options, keys, help, and the quit screen; multiplayer is the server
+// browser (sb_*.qc)
 
-#define	M_NONE			0
-#define	M_MAIN			1
-#define	M_SINGLEPLAYER	2
-#define	M_OPTIONS		4
-#define	M_KEYS			5
-#define	M_HELP			6
-#define	M_QUIT			7
-#define	M_SLIST			8
+// what the menus show
+enum { M_NONE, M_MAIN, M_SINGLEPLAYER, M_OPTIONS, M_KEYS, M_HELP, M_QUIT, M_SLIST };
 
 float	m_state;
 float	m_entersound;		// played after drawing a frame, so caching won't disrupt the sound
 
-void() M_Menu_Main_f;
-void() M_Menu_Options_f;
-void() M_Menu_Keys_f;
-void() M_Menu_Help_f;
-void() M_Menu_Quit_f;
+void() SB_Open;				// the server browser (sb_browser.qc)
 void(float state) M_DrawState;
 
-// the server browser (slist.qc)
-void() SB_Open;
-void(vector size) SB_Draw;
-void(float scan, float chr) SB_KeyDown;
-void(float scan) SB_KeyUp;
+// a cursor moved through n items, round from either end
+float(float v, float n) Wrap =
+{
+	return (v + n) % n;
+};
+
+// a cvar set as Cvar_SetValue sets one
+void(string name, float value) M_SetValue =
+{
+	cvar_set (name, sprintf ("%f", value));
+};
+
+/*
+==============================================================================
+
+OPENING AND CLOSING
+
+==============================================================================
+*/
+
+// a menu up, the keys the menus'
+void(float state) M_Enter =
+{
+	setkeydest (KEY_MENU);
+	m_state = state;
+	m_entersound = TRUE;
+};
+
+// the menus gone, the keys the game's
+void() M_Close =
+{
+	setkeydest (KEY_GAME);
+	m_state = M_NONE;
+};
+
+float	help_page;
+float	m_quit_prevstate;
+float	wasinmenus;
+
+void() M_Menu_Main_f = { M_Enter (M_MAIN); };
+void() M_Menu_SinglePlayer_f = { M_Enter (M_SINGLEPLAYER); };
+void() M_Menu_Options_f = { M_Enter (M_OPTIONS); };
+void() M_Menu_Keys_f = { M_Enter (M_KEYS); };
+
+void() M_Menu_Help_f =
+{
+	M_Enter (M_HELP);
+	help_page = 0;
+};
+
+// over the menu it was asked from, which it goes back to
+void() M_Menu_Quit_f =
+{
+	if (m_state == M_QUIT)
+		return;
+	wasinmenus = getkeydest () == KEY_MENU;
+	m_quit_prevstate = m_state;
+	M_Enter (M_QUIT);
+};
 
 /*
 ==============================================================================
@@ -38,22 +82,14 @@ MAIN MENU
 #define	MAIN_ITEMS	5
 
 float	m_main_cursor;
-string	menudots[6] = {"gfx/menudot1.lmp", "gfx/menudot2.lmp", "gfx/menudot3.lmp", "gfx/menudot4.lmp",
-	"gfx/menudot5.lmp", "gfx/menudot6.lmp"};
-
-void() M_Menu_Main_f =
-{
-	setkeydest (KEY_MENU);
-	m_state = M_MAIN;
-	m_entersound = TRUE;
-};
+void()	m_main_open[MAIN_ITEMS] = {M_Menu_SinglePlayer_f, SB_Open, M_Menu_Options_f, M_Menu_Help_f, M_Menu_Quit_f};
 
 void() M_Main_Draw =
 {
 	M_DrawPic (16, 4, "gfx/qplaque.lmp");
 	M_DrawTitle ("gfx/ttl_main.lmp");
 	M_DrawPic (72, 32, "gfx/mainmenu.lmp");
-	M_DrawPic (54, 32 + m_main_cursor * 20, menudots[floor (time * 10) % 6]);
+	M_DrawPic (54, 32 + m_main_cursor * 20, sprintf ("gfx/menudot%d.lmp", floor (time * 10) % 6 + 1));
 };
 
 void(float key) M_Main_Key =
@@ -61,42 +97,16 @@ void(float key) M_Main_Key =
 	switch (key)
 	{
 	case K_ESCAPE:
-		setkeydest (KEY_GAME);
-		m_state = M_NONE;
+		M_Close ();
 		break;
-
 	case K_DOWNARROW:
-		localsound ("misc/menu1.wav");
-		if (++m_main_cursor >= MAIN_ITEMS)
-			m_main_cursor = 0;
-		break;
-
 	case K_UPARROW:
 		localsound ("misc/menu1.wav");
-		if (--m_main_cursor < 0)
-			m_main_cursor = MAIN_ITEMS - 1;
+		m_main_cursor = Wrap (m_main_cursor + (key == K_DOWNARROW ? 1 : -1), MAIN_ITEMS);
 		break;
-
 	case K_ENTER:
 		m_entersound = TRUE;
-		switch (m_main_cursor)
-		{
-		case 0:
-			m_state = M_SINGLEPLAYER;
-			break;
-		case 1:
-			SB_Open ();
-			break;
-		case 2:
-			M_Menu_Options_f ();
-			break;
-		case 3:
-			M_Menu_Help_f ();
-			break;
-		case 4:
-			M_Menu_Quit_f ();
-			break;
-		}
+		m_main_open[m_main_cursor] ();
 		break;
 	}
 };
@@ -109,174 +119,97 @@ OPTIONS MENU
 ==============================================================================
 */
 
+// a row: an action (by its place), a slider over a cvar from its left end's
+// value to its right end's, a step right, or a switch
+enum { OPT_ACTION, OPT_SLIDER, OPT_SWITCH, OPT_ALWAYSRUN, OPT_INVERTMOUSE };
+
+typedef struct
+{
+	string	label;
+	float	kind;
+	string	cvar;
+	float	from, to, step;
+} option_t;
+
 #define	OPTIONS_ITEMS	16
+#define	OPT_USEMOUSE	15			// not there in fullscreen
+
+option_t	options[OPTIONS_ITEMS] = {
+	{"Customize controls", OPT_ACTION},
+	{"Go to console", OPT_ACTION},
+	{"Reset to defaults", OPT_ACTION},
+	{"Screen size", OPT_SLIDER, "viewsize", 30, 120, 10},
+	{"Brightness", OPT_SLIDER, "gamma", 1, 0.5, -0.05},
+	{"Mouse Speed", OPT_SLIDER, "sensitivity", 1, 11, 0.5},
+	{"CD Music Volume", OPT_SLIDER, "bgmvolume", 0, 1, 1},
+	{"Sound Volume", OPT_SLIDER, "volume", 0, 1, 0.1},
+	{"Always Run", OPT_ALWAYSRUN},
+	{"Invert Mouse", OPT_INVERTMOUSE},
+	{"Lookspring", OPT_SWITCH, "lookspring"},
+	{"Lookstrafe", OPT_SWITCH, "lookstrafe"},
+	{"Use old status bar", OPT_SWITCH, "cl_sbar"},
+	{"HUD on left side", OPT_SWITCH, "cl_hudswap"},
+	{"Mouse Look", OPT_SWITCH, "freelook"},
+	{"Use Mouse", OPT_SWITCH, "_windowed_mouse"}
+};
 
 float	options_cursor;
 
-void() M_Menu_Options_f =
-{
-	setkeydest (KEY_MENU);
-	m_state = M_OPTIONS;
-	m_entersound = TRUE;
-};
-
-// a cvar set as Cvar_SetValue sets one
-void(string name, float value) M_SetValue =
-{
-	cvar_set (name, sprintf ("%f", value));
-};
-
 void(float dir) M_AdjustSliders =
 {
-	float	v;
+	option_t	o = options[options_cursor];
+	float		speed = cvar ("cl_forwardspeed") > 200 ? 200 : 400;
 
 	localsound ("misc/menu3.wav");
-
-	switch (options_cursor)
+	switch (o.kind)
 	{
-	case 3:	// screen size
-		v = cvar ("viewsize") + dir * 10;
-		if (v < 30)
-			v = 30;
-		if (v > 120)
-			v = 120;
-		M_SetValue ("viewsize", v);
+	case OPT_SLIDER:
+		M_SetValue (o.cvar, bound (min (o.from, o.to), cvar (o.cvar) + dir * o.step, max (o.from, o.to)));
 		break;
-	case 4:	// gamma
-		v = cvar ("gamma") - dir * 0.05;
-		if (v < 0.5)
-			v = 0.5;
-		if (v > 1)
-			v = 1;
-		M_SetValue ("gamma", v);
+	case OPT_SWITCH:
+		M_SetValue (o.cvar, !cvar (o.cvar));
 		break;
-	case 5:	// mouse speed
-		v = cvar ("sensitivity") + dir * 0.5;
-		if (v < 1)
-			v = 1;
-		if (v > 11)
-			v = 11;
-		M_SetValue ("sensitivity", v);
+	case OPT_ALWAYSRUN:
+		M_SetValue ("cl_forwardspeed", speed);
+		M_SetValue ("cl_backspeed", speed);
 		break;
-	case 6:	// music volume
-		v = cvar ("bgmvolume") + dir * 1.0;
-		if (v < 0)
-			v = 0;
-		if (v > 1)
-			v = 1;
-		M_SetValue ("bgmvolume", v);
-		break;
-	case 7:	// sfx volume
-		v = cvar ("volume") + dir * 0.1;
-		if (v < 0)
-			v = 0;
-		if (v > 1)
-			v = 1;
-		M_SetValue ("volume", v);
-		break;
-
-	case 8:	// always run
-		if (cvar ("cl_forwardspeed") > 200)
-		{
-			M_SetValue ("cl_forwardspeed", 200);
-			M_SetValue ("cl_backspeed", 200);
-		}
-		else
-		{
-			M_SetValue ("cl_forwardspeed", 400);
-			M_SetValue ("cl_backspeed", 400);
-		}
-		break;
-
-	case 9:	// invert mouse
+	case OPT_INVERTMOUSE:
 		M_SetValue ("m_pitch", -cvar ("m_pitch"));
 		break;
-
-	case 10:	// lookspring
-		M_SetValue ("lookspring", !cvar ("lookspring"));
-		break;
-
-	case 11:	// lookstrafe
-		M_SetValue ("lookstrafe", !cvar ("lookstrafe"));
-		break;
-
-	case 12:
-		M_SetValue ("cl_sbar", !cvar ("cl_sbar"));
-		break;
-
-	case 13:
-		M_SetValue ("cl_hudswap", !cvar ("cl_hudswap"));
-		break;
-
-	case 14:	// mouse look
-		M_SetValue ("freelook", !cvar ("freelook"));
-		break;
-
-	case 15:	// _windowed_mouse
-		M_SetValue ("_windowed_mouse", !cvar ("_windowed_mouse"));
-		break;
 	}
-};
-
-// a checkbox's cvar as an int, as the C menu read it
-float(string name) M_Checked =
-{
-	return (int)cvar (name) != 0;
 };
 
 void() M_Options_Draw =
 {
+	float		i, y;
+	option_t	o;
+
 	M_DrawPic (16, 4, "gfx/qplaque.lmp");
 	M_DrawTitle ("gfx/p_option.lmp");
-
-	M_Print (16, 32, "    Customize controls");
-	M_Print (16, 40, "         Go to console");
-	M_Print (16, 48, "     Reset to defaults");
-
-	M_Print (16, 56, "           Screen size");
-	M_DrawSlider (220, 56, (cvar ("viewsize") - 30) / (120 - 30));
-
-	M_Print (16, 64, "            Brightness");
-	M_DrawSlider (220, 64, (1.0 - cvar ("gamma")) / 0.5);
-
-	M_Print (16, 72, "           Mouse Speed");
-	M_DrawSlider (220, 72, (cvar ("sensitivity") - 1) / 10);
-
-	M_Print (16, 80, "       CD Music Volume");
-	M_DrawSlider (220, 80, cvar ("bgmvolume"));
-
-	M_Print (16, 88, "          Sound Volume");
-	M_DrawSlider (220, 88, cvar ("volume"));
-
-	M_Print (16, 96,  "            Always Run");
-	M_DrawCheckbox (220, 96, cvar ("cl_forwardspeed") > 200);
-
-	M_Print (16, 104, "          Invert Mouse");
-	M_DrawCheckbox (220, 104, cvar ("m_pitch") < 0);
-
-	M_Print (16, 112, "            Lookspring");
-	M_DrawCheckbox (220, 112, M_Checked ("lookspring"));
-
-	M_Print (16, 120, "            Lookstrafe");
-	M_DrawCheckbox (220, 120, M_Checked ("lookstrafe"));
-
-	M_Print (16, 128, "    Use old status bar");
-	M_DrawCheckbox (220, 128, M_Checked ("cl_sbar"));
-
-	M_Print (16, 136, "      HUD on left side");
-	M_DrawCheckbox (220, 136, M_Checked ("cl_hudswap"));
-
-	M_Print (16, 144, "            Mouse Look");
-	M_DrawCheckbox (220, 144, M_Checked ("freelook"));
-
-	if (!isfullscreen ())
+	for (i = 0 ; i < OPTIONS_ITEMS ; i++)
 	{
-		M_Print (16, 152, "             Use Mouse");
-		M_DrawCheckbox (220, 152, M_Checked ("_windowed_mouse"));
+		if (i == OPT_USEMOUSE && isfullscreen ())
+			continue;
+		o = options[i];
+		y = 32 + i * 8;
+		M_Print (16, y, strpad (-22, o.label));
+		switch (o.kind)
+		{
+		case OPT_SLIDER:
+			M_DrawSlider (220, y, (cvar (o.cvar) - o.from) / (o.to - o.from));
+			break;
+		case OPT_SWITCH:
+			M_DrawCheckbox (220, y, (int)cvar (o.cvar) != 0);
+			break;
+		case OPT_ALWAYSRUN:
+			M_DrawCheckbox (220, y, cvar ("cl_forwardspeed") > 200);
+			break;
+		case OPT_INVERTMOUSE:
+			M_DrawCheckbox (220, y, cvar ("m_pitch") < 0);
+			break;
+		}
 	}
-
-// cursor
-	M_DrawCharacter (200, 32 + options_cursor * 8, M_Cursor ());
+	M_DrawCharacter (200, 32 + options_cursor * 8, UI_Cursor ());
 };
 
 void(float k) M_Options_Key =
@@ -286,7 +219,6 @@ void(float k) M_Options_Key =
 	case K_ESCAPE:
 		M_Menu_Main_f ();
 		break;
-
 	case K_ENTER:
 		m_entersound = TRUE;
 		switch (options_cursor)
@@ -306,37 +238,20 @@ void(float k) M_Options_Key =
 			break;
 		}
 		return;
-
 	case K_UPARROW:
-		localsound ("misc/menu1.wav");
-		options_cursor--;
-		if (options_cursor < 0)
-			options_cursor = OPTIONS_ITEMS - 1;
-		break;
-
 	case K_DOWNARROW:
 		localsound ("misc/menu1.wav");
-		options_cursor++;
-		if (options_cursor >= OPTIONS_ITEMS)
-			options_cursor = 0;
+		options_cursor = Wrap (options_cursor + (k == K_DOWNARROW ? 1 : -1), OPTIONS_ITEMS);
 		break;
-
 	case K_LEFTARROW:
 		M_AdjustSliders (-1);
 		break;
-
 	case K_RIGHTARROW:
 		M_AdjustSliders (1);
 		break;
 	}
-
-	if (options_cursor == 15 && isfullscreen ())
-	{
-		if (k == K_UPARROW)
-			options_cursor = 14;
-		else
-			options_cursor = 0;
-	}
+	if (options_cursor == OPT_USEMOUSE && isfullscreen ())
+		options_cursor = k == K_UPARROW ? OPT_USEMOUSE - 1 : 0;
 };
 
 /*
@@ -347,25 +262,38 @@ KEYS MENU
 ==============================================================================
 */
 
+typedef struct
+{
+	string	command;
+	string	name;
+} binding_t;
+
 #define	NUMCOMMANDS	18
 
-string	bindcommands[NUMCOMMANDS] = {"+attack", "impulse 10", "+jump", "+forward", "+back", "+left", "+right",
-	"+speed", "+moveleft", "+moveright", "+strafe", "+lookup", "+lookdown", "centerview", "+mlook", "+klook",
-	"+moveup", "+movedown"};
-string	bindnames[NUMCOMMANDS] = {"attack", "change weapon", "jump / swim up", "walk forward", "backpedal",
-	"turn left", "turn right", "run", "step left", "step right", "sidestep", "look up", "look down",
-	"center view", "mouse look", "keyboard look", "swim up", "swim down"};
+binding_t	bindings[NUMCOMMANDS] = {
+	{"+attack", "attack"},
+	{"impulse 10", "change weapon"},
+	{"+jump", "jump / swim up"},
+	{"+forward", "walk forward"},
+	{"+back", "backpedal"},
+	{"+left", "turn left"},
+	{"+right", "turn right"},
+	{"+speed", "run"},
+	{"+moveleft", "step left"},
+	{"+moveright", "step right"},
+	{"+strafe", "sidestep"},
+	{"+lookup", "look up"},
+	{"+lookdown", "look down"},
+	{"centerview", "center view"},
+	{"+mlook", "mouse look"},
+	{"+klook", "keyboard look"},
+	{"+moveup", "swim up"},
+	{"+movedown", "swim down"}
+};
 
 float	keys_cursor;
 float	bind_grab;
 float	keys0, keys1;		// M_FindKeysForCommand's
-
-void() M_Menu_Keys_f =
-{
-	setkeydest (KEY_MENU);
-	m_state = M_KEYS;
-	m_entersound = TRUE;
-};
 
 // the first two keys bound to command (-1 for none)
 void(string command) M_FindKeysForCommand =
@@ -387,55 +315,45 @@ void(string command) M_UnbindCommand =
 
 void() M_Keys_Draw =
 {
-	float	i, x, y;
+	float	i, y;
 	string	keyname;
 
 	M_DrawTitle ("gfx/ttl_cstm.lmp");
-
 	if (bind_grab)
 		M_Print (12, 32, "Press a key or button for this action");
 	else
 		M_Print (18, 32, "Enter to change, backspace to clear");
 
-// search for known bindings
 	for (i = 0 ; i < NUMCOMMANDS ; i++)
 	{
 		y = 48 + 8 * i;
-
-		M_Print (16, y, bindnames[i]);
-
-		M_FindKeysForCommand (bindcommands[i]);
-
+		M_Print (16, y, bindings[i].name);
+		M_FindKeysForCommand (bindings[i].command);
 		if (keys0 == -1)
 		{
 			M_Print (140, y, "???");
+			continue;
 		}
-		else
+		keyname = keynumtostring (keys0);
+		M_Print (140, y, keyname);
+		if (keys1 != -1)
 		{
-			keyname = keynumtostring (keys0);
-			M_Print (140, y, keyname);
-			x = strlen (keyname) * 8;
-			if (keys1 != -1)
-			{
-				M_Print (140 + x + 8, y, "or");
-				M_Print (140 + x + 32, y, keynumtostring (keys1));
-			}
+			M_Print (140 + strlen (keyname) * 8 + 8, y, "or");
+			M_Print (140 + strlen (keyname) * 8 + 32, y, keynumtostring (keys1));
 		}
 	}
-
-	if (bind_grab)
-		M_DrawCharacter (130, 48 + keys_cursor * 8, '=');
-	else
-		M_DrawCharacter (130, 48 + keys_cursor * 8, M_Cursor ());
+	M_DrawCharacter (130, 48 + keys_cursor * 8, bind_grab ? '=' : UI_Cursor ());
 };
 
 void(float k) M_Keys_Key =
 {
+	string	command = bindings[keys_cursor].command;
+
 	if (bind_grab)
 	{	// defining a key
 		localsound ("misc/menu1.wav");
 		if (k != K_ESCAPE && k != '`')
-			setkeybind (k, bindcommands[keys_cursor]);
+			setkeybind (k, command);
 		bind_grab = FALSE;
 		return;
 	}
@@ -445,35 +363,24 @@ void(float k) M_Keys_Key =
 	case K_ESCAPE:
 		M_Menu_Options_f ();
 		break;
-
 	case K_LEFTARROW:
 	case K_UPARROW:
-		localsound ("misc/menu1.wav");
-		keys_cursor--;
-		if (keys_cursor < 0)
-			keys_cursor = NUMCOMMANDS - 1;
-		break;
-
 	case K_DOWNARROW:
 	case K_RIGHTARROW:
 		localsound ("misc/menu1.wav");
-		keys_cursor++;
-		if (keys_cursor >= NUMCOMMANDS)
-			keys_cursor = 0;
+		keys_cursor = Wrap (keys_cursor + ((k == K_LEFTARROW || k == K_UPARROW) ? -1 : 1), NUMCOMMANDS);
 		break;
-
 	case K_ENTER:		// go into bind mode
-		M_FindKeysForCommand (bindcommands[keys_cursor]);
+		M_FindKeysForCommand (command);
 		localsound ("misc/menu2.wav");
 		if (keys1 != -1)
-			M_UnbindCommand (bindcommands[keys_cursor]);
+			M_UnbindCommand (command);
 		bind_grab = TRUE;
 		break;
-
 	case K_BACKSPACE:	// delete bindings
 	case K_DEL:
 		localsound ("misc/menu2.wav");
-		M_UnbindCommand (bindcommands[keys_cursor]);
+		M_UnbindCommand (command);
 		break;
 	}
 };
@@ -488,21 +395,9 @@ HELP MENU
 
 #define	NUM_HELP_PAGES	6
 
-float	help_page;
-string	helppages[NUM_HELP_PAGES] = {"gfx/help0.lmp", "gfx/help1.lmp", "gfx/help2.lmp", "gfx/help3.lmp",
-	"gfx/help4.lmp", "gfx/help5.lmp"};
-
-void() M_Menu_Help_f =
-{
-	setkeydest (KEY_MENU);
-	m_state = M_HELP;
-	m_entersound = TRUE;
-	help_page = 0;
-};
-
 void() M_Help_Draw =
 {
-	M_DrawPic (0, 0, helppages[help_page]);
+	M_DrawPic (0, 0, sprintf ("gfx/help%d.lmp", help_page));
 };
 
 void(float key) M_Help_Key =
@@ -512,19 +407,12 @@ void(float key) M_Help_Key =
 	case K_ESCAPE:
 		M_Menu_Main_f ();
 		break;
-
 	case K_UPARROW:
 	case K_RIGHTARROW:
-		m_entersound = TRUE;
-		if (++help_page >= NUM_HELP_PAGES)
-			help_page = 0;
-		break;
-
 	case K_DOWNARROW:
 	case K_LEFTARROW:
 		m_entersound = TRUE;
-		if (--help_page < 0)
-			help_page = NUM_HELP_PAGES - 1;
+		help_page = Wrap (help_page + ((key == K_UPARROW || key == K_RIGHTARROW) ? 1 : -1), NUM_HELP_PAGES);
 		break;
 	}
 };
@@ -543,14 +431,13 @@ void() M_SinglePlayer_Draw =
 {
 	M_DrawPic (16, 4, "gfx/qplaque.lmp");
 	M_DrawTitle ("gfx/ttl_sgl.lmp");
-
 	M_DrawTextBox (60, 10 * 8, 23, 4);
 	M_PrintWhite (92, 12 * 8, "QuakeWorld is for");
 	M_PrintWhite (88, 13 * 8, "Internet play only");
 };
 
 // Escape or Enter: back to the main menu
-void(float key) M_TextScreen_Key =
+void(float key) M_SinglePlayer_Key =
 {
 	if (key == K_ESCAPE || key == K_ENTER)
 		m_state = M_MAIN;
@@ -564,20 +451,6 @@ QUIT MENU
 ==============================================================================
 */
 
-float	m_quit_prevstate;
-float	wasinmenus;
-
-void() M_Menu_Quit_f =
-{
-	if (m_state == M_QUIT)
-		return;
-	wasinmenus = getkeydest () == KEY_MENU;
-	setkeydest (KEY_MENU);
-	m_quit_prevstate = m_state;
-	m_state = M_QUIT;
-	m_entersound = TRUE;
-};
-
 void(float key) M_Quit_Key =
 {
 	switch (key)
@@ -590,12 +463,8 @@ void(float key) M_Quit_Key =
 			m_entersound = TRUE;
 		}
 		else
-		{
-			setkeydest (KEY_GAME);
-			m_state = M_NONE;
-		}
+			M_Close ();
 		break;
-
 	case 'y':
 		localcmd ("quit force\n");
 		break;
@@ -604,6 +473,7 @@ void(float key) M_Quit_Key =
 
 #define	NUM_CREDITS	22
 
+// each line's first character: 0 white, 1 red
 string	credits[NUM_CREDITS] = {
 //   0123456789012345678901234567890123456789
 	"0          SoftWorld " SW_VERSION,
@@ -640,171 +510,41 @@ void() M_Quit_Draw =
 	M_DrawTextBox (0, 0, 38, 23);
 	for (i = 0 ; i < NUM_CREDITS ; i++)
 	{
-		line = credits[i];
-		if (str2chr (line, 0) == '0')
-			M_PrintWhite (16, 12 + i * 8, substring (line, 1, strlen (line) - 1));
+		line = substring (credits[i], 1, strlen (credits[i]) - 1);
+		if (str2chr (credits[i], 0) == '0')
+			M_PrintWhite (16, 12 + i * 8, line);
 		else
-			M_Print (16, 12 + i * 8, substring (line, 1, strlen (line) - 1));
+			M_Print (16, 12 + i * 8, line);
 	}
 };
 
 /*
 ==============================================================================
 
-THE ENTRY POINTS
+THE MENUS BY STATE
 
 ==============================================================================
 */
 
+typedef struct
+{
+	void()			draw;
+	void(float key)	key;
+} menu_t;
+
+// the server browser (M_SLIST) draws and takes its keys itself
+menu_t	menus[M_SLIST] = {
+	{__NULL__, __NULL__},
+	{M_Main_Draw, M_Main_Key},
+	{M_SinglePlayer_Draw, M_SinglePlayer_Key},
+	{M_Options_Draw, M_Options_Key},
+	{M_Keys_Draw, M_Keys_Key},
+	{M_Help_Draw, M_Help_Key},
+	{M_Quit_Draw, M_Quit_Key}
+};
+
 void(float state) M_DrawState =
 {
-	switch (state)
-	{
-	case M_MAIN:
-		M_Main_Draw ();
-		break;
-	case M_SINGLEPLAYER:
-		M_SinglePlayer_Draw ();
-		break;
-	case M_OPTIONS:
-		M_Options_Draw ();
-		break;
-	case M_KEYS:
-		M_Keys_Draw ();
-		break;
-	case M_HELP:
-		M_Help_Draw ();
-		break;
-	case M_QUIT:
-		M_Quit_Draw ();
-		break;
-	}
-};
-
-void() m_init =
-{
-	registercommand ("menu_main");
-	registercommand ("menu_multiplayer");
-	registercommand ("menu_slist");
-	registercommand ("addserver");
-	registercommand ("menu_options");
-	registercommand ("menu_keys");
-	registercommand ("help");
-	registercommand ("menu_quit");
-};
-
-void() m_shutdown =
-{
-};
-
-void(vector size) m_draw =
-{
-	if (m_state == M_NONE || getkeydest () != KEY_MENU)
-		return;
-
-	if (m_state == M_SLIST)
-		SB_Draw (size);
-	else
-	{
-		menu_x = floor ((size_x - 320) / 2);
-		Backdrop_Draw (size);
-		M_DrawState (m_state);
-	}
-
-	if (m_entersound)
-	{
-		localsound ("misc/menu2.wav");
-		m_entersound = FALSE;
-	}
-};
-
-void(float scan, float chr) m_keydown =
-{
-	if (m_state == M_SLIST)
-	{
-		SB_KeyDown (scan, chr);
-		return;
-	}
-	if (!scan)
-		return;		// a character typed, which these menus have no text to take
-	switch (m_state)
-	{
-	case M_MAIN:
-		M_Main_Key (scan);
-		break;
-	case M_SINGLEPLAYER:
-		M_TextScreen_Key (scan);
-		break;
-	case M_OPTIONS:
-		M_Options_Key (scan);
-		break;
-	case M_KEYS:
-		M_Keys_Key (scan);
-		break;
-	case M_HELP:
-		M_Help_Key (scan);
-		break;
-	case M_QUIT:
-		M_Quit_Key (scan);
-		break;
-	}
-};
-
-void(float scan, float chr) m_keyup =
-{
-	if (m_state == M_SLIST)
-		SB_KeyUp (scan);
-};
-
-// Escape and togglemenu: the main menu opens, from another menu goes back to
-// it, and from it closes
-void(float wantmode) m_toggle =
-{
-	m_entersound = TRUE;
-	if (getkeydest () == KEY_MENU)
-	{
-		if (m_state != M_MAIN)
-		{
-			M_Menu_Main_f ();
-			return;
-		}
-		setkeydest (KEY_GAME);
-		m_state = M_NONE;
-		return;
-	}
-	M_Menu_Main_f ();
-};
-
-float(string cmd) m_consolecommand =
-{
-	tokenize (cmd);
-	switch (argv (0))
-	{
-	case "menu_main":
-		M_Menu_Main_f ();
-		return TRUE;
-	case "menu_multiplayer":
-	case "menu_slist":
-		SB_Open ();
-		return TRUE;
-	case "addserver":
-		if (argv (1) == "")
-			print ("Usage: addserver <address>\n");
-		else if (!addhostcacheserver (argv (1)))
-			print (sprintf ("%s isn't an address\n", argv (1)));
-		return TRUE;
-	case "menu_options":
-		M_Menu_Options_f ();
-		return TRUE;
-	case "menu_keys":
-		M_Menu_Keys_f ();
-		return TRUE;
-	case "help":
-		M_Menu_Help_f ();
-		return TRUE;
-	case "menu_quit":
-		M_Menu_Quit_f ();
-		return TRUE;
-	}
-	return FALSE;
+	if (state > M_NONE && state < M_SLIST)
+		menus[state].draw ();
 };

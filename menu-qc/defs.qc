@@ -1,6 +1,7 @@
 // defs.qc -- what menu QuakeC has from the engine: FTE's menu API (its
 // entry points, builtins by FTE's numbers for menus, key codes), and
-// SoftWorld's own builtins, by name
+// SoftWorld's own builtins, by name. Strings live as long as anything refers
+// to them (SoftWorld's VM collects them): none is zoned.
 
 #pragma target fte
 
@@ -59,6 +60,7 @@ float(float f) ceil = #36;
 float(float f) sin = #38;
 float(float a, float b, ...) min = #43;
 float(float a, float b, ...) max = #44;
+float(float lo, float v, float hi) bound = #45;
 float(string a, string b, float n) strncasecmp = #230;
 float(string s, string separator, ...) tokenizebyseparator = #479;
 string(string search, string replace, string subject) strreplace = #484;
@@ -115,6 +117,34 @@ void(float source, float marked) sethostcachesourcemark = #0:sethostcachesourcem
 float(string type, string name, string location) addhostcachesource = #0:addhostcachesource;
 void(float source) removehostcachesource = #0:removehostcachesource;
 float(string address) addhostcacheserver = #0:addhostcacheserver;
+
+// gethostcachevalue's: FTE's, and SoftWorld's from 100
+#define	SLIST_HOSTCACHEVIEWCOUNT	0
+#define	SLIST_HOSTCACHETOTALCOUNT	1
+#define	SLIST_SCANNING				100
+#define	SLIST_PINGSSENT				103
+#define	SLIST_PINGSTOTAL			104
+#define	SLIST_GENERATION			108
+#define	SLIST_SOURCES				109
+#define	SLIST_MARKEDSERVERS			113
+#define	SLIST_SCANS					114
+
+// FTE's mask tests (sethostcachemask*), and the OR of mask 512
+#define	SLIST_TEST_CONTAINS			0
+#define	SLIST_TEST_LESSEQUAL		2
+#define	SLIST_TEST_EQUAL			4
+#define	SLIST_TEST_GREATER			5
+#define	SLIST_TEST_NOTEQUAL			7
+#define	SLIST_TEST_NOTSTARTSWITH	9
+#define	SLIST_MASK_AND				0
+#define	SLIST_MASK_OR				512
+
+// sethostcachesort's flags: FTE's, and SoftWorld's key after the others
+#define	SLIST_SORT_DESCENDING		1
+#define	SLIST_SORT_APPEND			8
+
+// a server's state (SoftWorld's key "state")
+#define	SL_DEAD		2		// never answered
 
 // setkeydest and getkeydest
 #define	KEY_GAME		0
