@@ -956,6 +956,11 @@ double CL_ScoreClock (void)
 	return cls.mvdplayback ? cl.time : host.realtime;
 }
 
+double CL_LevelTime (void)
+{
+	return cl.stats[STAT_TIME] ? cl.stats[STAT_TIME] * 0.001 : cl.time;
+}
+
 /*
 ==================
 CL_ParseStartSoundPacket
@@ -1650,6 +1655,7 @@ void CL_ParseServerMessage (void)
 		case svc_intermission:
 			cl.intermission = 1;
 			cl.completed_time = (int)CL_ScoreClock ();
+			cl.completed_leveltime = CL_LevelTime ();
 			vid.recalc_refdef = true;	// go to full screen
 			for (i=0 ; i<3 ; i++)
 				cl.simorg[i] = MSG_ReadCoord ();			
@@ -1661,8 +1667,14 @@ void CL_ParseServerMessage (void)
 		case svc_finale:
 			cl.intermission = 2;
 			cl.completed_time = (int)CL_ScoreClock ();
+			cl.completed_leveltime = CL_LevelTime ();
 			vid.recalc_refdef = true;	// go to full screen
 			s = MSG_ReadString ();
+			if (!strncmp (s, "/.", 2))
+			{	// FTE's cutscene: the text without the finale's picture
+				cl.intermission = 3;
+				s += 2;
+			}
 			if (!CL_MVDQuiet ())
 				SCR_CenterPrint (s);
 			break;

@@ -301,8 +301,10 @@ typedef struct
 
 	float		punchangle;		// temporar yview kick from weapon firing
 	
-	int			intermission;	// don't change view angle, full screen, etc
+	int			intermission;	// don't change view angle, full screen, etc: 1 scores, 2 finale,
+								// 3 cutscene (a finale "/.", FTE's)
 	int			completed_time;	// latched ffrom time at intermission start
+	double		completed_leveltime;	// CL_LevelTime then, for single player's
 	
 //
 // information that is static for the entire time connected to a server
@@ -539,6 +541,7 @@ void CL_ParseServerMessage (void);
 void CL_FreeStatStrings (void);		// FTE's string stats, before cl is cleared
 void CL_ProcessUserInfo (int slot, player_info_t *player);	// name, colors, skin from the userinfo
 double CL_ScoreClock (void);		// what the scoreboard's times count on
+double CL_LevelTime (void);			// the level's time, the server's (STAT_TIME) when it says
 void CL_RequestNextDownload (void);
 bool CL_IsUploading(void);
 void CL_NextUpload(void);

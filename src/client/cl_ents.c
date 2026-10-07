@@ -200,6 +200,11 @@ a half times the mean gap between updates, 10 to 120 msec. A new entity,
 another model or a move of over 200 units is a snap. The players are run
 forward to the present through the movement code instead (CL_LinkPlayers).
 
+What steps, as monsters move when they think ten times a second, goes from
+step to step instead, over the time between them (at most 0.3 s), as FTE
+moves its RENDER_STEP entities: that is what has an animated frame, as FTE
+guesses without the flag.
+
 The models' animation frames blend too, each into the next in a tenth of a
 second (r_lerpframes, drawn by the renderer): everything the server places,
 the players and the view model. A snap snaps the frame as well.
@@ -211,6 +216,7 @@ the players and the view model. A snap snaps the frame as well.
 #define	LERP_MINTRAIL	0.010
 #define	LERP_MAXTRAIL	0.120
 #define	LERP_MINSPAN	0.0005		// a window shorter than this is a snap
+#define	LERP_MAXSTEP	0.3			// the longest step (FTE's cl_lerp_maxinterval)
 
 typedef struct
 {
@@ -312,6 +318,33 @@ static void Trail_Sample (const lerptrail_t *t, double time, vec3_t out)
 	f = f < 0 ? 0 : f > 1 ? 1 : f;
 	for (i=0 ; i<3 ; i++)
 		out[i] = t->val[from][i] + f * (t->val[to][i] - t->val[from][i]);
+}
+
+/*
+===============
+Trail_Step
+
+A stepping entity's place at time: from the value before the newest to the
+newest, over the time between their arrivals
+===============
+*/
+static void Trail_Step (const lerptrail_t *t, double time, vec3_t out)
+{
+	double	span = t->at[0] - t->at[1];
+	float	f;
+	int		i;
+
+	if (span > LERP_MAXSTEP)
+		span = LERP_MAXSTEP;
+	if (span <= LERP_MINSPAN)
+	{
+		VectorCopy (t->val[0], out);
+		return;
+	}
+	f = (float)((time - t->at[0]) / span);
+	f = f < 0 ? 0 : f > 1 ? 1 : f;
+	for (i=0 ; i<3 ; i++)
+		out[i] = t->val[1][i] + f * (t->val[0][i] - t->val[1][i]);
 }
 
 /*
@@ -548,6 +581,13 @@ static void CL_EntityPlace (const entity_state_t *s, vec3_t origin, vec3_t angle
 	{
 		Trail_Sample (&l->origin, CL_MVDTime (), origin);
 		Trail_Sample (&l->angles, CL_MVDTime (), angles);
+		return;
+	}
+
+	if (s->frame)
+	{	// stepping
+		Trail_Step (&l->origin, host.realtime, origin);
+		Trail_Step (&l->angles, host.realtime, angles);
 		return;
 	}
 

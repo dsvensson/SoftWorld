@@ -60,11 +60,32 @@ simd_fog_t	d_fog;
 static float	r_fogtable[FOG_TABLE];
 static fog_t	r_fogbuilt;			// what r_fogtable and d_fog are made for
 
+/*
+===============
+R_Fog_f
+
+fog <density> [<red> <green> <blue>]: the level's fog as its game sets it,
+FitzQuake's and FTE's command (mods stuff it), in place of the map's until
+the next map; under r_fog's, as the map's is
+===============
+*/
+static void R_Fog_f (void)
+{
+	if (Cmd_Argc () < 2)
+	{
+		Con_Printf ("fog is \"%s\"\n", r_worldspawn.fog);
+		return;
+	}
+	Q_strncpyz (r_worldspawn.fog, Cmd_Args (), sizeof(r_worldspawn.fog));
+}
+
 void R_FogInit (void)
 {
 	Cvar_RegisterVariable (&r_fog);
 	Cvar_RegisterVariable (&r_fog_usemap);
 	Cvar_RegisterVariable (&r_skyfog);
+	Cmd_AddCommand ("fog", R_Fog_f, "Sets the level's fog, as the game does, in place of the map's until the "
+		"next map: density, then red, green and blue from 0 to 1. r_fog's is over it.");
 }
 
 /*
@@ -171,7 +192,8 @@ static void R_BuildFog (const fog_t *fog)
 ===============
 R_SetupFog
 
-The frame's fog: the map's (r_fog_usemap), with r_fog's over it
+The frame's fog: the map's (r_fog_usemap; or the fog command's), with r_fog's
+over it
 ===============
 */
 void R_SetupFog (void)

@@ -1149,9 +1149,9 @@ void SCR_UpdateScreen (void)
 		if (sbar)
 			Sbar_IntermissionOverlay ();
 	}
-	else if (cl.intermission == 2 && cls.key_dest == key_game)
-	{
-		if (sbar)
+	else if (cl.intermission >= 2 && cls.key_dest == key_game)
+	{	// the finale with its picture, a cutscene without
+		if (sbar && cl.intermission == 2)
 			Sbar_FinaleOverlay ();
 		SCR_CheckDrawCenterString ();
 	}

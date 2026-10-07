@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define STAT_MINUS		10	// num frame for '-' stats digit
 static qpic_t		*sb_nums[2][11];
+static qpic_t		*sb_colon, *sb_slash;
 static qpic_t		*sb_ibar;
 static qpic_t		*sb_sbar;
 static qpic_t		*sb_scorebar;
@@ -123,6 +124,8 @@ void Sbar_Init (void)
 
 	sb_nums[0][10] = Draw_PicFromWad ("num_minus");
 	sb_nums[1][10] = Draw_PicFromWad ("anum_minus");
+	sb_colon = Draw_PicFromWad ("num_colon");
+	sb_slash = Draw_PicFromWad ("num_slash");
 
 	sb_weapons[0][0] = Draw_PicFromWad ("inv_shotgun");
 	sb_weapons[0][1] = Draw_PicFromWad ("inv_sshotgun");
@@ -450,21 +453,43 @@ static int	Sbar_ColorForMap (int m)
 }
 
 
+// a deathmatch's, as the serverinfo says (QuakeWorld's when it doesn't), not
+// single player or coop
+static bool Sbar_Deathmatch (void)
+{
+	const char	*dm = Info_ValueForKey (cl.serverinfo, "deathmatch");
+
+	return !*dm || atoi (dm);
+}
+
 /*
 ===============
 Sbar_SoloScoreboard
+
+The time; and outside deathmatch the monsters killed and secrets found of the
+level's, and its name (FTE's Sbar_CoopScoreboard)
 ===============
 */
 static void Sbar_SoloScoreboard (void)
 {
 	char	str[80];
 	int		minutes, seconds, tens, units;
+	double	time = Sbar_Deathmatch () ? cl.time : CL_LevelTime ();
 
 	Sbar_DrawPic (0, 0, sb_scorebar);
 
+	if (!Sbar_Deathmatch ())
+	{
+		snprintf (str, sizeof(str), "Monsters:%3i /%3i", cl.stats[STAT_MONSTERS], cl.stats[STAT_TOTALMONSTERS]);
+		Sbar_DrawString (8, 4, str);
+		snprintf (str, sizeof(str), "Secrets :%3i /%3i", cl.stats[STAT_SECRETS], cl.stats[STAT_TOTALSECRETS]);
+		Sbar_DrawString (8, 12, str);
+		Sbar_DrawString (232 - (int)strlen (cl.levelname)*4, 12, cl.levelname);
+	}
+
 	// time
-	minutes = (int)(cl.time / 60);
-	seconds = (int)(cl.time - 60*minutes);
+	minutes = (int)(time / 60);
+	seconds = (int)(time - 60*minutes);
 	tens = seconds / 10;
 	units = seconds - 10*tens;
 	snprintf (str, sizeof(str), "Time :%3i:%i%i", minutes, tens, units);
@@ -745,7 +770,7 @@ void Sbar_Draw (void)
 	{
 		if (!cl.spectator || Cam_TrackNum () >= 0)
 			Sbar_DrawInventory ();
-		if (!headsup || vid.conwidth<512)
+		if ((!headsup || vid.conwidth<512) && Sbar_Deathmatch ())
 			Sbar_DrawFrags ();
 	}	
 
@@ -779,6 +804,8 @@ void Sbar_Draw (void)
 	}
 
 // main screen deathmatch rankings
+	if (!Sbar_Deathmatch ())
+		return;		// single player or coop: the scoreboard above says it
 	// if we're dead show team scores in team games
 	if (cl.stats[STAT_HEALTH] <= 0 && !cl.spectator)
 		if (atoi(Info_ValueForKey(cl.serverinfo, "teamplay")) > 0 &&
@@ -1196,6 +1223,54 @@ static void Sbar_MiniDeathmatchOverlay (void)
 }
 
 
+// a number in the big digits, digits wide, at x, y of the screen
+static void Sbar_IntermissionNumber (int x, int y, int num, int digits)
+{
+	char	str[12], *ptr = str;
+	int		l;
+
+	l = snprintf (str, sizeof(str), "%i", num);
+	if (l > digits)
+		ptr += l - digits;
+	if (l < digits)
+		x += (digits - l) * 24;
+	for ( ; *ptr ; ptr++, x += 24)
+		Draw_TransPic (x, y, sb_nums[0][*ptr == '-' ? 10 : *ptr - '0']);
+}
+
+/*
+==================
+Sbar_CoopIntermission
+
+The level completed outside deathmatch: its time, secrets and monsters, as
+NetQuake draws them, in the middle of the screen (FTE's)
+==================
+*/
+static void Sbar_CoopIntermission (void)
+{
+	int		x = (vid.conwidth - 320) / 2, y = (vid.conheight - 200) / 2;
+	int		dig, num;
+
+	Draw_Pic (x + 64, y + 24, Draw_CachePic ("gfx/complete.lmp"));
+	Draw_TransPic (x, y + 56, Draw_CachePic ("gfx/inter.lmp"));
+
+// time
+	dig = (int)cl.completed_leveltime / 60;
+	Sbar_IntermissionNumber (x + 160, y + 64, dig, 3);
+	num = (int)cl.completed_leveltime - dig*60;
+	Draw_TransPic (x + 234, y + 64, sb_colon);
+	Draw_TransPic (x + 246, y + 64, sb_nums[0][num/10]);
+	Draw_TransPic (x + 266, y + 64, sb_nums[0][num%10]);
+
+	Sbar_IntermissionNumber (x + 160, y + 104, cl.stats[STAT_SECRETS], 3);
+	Draw_TransPic (x + 232, y + 104, sb_slash);
+	Sbar_IntermissionNumber (x + 240, y + 104, cl.stats[STAT_TOTALSECRETS], 3);
+
+	Sbar_IntermissionNumber (x + 160, y + 144, cl.stats[STAT_MONSTERS], 3);
+	Draw_TransPic (x + 232, y + 144, sb_slash);
+	Sbar_IntermissionNumber (x + 240, y + 144, cl.stats[STAT_TOTALMONSTERS], 3);
+}
+
 /*
 ==================
 Sbar_IntermissionOverlay
@@ -1204,8 +1279,9 @@ Sbar_IntermissionOverlay
 */
 void Sbar_IntermissionOverlay (void)
 {
-
-	if (atoi(Info_ValueForKey(cl.serverinfo, "teamplay")) > 0 && !sb_showscores)
+	if (!Sbar_Deathmatch ())
+		Sbar_CoopIntermission ();
+	else if (atoi(Info_ValueForKey(cl.serverinfo, "teamplay")) > 0 && !sb_showscores)
 		Sbar_TeamOverlay ();
 	else
 		Sbar_DeathmatchOverlay (0);
