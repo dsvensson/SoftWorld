@@ -160,7 +160,6 @@ Some need something from outside and are skipped without it:
 
 | | |
 |---|---|
-| `SW_FTEQCC` (CMake) | `fteqcc`, for the fixtures |
 | `FTE_QCVM` | FTE's standalone `qcvm` runner: the fixtures' output is compared with its output |
 | `QCVM_CSPROGS` | a KTX `csprogs.dat` for `qc_csprogs` (and `qc_loader`'s KTX test); `QCVM_PROFILE=1` also profiles it |
 | `QC_FUZZ_ITERS` | how many random programs the fuzz tests run (256 by default) |

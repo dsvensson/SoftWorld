@@ -51,12 +51,19 @@ jobs:
           emsdk/emsdk install $EMSDK_VERSION
           emsdk/emsdk activate $EMSDK_VERSION
 
+      # the Build workflow's fteqcc, built where the cache has none
+      - name: Cached fteqcc
+        uses: actions/cache@v6
+        with:
+          path: deps
+          key: fteqcc-${{ runner.os }}-${{ hashFiles('cmake/fteqcc.cmake', 'cmake/fteqcc/**') }}
+
       - name: Build
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ninja-build
           source emsdk/emsdk_env.sh
-          cmake --preset web
+          cmake --preset web -DSW_DEPS_DIR=deps
           cmake --build --preset web --target softworld
 
       - name: Site

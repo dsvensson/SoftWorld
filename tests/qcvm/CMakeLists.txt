@@ -11,10 +11,12 @@ target_include_directories(qc_testsupport PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(qc_testsupport PUBLIC QT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 # test_qc_loader loads programs in every format, with the load-time rewrites,
-# and malformed and corrupted ones; qw-qc's qwprogs.dat, and KTX's csprogs.dat
-# when QCVM_CSPROGS names one.
+# and malformed and corrupted ones; qw-qc's qwprogs.dat as the build compiles
+# it, and KTX's csprogs.dat when QCVM_CSPROGS names one.
 sw_add_program(test_qc_loader test_qc_loader.c)
 target_link_libraries(test_qc_loader PRIVATE qc_testsupport)
+target_compile_definitions(test_qc_loader PRIVATE QT_QWPROGS="${CMAKE_BINARY_DIR}/qw-qc/qwprogs.dat")
+add_dependencies(test_qc_loader qwprogs_dat)
 add_test(NAME qc_loader COMMAND test_qc_loader)
 
 # test_qc_memory checks the VM's memory before anything runs: its layout, where
@@ -55,7 +57,7 @@ endforeach()
 # test_qc_fixtures runs the QuakeC fixtures in qc/, each compiled with fteqcc for
 # the targets it is meant for, with the builtins of FTE's standalone runner
 # (qc_runner.c): their output must be the .expected file's, and FTE_QCVM's when
-# it names FTE's runner. Without fteqcc it is skipped.
+# it names FTE's runner.
 set(QC_FIXTURE_DIR "${CMAKE_CURRENT_BINARY_DIR}/fixtures")
 set(QC_FIXTURES
 	"arith.qc|fte|-Tfte" "arith.qc|fte-O3|-Tfte -O3" "arith.qc|vanilla|-Tvanilla"
@@ -70,25 +72,23 @@ set(QC_FIXTURES
 	"advanced.qc|fte|-Tfte" "advanced.qc|fte-O3|-Tfte -O3")
 set(qc_fixture_outputs)
 set(qc_fixture_list)
-if(SW_FTEQCC)
-	foreach(entry IN LISTS QC_FIXTURES)
-		string(REPLACE "|" ";" parts "${entry}")
-		list(GET parts 0 fixture)
-		list(GET parts 1 label)
-		list(GET parts 2 flags)
-		get_filename_component(base "${fixture}" NAME_WE)
-		set(out "${QC_FIXTURE_DIR}/${base}-${label}.dat")
-		add_custom_command(OUTPUT "${out}"
-			COMMAND "${CMAKE_COMMAND}" "-DFTEQCC=${SW_FTEQCC}" "-DSRC=${CMAKE_CURRENT_SOURCE_DIR}/qc"
-				"-DFIXTURE=${fixture}" "-DFLAGS=${flags}" "-DOUT=${out}"
-				-P "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
-			DEPENDS "qc/${fixture}" qc/runner.qh "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
-			COMMENT "Compiling ${fixture} for ${label}"
-			VERBATIM)
-		list(APPEND qc_fixture_outputs "${out}")
-		list(APPEND qc_fixture_list "${base}|${label}")
-	endforeach()
-endif()
+foreach(entry IN LISTS QC_FIXTURES)
+	string(REPLACE "|" ";" parts "${entry}")
+	list(GET parts 0 fixture)
+	list(GET parts 1 label)
+	list(GET parts 2 flags)
+	get_filename_component(base "${fixture}" NAME_WE)
+	set(out "${QC_FIXTURE_DIR}/${base}-${label}.dat")
+	add_custom_command(OUTPUT "${out}"
+		COMMAND "${CMAKE_COMMAND}" "-DFTEQCC=${SW_FTEQCC_EXE}" "-DSRC=${CMAKE_CURRENT_SOURCE_DIR}/qc"
+			"-DFIXTURE=${fixture}" "-DFLAGS=${flags}" "-DOUT=${out}"
+			-P "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
+		DEPENDS "qc/${fixture}" qc/runner.qh "${SW_FTEQCC_EXE}" "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
+		COMMENT "Compiling ${fixture} for ${label}"
+		VERBATIM)
+	list(APPEND qc_fixture_outputs "${out}")
+	list(APPEND qc_fixture_list "${base}|${label}")
+endforeach()
 add_custom_target(qc_fixtures DEPENDS ${qc_fixture_outputs})
 string(REPLACE ";" "," qc_fixture_list "${qc_fixture_list}")
 
@@ -99,7 +99,6 @@ target_compile_definitions(test_qc_fixtures PRIVATE
 	QT_FIXTURES="${qc_fixture_list}")
 add_dependencies(test_qc_fixtures qc_fixtures)
 add_test(NAME qc_fixtures COMMAND test_qc_fixtures)
-set_tests_properties(qc_fixtures PROPERTIES SKIP_RETURN_CODE 77)
 
 # test_qc_multiprogs loads further progs into a VM: linking, calls between
 # progs, shared globals, fields unified by name, relocated strings, and the
@@ -109,29 +108,21 @@ target_link_libraries(test_qc_multiprogs PRIVATE qc_testsupport)
 add_test(NAME qc_multiprogs COMMAND test_qc_multiprogs)
 
 # test_qc_threads runs QuakeC threads (sleep, fork) resumed by QC_RunThreads,
-# with qc/threads.qc compiled by fteqcc when there is one.
-set(qc_threads_dat "")
-if(SW_FTEQCC)
-	set(qc_threads_dat "${QC_FIXTURE_DIR}/threads-fte.dat")
-	add_custom_command(OUTPUT "${qc_threads_dat}"
-		COMMAND "${CMAKE_COMMAND}" "-DFTEQCC=${SW_FTEQCC}" "-DSRC=${CMAKE_CURRENT_SOURCE_DIR}/qc"
-			-DFIXTURE=threads.qc -DFLAGS=-Tfte "-DOUT=${qc_threads_dat}" -DRUNNER=OFF
-			-P "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
-		DEPENDS qc/threads.qc "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
-		COMMENT "Compiling threads.qc for fte")
-endif()
+# with qc/threads.qc compiled by fteqcc.
+set(qc_threads_dat "${QC_FIXTURE_DIR}/threads-fte.dat")
+add_custom_command(OUTPUT "${qc_threads_dat}"
+	COMMAND "${CMAKE_COMMAND}" "-DFTEQCC=${SW_FTEQCC_EXE}" "-DSRC=${CMAKE_CURRENT_SOURCE_DIR}/qc"
+		-DFIXTURE=threads.qc -DFLAGS=-Tfte "-DOUT=${qc_threads_dat}" -DRUNNER=OFF
+		-P "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
+	DEPENDS qc/threads.qc "${SW_FTEQCC_EXE}" "${PROJECT_SOURCE_DIR}/cmake/qcfixture.cmake"
+	COMMENT "Compiling threads.qc for fte")
 add_custom_target(qc_threads_fixture DEPENDS ${qc_threads_dat})
 sw_add_program(test_qc_threads test_qc_threads.c)
 target_link_libraries(test_qc_threads PRIVATE qc_testsupport)
 add_dependencies(test_qc_threads qc_threads_fixture)
 # the fixture's path as an argument: a compiled-in one made the check for it
 # constant, which MSVC warns about
-if(SW_FTEQCC)
-	add_test(NAME qc_threads COMMAND test_qc_threads "${qc_threads_dat}")
-else()
-	add_test(NAME qc_threads COMMAND test_qc_threads)
-endif()
-set_tests_properties(qc_threads PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME qc_threads COMMAND test_qc_threads "${qc_threads_dat}")
 
 # test_qc_csprogs runs KTX's csprogs.dat, named by QCVM_CSPROGS, against a stub
 # CSQC engine (qc_csqc_engine.c): initialisation, entity updates, a thousand

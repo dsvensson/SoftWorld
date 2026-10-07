@@ -133,11 +133,6 @@ int main (void)
 	char	list[] = QT_FIXTURES, *entry, *label, *next;
 	int		count = 0;
 
-	if (!*list)
-	{
-		printf ("fixtures: skipped (no fteqcc to compile them)\n");
-		return QT_SKIP;
-	}
 	for (entry = list ; entry ; entry = next)
 	{
 		next = strchr (entry, ',');

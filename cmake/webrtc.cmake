@@ -12,8 +12,6 @@
 set(SW_WEBRTC AUTO CACHE STRING
 	"WebRTC (rtc://): AUTO with the libdatachannel there is, ON building it where there is none, OFF without")
 set_property(CACHE SW_WEBRTC PROPERTY STRINGS AUTO ON OFF)
-set(SW_DEPS_DIR "${CMAKE_BINARY_DIR}/deps" CACHE PATH
-	"Where SW_WEBRTC=ON installs the libraries it builds, for later configures (and caches) to find")
 
 set(SW_WEBRTC_FOUND OFF)
 if(NOT SW_WEBRTC MATCHES "^(AUTO|ON|OFF)$")

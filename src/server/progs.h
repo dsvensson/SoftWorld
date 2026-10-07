@@ -90,7 +90,7 @@ void PR_FreeProgs (void);			// the VM gone, until the next map
 void PR_ClearLightstyles (void);	// PF_lightstyle's copies
 
 // qw-qc's qwprogs.dat as the program was built with it (qwprogs_data.c, which
-// cmake/qwprogs.cmake makes): the game when the game directory has none
+// cmake/qcprogs.cmake makes): the game when the game directory has none
 extern const unsigned char	sv_qwprogs[];
 extern const size_t			sv_qwprogs_size;
 

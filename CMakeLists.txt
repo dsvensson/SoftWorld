@@ -57,11 +57,20 @@ else()
 	message(WARNING "Link-time optimization is not available: ${sw_ipo_output}")
 endif()
 
+# where what the build fetches and builds itself is installed (fteqcc, and
+# WebRTC's libraries), for later configures (and CI's caches) to find
+set(SW_DEPS_DIR "${CMAKE_BINARY_DIR}/deps" CACHE PATH
+	"Where the build installs what it fetches and builds itself (fteqcc, SW_WEBRTC=ON's libraries)")
+
 # WebRTC (rtc://) for the native programs: libdatachannel where there is one,
 # or built when asked (SW_WEBRTC), with the runtime library above
 if(NOT EMSCRIPTEN)
 	include(webrtc)
 endif()
+
+# fteqcc, found or built, and the QuakeC it compiles into the programs
+include(fteqcc)
+include(qcprogs)
 
 if(MSVC)
 	# Release keeps a program database too, for profilers and crash dumps; the code is the same

@@ -753,7 +753,7 @@ static void TestCorruption (void)
 	QA_Free (a);
 }
 
-// the server's own game: qw-qc's qwprogs.dat
+// the server's own game: qw-qc's qwprogs.dat, as the build compiles it
 static void TestQWProgs (void)
 {
 	uint8_t				*data;
@@ -763,7 +763,7 @@ static void TestQWProgs (void)
 	qc_funcinfo_t		fn;
 	qt_text_t			text = {0};
 
-	data = QT_LoadFile (QT_SOURCE_DIR "/qw-qc/qwprogs.dat", &size);
+	data = QT_LoadFile (QT_QWPROGS, &size);
 	if (!QT_CHECK (data != NULL))
 		return;
 	p = QC_LoadProgs (data, size, NULL);

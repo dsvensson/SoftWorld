@@ -5,8 +5,7 @@ target_link_libraries(sw_server PUBLIC sw_game sw_net sw_qcvm sw_common)
 target_include_directories(sw_server PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # the game the server runs when the game directory has none: qw-qc, built in
-include(qwprogs)
-target_sources(sw_server PRIVATE "${SW_QC_BUILD}/qwprogs_data.c")
+sw_qc_progs(sw_server SOURCE_DIR "${PROJECT_SOURCE_DIR}/qw-qc" DAT qwprogs.dat SYMBOL sv_qwprogs)
 
 # the client-only program's server: sv_public.h with nothing behind it
 sw_add_module(sw_server_null

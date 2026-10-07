@@ -29,9 +29,11 @@ You need Windows 10 or 11 on x64, and:
 - Visual Studio 2026 with the C++ workload. It provides MSVC, CMake, Ninja and the Windows
   SDK.
 - For the clang build, Visual Studio's LLVM (clang-cl) component.
-- Optionally, fteqcc: found on the PATH, or named by the `FTEQCC` environment variable when
-  configuring, it compiles the server's game (`qw-qc`). Without it, the `qwprogs.dat` in
-  `qw-qc` is used as it is.
+- git, which fetches fteqcc's source when there is no fteqcc: one on the PATH, or named by the
+  `FTEQCC` environment variable when configuring, compiles the server's game (`qw-qc`);
+  without one, configuring fetches fteqw's QuakeC compiler and builds it with the host's
+  compiler (seconds), under the build directory's `deps` (`SW_DEPS_DIR`), where later
+  configures find it.
 
 Build from a Visual Studio developer prompt (x64):
 
@@ -70,7 +72,7 @@ You need a Mac with Apple silicon on macOS 26 or later (Metal 4), and:
   `xcodebuild -downloadComponent MetalToolchain`. The Command Line Tools alone don't have it;
   the build finds Xcode's at `/Applications/Xcode.app` (`SW_XCODE_DEVELOPER_DIR` if elsewhere).
 - CMake 3.28 or later and Ninja (Homebrew's, for example).
-- Optionally fteqcc, as on Windows.
+- fteqcc or git, as on Windows.
 
 ```
 cmake --preset macos-m3
@@ -99,7 +101,7 @@ for the window) or an X11 desktop, a GPU with Vulkan 1.3, and:
   libXss. On Arch:
   `pacman -S cmake ninja clang lld vulkan-headers vulkan-icd-loader glslang wayland
   wayland-protocols libxkbcommon libpipewire libx11 libxi libxss`.
-- Optionally fteqcc, as on Windows.
+- fteqcc or git, as on Windows.
 
 ```
 cmake --preset linux-v4
@@ -123,7 +125,9 @@ Both backends are built by default. Use `-DSW_WAYLAND=OFF` for X11 only or
 ### Web
 
 The client in a browser, built with Emscripten (6.0 or later) on Windows, macOS or Linux, with
-CMake 3.28 or later and Ninja. Install and activate emsdk once (`emsdk install latest`,
+CMake 3.28 or later and Ninja, and fteqcc or git as on the systems (a fteqcc built here takes
+the host's C compiler: Visual Studio's on Windows, the system's elsewhere). Install and activate
+emsdk once (`emsdk install latest`,
 `emsdk activate latest`), and in each shell take its environment (`emsdk_env.ps1` on Windows,
 `source emsdk_env.sh` elsewhere):
 
@@ -358,8 +362,8 @@ The native programs do WebRTC with libdatachannel 0.24 or later: the one CMake f
 package, vcpkg's, Homebrew's), and without one WebRTC is left out. `-DSW_WEBRTC=ON` asks for
 it: where there is none, configuring fetches libdatachannel and mbedTLS (with git), builds them
 with the programs' compilers and configurations (a minute or so) and installs them under the
-build directory's `deps`, where later configures find them; `SW_DEPS_DIR` puts them elsewhere,
-to share between build directories. `-DSW_WEBRTC=OFF` leaves WebRTC out. CI asks for it, and
+build directory's `deps`, where later configures find them, as fteqcc is; `SW_DEPS_DIR` puts
+them elsewhere, to share between build directories. `-DSW_WEBRTC=OFF` leaves WebRTC out. CI asks for it, and
 caches what it builds. The page does it with the browser's own, which checks the broker's
 certificate itself; an https page reaches brokers only by `rtcs://`.
 

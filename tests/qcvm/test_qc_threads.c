@@ -118,7 +118,7 @@ static void TestResumedThreadsDoNotLeakReturnValues (void)
 	QA_Free (a);
 }
 
-// the compiled threads.qc, named on the command line ("" without fteqcc)
+// the compiled threads.qc, named on the command line
 static const char	*threads_dat = "";
 
 static qcvm_t *FixtureVM (const qc_builtins_t *b, const qc_config_t *config)
@@ -202,12 +202,7 @@ int main (int argc, char **argv)
 	if (argc > 1)
 		threads_dat = argv[1];
 	TestResumedThreadsDoNotLeakReturnValues ();
-	if (*threads_dat)
-	{
-		TestSleepForkAndNestedSleeps ();
-		TestThreadMemoryIsLimited ();
-	}
-	else
-		printf ("threads: skipping threads.qc (no fteqcc to compile it)\n");
+	TestSleepForkAndNestedSleeps ();
+	TestThreadMemoryIsLimited ();
 	return QT_Finish ("threads", "threads sleep, fork and wake by time");
 }
