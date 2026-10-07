@@ -55,6 +55,8 @@ bool	Draw_UploadImage (const char *name, int width, int height, const byte *rgba
 const drawimage_t	*Draw_FindImage (const char *name);
 void	Draw_ImageSize (const drawimage_t *img, int *width, int *height);
 void	Draw_ClippedImage (int x, int y, const drawimage_t *img);
+// a rectangle of a color (0-255 a channel) over what is there, alpha its cover
+void	Draw_BlendFill (int x, int y, int w, int h, int r, int g, int b, int alpha);
 // a pic as straight RGBA (Mem_Alloc'd, alpha 0 where transparent), NULL if
 // none: a loose .lmp, gfx.wad's, gfx/conchars, gfx/palette.lmp as 16x16
 byte	*Draw_ReadImage (const char *path, int *width, int *height);

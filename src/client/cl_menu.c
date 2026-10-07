@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "cl_local.h"
 #include "cl_qc.h"
+#include "markup.h"
 
 // menu-qc's menu.dat as the program was built with it (menu_data.c, which
 // cmake/qcprogs.cmake makes)
@@ -41,7 +42,6 @@ static struct
 	// the entry points (0 for those the progs lacks)
 	qc_func_t		init, shutdown, draw, keydown, keyup, toggle, consolecommand;
 	bool			drawfloats;		// DP's m_draw(float width, float height), not FTE's vector
-	bool			warnedscale;	// told QuakeC's 2D is drawn 1:1
 } menu;
 
 static void M_Load (void);
@@ -242,22 +242,26 @@ static int M_Coord (float f)
 	return (int)floorf (f);
 }
 
-// the size, tint and alpha QuakeC draws with, which are 1:1, white and opaque
-static void M_DrawnAs (qcvm_t *vm, int sizearg, int w, int h)
+// the text color of QuakeC's rgb and alpha (args rgb and rgb + 1): a tint of
+// four bits a channel, half transparent below an alpha of 1; false where it
+// draws nothing. The size is 1:1, 8 by 8, whatever QuakeC asks.
+static bool M_TextColor (qcvm_t *vm, int rgbarg, unsigned *color)
 {
-	float	size[3], rgb[3];
+	float	rgb[3] = {1, 1, 1}, alpha = 1;
+	int		c[3], i;
 
-	if (menu.warnedscale || !developer.value)
-		return;
-	QC_ArgVector (vm, sizearg, size);
-	QC_ArgVector (vm, sizearg + 1, rgb);
-	if ((QC_Argc (vm) > sizearg && ((int)size[0] != w || (int)size[1] != h))
-		|| (QC_Argc (vm) > sizearg + 1 && (rgb[0] != 1 || rgb[1] != 1 || rgb[2] != 1))
-		|| (QC_Argc (vm) > sizearg + 2 && QC_ArgFloat (vm, sizearg + 2) != 1))
-	{
-		Con_Printf ("Menu: the 2D is drawn 1:1, white and opaque (%s)\n", QC_CallerName (vm));
-		menu.warnedscale = true;
-	}
+	if (QC_Argc (vm) > rgbarg)
+		QC_ArgVector (vm, rgbarg, rgb);
+	if (QC_Argc (vm) > rgbarg + 1)
+		alpha = QC_ArgFloat (vm, rgbarg + 1);
+	if (!(alpha > 0))
+		return false;
+	for (i = 0 ; i < 3 ; i++)
+		c[i] = !(rgb[i] > 0) ? 0 : rgb[i] >= 1 ? 15 : (int)(rgb[i] * 15 + 0.5f);
+	*color = c[0] == 15 && c[1] == 15 && c[2] == 15 ? 0 : TEXT_RGB (c[0], c[1], c[2]);
+	if (alpha < 1)
+		*color |= TEXT_HALF;
+	return true;
 }
 
 // string precache_pic(string name, optional float flags): the name, or null if there is none
@@ -284,20 +288,12 @@ static bool M_DrawPic (qcvm_t *vm)
 	const drawimage_t	*img;
 	qpic_t				*pic = NULL;
 	float				pos[3];
-	int					w, h;
 
 	QC_ArgVector (vm, 0, pos);
 	if ((img = Draw_FindImage (picname)))
-	{
-		Draw_ImageSize (img, &w, &h);
-		M_DrawnAs (vm, 2, w, h);
 		Draw_ClippedImage (M_Coord (pos[0]), M_Coord (pos[1]), img);
-	}
 	else if ((pic = Draw_TryCachePic (picname)))
-	{
-		M_DrawnAs (vm, 2, pic->width, pic->height);
 		Draw_ClippedPic (M_Coord (pos[0]), M_Coord (pos[1]), pic);
-	}
 	QC_ReturnFloat (vm, img || pic ? 1.0f : 0.0f);
 	return true;
 }
@@ -305,11 +301,12 @@ static bool M_DrawPic (qcvm_t *vm)
 // float drawcharacter(vector pos, float char, vector scale, vector rgb, float alpha, optional float flag)
 static bool M_DrawCharacter (qcvm_t *vm)
 {
-	float	pos[3];
+	float		pos[3];
+	unsigned	color;
 
 	QC_ArgVector (vm, 0, pos);
-	M_DrawnAs (vm, 2, 8, 8);
-	Draw_Character (M_Coord (pos[0]), M_Coord (pos[1]), QC_DoubleToInt (QC_ArgFloat (vm, 1)) & 255);
+	if (M_TextColor (vm, 3, &color))
+		Draw_ColoredCharacter (M_Coord (pos[0]), M_Coord (pos[1]), QC_DoubleToInt (QC_ArgFloat (vm, 1)) & 255, color);
 	QC_ReturnFloat (vm, 1);
 	return true;
 }
@@ -319,14 +316,61 @@ static bool M_DrawRawString (qcvm_t *vm)
 {
 	const char	*s = QC_ArgString (vm, 1);
 	float		pos[3];
+	unsigned	color;
 	int			x, y;
 
 	QC_ArgVector (vm, 0, pos);
-	M_DrawnAs (vm, 2, 8, 8);
 	x = M_Coord (pos[0]);
 	y = M_Coord (pos[1]);
-	for ( ; *s && x < (int)vid.conwidth ; s++, x += 8)
-		Draw_Character (x, y, (unsigned char)*s);
+	if (M_TextColor (vm, 3, &color))
+		for ( ; *s && x < (int)vid.conwidth ; s++, x += 8)
+			Draw_ColoredCharacter (x, y, (unsigned char)*s, color);
+	QC_ReturnFloat (vm, 1);
+	return true;
+}
+
+// float drawstring(vector pos, string text, vector scale, vector rgb, float alpha, optional float flag):
+// the colors written in it (ezQuake's &cRGB, FTE's ^), the rgb where none are
+static bool M_DrawString (qcvm_t *vm)
+{
+	const char	*s = QC_ArgString (vm, 1);
+	markup_t	m;
+	float		pos[3];
+	unsigned	color;
+	int			x, y, c;
+
+	QC_ArgVector (vm, 0, pos);
+	x = M_Coord (pos[0]);
+	y = M_Coord (pos[1]);
+	if (M_TextColor (vm, 3, &color))
+		for (Markup_Begin (&m) ; (c = Markup_Next (&s, &m)) >= 0 && x < (int)vid.conwidth ; x += 8)
+			Draw_ColoredCharacter (x, y, c, m.color ? m.color | (color & TEXT_HALF) : color);
+	QC_ReturnFloat (vm, 1);
+	return true;
+}
+
+// float stringwidth(string text, float usecolours, optional vector fontsize):
+// 8 a character, the colors' codes none where usecolours
+static bool M_StringWidth (qcvm_t *vm)
+{
+	const char	*s = QC_ArgString (vm, 0);
+
+	QC_ReturnFloat (vm, 8.0f * (float)(QC_ArgFloat (vm, 1) != 0 ? Markup_Length (s) : (int)strlen (s)));
+	return true;
+}
+
+// float drawfill(vector pos, vector size, vector rgb, float alpha, optional float flag):
+// over what is there by the alpha, the flag's additive one too
+static bool M_DrawFill (qcvm_t *vm)
+{
+	float	pos[3], size[3], rgb[3];
+
+	QC_ArgVector (vm, 0, pos);
+	QC_ArgVector (vm, 1, size);
+	QC_ArgVector (vm, 2, rgb);
+	Draw_BlendFill (M_Coord (pos[0]), M_Coord (pos[1]), M_Coord (size[0]), M_Coord (size[1]),
+		(int)(rgb[0] * 255 + 0.5f), (int)(rgb[1] * 255 + 0.5f), (int)(rgb[2] * 255 + 0.5f),
+		(int)(QC_ArgFloat (vm, 3) * 255 + 0.5f));
 	QC_ReturnFloat (vm, 1);
 	return true;
 }
@@ -517,6 +561,9 @@ static const struct
 	{"drawpic", M_DrawPic},
 	{"drawcharacter", M_DrawCharacter},
 	{"drawrawstring", M_DrawRawString},
+	{"drawstring", M_DrawString},
+	{"stringwidth", M_StringWidth},
+	{"drawfill", M_DrawFill},
 	{"drawgetimagesize", M_DrawGetImageSize},
 	{"r_uploadimage", M_UploadImage},
 	{"r_readimage", M_ReadImage},

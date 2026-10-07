@@ -47,6 +47,9 @@ string(string name, optional float flags) precache_pic = #452;
 float(vector pos, float char, vector scale, vector rgb, float alpha, optional float flag) drawcharacter = #454;
 float(vector pos, string text, vector scale, vector rgb, float alpha, optional float flag) drawrawstring = #455;
 float(vector pos, string pic, vector size, vector rgb, float alpha, optional float flag) drawpic = #456;
+float(vector pos, vector size, vector rgb, float alpha, optional float flag) drawfill = #457;
+float(vector pos, string text, vector scale, vector rgb, float alpha, optional float flag) drawstring = #467;
+float(string text, float usecolours, optional vector fontsize) stringwidth = #468;
 vector(string pic) drawgetimagesize = #460;
 void(string name, int width, int height, void *pixels, optional int datasize, optional int format) r_uploadimage =
 	#0:r_uploadimage;

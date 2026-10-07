@@ -461,6 +461,40 @@ static hudpixel_t Draw_Over (hudpixel_t s, hudpixel_t d)
 
 /*
 ================
+Draw_BlendNow
+
+A w x h con unit rectangle of a premultiplied color over what is there; on
+the screen. What is under it keeps (255 - alpha) / 255 of each channel, a
+table's for the rectangle (the browser's are wide, and change each frame).
+================
+*/
+static void Draw_BlendNow (int x, int y, int w, int h, hudpixel_t p)
+{
+	int			k = (int)vid.scale;
+	unsigned	keep = 255 - HUD_A (p), v;
+	byte		kept[256];
+	hudpixel_t	*dest;
+	int			u, row;
+
+	if (HUD_A (p) == 255)
+	{
+		Draw_Block (x, y, w, h, p);
+		return;
+	}
+	for (v=0 ; v<256 ; v++)
+		kept[v] = (byte)((v * keep + 127) / 255);
+	// premultiplied: a channel is at most alpha, and what is kept at most the rest
+	for (row=y*k ; row<(y+h)*k ; row++)
+	{
+		dest = vid.hud + row*vid.rowpixels + x*k;
+		for (u=0 ; u<w*k ; u++)
+			dest[u] = p + (hudpixel_t)(kept[dest[u] & 255] | kept[(dest[u] >> 8) & 255] << 8
+				| kept[(dest[u] >> 16) & 255] << 16 | (hudpixel_t)kept[dest[u] >> 24] << 24);
+	}
+}
+
+/*
+================
 Draw_RGBANow
 
 A premultiplied RGBA image at con x,y: opaque texels copied, clear ones
@@ -732,7 +766,8 @@ typedef enum
 	DC_IMAGE,			// image: x, y, srcx, srcy, width, height
 	DC_CONBACK,			// lines, downloading
 	DC_TILE,			// x, y, width, height
-	DC_FILL				// x, y, width, height, palette index
+	DC_FILL,			// x, y, width, height, palette index
+	DC_BLEND			// x, y, width, height, premultiplied RGBA (on screen)
 } drawop_t;
 
 typedef struct
@@ -832,6 +867,9 @@ void Draw_Flush (void)
 			break;
 		case DC_FILL:
 			Draw_Block (c->arg[0], c->arg[1], c->arg[2], c->arg[3], draw_pal[c->arg[4] & 255]);
+			break;
+		case DC_BLEND:
+			Draw_BlendNow (c->arg[0], c->arg[1], c->arg[2], c->arg[3], (hudpixel_t)c->arg[4]);
 			break;
 		}
 	}
@@ -1132,6 +1170,47 @@ void Draw_Fill (int x, int y, int w, int h, int color)
 	c->arg[2] = w;
 	c->arg[3] = h;
 	c->arg[4] = color & 255;
+}
+
+/*
+=============
+Draw_BlendFill
+
+QuakeC's fills (the menu's): clipped to the screen as recorded
+=============
+*/
+void Draw_BlendFill (int x, int y, int w, int h, int r, int g, int b, int alpha)
+{
+	drawcmd_t	*c;
+
+	if (x < 0)
+	{
+		w += x;
+		x = 0;
+	}
+	if (y < 0)
+	{
+		h += y;
+		y = 0;
+	}
+	if (x + w > (int)vid.conwidth)
+		w = (int)vid.conwidth - x;
+	if (y + h > (int)vid.conheight)
+		h = (int)vid.conheight - y;
+	alpha = alpha < 0 ? 0 : alpha > 255 ? 255 : alpha;
+	if (w <= 0 || h <= 0 || !alpha)
+		return;
+	r = r < 0 ? 0 : r > 255 ? 255 : r;
+	g = g < 0 ? 0 : g > 255 ? 255 : g;
+	b = b < 0 ? 0 : b > 255 ? 255 : b;
+
+	c = Draw_Record (DC_BLEND, NULL);
+	c->arg[0] = x;
+	c->arg[1] = y;
+	c->arg[2] = w;
+	c->arg[3] = h;
+	c->arg[4] = (int)HUD_RGBA ((unsigned)(r * alpha + 127) / 255, (unsigned)(g * alpha + 127) / 255,
+		(unsigned)(b * alpha + 127) / 255, (unsigned)alpha);
 }
 //=============================================================================
 

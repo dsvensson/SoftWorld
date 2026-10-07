@@ -786,14 +786,15 @@ static void TestQWProgs (void)
 
 // the client's own menu: menu-qc's menu.dat, as the build compiles it, with
 // the entry points the menu's host calls, and every builtin it calls one that
-// menus have from FTE (by number or by name) or SoftWorld's isfullscreen
+// menus have from FTE (by number or by name) or one of SoftWorld's own
 static void TestMenuProgs (void)
 {
 	static const char	*entries[] = {"m_init", "m_shutdown", "m_draw", "m_keydown", "m_toggle", "m_consolecommand"};
+	static const char	*softworld[] = {"isfullscreen"};
 	uint8_t				*data;
 	size_t				size;
 	qc_progs_t			*p;
-	uint32_t			count, i, j, index, called[64], n, number;
+	uint32_t			count, i, j, index, called[256], n, number;
 	qc_funcinfo_t		fn;
 	const char			*name;
 	bool				numbered, known;
@@ -810,12 +811,13 @@ static void TestMenuProgs (void)
 	for (i = 0 ; i < sizeof(entries) / sizeof(entries[0]) ; i++)
 		QT_CHECK (QC_ProgsFunctionIndex (p, entries[i], &index) && QC_ProgsFunction (p, index, &fn)
 			&& fn.kind == QC_FUNC_QUAKEC);
-	n = QC_ProgsCalledBuiltins (p, called, 64);
-	QT_CHECK (n > 0 && n <= 64);
-	for (i = 0 ; i < n && i < 64 ; i++)
+	n = QC_ProgsCalledBuiltins (p, called, 256);
+	QT_CHECK (n > 0 && n <= 256);
+	for (i = 0 ; i < n && i < 256 ; i++)
 	{
 		QC_ProgsFunction (p, called[i], &fn);
-		known = !strcmp (fn.name, "isfullscreen");
+		for (j = 0, known = false ; j < sizeof(softworld) / sizeof(softworld[0]) ; j++)
+			known |= !strcmp (fn.name, softworld[j]);
 		for (j = 0 ; j < QC_NumKnownBuiltins (QC_NUMBERING_MENU) && !known ; j++)
 			if (QC_KnownBuiltin (QC_NUMBERING_MENU, j, &name, &number, &numbered) && !strcmp (name, fn.name)
 				&& (!numbered || number == fn.number))
