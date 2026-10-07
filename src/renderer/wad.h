@@ -69,5 +69,6 @@ typedef struct
 
 void	W_LoadWadFile (char *filename);
 void	*W_GetLumpName (char *name);
+qpic_t	*W_TryGetPic (const char *name);		// a picture lump, or NULL
 
 void SwapPic (qpic_t *pic);

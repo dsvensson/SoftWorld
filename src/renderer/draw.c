@@ -50,11 +50,15 @@ typedef struct cachepic_s
 {
 	char		name[MAX_QPATH];
 	qpic_t		*pic;			// loaded on first use
+	bool		wad;			// the pic is gfx.wad's: not freed
+	bool		missing;		// QuakeC asked, and there is none (until the gamedir changes)
 } cachepic_t;
 
 #define	MAX_CACHED_PICS		128
+#define	MAX_QUAKEC_PICS		64		// of them those QuakeC asked for first: the engine's have room
 static cachepic_t	menu_cachepics[MAX_CACHED_PICS];
 static int			menu_numcachepics;
+static int			draw_numquakecpics;
 
 
 qpic_t	*Draw_PicFromWad (char *lumpname)
@@ -106,24 +110,92 @@ qpic_t	*Draw_CachePic (char *path)
 	return dat;
 }
 
+// the gfx.wad picture a path names: gfx/<lump>, with or without .lmp
+static qpic_t *Draw_WadPic (const char *path)
+{
+	char	name[MAX_QPATH];
+	size_t	len;
 
+	if (Q_strncasecmp (path, "gfx/", 4))
+		return NULL;
+	Q_strncpyz (name, path + 4, sizeof(name));
+	len = strlen (name);
+	if (len > 4 && !Q_strcasecmp (name + len - 4, ".lmp"))
+		name[len - 4] = 0;
+	return W_TryGetPic (name);
+}
+
+/*
+================
+Draw_TryCachePic
+
+Draw_CachePic for QuakeC's names: a loose pic, else gfx.wad's, checked, and
+NULL rather than an error when there is none or no room
+================
+*/
+qpic_t *Draw_TryCachePic (const char *path)
+{
+	cachepic_t	*pic;
+	int			i, len;
+	qpic_t		*dat;
+
+	for (pic=menu_cachepics, i=0 ; i<menu_numcachepics ; pic++, i++)
+		if (!strcmp (path, pic->name))
+			break;
+	if (i == menu_numcachepics)
+	{
+		if (menu_numcachepics == MAX_CACHED_PICS || draw_numquakecpics == MAX_QUAKEC_PICS
+			|| strlen (path) >= sizeof(pic->name))
+			return NULL;
+		menu_numcachepics++;
+		draw_numquakecpics++;
+		Q_strncpyz (pic->name, path, sizeof(pic->name));
+	}
+	if (pic->pic || pic->missing)
+		return pic->pic;
+
+	dat = (qpic_t *)FS_LoadFile ((char *)path, &len);
+	if (dat)
+	{
+		SwapPic (dat);
+		if (len < 8 || dat->width <= 0 || dat->height <= 0 || dat->width > 4096 || dat->height > 4096
+			|| (int64_t)dat->width * dat->height > len - 8)
+		{
+			Con_DPrintf ("%s: not a pic\n", path);
+			Mem_Free (dat);
+			dat = NULL;
+		}
+	}
+	else if ((dat = Draw_WadPic (path)))
+		pic->wad = true;
+	pic->pic = dat;
+	pic->missing = !dat;
+	return dat;
+}
 
 /*
 ===============
 Draw_FlushCache
 
-Drops the cached pics so they are reloaded from the new game directory.
+Drops the cached pics so they are reloaded from the new game directory, and
+QuakeC's images.
 ===============
 */
+static void Draw_FreeImages (void);
+
 static void Draw_FlushCache (void)
 {
 	int		i;
 
 	for (i = 0 ; i < menu_numcachepics ; i++)
 	{
-		Mem_Free (menu_cachepics[i].pic);
+		if (!menu_cachepics[i].wad)
+			Mem_Free (menu_cachepics[i].pic);
 		menu_cachepics[i].pic = NULL;
+		menu_cachepics[i].wad = false;
+		menu_cachepics[i].missing = false;
 	}
+	Draw_FreeImages ();
 	Draw_Invalidate ();		// a new pic may have an old one's address
 }
 
@@ -143,6 +215,167 @@ void Draw_Init (void)
 	r_rectdesc.height = draw_backtile->height;
 	r_rectdesc.ptexbytes = draw_backtile->data;
 	r_rectdesc.rowbytes = draw_backtile->width;
+}
+
+/*
+===============================================================================
+
+QUAKEC'S IMAGES
+
+RGBA images QuakeC makes (FTE's r_uploadimage), by name, and pics read back
+as RGBA (r_readimage)
+
+===============================================================================
+*/
+
+struct drawimage_s
+{
+	char		name[MAX_QPATH];
+	int			width, height;
+	hudpixel_t	*data;			// premultiplied
+};
+
+#define	MAX_DRAW_IMAGES		32
+#define	MAX_IMAGE_SIZE		4096
+#define	MAX_IMAGE_BYTES		(64 << 20)		// of them all
+
+static drawimage_t	draw_images[MAX_DRAW_IMAGES];
+static int			draw_numimages;
+static size_t		draw_imagebytes;
+
+const drawimage_t *Draw_FindImage (const char *name)
+{
+	int		i;
+
+	for (i=0 ; i<draw_numimages ; i++)
+		if (!strcmp (draw_images[i].name, name))
+			return &draw_images[i];
+	return NULL;
+}
+
+/*
+================
+Draw_UploadImage
+
+RGBA bytes, alpha not premultiplied, as the image name (a new one, or a new
+size and pixels for one there is); false if it can't be
+================
+*/
+bool Draw_UploadImage (const char *name, int width, int height, const byte *rgba)
+{
+	drawimage_t	*img = (drawimage_t *)Draw_FindImage (name);
+	size_t		bytes, had = img ? (size_t)img->width * img->height * sizeof(hudpixel_t) : 0;
+	unsigned	a;
+	int			i;
+
+	if (width <= 0 || height <= 0 || width > MAX_IMAGE_SIZE || height > MAX_IMAGE_SIZE
+		|| strlen (name) >= sizeof(img->name))
+		return false;
+	bytes = (size_t)width * height * sizeof(hudpixel_t);
+	if (draw_imagebytes - had + bytes > MAX_IMAGE_BYTES || (!img && draw_numimages == MAX_DRAW_IMAGES))
+		return false;
+	if (!img)
+	{
+		img = &draw_images[draw_numimages++];
+		Q_strncpyz (img->name, name, sizeof(img->name));
+	}
+	else
+		Mem_Free (img->data);
+	draw_imagebytes += bytes - had;
+	img->width = width;
+	img->height = height;
+	img->data = Mem_Alloc (bytes);
+	for (i=0 ; i<width*height ; i++, rgba += 4)
+	{
+		a = rgba[3];
+		img->data[i] = HUD_RGBA ((rgba[0] * a + 127) / 255, (rgba[1] * a + 127) / 255, (rgba[2] * a + 127) / 255, a);
+	}
+	Draw_Invalidate ();		// the pixels changed under the same image
+	return true;
+}
+
+void Draw_ImageSize (const drawimage_t *img, int *width, int *height)
+{
+	*width = img->width;
+	*height = img->height;
+}
+
+static void Draw_FreeImages (void)
+{
+	int		i;
+
+	for (i=0 ; i<draw_numimages ; i++)
+		Mem_Free (draw_images[i].data);
+	draw_numimages = 0;
+	draw_imagebytes = 0;
+}
+
+// 8 bit texels as RGBA through the palette, one index transparent (-1 none)
+static byte *Draw_Expand (const byte *src, int width, int height, int transparent)
+{
+	byte	*rgba = Mem_Alloc ((size_t)width * height * 4), *out = rgba;
+	int		i;
+
+	for (i=0 ; i<width*height ; i++, out += 4)
+	{
+		out[0] = d_palrgb[src[i]][0];
+		out[1] = d_palrgb[src[i]][1];
+		out[2] = d_palrgb[src[i]][2];
+		out[3] = src[i] == transparent ? 0 : 255;
+	}
+	return rgba;
+}
+
+/*
+================
+Draw_ReadImage
+
+A pic as RGBA, alpha 0 where it is transparent, through the palette the 2D
+draws with: a loose .lmp (255 transparent), gfx.wad's (gfx/conchars, 0
+transparent, as the characters are drawn), and gfx/palette.lmp as 16x16 of
+its colors. Mem_Alloc'd; NULL if there is no such pic.
+================
+*/
+byte *Draw_ReadImage (const char *path, int *width, int *height)
+{
+	byte	index[256], *rgba;
+	qpic_t	*pic;
+	int		i, len;
+
+	if (!Q_strcasecmp (path, "gfx/conchars") || !Q_strcasecmp (path, "gfx/conchars.lmp"))
+	{
+		*width = *height = 128;
+		return Draw_Expand (draw_chars, 128, 128, 0);
+	}
+	if (!Q_strcasecmp (path, "gfx/palette.lmp"))
+	{
+		for (i=0 ; i<256 ; i++)
+			index[i] = (byte)i;
+		*width = *height = 16;
+		return Draw_Expand (index, 16, 16, -1);
+	}
+	pic = (qpic_t *)FS_LoadFile ((char *)path, &len);
+	if (pic)
+	{
+		SwapPic (pic);
+		rgba = NULL;
+		if (len >= 8 && pic->width > 0 && pic->height > 0 && pic->width <= MAX_IMAGE_SIZE
+			&& pic->height <= MAX_IMAGE_SIZE && (int64_t)pic->width * pic->height <= len - 8)
+		{
+			*width = pic->width;
+			*height = pic->height;
+			rgba = Draw_Expand (pic->data, pic->width, pic->height, TRANSPARENT_COLOR);
+		}
+		Mem_Free (pic);
+		return rgba;
+	}
+	if ((pic = Draw_WadPic (path)))
+	{
+		*width = pic->width;
+		*height = pic->height;
+		return Draw_Expand (pic->data, pic->width, pic->height, TRANSPARENT_COLOR);
+	}
+	return NULL;
 }
 
 /*
@@ -210,6 +443,54 @@ static void Draw_Block (int x, int y, int w, int h, hudpixel_t p)
 		for (u=x0*k ; u<x1*k ; u++)
 			dest[u] = p;
 	}
+}
+
+// s over d, both premultiplied
+static hudpixel_t Draw_Over (hudpixel_t s, hudpixel_t d)
+{
+	unsigned	keep = 255 - HUD_A (s), c, out = 0;
+	int			shift;
+
+	for (shift=0 ; shift<32 ; shift += 8)
+	{
+		c = ((s >> shift) & 255) + (((d >> shift) & 255) * keep + 127) / 255;
+		out |= (c > 255 ? 255 : c) << shift;
+	}
+	return out;
+}
+
+/*
+================
+Draw_RGBANow
+
+A premultiplied RGBA image at con x,y: opaque texels copied, clear ones
+skipped, the others over what is there
+================
+*/
+static void Draw_RGBANow (int x, int y, const hudpixel_t *src, int srcrow, int w, int h)
+{
+	int			k = (int)vid.scale;
+	int			u, v, i, j;
+	unsigned	a;
+	hudpixel_t	*dest, *block;
+
+	for (v=0 ; v<h ; v++, src += srcrow)
+		for (j=0 ; j<k ; j++)
+		{
+			dest = vid.hud + ((y+v)*k + j)*vid.rowpixels + x*k;
+			for (u=0 ; u<w ; u++)
+			{
+				if (!(a = HUD_A (src[u])))
+					continue;
+				block = dest + u*k;
+				if (a == 255)
+					for (i=0 ; i<k ; i++)
+						block[i] = src[u];
+				else
+					for (i=0 ; i<k ; i++)
+						block[i] = Draw_Over (src[u], block[i]);
+			}
+		}
 }
 
 /*
@@ -466,6 +747,8 @@ typedef enum
 	DC_CHAR,			// x, y, character, text color
 	DC_PIC,				// pic: x, y, srcx, srcy, width, height
 	DC_TRANSPIC,		// pic: x, y
+	DC_TRANSSUBPIC,		// pic: x, y, srcx, srcy, width, height
+	DC_IMAGE,			// image: x, y, srcx, srcy, width, height
 	DC_CONBACK,			// lines, downloading
 	DC_TILE,			// x, y, width, height
 	DC_FILL,			// x, y, width, height, palette index
@@ -474,7 +757,11 @@ typedef enum
 
 typedef struct
 {
-	const qpic_t	*pic;
+	union
+	{
+		const qpic_t		*pic;
+		const drawimage_t	*image;
+	};
 	int				op;
 	int				arg[7];
 } drawcmd_t;
@@ -548,6 +835,14 @@ void Draw_Flush (void)
 		case DC_TRANSPIC:
 			Draw_Image (c->arg[0], c->arg[1], c->pic->data, c->pic->width, c->pic->width, c->pic->height, draw_pal,
 				TRANSPARENT_COLOR);
+			break;
+		case DC_TRANSSUBPIC:
+			Draw_Image (c->arg[0], c->arg[1], c->pic->data + c->arg[3] * c->pic->width + c->arg[2], c->pic->width,
+				c->arg[4], c->arg[5], draw_pal, TRANSPARENT_COLOR);
+			break;
+		case DC_IMAGE:
+			Draw_RGBANow (c->arg[0], c->arg[1], c->image->data + c->arg[3] * c->image->width + c->arg[2],
+				c->image->width, c->arg[4], c->arg[5]);
 			break;
 		case DC_CONBACK:
 			Draw_ConsoleBackgroundNow (c->arg[0], c->arg[1] != 0);
@@ -726,6 +1021,77 @@ void Draw_TransPic (int x, int y, qpic_t *pic)
 	c = Draw_Record (DC_TRANSPIC, pic);
 	c->arg[0] = x;
 	c->arg[1] = y;
+}
+
+// a width x height source rectangle drawn at x,y, clipped to the screen:
+// false if none of it shows
+static bool Draw_Clip (int *x, int *y, int *srcx, int *srcy, int *width, int *height)
+{
+	if (*x < 0)
+	{
+		*srcx -= *x;
+		*width += *x;
+		*x = 0;
+	}
+	if (*y < 0)
+	{
+		*srcy -= *y;
+		*height += *y;
+		*y = 0;
+	}
+	if (*width > (int)vid.conwidth - *x)
+		*width = (int)vid.conwidth - *x;
+	if (*height > (int)vid.conheight - *y)
+		*height = (int)vid.conheight - *y;
+	return *width > 0 && *height > 0;
+}
+
+/*
+=============
+Draw_ClippedPic
+
+QuakeC's pics, anywhere: 255 transparent (as FTE draws them), and clipped
+to the screen
+=============
+*/
+void Draw_ClippedPic (int x, int y, const qpic_t *pic)
+{
+	drawcmd_t	*c;
+	int			srcx = 0, srcy = 0, width = pic->width, height = pic->height;
+
+	if (!Draw_Clip (&x, &y, &srcx, &srcy, &width, &height))
+		return;
+	c = Draw_Record (DC_TRANSSUBPIC, pic);
+	c->arg[0] = x;
+	c->arg[1] = y;
+	c->arg[2] = srcx;
+	c->arg[3] = srcy;
+	c->arg[4] = width;
+	c->arg[5] = height;
+}
+
+/*
+=============
+Draw_ClippedImage
+
+QuakeC's images (Draw_UploadImage), anywhere, clipped to the screen
+=============
+*/
+void Draw_ClippedImage (int x, int y, const drawimage_t *img)
+{
+	drawcmd_t	*c;
+	int			srcx = 0, srcy = 0, width = img->width, height = img->height;
+
+	if (!Draw_Clip (&x, &y, &srcx, &srcy, &width, &height))
+		return;
+	c = Draw_Record (DC_IMAGE, NULL);
+	c->image = img;
+	c->arg[0] = x;
+	c->arg[1] = y;
+	c->arg[2] = srcx;
+	c->arg[3] = srcy;
+	c->arg[4] = width;
+	c->arg[5] = height;
 }
 
 /*

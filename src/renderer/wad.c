@@ -124,10 +124,32 @@ static lumpinfo_t	*W_GetLumpinfo (char *lumpname)
 void *W_GetLumpName (char *lumpname)
 {
 	lumpinfo_t	*lump;
-	
+
 	lump = W_GetLumpinfo (lumpname);
-	
+
 	return (void *)(wad_base + lump->filepos);
+}
+
+/*
+=============
+W_TryGetPic
+
+A picture lump by name, NULL if there is none: for names QuakeC gives
+=============
+*/
+qpic_t *W_TryGetPic (const char *lumpname)
+{
+	int		i;
+	char	in[16], clean[16];
+
+	if (strlen (lumpname) >= sizeof(in))
+		return NULL;
+	Q_strncpyz (in, lumpname, sizeof(in));
+	W_CleanupName (in, clean);
+	for (i=0 ; i<wad_numlumps ; i++)
+		if (!strcmp (clean, wad_lumps[i].name))
+			return wad_lumps[i].type == TYP_QPIC ? (qpic_t *)(wad_base + wad_lumps[i].filepos) : NULL;
+	return NULL;
 }
 
 /*

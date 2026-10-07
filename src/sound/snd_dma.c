@@ -275,8 +275,12 @@ static sfx_t *S_FindName (char *sndname)
 	if (!sndname)
 		Sys_Error ("S_FindName: NULL\n");
 
+	// what QuakeC names too (CSQC's, the menu's): refused, not fatal
 	if (Q_strlen(sndname) >= MAX_QPATH)
-		Sys_Error ("Sound name too long: %s", sndname);
+	{
+		Con_Printf ("Sound name too long: %s\n", sndname);
+		return NULL;
+	}
 
 // see if already loaded
 	for (i=0 ; i < snd.num_sfx ; i++)
@@ -286,7 +290,10 @@ static sfx_t *S_FindName (char *sndname)
 		}
 
 	if (snd.num_sfx == MAX_SFX)
-		Sys_Error ("S_FindName: out of sfx_t");
+	{
+		Con_Printf ("S_FindName: out of sfx_t, %s left out\n", sndname);
+		return NULL;
+	}
 
 	sfx = &snd.known_sfx[i];
 	Q_strncpyz (sfx->name, sndname, sizeof(sfx->name));
@@ -310,7 +317,9 @@ sfx_t *S_PrecacheSound (char *sndname)
 		return NULL;
 
 	sfx = S_FindName (sndname);
-	
+	if (!sfx)
+		return NULL;
+
 // cache it in
 	if (precache.value)
 		S_LoadSound (sfx);
