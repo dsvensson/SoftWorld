@@ -249,7 +249,7 @@ Worth knowing:
 | `r_profile 1`, `r_profile_show` | time a frame takes, by stage |
 | `cl_maxfps` | frame rate cap; 0 is none but the display's |
 | `sv_websocket` | the server takes browsers' clients over WebSocket, on TCP at its port (1, the default) |
-| `sv_public`, `sv_webrtc_room` | 1 (the default): the server takes clients over WebRTC at the broker, on its list, in the room `sv_webrtc_room` names or else under an invitation code made once a run, which the console tells, and streams its game to QTV's viewers; 0 not |
+| `sv_public`, `sv_webrtc_room` | 1: the server takes clients over WebRTC at the broker, on its list, in the room `sv_webrtc_room` names or else under an invitation code made once a run, which the console tells, and streams its game to QTV's viewers; 0 (the default) not |
 | `qtv_delay` | seconds a server's QTV stream runs behind the game, so that a player can't watch their opponents through it; 10 by default, 0 none |
 | `net_webrtc_broker`, `connect 1234-5678` | the WebRTC broker public servers host at and invitation codes are rooms at, FTE's master `rtcs://master.frag-net.com` by default; join a server by its invitation code |
 | `net_prefer_ipv6` | 1: a name with both IPv4 and IPv6 addresses is reached at its IPv6 one; 0 (the default) at its IPv4 one |
@@ -277,7 +277,7 @@ prefixes as IPv4's: `addip 2001:db8::1`, `addip 2001:db8::/32`, `addip 10.0.0.0/
 
 ### QTV
 
-A public server (`sv_public 1`, the default) streams its game to QTV's viewers at its port, on
+A public server (`sv_public 1`; 0 by default) streams its game to QTV's viewers at its port, on
 TCP, as mvdsv's `qtv_streamport` does: `qtvplay host:27500` in SoftWorld, ezQuake or FTE, or a
 relay (qtv, qtv-go, fteqtv) with the server as its source. The stream runs `qtv_delay` seconds
 behind the game, 10 by default, so that a player can't watch their opponents through it, and a
@@ -371,12 +371,12 @@ packets then go between them over a data channel, unordered and never sent again
 unless the address names one. The room is the name the server took at the broker, or
 `udp/ip:port` for a server the broker knows by its address (FTE's master).
 
-A SoftWorld server is public unless `sv_public 0`: as a map opens it takes a room at the broker
-`net_webrtc_broker` names, FTE's master `rtcs://master.frag-net.com` unless set, and tells the
-broker what it is every 30 s, for its list. The room is `sv_webrtc_room`, or else an invitation
-code made once a run, eight digits the console tells as `Invitation code: 1234-5678` (others,
-should another server have them). `connect 1234-5678` joins it, in the native programs and the
-page; FTE's clients connect by the room's address, `rtcs://master.frag-net.com/12345678`.
+A SoftWorld server is public with `sv_public 1` (0 by default): as a map opens it takes a room at
+the broker `net_webrtc_broker` names, FTE's master `rtcs://master.frag-net.com` unless set, and
+tells the broker what it is every 30 s, for its list. The room is `sv_webrtc_room`, or else an
+invitation code made once a run, eight digits the console tells as `Invitation code: 1234-5678`
+(others, should another server have them). `connect 1234-5678` joins it, in the native programs and
+the page; FTE's clients connect by the room's address, `rtcs://master.frag-net.com/12345678`.
 
 The server knows its WebRTC clients by their address, IPv4's or IPv6's, as its UDP clients,
 and talks to them from ports of their own, which a firewall must let through. A client already in stays when

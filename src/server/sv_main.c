@@ -94,7 +94,7 @@ cvar_t	sv_websocket = {.name = "sv_websocket", .string = "1",
 	.values = (const cvar_value_t[]){{"0", "UDP only"}, {"1", "UDP, and WebSocket on TCP"}, {0}}};
 // clients over WebRTC, through a broker's room, as FTE's servers take them
 // (net_rtc.c); and the game to QTV's viewers (sv_mvd.c)
-cvar_t	sv_public = {.name = "sv_public", .string = "1",
+cvar_t	sv_public = {.name = "sv_public", .string = "0",
 	.description = "Hosts the game at the WebRTC broker (net_webrtc_broker), on its list of servers, for clients "
 		"over WebRTC: in the room sv_webrtc_room, or else under an invitation code made once a run, which the "
 		"console tells and clients connect to (connect 1234-5678). And streams it to QTV's viewers, on TCP at "
