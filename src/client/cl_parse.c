@@ -1122,7 +1122,8 @@ static void CL_SetInfo (void)
 
 	Con_DPrintf("SETINFO %s: %s=%s\n", player->name, key, value);
 
-	Info_SetValueForKey (player->userinfo, key, value, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
+	// the server sets * keys too (mvdsv's *auth, *flag, a bot's *skill)
+	Info_SetValueForStarKey (player->userinfo, key, value, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 
 	CL_ProcessUserInfo (slot, player);
 }
@@ -1144,7 +1145,7 @@ static void CL_ServerInfo (void)
 
 	Con_DPrintf("SERVERINFO: %s=%s\n", key, value);
 
-	Info_SetValueForKey (cl.serverinfo, key, value, MAX_SERVERINFO_STRING, INFO_CHARSET_USERINFO);
+	Info_SetValueForStarKey (cl.serverinfo, key, value, MAX_SERVERINFO_STRING, INFO_CHARSET_USERINFO);
 	CL_ProcessServerInfo ();
 }
 

@@ -248,8 +248,6 @@ static void CL_SendConnectPacket (void)
 
 	cls.qport = (int)Cvar_VariableValue("qport");
 
-	Info_SetValueForStarKey (cls.userinfo, "*ip", NET_AdrToString(adr), MAX_INFO_STRING, INFO_CHARSET_USERINFO);
-
 //	Con_Printf ("Connecting to %s...\n", cls.servername);
 	snprintf (data, sizeof(data), "%c%c%c%cconnect %i %i %i \"%s\"\n",
 		255, 255, 255, 255,	PROTOCOL_VERSION, cls.qport, cls.challenge, cls.userinfo);
@@ -1251,19 +1249,52 @@ CL_Init
 */
 /*
 =================
-CL_UserinfoCvarChanged
+CL_SetUserinfo
 
-Cvars flagged as info are mirrored into the userinfo string.
+A userinfo key, here and on the server; cvars flagged as info are mirrored
+through it. The command isn't written with va: a value can be va's own
+(CL_SendChatState's), and would be written over as it was read
 =================
 */
-static void CL_UserinfoCvarChanged (char *key, char *value)
+static void CL_SetUserinfo (char *key, char *value)
 {
+	char	cmd[MAX_INFO_STRING + 32];
+
 	Info_SetValueForKey (cls.userinfo, key, value, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 	if (cls.state >= ca_connected)
 	{
+		snprintf (cmd, sizeof(cmd), "setinfo \"%s\" \"%s\"\n", key, value);
 		MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
-		SZ_Print (&cls.netchan.message, va("setinfo \"%s\" \"%s\"\n", key, value));
+		SZ_Print (&cls.netchan.message, cmd);
 	}
+}
+
+/*
+=================
+CL_SendChatState
+
+ezQuake's chat key, which mvdsv passes on to the other players for their chat
+icons: 1 at the console, a menu or a message line, 2 away (the window without
+the focus, or minimized), both at once 3; none while playing, or when not on
+a server
+=================
+*/
+static void CL_SendChatState (void)
+{
+	static int	sent;
+	int			state = 0;
+
+	if (cls.state >= ca_connected && !cls.demoplayback)
+	{
+		if (cls.key_dest != key_game)
+			state |= 1;
+		if (!VID_IsActive () || VID_IsMinimized ())
+			state |= 2;
+	}
+	if (state == sent)
+		return;
+	sent = state;
+	CL_SetUserinfo ("chat", state ? va("%i", state) : "");
 }
 
 static void CL_InitLocal (void)
@@ -1273,7 +1304,7 @@ static void CL_InitLocal (void)
 	char st[80];
 
 	cls.state = ca_disconnected;
-	Cvar_SetUserinfoHook (CL_UserinfoCvarChanged);
+	Cvar_SetUserinfoHook (CL_SetUserinfo);
 	Info_SetValueForStarKey (cls.userinfo, "*z_ext", va("%i", CL_Z_EXTENSIONS), MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 
 	r_scene.numvisedicts = &cl.numvisedicts;
@@ -1287,7 +1318,7 @@ static void CL_InitLocal (void)
 	Info_SetValueForKey (cls.userinfo, "bottomcolor", "0", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 	Info_SetValueForKey (cls.userinfo, "rate", rate.string, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 	Info_SetValueForKey (cls.userinfo, "msg", "1", MAX_INFO_STRING, INFO_CHARSET_USERINFO);
-	snprintf (st, sizeof(st), "%4.2f-%04d", VERSION, build_number());
+	snprintf (st, sizeof(st), "SoftWorld v%4.2f", VERSION);
 	Info_SetValueForStarKey (cls.userinfo, "*ver", st, MAX_INFO_STRING, INFO_CHARSET_USERINFO);
 
 	CL_InitInput ();
@@ -1682,6 +1713,7 @@ void CL_Frame (void)
 	CL_ReadPackets ();
 
 	// send intentions now
+	CL_SendChatState ();
 	// resend a connection request if necessary
 	if (cls.state == ca_disconnected)
 		CL_CheckForResend ();
