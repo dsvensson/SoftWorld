@@ -154,7 +154,8 @@ applications (`softworld.app`), whose programs run from a terminal too
 - **`softworld-server`:** the dedicated server, in a console.
 
 The two with a server carry its game inside them: a game directory without a `qwprogs.dat`
-runs the built-in one. The web build makes the two with a client as pages:
+runs the built-in one. Those with a client carry its menu (`menu.dat`) the same way. The web
+build makes the two with a client as pages:
 `softworld.html` (with its `.js` and `.wasm`), `softworld-fs.js`, `softworld-sound.js` and
 `softworld-coi.js`.
 
@@ -390,6 +391,16 @@ lightning beam show at once, and the server's echo of each sound is dropped. The
 autocvars become cvars, so its settings (`cl_predict_projectiles`, …) can be changed.
 `cl_nocsqc 1` keeps CSQC off, and `csqc_builtins` lists the builtins a csprogs calls that the
 client lacks. Traces see the world alone, not entities.
+
+The menu is QuakeC too: id's QuakeWorld menus, drawn as they always were, are `menu-qc`,
+compiled into `menu.dat` and carried in the client. It runs as FTE runs menu QuakeC (`m_init`,
+`m_draw`, `m_keydown`, `m_toggle`, `m_consolecommand`, FTE's builtin numbers and key codes),
+with the 2D builtins drawn 1:1 in the layout's pixels, its images made with `r_readimage` and
+`r_uploadimage` (the console's background with the version, and the fade, made again when the
+layout's width changes), and `isfullscreen` of SoftWorld's own. A `menu.dat` in the game
+directory runs instead; one that fails gives way to the built-in one. `menu_restart` loads it
+again, `menu_builtins` lists the builtins it calls that the client lacks, and `quit` asks
+through it (`quit force` doesn't).
 
 ## License
 

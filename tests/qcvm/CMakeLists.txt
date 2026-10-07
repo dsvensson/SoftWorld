@@ -11,12 +11,13 @@ target_include_directories(qc_testsupport PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(qc_testsupport PUBLIC QT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 # test_qc_loader loads programs in every format, with the load-time rewrites,
-# and malformed and corrupted ones; qw-qc's qwprogs.dat as the build compiles
-# it, and KTX's csprogs.dat when QCVM_CSPROGS names one.
+# and malformed and corrupted ones; qw-qc's qwprogs.dat and menu-qc's menu.dat
+# as the build compiles them, and KTX's csprogs.dat when QCVM_CSPROGS names one.
 sw_add_program(test_qc_loader test_qc_loader.c)
 target_link_libraries(test_qc_loader PRIVATE qc_testsupport)
-target_compile_definitions(test_qc_loader PRIVATE QT_QWPROGS="${CMAKE_BINARY_DIR}/qw-qc/qwprogs.dat")
-add_dependencies(test_qc_loader qwprogs_dat)
+target_compile_definitions(test_qc_loader PRIVATE QT_QWPROGS="${CMAKE_BINARY_DIR}/qw-qc/qwprogs.dat"
+	QT_MENUPROGS="${CMAKE_BINARY_DIR}/menu-qc/menu.dat")
+add_dependencies(test_qc_loader qwprogs_dat menu_dat)
 add_test(NAME qc_loader COMMAND test_qc_loader)
 
 # test_qc_memory checks the VM's memory before anything runs: its layout, where

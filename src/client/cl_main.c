@@ -189,11 +189,9 @@ CL_Quit_f
 */
 static void CL_Quit_f (void)
 {
-	if (1 /* key_dest != key_console */ /* && cls.state != ca_dedicated */)
-	{
-		M_Menu_Quit_f ();
+	// the menu asks first, as FTE's does; its yes is quit force
+	if (strcmp (Cmd_Argv (1), "force") && M_QuitPrompt ())
 		return;
-	}
 	CL_Disconnect ();
 	Sys_Quit ();
 }
@@ -1415,7 +1413,7 @@ static void CL_InitLocal (void)
 	Cmd_AddCommand ("allskins", Skin_AllSkins_f,
 		"Shows every player in one skin, or each in their own when none is given. Usage: allskins [skin]");
 
-	Cmd_AddCommand ("quit", CL_Quit_f, "Asks whether to quit the game.");
+	Cmd_AddCommand ("quit", CL_Quit_f, "Asks whether to quit the game, if the menu can ask; quit force quits at once.");
 
 	Cmd_AddCommand ("connect", CL_Connect_f,
 		"Connects to a server, on port 27500 when none is given; local is the game in this process, and an "
@@ -1842,11 +1840,25 @@ void CL_Init (void)
 
 /*
 ===============
+CL_Start
+
+What comes once the server too has its commands and cvars: the menu's
+QuakeC, whose commands take the names left
+===============
+*/
+void CL_Start (void)
+{
+	M_Start ();
+}
+
+/*
+===============
 CL_Shutdown
 ===============
 */
 void CL_Shutdown (void)
 {
+	M_Shutdown ();
 	CSQC_Shutdown ();
 	CL_WriteConfiguration ();
 	S_Shutdown ();

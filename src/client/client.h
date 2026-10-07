@@ -449,6 +449,9 @@ void CL_ClearState (void);
 
 
 char *Key_KeynumToString (int keynum);
+int Key_StringToKeynum (const char *str);	// -1 if none
+int Key_ToFTE (int keynum);		// as FTE's QuakeC numbers keys, -1 if it has none
+int Key_FromFTE (int code);		// -1 if none
 
 //
 // cl_demo.c

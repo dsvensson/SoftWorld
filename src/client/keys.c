@@ -896,7 +896,7 @@ the given string.  Single ascii characters return themselves, while
 the K_* names are matched up.
 ===================
 */
-static int Key_StringToKeynum (char *str)
+int Key_StringToKeynum (const char *str)
 {
 	keyname_t	*kn;
 	
@@ -941,6 +941,53 @@ char *Key_KeynumToString (int keynum)
 			return kn->name;
 
 	return "<UNKNOWN KEYNUM>";
+}
+
+/*
+===================
+Key_ToFTE
+
+A key number as FTE's QuakeC has it (menu QuakeC's, CSQC's), -1 if it has
+none: the keyboard's are the same but pause, the mouse's, the wheel's, the
+joystick's and the aux keys' are elsewhere
+===================
+*/
+int Key_ToFTE (int keynum)
+{
+	if (keynum >= 0 && keynum <= K_END)
+		return keynum;
+	if (keynum == K_PAUSE)
+		return 153;
+	if (keynum >= K_MOUSE1 && keynum <= K_MOUSE3)
+		return 512 + keynum - K_MOUSE1;
+	if (keynum == K_MWHEELUP || keynum == K_MWHEELDOWN)
+		return 515 + keynum - K_MWHEELUP;
+	if (keynum == K_MOUSE4 || keynum == K_MOUSE5)
+		return 517 + keynum - K_MOUSE4;
+	if (keynum >= K_JOY1 && keynum <= K_JOY4)
+		return 768 + keynum - K_JOY1;
+	if (keynum >= K_AUX1 && keynum <= K_AUX32)
+		return 784 + keynum - K_AUX1;
+	return -1;
+}
+
+int Key_FromFTE (int code)
+{
+	if (code >= 0 && code <= K_END)
+		return code;
+	if (code == 153)
+		return K_PAUSE;
+	if (code >= 512 && code <= 514)
+		return K_MOUSE1 + code - 512;
+	if (code == 515 || code == 516)
+		return K_MWHEELUP + code - 515;
+	if (code == 517 || code == 518)
+		return K_MOUSE4 + code - 517;
+	if (code >= 768 && code <= 771)
+		return K_JOY1 + code - 768;
+	if (code >= 784 && code <= 815)
+		return K_AUX1 + code - 784;
+	return -1;
 }
 
 
@@ -1259,7 +1306,7 @@ void Key_Event (int key, bool down)
 			Key_Message (key);
 			break;
 		case key_menu:
-			M_Keydown (key);
+			M_Keydown (key, 0);
 			break;
 		case key_game:
 		case key_console:
@@ -1280,6 +1327,8 @@ void Key_Event (int key, bool down)
 //
 	if (!down)
 	{
+		if (cls.key_dest == key_menu)
+			M_Keyup (key);
 		kb = keybindings[key];
 		if (kb && kb[0] == '+')
 		{
@@ -1326,20 +1375,24 @@ void Key_Event (int key, bool down)
 	if (!down)
 		return;		// other systems only care about key down events
 
+	// the menu gets the key as it is and the character it types
+	if (cls.key_dest == key_menu)
+	{
+		M_Keydown (key, shift_down ? keyshift[key] : key);
+		return;
+	}
+
 	if (shift_down)
 		key = keyshift[key];
 
 	// text for the console and message line comes from Key_CharEvent
-	if (cls.key_dest != key_menu && key >= 32 && key < 127 && !keydown[K_CTRL])
+	if (key >= 32 && key < 127 && !keydown[K_CTRL])
 		return;
 
 	switch (cls.key_dest)
 	{
 	case key_message:
 		Key_Message (key);
-		break;
-	case key_menu:
-		M_Keydown (key);
 		break;
 
 	case key_game:

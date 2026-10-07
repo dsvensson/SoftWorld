@@ -125,6 +125,7 @@ void Host_Init (quakeparms_t *parms)
 
 	CL_Init ();
 	SV_Init ();
+	CL_Start ();
 
 	Cbuf_InsertText ("exec quake.rc\n");
 	Cbuf_AddText ("echo Type connect <internet address> or map <name> to play.\n");

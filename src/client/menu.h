@@ -8,7 +8,7 @@ of the License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 
@@ -20,21 +20,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #pragma once
 
-//
-// the net drivers should just set the apropriate bits in m_activenet,
-// instead of having the menu code look through their internal tables
-//
-#define	MNET_IPX		1
-#define	MNET_TCP		2
-
-extern	int	m_activenet;
+#include "q_types.h"
 
 //
-// menus
+// the menu: menu QuakeC (cl_menu.c)
 //
-void M_Init (void);
-void M_Keydown (int key);
+void M_Init (void);			// the commands and builtins
+void M_Start (void);		// the QuakeC, once every command and cvar is registered
+void M_Shutdown (void);
 void M_Draw (void);
-void M_ToggleMenu_f (void);
-void M_DrawTextBox (int x, int y, int width, int lines);
-void M_Menu_Quit_f (void);
+void M_Keydown (int key, int character);	// the key, and the character it types (0 if none)
+void M_Keyup (int key);
+void M_ToggleMenu_f (void);	// Escape and togglemenu
+bool M_QuitPrompt (void);	// quit asks the menu: false if it can't

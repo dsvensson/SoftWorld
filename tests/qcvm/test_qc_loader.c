@@ -784,6 +784,48 @@ static void TestQWProgs (void)
 	QC_ReleaseProgs (p);
 }
 
+// the client's own menu: menu-qc's menu.dat, as the build compiles it, with
+// the entry points the menu's host calls, and every builtin it calls one that
+// menus have from FTE (by number or by name) or SoftWorld's isfullscreen
+static void TestMenuProgs (void)
+{
+	static const char	*entries[] = {"m_init", "m_shutdown", "m_draw", "m_keydown", "m_toggle", "m_consolecommand"};
+	uint8_t				*data;
+	size_t				size;
+	qc_progs_t			*p;
+	uint32_t			count, i, j, index, called[64], n, number;
+	qc_funcinfo_t		fn;
+	const char			*name;
+	bool				numbered, known;
+
+	data = QT_LoadFile (QT_MENUPROGS, &size);
+	if (!QT_CHECK (data != NULL))
+		return;
+	p = QC_LoadProgs (data, size, NULL);
+	free (data);
+	if (!QT_CHECK (p != NULL))
+		return;
+	QC_ProgsNotes (p, &count);
+	QT_EQ_U (count, 0);
+	for (i = 0 ; i < sizeof(entries) / sizeof(entries[0]) ; i++)
+		QT_CHECK (QC_ProgsFunctionIndex (p, entries[i], &index) && QC_ProgsFunction (p, index, &fn)
+			&& fn.kind == QC_FUNC_QUAKEC);
+	n = QC_ProgsCalledBuiltins (p, called, 64);
+	QT_CHECK (n > 0 && n <= 64);
+	for (i = 0 ; i < n && i < 64 ; i++)
+	{
+		QC_ProgsFunction (p, called[i], &fn);
+		known = !strcmp (fn.name, "isfullscreen");
+		for (j = 0 ; j < QC_NumKnownBuiltins (QC_NUMBERING_MENU) && !known ; j++)
+			if (QC_KnownBuiltin (QC_NUMBERING_MENU, j, &name, &number, &numbered) && !strcmp (name, fn.name)
+				&& (!numbered || number == fn.number))
+				known = true;
+		if (!QT_CHECK (known))
+			printf ("  menu.dat calls %s (#%u), which menus don't have\n", fn.name, fn.number);
+	}
+	QC_ReleaseProgs (p);
+}
+
 // KTX's csprogs.dat, when QCVM_CSPROGS names one
 static void TestKtxCsprogs (void)
 {
@@ -873,6 +915,7 @@ int main (void)
 	TestOverlappingNames ();
 	TestCorruption ();
 	TestQWProgs ();
+	TestMenuProgs ();
 	TestKtxCsprogs ();
 	return QT_Finish ("loader", "every format loads, malformed input is refused or poisoned");
 }

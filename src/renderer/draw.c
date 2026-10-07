@@ -715,25 +715,6 @@ static void Draw_TileClearNow (int x, int y, int w, int h)
 	}
 }
 
-// three of four pixels black, in a pattern of the 320x200 layout's pixels
-static void Draw_FadeScreenNow (void)
-{
-	int			x, y, t, k = (int)vid.scale;
-	hudpixel_t	*pbuf;
-
-	for (y=0 ; y<(int)vid.height ; y++)
-	{
-		pbuf = vid.hud + vid.rowpixels*y;
-		t = ((y / k) & 1) << 1;
-
-		for (x=0 ; x<(int)vid.width ; x++)
-		{
-			if (((x / k) & 3) != t)
-				pbuf[x] = draw_pal[0];
-		}
-	}
-}
-
 /*
 ===============================================================================
 
@@ -751,8 +732,7 @@ typedef enum
 	DC_IMAGE,			// image: x, y, srcx, srcy, width, height
 	DC_CONBACK,			// lines, downloading
 	DC_TILE,			// x, y, width, height
-	DC_FILL,			// x, y, width, height, palette index
-	DC_FADE
+	DC_FILL				// x, y, width, height, palette index
 } drawop_t;
 
 typedef struct
@@ -852,9 +832,6 @@ void Draw_Flush (void)
 			break;
 		case DC_FILL:
 			Draw_Block (c->arg[0], c->arg[1], c->arg[2], c->arg[3], draw_pal[c->arg[4] & 255]);
-			break;
-		case DC_FADE:
-			Draw_FadeScreenNow ();
 			break;
 		}
 	}
@@ -1156,19 +1133,5 @@ void Draw_Fill (int x, int y, int w, int h, int color)
 	c->arg[3] = h;
 	c->arg[4] = color & 255;
 }
-//=============================================================================
-
-/*
-================
-Draw_FadeScreen
-
-Darkens what is under the menus
-================
-*/
-void Draw_FadeScreen (void)
-{
-	Draw_Record (DC_FADE, NULL);
-}
-
 //=============================================================================
 

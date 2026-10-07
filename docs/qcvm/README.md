@@ -140,13 +140,31 @@ aren't there yet, so `cl_nocsqc` keeps CSQC off by default. With `cl_nocsqc 0`:
 a progs file (`csqc_builtins csprogsvers/5df265ea.dat`, with `all` for every one it declares).
 It is the checklist for the rest of CSQC.
 
+**The menu** is menu QuakeC, run as FTE runs it (`cl_menu.c`): the game directory's
+`menu.dat`, else the one built in, compiled from `menu-qc`.
+
+- **Entry points:** `m_init` and `m_shutdown`, `m_draw` each frame the menu has the keys
+  (FTE's `vector` of the layout's size, or DarkPlaces' two floats), `m_keydown` and `m_keyup`
+  with FTE's key codes and the character typed, `m_toggle` for Escape and `togglemenu`, and
+  `m_consolecommand` for the commands it registers. `time` is the host's realtime.
+- **Builtins:** the standard library's, numbered for menus, and the client's: `precache_pic`,
+  `iscachedpic`, `drawpic`, `drawcharacter`, `drawrawstring`, `drawgetimagesize`,
+  `r_uploadimage` (RGBA), `r_readimage` (RGBA, also `gfx/conchars` and `gfx/palette.lmp` as
+  16x16), `localsound`, `setkeydest`, `getkeydest`, `keynumtostring`, `stringtokeynum`,
+  `findkeysforcommand`, `getkeybind`, `setkeybind`, `clientstate` (2 only in a game) and
+  SoftWorld's `isfullscreen`. Its 2D is drawn 1:1 in the layout's pixels, white and opaque,
+  clipped to the screen, and what it asks for never stops the program.
+- **Errors:** a QuakeC error prints its backtrace and shuts the menu down; a game directory's
+  menu.dat gives way to the built-in one. `menu_restart` loads the menu again, and
+  `menu_builtins` lists the builtins it calls that the client lacks.
+
 ## Tests
 
 `ctest` runs the VM's tests, the ports of qcvm-rs's suite:
 
 | Test | Checks |
 |---|---|
-| `qc_loader` | every format, the load-time rewrites, malformed and corrupted progs |
+| `qc_loader` | every format, the load-time rewrites, malformed and corrupted progs; the built qwprogs.dat and menu.dat |
 | `qc_memory` | memory, entities, the host's header, strings and their collection, the heap |
 | `qc_opcodes` | every opcode, in 16- and 32-bit statements |
 | `qc_vm` | calls, re-entry, errors and backtraces, the limits, abort, tracing, a longjmp out |

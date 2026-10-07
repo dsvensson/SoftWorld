@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // cl_public.h -- what the host sees of the client
 
 void	CL_Init (void);			// brings up the client with its video, sound and input
+void	CL_Start (void);		// the menu's QuakeC, after the server's init (its commands come last)
 void	CL_Shutdown (void);		// writes the configuration and closes the devices
 void	CL_WriteConfiguration (void);	// config.cfg, as CL_Shutdown writes it (a page leaving: sys_web_gui.c)
 

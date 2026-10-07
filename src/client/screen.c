@@ -950,42 +950,68 @@ static void SCR_RSShot_f (void)
 
 //=============================================================================
 
-static char	*scr_notifystring;
-static bool	scr_drawdialog;
+/*
+==============
+SCR_DrawTextBox
 
-static void SCR_DrawNotifyString (void)
+The menus' box of gfx/box_*.lmp around width (in pairs of characters) by
+lines characters, its corner at x,y
+==============
+*/
+static void SCR_DrawTextBox (int x, int y, int width, int lines)
 {
-	char	*start;
-	int		l;
-	int		j;
-	int		x, y;
+	qpic_t	*p;
+	int		cx, cy;
+	int		n;
 
-	start = scr_notifystring;
-
-	y = (int)(vid.height*0.35);
-
-	do	
+	// draw left side
+	cx = x;
+	cy = y;
+	p = Draw_CachePic ("gfx/box_tl.lmp");
+	Draw_TransPic (cx, cy, p);
+	p = Draw_CachePic ("gfx/box_ml.lmp");
+	for (n = 0; n < lines; n++)
 	{
-	// scan the width of the line
-		for (l=0 ; l<40 ; l++)
-			if (start[l] == '\n' || !start[l])
-				break;
-		x = (vid.width - l*8)/2;
-		for (j=0 ; j<l ; j++, x+=8)
-			Draw_Character (x, y, start[j]);	
-			
-		y += 8;
+		cy += 8;
+		Draw_TransPic (cx, cy, p);
+	}
+	p = Draw_CachePic ("gfx/box_bl.lmp");
+	Draw_TransPic (cx, cy+8, p);
 
-		while (*start && *start != '\n')
-			start++;
+	// draw middle
+	cx += 8;
+	while (width > 0)
+	{
+		cy = y;
+		p = Draw_CachePic ("gfx/box_tm.lmp");
+		Draw_TransPic (cx, cy, p);
+		p = Draw_CachePic ("gfx/box_mm.lmp");
+		for (n = 0; n < lines; n++)
+		{
+			cy += 8;
+			if (n == 1)
+				p = Draw_CachePic ("gfx/box_mm2.lmp");
+			Draw_TransPic (cx, cy, p);
+		}
+		p = Draw_CachePic ("gfx/box_bm.lmp");
+		Draw_TransPic (cx, cy+8, p);
+		width -= 2;
+		cx += 16;
+	}
 
-		if (!*start)
-			break;
-		start++;		// skip the \n
-	} while (1);
+	// draw right side
+	cy = y;
+	p = Draw_CachePic ("gfx/box_tr.lmp");
+	Draw_TransPic (cx, cy, p);
+	p = Draw_CachePic ("gfx/box_mr.lmp");
+	for (n = 0; n < lines; n++)
+	{
+		cy += 8;
+		Draw_TransPic (cx, cy, p);
+	}
+	p = Draw_CachePic ("gfx/box_br.lmp");
+	Draw_TransPic (cx, cy+8, p);
 }
-
-//=============================================================================
 
 /*
 ==============
@@ -1003,10 +1029,9 @@ static void SCR_DrawNetGraph (void)
 	else
 		w = NET_TIMINGS;
 
-	x =	-(int)((vid.conwidth - 320)>>1);
 	y = vid.conheight - scr.sb_lines - 24 - (int)r_graphheight.value*2 - 2;
 
-	M_DrawTextBox (x, y, (w+7)/8, ((int)r_graphheight.value*2+7)/8 + 1);
+	SCR_DrawTextBox (0, y, (w+7)/8, ((int)r_graphheight.value*2+7)/8 + 1);
 	y2 = y + 8;
 	y = vid.conheight - scr.sb_lines - 8 - 2;
 
@@ -1119,14 +1144,7 @@ void SCR_UpdateScreen (void)
 		SCR_DrawNetGraph ();
 
 
-	if (scr_drawdialog)
-	{
-		if (sbar)
-			Sbar_Draw ();
-		Draw_FadeScreen ();
-		SCR_DrawNotifyString ();
-	}
-	else if (cl.intermission == 1 && cls.key_dest == key_game)
+	if (cl.intermission == 1 && cls.key_dest == key_game)
 	{
 		if (sbar)
 			Sbar_IntermissionOverlay ();
