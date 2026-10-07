@@ -389,7 +389,7 @@ bool SV_MoveToGoal (qcvm_t *vm)
 	edict_t		*ent, *goal;
 	float		dist;
 	
-	ent = PROG_TO_EDICT(pr.global_struct->self);
+	ent = PROG_TO_EDICT(PR_GLOBAL(self));
 	goal = PROG_TO_EDICT(ent->v.goalentity);
 	dist = QC_ArgFloat (vm, 0);
 

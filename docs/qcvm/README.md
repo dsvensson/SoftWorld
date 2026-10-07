@@ -103,12 +103,28 @@ The specification uses qcvm-rs's Rust names. Their C counterparts are:
 
 ## In SoftWorld
 
-**The server** runs `qwprogs.dat` on the VM, with FTE's server behaviour.
+**The server** runs `qwprogs.dat` or NetQuake's `progs.dat` on the VM, with FTE's server
+behaviour.
+
+- **Which progs:** as FTE chooses: the game directory's own `progs.dat` or `qwprogs.dat` over
+  the base's (id1's and qw's, and the `qwprogs.dat` built in); else `progs.dat` when
+  `deathmatch` is 0 (single player and coop) and `qwprogs.dat` when it isn't. `sv_progs` names
+  one outright. The header CRC tells them apart: 54730 is QuakeWorld's, anything else acts as
+  NetQuake's (FTE's PROG_UNKNOWN).
+- **Fields and globals:** the server has its own layout of id's, QuakeWorld's fields in their
+  order then NetQuake's `punchangle` and `idealpitch` (`progdefs.h`). A progs' fields move there
+  by name (`host_fields`), and its globals are bound by name (FTE's `globalptrs_t`), the server
+  keeping those a progs lacks: QuakeWorld's `newmis`, NetQuake's `deathmatch`, `coop` and
+  `teamplay`.
 
 - **Builtins:** the id builtins are FTE's, from the standard library. `pr_cmds.c` keeps only
   those that need the engine, and FTE's server versions of `objerror` and entity removal.
   `objerror` prints the entity, removes `self` and aborts the call, and isn't fatal. Removal
   refuses the world and the player slots, and clears id's fields and the classname.
+  NetQuake's progs get its `bprint` and `sprint` (no level), `particle` (#48: blood and
+  lightning's blood as QuakeWorld's temp entities, as FTE sends them), and `setmodel`'s box for
+  every model. FTE's `clientstat` and `globalstat` (#232, #233) add stats from 32 up, sent to
+  clients with `FTE_PEXT_CSQC`; `pr_checkextension` says `checkextension` answers.
 - **The world** is read-only once the map runs (a write is a warning and skipped).
 - **Threads:** those sleeping resume after `StartFrame`.
 - **Autocvars** follow their cvars.

@@ -222,18 +222,21 @@ SV_SaveSpawnparms
 
 Grabs the current state of the progs serverinfo flags 
 and each client for saving across the
-transition to another level
+transition to another level: as parms says
 ================
 */
-static void SV_SaveSpawnparms (void)
+static void SV_SaveSpawnparms (spawnparms_t parms)
 {
 	int		i, j;
 
+	if (parms == SPAWNPARMS_NEW)
+		svs.serverflags = 0;
 	if (!sv.state)
 		return;		// no progs loaded yet
 
 	// serverflags is the only game related thing maintained
-	svs.serverflags = (int)pr.global_struct->serverflags;
+	if (parms == SPAWNPARMS_CHANGE)
+		svs.serverflags = (int)PR_GLOBAL(serverflags);
 
 	for (i=0, host_client = svs.clients ; i<MAX_CLIENTS ; i++, host_client++)
 	{
@@ -242,12 +245,15 @@ static void SV_SaveSpawnparms (void)
 
 		// needs to reconnect
 		host_client->state = cs_connected;
+		host_client->newparms = parms == SPAWNPARMS_NEW;
+		if (parms != SPAWNPARMS_CHANGE)
+			continue;
 
 		// call the progs to get default spawn parms for the new client
-		pr.global_struct->self = EDICT_TO_PROG(host_client->edict);
-		PR_ExecuteProgram (pr.global_struct->SetChangeParms);
+		PR_GLOBAL(self) = EDICT_TO_PROG(host_client->edict);
+		PR_ExecuteProgram (PR_GLOBAL(SetChangeParms));
 		for (j=0 ; j<NUM_SPAWN_PARMS ; j++)
-			host_client->spawn_parms[j] = (&pr.global_struct->parm1)[j];
+			host_client->spawn_parms[j] = PR_PARM(j);
 	}
 }
 
@@ -350,9 +356,9 @@ static unsigned SV_CheckModel(char *mdl)
 SV_SpawnServer
 
 Change the server to a new map, taking all connected
-clients along with it.
+clients along with it, their spawn parms as parms says.
 
-This is only called from the SV_Map_f() function.
+Called by the map, changelevel and restart commands (SV_GotoLevel).
 ================
 */
 /*
@@ -384,7 +390,7 @@ static void SV_PublishCsprogs (void)
 		MAX_SERVERINFO_STRING, SV_InfoCharset ());
 }
 
-void SV_SpawnServer (char *server)
+void SV_SpawnServer (char *server, spawnparms_t parms)
 {
 	edict_t		*ent;
 	int			i;
@@ -409,7 +415,7 @@ void SV_SpawnServer (char *server)
 	// invitation code
 	NET_HostRTC (sv_public.value ? sv_webrtc_room.string : NULL);
 	
-	SV_SaveSpawnparms ();
+	SV_SaveSpawnparms (parms);
 
 	svs.spawncount++;		// any partially connected client will be
 							// restarted
@@ -441,6 +447,12 @@ void SV_SpawnServer (char *server)
 	SV_NewSignonBuffer ();
 
 	Q_strncpyz (sv.name, server, sizeof(sv.name));
+
+	// NetQuake's rules: coop has no deathmatch, and a skill of 0 to 3
+	if (coop.value && deathmatch.value)
+		Cvar_Set ("deathmatch", "0");
+	i = (int)(skill.value + 0.5f);
+	Cvar_SetValue ("skill", (float)(i < 0 ? 0 : i > 3 ? 3 : i));
 
 	// load progs to get entity field count
 	// which determines how big each edict is
@@ -512,12 +524,19 @@ void SV_SpawnServer (char *server)
 	ent->v.solid = SOLID_BSP;
 	ent->v.movetype = MOVETYPE_PUSH;
 
-	pr.global_struct->mapname = PR_SetString(sv.name);
+	PR_GLOBAL(mapname) = PR_SetString(sv.name);
 	// serverflags are for cross level information (sigils)
-	pr.global_struct->serverflags = (float)svs.serverflags;
+	PR_GLOBAL(serverflags) = (float)svs.serverflags;
+	// the rules, which NetQuake's progs read as globals
+	PR_GLOBAL(deathmatch) = deathmatch.value;
+	PR_GLOBAL(coop) = coop.value;
+	PR_GLOBAL(teamplay) = teamplay.value;
 	
-	// run the frame start qc function to let progs check cvars
-	SV_ProgStartFrame ();
+	// run the frame start qc function to let progs check cvars; QuakeWorld's
+	// only, as FTE has it: NetQuake's count their frames from the first after
+	// the spawn functions (Copper's precache only before it)
+	if (!pr.nq)
+		SV_ProgStartFrame ();
 
 	// load and spawn all other entities
 	ED_LoadFromFile (CM_EntityString (sv.map));

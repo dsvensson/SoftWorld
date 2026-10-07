@@ -32,6 +32,31 @@ pr_state_t		pr;
 
 static bool		pr_profiling;		// the profile command started the counts
 
+static cvar_t	sv_progs = {.name = "sv_progs", .string = "",
+	.description = "The progs the server runs, from the game directory; empty chooses as FTE does: the game "
+		"directory's own progs.dat or qwprogs.dat, else NetQuake's progs.dat when deathmatch is 0 and "
+		"QuakeWorld's qwprogs.dat when it isn't. Takes effect at the next map."};
+static cvar_t	pr_checkextension = {.name = "pr_checkextension", .string = "1",
+	.description = "Tells QuakeC that the server answers checkextension, as FTE's does: progs read this before "
+		"they ask."};
+
+// the cvars NetQuake keeps for its game code, which some progs use
+#define	PR_SPARE	"One of the cvars NetQuake keeps for its game code to use."
+#define	PR_SAVED	"One of the cvars NetQuake keeps for its game code to use, saved in the config."
+static cvar_t	pr_sparecvars[] = {
+	{.name = "gamecfg", .string = "0", .description = PR_SPARE},
+	{.name = "savedgamecfg", .string = "0", .archive = true, .description = PR_SAVED},
+	{.name = "scratch1", .string = "0", .description = PR_SPARE},
+	{.name = "scratch2", .string = "0", .description = PR_SPARE},
+	{.name = "scratch3", .string = "0", .description = PR_SPARE},
+	{.name = "scratch4", .string = "0", .description = PR_SPARE},
+	{.name = "saved1", .string = "0", .archive = true, .description = PR_SAVED},
+	{.name = "saved2", .string = "0", .archive = true, .description = PR_SAVED},
+	{.name = "saved3", .string = "0", .archive = true, .description = PR_SAVED},
+	{.name = "saved4", .string = "0", .archive = true, .description = PR_SAVED},
+	{.name = "temp1", .string = "0", .description = PR_SPARE},
+};
+
 static_assert (offsetof (edict_t, v) % 4 == 0, "the fields must start on a word");
 static_assert (_Alignof (edict_t) <= 16, "the VM's entity blocks are 16-byte aligned");
 
@@ -422,6 +447,16 @@ static uint32_t PR_TypeWords (uint32_t type)
 	return words > 0 ? (uint32_t)words : 1;
 }
 
+// the progs' field definition i, at the word the field has in the VM (the
+// server's struct has id's); false past the last
+static bool ED_ProgsField (uint32_t i, qc_definfo_t *d)
+{
+	if (!QC_ProgsFieldDefAt (pr.progs, i, d))
+		return false;
+	QC_FindField (pr.vm, d->name, &d->ofs, NULL);
+	return true;
+}
+
 // a definition's value as text
 static const char *PR_ValueString (uint32_t type, const int *val)
 {
@@ -444,7 +479,7 @@ static const char *PR_ValueString (uint32_t type, const int *val)
 		break;
 	case ev_field:
 		snprintf (line, sizeof(line), ".?");
-		for (i = 0 ; QC_ProgsFieldDefAt (pr.progs, i, &d) ; i++)
+		for (i = 0 ; ED_ProgsField (i, &d) ; i++)
 			if (d.ofs == (uint32_t)val[0])
 			{
 				snprintf (line, sizeof(line), ".%s", d.name);
@@ -498,7 +533,7 @@ void ED_Print (edict_t *ed)
 		Con_Printf ("FREE\n");
 		return;
 	}
-	for (i = 1 ; QC_ProgsFieldDefAt (pr.progs, i, &d) ; i++)
+	for (i = 1 ; ED_ProgsField (i, &d) ; i++)
 	{
 		l = strlen (d.name);
 		if (l >= 2 && d.name[l - 2] == '_')
@@ -673,7 +708,7 @@ static void ED_Digest_f (void)
 	{
 		ed = EDICT_NUM (i);
 		h = 0xCBF29CE484222325ull;
-		for (j = 1 ; QC_ProgsFieldDefAt (pr.progs, j, &d) ; j++)
+		for (j = 1 ; ED_ProgsField (j, &d) ; j++)
 			if ((v = ED_FieldValue (ed, &d)))
 				h = ED_HashValue (h, d.type, v);
 		Con_Printf ("edict %4i %s%016llx\n", i, ed->free ? "free " : "", (unsigned long long)h);
@@ -735,12 +770,12 @@ A field's value from the map's text; false if it can't be parsed
 */
 static bool ED_ParseEpair (edict_t *ent, const qc_definfo_t *key, char *s)
 {
-	int			i, n;
-	char		string[128];
-	uint32_t	ofs;
-	char		*v, *w;
-	qc_func_t	func;
-	int			*d;
+	int				i, n;
+	char			string[128];
+	qc_definfo_t	field;
+	char			*v, *w;
+	qc_func_t		func;
+	int				*d;
 
 	if (!ED_FieldValue (ent, key))
 		return false;
@@ -778,13 +813,13 @@ static bool ED_ParseEpair (edict_t *ent, const qc_definfo_t *key, char *s)
 		break;
 		
 	case ev_field:
-		if (!QC_FindField (pr.vm, s, &ofs, NULL))
+		if (!QC_ProgsFieldDef (pr.progs, s, &field))
 		{
 			Con_Printf ("Can't find field %s\n", s);
 			return false;
 		}
-		// as id had it: the global at the field's offset
-		*d = ofs < QC_ProgsNumGlobals (pr.progs) ? ((int *)pr.globals)[ofs] : 0;
+		// as id had it: the global at the field's offset in the progs
+		*d = field.ofs < QC_ProgsNumGlobals (pr.progs) ? ((int *)pr.globals)[field.ofs] : 0;
 		break;
 	
 	case ev_function:
@@ -911,7 +946,7 @@ void ED_LoadFromFile (char *data)
 	
 	ent = NULL;
 	inhibit = 0;
-	pr.global_struct->time = (float)sv.time;
+	PR_GLOBAL(time) = (float)sv.time;
 
 // parse ents
 	while (1)
@@ -930,7 +965,9 @@ void ED_LoadFromFile (char *data)
 		data = ED_ParseEdict (data, ent);
 		
 // remove things from different skill levels or deathmatch
-		if (((int)ent->v.spawnflags & SPAWNFLAG_NOT_DEATHMATCH))
+		if (deathmatch.value ? (int)ent->v.spawnflags & SPAWNFLAG_NOT_DEATHMATCH
+			: (int)ent->v.spawnflags & (skill.value == 0 ? SPAWNFLAG_NOT_EASY
+				: skill.value == 1 ? SPAWNFLAG_NOT_MEDIUM : SPAWNFLAG_NOT_HARD))
 		{
 			ED_Free (ent);	
 			inhibit++;
@@ -959,7 +996,7 @@ void ED_LoadFromFile (char *data)
 			continue;
 		}
 
-		pr.global_struct->self = EDICT_TO_PROG(ent);
+		PR_GLOBAL(self) = EDICT_TO_PROG(ent);
 		PR_ExecuteProgram ((func_t)func);
 		SV_FlushSignon();
 	}	
@@ -990,7 +1027,7 @@ void PR_FreeProgs (void)
 	pr.vm = NULL;
 	QC_ReleaseProgs (pr.progs);
 	pr.progs = NULL;
-	pr.global_struct = NULL;
+	memset (&pr.g, 0, sizeof(pr.g));
 	pr.globals = NULL;
 }
 
@@ -1002,19 +1039,131 @@ static int PR_OptionalField (const char *name, uint32_t want)
 	return QC_FindField (pr.vm, name, &ofs, &type) && type == want ? (int)ofs : 0;
 }
 
+// id's fields where entvars_t has them: the VM moves a progs' there
+static const qc_hostfield_t	pr_hostfields[] = {
+#define X(type, qctype, name)	{#name, qctype, offsetof (entvars_t, name) / 4},
+	PR_ENTITY_FIELDS (X)
+#undef X
+};
+
+// id's globals a progs lacks, kept by the server
+static struct
+{
+#define X(type, qctype, name)	type name;
+	PR_GLOBALS (X)
+#undef X
+	float	parm[NUM_SPAWN_PARMS];
+} pr_ownglobals;
+
+// the progs' global of the name if it has one as big as the type, else NULL
+static void *PR_ProgsGlobal (const char *name, uint32_t want)
+{
+	uint32_t	word, type;
+
+	if (!QC_FindGlobal (pr.vm, name, &word, &type) || QC_TypeWords (type) != QC_TypeWords (want))
+		return NULL;
+	return &QC_Globals (pr.vm)[word];
+}
+
+// points id's globals at the progs' own, or at the server's for those it lacks
+// (QuakeWorld's newmis, NetQuake's deathmatch, coop and teamplay)
+static void PR_BindGlobals (void)
+{
+	char	parm[16];
+	void	*g;
+	int		i;
+
+	memset (&pr_ownglobals, 0, sizeof(pr_ownglobals));
+#define X(type, qctype, name)	pr.g.name = (g = PR_ProgsGlobal (#name, qctype)) ? g : &pr_ownglobals.name;
+	PR_GLOBALS (X)
+#undef X
+	for (i = 0 ; i < NUM_SPAWN_PARMS ; i++)
+	{
+		snprintf (parm, sizeof(parm), "parm%i", i + 1);
+		pr.g.parm[i] = (g = PR_ProgsGlobal (parm, ev_float)) ? g : &pr_ownglobals.parm[i];
+	}
+}
+
+// the functions the server calls, which every progs has
+static void PR_CheckEntryPoints (void)
+{
+	const struct
+	{
+		const char	*name;
+		func_t		f;
+	} entries[] = {
+		{"StartFrame", PR_GLOBAL(StartFrame)}, {"PlayerPreThink", PR_GLOBAL(PlayerPreThink)},
+		{"PlayerPostThink", PR_GLOBAL(PlayerPostThink)}, {"ClientKill", PR_GLOBAL(ClientKill)},
+		{"ClientConnect", PR_GLOBAL(ClientConnect)}, {"PutClientInServer", PR_GLOBAL(PutClientInServer)},
+		{"ClientDisconnect", PR_GLOBAL(ClientDisconnect)}, {"SetNewParms", PR_GLOBAL(SetNewParms)},
+		{"SetChangeParms", PR_GLOBAL(SetChangeParms)},
+	};
+	size_t	i;
+
+	for (i = 0 ; i < sizeof(entries) / sizeof(entries[0]) ; i++)
+		if (!entries[i].f)
+			SV_Error ("%s has no %s", pr.name, entries[i].name);
+}
+
+/*
+===============
+PR_ChooseProgs
+
+The progs to run, as FTE chooses (Q_InitProgs): sv_progs' if set; else the
+game directory's own progs.dat or qwprogs.dat over the base's (id1's and qw's,
+and the qwprogs.dat built in); else NetQuake's progs.dat for single player
+and coop (deathmatch 0), QuakeWorld's qwprogs.dat for the rest
+===============
+*/
+static void PR_ChooseProgs (void)
+{
+	bool		nq, qw;
+	const char	*base;
+
+	if (sv_progs.string[0])
+	{
+		Q_strncpyz (pr.name, sv_progs.string, sizeof(pr.name));
+		base = strrchr (pr.name, '/');
+		if (!strchr (base ? base : pr.name, '.'))
+			Q_strncatz (pr.name, ".dat", sizeof(pr.name));
+		return;
+	}
+	nq = FS_InGameDir ("progs.dat");
+	qw = FS_InGameDir ("qwprogs.dat");
+	if (nq != qw)
+		Q_strncpyz (pr.name, nq ? "progs.dat" : "qwprogs.dat", sizeof(pr.name));
+	else
+		Q_strncpyz (pr.name, deathmatch.value ? "qwprogs.dat" : "progs.dat", sizeof(pr.name));
+}
+
+// the progs' file, else for qwprogs.dat the one built in; NULL without
+static byte *PR_LoadProgsFile (int *size)
+{
+	byte	*data = FS_LoadFile (pr.name, size);
+
+	if (data || strcmp (pr.name, "qwprogs.dat"))
+		return data;
+	*size = (int)sv_qwprogs_size;
+	data = Mem_Alloc (sv_qwprogs_size);
+	memcpy (data, sv_qwprogs, sv_qwprogs_size);
+	Con_DPrintf ("qwprogs.dat: the one built in\n");
+	return data;
+}
+
 /*
 ===============
 PR_LoadProgs
 
-The game directory's qwprogs.dat, else the one the program was built with (a
-progs.dat would be NetQuake's, which id1 always has), in a new VM
+The progs PR_ChooseProgs names (QuakeWorld's when it is missing), in a new VM:
+QuakeWorld's or NetQuake's by its header's CRC, its fields moved to the
+server's struct and its globals bound by name
 ===============
 */
 void PR_LoadProgs (void)
 {
 	byte				*data, *lno;
 	int					size, lnosize;
-	char				num[32], text[1024];
+	char				num[32], text[1024], lnoname[MAX_QPATH];
 	qc_loaderror_t		lerr;
 	qc_error_t			err;
 	qc_config_t			config;
@@ -1024,14 +1173,13 @@ void PR_LoadProgs (void)
 	PR_FreeProgs ();
 	PR_ClearLightstyles ();
 
-	data = FS_LoadFile ("qwprogs.dat", NULL);
-	size = com_filesize;
+	PR_ChooseProgs ();
+	data = PR_LoadProgsFile (&size);
 	if (!data)
-	{
-		size = (int)sv_qwprogs_size;
-		data = Mem_Alloc (sv_qwprogs_size);
-		memcpy (data, sv_qwprogs, sv_qwprogs_size);
-		Con_DPrintf ("qwprogs.dat: the one built in\n");
+	{	// as FTE: QuakeWorld's then
+		Con_Printf ("%s: not found, running qwprogs.dat\n", pr.name);
+		Q_strncpyz (pr.name, "qwprogs.dat", sizeof(pr.name));
+		data = PR_LoadProgsFile (&size);
 	}
 	Con_DPrintf ("Programs occupy %iK.\n", size/1024);
 
@@ -1042,31 +1190,32 @@ void PR_LoadProgs (void)
 	pr.progs = QC_LoadProgs (data, (size_t)size, &lerr);
 	Mem_Free (data);
 	if (!pr.progs)
-		SV_Error ("qwprogs.dat: %s", QC_LoadErrorText (&lerr, text, sizeof(text)));
+		SV_Error ("%s: %s", pr.name, QC_LoadErrorText (&lerr, text, sizeof(text)));
 	notes = QC_ProgsNotes (pr.progs, &count);
 	for (n = 0 ; n < count ; n++)
-		Con_DPrintf ("qwprogs.dat: %s\n", QC_LoadNoteText (&notes[n], text, sizeof(text)));
+		Con_DPrintf ("%s: %s\n", pr.name, QC_LoadNoteText (&notes[n], text, sizeof(text)));
 
 	// source lines for the backtraces, when the compiler wrote them
-	lno = FS_LoadFile ("qwprogs.lno", NULL);
-	lnosize = com_filesize;
+	COM_StripExtension (pr.name, lnoname);
+	Q_strncatz (lnoname, ".lno", sizeof(lnoname));
+	lno = FS_LoadFile (lnoname, &lnosize);
 	if (lno)
 	{
 		if (!QC_AttachLineNumbers (pr.progs, lno, (size_t)lnosize, &lerr))
-			Con_DPrintf ("qwprogs.lno: %s\n", QC_LoadErrorText (&lerr, text, sizeof(text)));
+			Con_DPrintf ("%s: %s\n", lnoname, QC_LoadErrorText (&lerr, text, sizeof(text)));
 		Mem_Free (lno);
 	}
 
-	if (QC_ProgsCRC (pr.progs) != PROGHEADER_CRC)
-		SV_Error ("You must have the progs.dat from QuakeWorld installed");
-	if ((size_t)QC_ProgsEntityFields (pr.progs) * 4 < sizeof(entvars_t)
-		|| (size_t)QC_ProgsNumGlobals (pr.progs) * 4 < sizeof(globalvars_t))
-		SV_Error ("qwprogs.dat has fewer fields or globals than QuakeWorld's");
+	// FTE's PROG_UNKNOWN acts as NetQuake's
+	pr.nq = QC_ProgsCRC (pr.progs) != PROGHEADER_CRC;
+	Con_DPrintf ("%s: %s's\n", pr.name, pr.nq ? "NetQuake" : "QuakeWorld");
 
 	QC_DefaultConfig (&config, QC_SSQC);
 	config.limits.max_edicts = MAX_EDICTS;
 	config.first_spawnable = MAX_CLIENTS + 1;		// the clients' are the server's
 	config.entity_header_bytes = offsetof (edict_t, v);
+	config.host_fields = pr_hostfields;
+	config.num_host_fields = sizeof(pr_hostfields) / sizeof(pr_hostfields[0]);
 	config.remove_clears = NULL;		// PR_OnRemove clears id's
 	config.developer = developer.value != 0;
 	pr.vm = QC_Create (pr.progs, pr.builtins, &config, &pr_host, NULL, &err);
@@ -1074,7 +1223,7 @@ void PR_LoadProgs (void)
 	{
 		QC_ErrorText (&err, text, sizeof(text));
 		QC_FreeError (&err);
-		SV_Error ("qwprogs.dat: %s", text);
+		SV_Error ("%s: %s", pr.name, text);
 	}
 	// the server reaches any entity below MAX_EDICTS
 	if (!QC_CommitEdicts (pr.vm, MAX_EDICTS))
@@ -1082,10 +1231,11 @@ void PR_LoadProgs (void)
 	if (pr_profiling)
 		QC_SetProfiling (pr.vm, true);
 	if (!QC_SyncAutocvars (pr.vm))
-		SV_Error ("qwprogs.dat: %s", QC_ErrorText (QC_LastError (pr.vm), text, sizeof(text)));
+		SV_Error ("%s: %s", pr.name, QC_ErrorText (QC_LastError (pr.vm), text, sizeof(text)));
 
-	pr.global_struct = (globalvars_t *)QC_Globals (pr.vm);
-	pr.globals = (float *)pr.global_struct;
+	PR_BindGlobals ();
+	PR_CheckEntryPoints ();
+	pr.globals = (float *)QC_Globals (pr.vm);
 	pr.edict_size = 1 << QC_EdictShift (pr.vm);
 
 	pr.fofs_alpha = PR_OptionalField ("alpha", ev_float);
@@ -1111,12 +1261,18 @@ PR_Init
 */
 void PR_Init (void)
 {
+	size_t	i;
+
 	// FTE's builtins, and the engine's over them
 	pr.builtins = QC_BuiltinsStandard (QC_NUMBERING_SSQC);
 	if (!pr.builtins)
 		Sys_Error ("PR_Init: out of memory");
 	PR_InitBuiltins (pr.builtins);
 	Cvar_AddChangeHook (PR_CvarChanged);
+	Cvar_RegisterVariable (&sv_progs);
+	Cvar_RegisterVariable (&pr_checkextension);
+	for (i = 0 ; i < sizeof(pr_sparecvars) / sizeof(pr_sparecvars[0]) ; i++)
+		Cvar_RegisterVariable (&pr_sparecvars[i]);
 
 	Cmd_AddCommand ("edict", ED_PrintEdict_f, "Prints the fields of an entity of the running map. "
 		"Usage: edict <number>");

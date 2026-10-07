@@ -78,6 +78,15 @@ typedef struct
 	char		*lightstyles[MAX_LIGHTSTYLES];
 	cmodel_t	*models[MAX_MODELS];	// the world and its inline models
 
+	// the stats QuakeC adds after id's (FTE's clientstat and globalstat), by
+	// number: a field of each client's entity, or a global
+	struct
+	{
+		uint32_t	type;			// ev_float, ev_entity or QC_EV_INTEGER; 0 none
+		bool		global;
+		uint32_t	ofs;			// a word of the fields or the globals
+	} qcstats[MAX_CL_STATS];
+
 	int			num_edicts;			// increases towards MAX_EDICTS
 	edict_t		*edicts;			// can NOT be array indexed, because
 									// edict_t is variable sized, but can
@@ -126,8 +135,6 @@ typedef struct
 	int			nailmodel, supernailmodel, playermodel;	// model indices, for compression
 } server_t;
 
-
-#define	NUM_SPAWN_PARMS			16
 
 typedef enum
 {
@@ -195,11 +202,12 @@ typedef struct client_s
 
 // spawn parms are carried from level to level
 	float			spawn_parms[NUM_SPAWN_PARMS];
+	bool			newparms;			// a new game: SetNewParms makes them as it spawns
 
-// client known data for deltas	
+// client known data for deltas
 	int				old_frags;
-	
-	int				stats[MAX_STATS];
+
+	int				stats[MAX_CL_STATS];	// id's, then QuakeC's (the bits of a float)
 
 
 	client_frame_t	frames[UPDATE_BACKUP];	// updates can be deltad from here
@@ -411,7 +419,7 @@ extern	cvar_t	pm_ktjump, pm_bunnyspeedcap, pm_slidefix, pm_airstep, pm_pground, 
 extern	cvar_t	sv_maxspeed;
 
 
-extern	cvar_t	teamplay;
+extern	cvar_t	teamplay, deathmatch, coop, skill;
 
 extern	server_static_t	svs;				// persistant server info
 extern	server_t		sv;					// local server
@@ -457,7 +465,16 @@ void SV_ExtractFromUserinfo (client_t *cl);
 //
 // sv_init.c
 //
-void SV_SpawnServer (char *server);
+// what a new level does with the players' spawn parms (FTE's map, changelevel
+// and restart)
+typedef enum
+{
+	SPAWNPARMS_CHANGE,	// the progs' SetChangeParms makes them: changelevel, QuakeWorld's map
+	SPAWNPARMS_NEW,		// a new game, without serverflags: NetQuake's map
+	SPAWNPARMS_KEEP		// those the level began with, again: restart
+} spawnparms_t;
+
+void SV_SpawnServer (char *server, spawnparms_t parms);
 void SV_FlushSignon (void);
 entity_state_t *SV_NewStatic (void);
 byte *SV_LeafPVS (int leafnum);

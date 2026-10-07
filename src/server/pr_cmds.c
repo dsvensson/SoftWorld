@@ -93,7 +93,7 @@ static bool PF_error (qcvm_t *vm)
 	
 	s = PF_VarString(vm, 0);
 	Con_Printf ("======SERVER ERROR in %s:\n%s\n", QC_CallerName (vm), s);
-	ed = PROG_TO_EDICT(pr.global_struct->self);
+	ed = PROG_TO_EDICT(PR_GLOBAL(self));
 	ED_Print (ed);
 
 	return QC_HostError (vm, "%s", s);
@@ -118,7 +118,7 @@ static bool PF_objerror (qcvm_t *vm)
 
 	s = PF_VarString(vm, 0);
 	Con_Printf ("======OBJECT ERROR in %s:\n%s\n", QC_CallerName (vm), s);
-	ed = PROG_TO_EDICT(pr.global_struct->self);
+	ed = PROG_TO_EDICT(PR_GLOBAL(self));
 	ED_Print (ed);
 	for (len = strlen (s) ; len && s[len - 1] == '\n' ; len--)
 		;
@@ -179,7 +179,9 @@ static bool PF_setsize (qcvm_t *vm)
 PF_setmodel
 
 setmodel(entity, model)
-Also sets size, mins, and maxs for inline bmodels
+Also sets size, mins, and maxs for inline bmodels; for NetQuake's progs, as
+NetQuake does, for the others too: +-16, NetQuake's box for every alias
+model, as FTE's server sets it without the models (and none without a model)
 =================
 */
 static bool PF_setmodel (qcvm_t *vm)
@@ -215,6 +217,16 @@ static bool PF_setmodel (qcvm_t *vm)
 		VectorSubtract (mod->maxs, mod->mins, e->v.size);
 		SV_LinkEdict (e, false);
 	}
+	else if (pr.nq)
+	{	// no model: no box
+		for (i=0 ; i<3 ; i++)
+		{
+			e->v.mins[i] = *m ? -16.0f : 0;
+			e->v.maxs[i] = *m ? 16.0f : 0;
+		}
+		VectorSubtract (e->v.maxs, e->v.mins, e->v.size);
+		SV_LinkEdict (e, false);
+	}
 	return true;
 }
 
@@ -224,17 +236,17 @@ PF_bprint
 
 broadcast print to everyone on server
 
-bprint(value)
+bprint(level, value), or NetQuake's bprint(value)
 =================
 */
 static bool PF_bprint (qcvm_t *vm)
 {
 	char		*s;
 	int			level;
-	
-	level = PF_ArgTrunc(vm, 0);
 
-	s = PF_VarString(vm, 1);
+	level = pr.nq ? PRINT_HIGH : PF_ArgTrunc(vm, 0);
+
+	s = PF_VarString(vm, pr.nq ? 0 : 1);
 	SV_BroadcastPrintf (level, "%s", s);
 	return true;
 }
@@ -245,7 +257,7 @@ PF_sprint
 
 single print to a specific client
 
-sprint(clientent, value)
+sprint(clientent, level, value), or NetQuake's sprint(clientent, value)
 =================
 */
 static bool PF_sprint (qcvm_t *vm)
@@ -254,11 +266,11 @@ static bool PF_sprint (qcvm_t *vm)
 	client_t	*client;
 	int			entnum;
 	int			level;
-	
-	entnum = PF_ArgEdictNum(vm, 0);
-	level = PF_ArgTrunc(vm, 1);
 
-	s = PF_VarString(vm, 2);
+	entnum = PF_ArgEdictNum(vm, 0);
+	level = pr.nq ? PRINT_HIGH : PF_ArgTrunc(vm, 1);
+
+	s = PF_VarString(vm, pr.nq ? 1 : 2);
 	
 	if (entnum < 1 || entnum > MAX_CLIENTS)
 	{
@@ -435,18 +447,18 @@ static bool PF_traceline (qcvm_t *vm)
 
 	trace = SV_Move (v1, vec3_origin, vec3_origin, v2, nomonsters, ent);
 
-	pr.global_struct->trace_allsolid = trace.allsolid;
-	pr.global_struct->trace_startsolid = trace.startsolid;
-	pr.global_struct->trace_fraction = trace.fraction;
-	pr.global_struct->trace_inwater = trace.inwater;
-	pr.global_struct->trace_inopen = trace.inopen;
-	VectorCopy (trace.endpos, pr.global_struct->trace_endpos);
-	VectorCopy (trace.plane.normal, pr.global_struct->trace_plane_normal);
-	pr.global_struct->trace_plane_dist =  trace.plane.dist;	
+	PR_GLOBAL(trace_allsolid) = trace.allsolid;
+	PR_GLOBAL(trace_startsolid) = trace.startsolid;
+	PR_GLOBAL(trace_fraction) = trace.fraction;
+	PR_GLOBAL(trace_inwater) = trace.inwater;
+	PR_GLOBAL(trace_inopen) = trace.inopen;
+	VectorCopy (trace.endpos, PR_GLOBAL(trace_endpos));
+	VectorCopy (trace.plane.normal, PR_GLOBAL(trace_plane_normal));
+	PR_GLOBAL(trace_plane_dist) =  trace.plane.dist;	
 	if (trace.ent)
-		pr.global_struct->trace_ent = EDICT_TO_PROG(trace.ent);
+		PR_GLOBAL(trace_ent) = EDICT_TO_PROG(trace.ent);
 	else
-		pr.global_struct->trace_ent = EDICT_TO_PROG(sv.edicts);
+		PR_GLOBAL(trace_ent) = EDICT_TO_PROG(sv.edicts);
 	return true;
 }
 
@@ -536,7 +548,7 @@ static bool PF_checkclient (qcvm_t *vm)
 	}
 
 // if current entity can't possibly see the check entity, return 0
-	self = PROG_TO_EDICT(pr.global_struct->self);
+	self = PROG_TO_EDICT(PR_GLOBAL(self));
 	VectorAdd (self->v.origin, self->v.view_ofs, view);
 	l = CM_Leafnum (sv.map, CM_PointInLeaf (sv.map, view)) - 1;
 	if ( (l<0) || !(sv.checkpvs[l>>3] & (1<<(l&7)) ) )
@@ -675,7 +687,7 @@ static bool PF_walkmove (qcvm_t *vm)
 	int 	oldself;
 	bool	moved;
 	
-	ent = PROG_TO_EDICT(pr.global_struct->self);
+	ent = PROG_TO_EDICT(PR_GLOBAL(self));
 	yaw = QC_ArgFloat(vm, 0);
 	dist = QC_ArgFloat(vm, 1);
 	
@@ -692,12 +704,12 @@ static bool PF_walkmove (qcvm_t *vm)
 	move[2] = 0;
 
 // save self, because SV_movestep may call other progs
-	oldself = pr.global_struct->self;
+	oldself = PR_GLOBAL(self);
 	
 	moved = SV_movestep(ent, move, true);
 	
 // restore self
-	pr.global_struct->self = oldself;
+	PR_GLOBAL(self) = oldself;
 	QC_ReturnFloat (vm, moved);
 	return true;
 }
@@ -715,7 +727,7 @@ static bool PF_droptofloor (qcvm_t *vm)
 	vec3_t		end;
 	trace_t		trace;
 	
-	ent = PROG_TO_EDICT(pr.global_struct->self);
+	ent = PROG_TO_EDICT(PR_GLOBAL(self));
 
 	VectorCopy (ent->v.origin, end);
 	end[2] -= 256;
@@ -861,19 +873,19 @@ static bool PF_aim (qcvm_t *vm)
 		noaim = Info_ValueForKey (svs.clients[i-1].userinfo, "noaim");
 		if (atoi(noaim) > 0)
 		{
-			QC_ReturnVector (vm, pr.global_struct->v_forward);
+			QC_ReturnVector (vm, PR_GLOBAL(v_forward));
 			return true;
 		}
 	}
 
 // try sending a trace straight
-	VectorCopy (pr.global_struct->v_forward, dir);
+	VectorCopy (PR_GLOBAL(v_forward), dir);
 	VectorMA (start, 2048, dir, end);
 	tr = SV_Move (start, vec3_origin, vec3_origin, end, false, ent);
 	if (tr.ent && tr.ent->v.takedamage == DAMAGE_AIM
 	&& (!teamplay.value || ent->v.team <=0 || ent->v.team != tr.ent->v.team) )
 	{
-		QC_ReturnVector (vm, pr.global_struct->v_forward);
+		QC_ReturnVector (vm, PR_GLOBAL(v_forward));
 		return true;
 	}
 
@@ -897,7 +909,7 @@ static bool PF_aim (qcvm_t *vm)
 			+ 0.5f*(check->v.mins[j] + check->v.maxs[j]);
 		VectorSubtract (end, start, dir);
 		VectorNormalize (dir);
-		dist = DotProduct (dir, pr.global_struct->v_forward);
+		dist = DotProduct (dir, PR_GLOBAL(v_forward));
 		if (dist < bestdist)
 			continue;	// to far to turn
 		tr = SV_Move (start, vec3_origin, vec3_origin, end, false, ent);
@@ -911,8 +923,8 @@ static bool PF_aim (qcvm_t *vm)
 	if (bestent)
 	{
 		VectorSubtract (bestent->v.origin, ent->v.origin, dir);
-		dist = DotProduct (dir, pr.global_struct->v_forward);
-		VectorScale (pr.global_struct->v_forward, dist, end);
+		dist = DotProduct (dir, PR_GLOBAL(v_forward));
+		VectorScale (PR_GLOBAL(v_forward), dist, end);
 		end[2] = dir[2];
 		VectorNormalize (end);
 		QC_ReturnVector (vm, end);
@@ -1018,7 +1030,7 @@ static client_t *Write_GetClient (qcvm_t *vm)
 	int		entnum;
 	edict_t	*ent;
 
-	ent = PROG_TO_EDICT(pr.global_struct->msg_entity);
+	ent = PROG_TO_EDICT(PR_GLOBAL(msg_entity));
 	entnum = NUM_FOR_EDICT(ent);
 	if (entnum < 1 || entnum > MAX_CLIENTS)
 	{
@@ -1189,7 +1201,7 @@ static bool PF_setspawnparms (qcvm_t *vm)
 	client = svs.clients + (i-1);
 
 	for (i=0 ; i< NUM_SPAWN_PARMS ; i++)
-		(&pr.global_struct->parm1)[i] = client->spawn_parms[i];
+		PR_PARM(i) = client->spawn_parms[i];
 	return true;
 }
 
@@ -1207,7 +1219,7 @@ static bool PF_changelevel (qcvm_t *vm)
 		return true;
 	last_spawncount = svs.spawncount;
 	
-	Cbuf_AddText (va("map %s\n", QC_ArgString(vm, 0)));
+	Cbuf_AddText (va("changelevel %s\n", QC_ArgString(vm, 0)));
 	return true;
 }
 
@@ -1300,6 +1312,107 @@ static bool PF_multicast (qcvm_t *vm)
 	return true;
 }
 
+/*
+==============
+PF_particle
+
+void(vector org, vector dir, float color, float count) particle: NetQuake's.
+QuakeWorld's protocol has no particles, so as FTE's server sends them to its
+clients: blood (color 73) and lightning's blood (225) as their temp entities,
+the rest not at all
+==============
+*/
+static bool PF_particle (qcvm_t *vm)
+{
+	vec3_t	org;
+	int		color, count;
+
+	QC_ArgVector (vm, 0, org);
+	color = PF_ArgTrunc(vm, 2) & 255;
+	count = PF_ArgTrunc(vm, 3);
+	count = count < 0 ? 0 : count > 255 ? 255 : count;
+	if (color != 73 && color != 225)
+		return true;
+
+	MSG_WriteByte (&sv.multicast, svc_temp_entity);
+	if (color == 73)
+	{
+		MSG_WriteByte (&sv.multicast, TE_BLOOD);
+		MSG_WriteByte (&sv.multicast, count < 10 ? 1 : (count + 10) / 20);
+	}
+	else
+		MSG_WriteByte (&sv.multicast, TE_LIGHTNINGBLOOD);
+	MSG_WriteCoord (&sv.multicast, org[0]);
+	MSG_WriteCoord (&sv.multicast, org[1]);
+	MSG_WriteCoord (&sv.multicast, org[2]);
+	SV_Multicast (org, MULTICAST_PVS);
+	return true;
+}
+
+// stat num follows a word of each client's entity or of the globals, from
+// num up (three stats for a vector); false after QC_Error
+static bool PF_AddStat (qcvm_t *vm, const char *builtin, int num, int type, bool global, uint32_t ofs)
+{
+	int		i, n = type == ev_vector ? 3 : 1;
+
+	if (type == ev_vector)
+		type = ev_float;
+	if (type == ev_string)
+	{
+		QC_Warning (vm, "%s: string stats aren't sent", builtin);
+		return true;
+	}
+	if (type != ev_float && type != ev_entity && type != QC_EV_INTEGER)
+		return QC_Error (vm, "%s: stat type %i", builtin, type);
+	if (num < MAX_STATS || num + n > MAX_CL_STATS)
+		return QC_Error (vm, "%s: stat %i isn't from %i to %i", builtin, num, MAX_STATS, MAX_CL_STATS - n);
+	if (!global && ofs + n > QC_FieldWords (vm))
+		return QC_Error (vm, "%s: not a field", builtin);
+	for (i = 0 ; i < n ; i++)
+	{
+		sv.qcstats[num + i].type = (uint32_t)type;
+		sv.qcstats[num + i].global = global;
+		sv.qcstats[num + i].ofs = ofs + (uint32_t)i;
+	}
+	return true;
+}
+
+/*
+==============
+PF_clientstat
+
+void(float num, float type, .__variant field) clientstat: FTE's. Stat num
+(from 32: id's are below) is the field of each client's entity, as type
+(EV_FLOAT, EV_VECTOR as three, EV_ENTITY, EV_INTEGER), for the clients that
+run CSQC
+==============
+*/
+static bool PF_clientstat (qcvm_t *vm)
+{
+	return PF_AddStat (vm, "clientstat", PF_ArgTrunc(vm, 0), PF_ArgTrunc(vm, 1), false, QC_ArgWord(vm, 2));
+}
+
+/*
+==============
+PF_globalstat
+
+void(float num, float type, string global) globalstat: FTE's. Stat num is the
+global of the name, for every client
+==============
+*/
+static bool PF_globalstat (qcvm_t *vm)
+{
+	const char	*name = QC_ArgString(vm, 2);
+	uint32_t	word;
+
+	if (!QC_FindGlobal (vm, name, &word, NULL))
+	{
+		QC_Warning (vm, "globalstat: no global %s", name);
+		return true;
+	}
+	return PF_AddStat (vm, "globalstat", PF_ArgTrunc(vm, 0), PF_ArgTrunc(vm, 1), true, word);
+}
+
 
 // the engine's builtins, by id's numbers, over FTE's standard ones (those that
 // need no engine: QC_BuiltinsStandard); numbers neither has fail when called
@@ -1330,6 +1443,7 @@ static const struct
 	{40, "checkbottom", PF_checkbottom},
 	{41, "pointcontents", PF_pointcontents},
 	{44, "aim", PF_aim},
+	{48, "particle", PF_particle},
 	{52, "WriteByte", PF_WriteByte},
 	{53, "WriteChar", PF_WriteChar},
 	{54, "WriteShort", PF_WriteShort},
@@ -1351,6 +1465,8 @@ static const struct
 	{79, "logfrag", PF_logfrag},
 	{80, "infokey", PF_infokey},
 	{82, "multicast", PF_multicast},
+	{232, "clientstat", PF_clientstat},
+	{233, "globalstat", PF_globalstat},
 };
 
 void PR_InitBuiltins (qc_builtins_t *b)

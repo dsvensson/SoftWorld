@@ -169,13 +169,24 @@ static cvar_t	maxclients = {.name = "maxclients", .string = "8", .serverinfo = t
 	.description = "Most players the server takes at once, up to 32. Serverinfo."};
 static cvar_t	maxspectators = {.name = "maxspectators", .string = "8", .serverinfo = true,
 	.description = "Most spectators the server takes at once, up to 32. Serverinfo."};
-static cvar_t	deathmatch = {.name = "deathmatch", .string = "1", .serverinfo = true,			// 0, 1, or 2
-	.description = "Deathmatch rules, read by the game code (the meanings are the stock game's). Serverinfo.",
-	.values = (const cvar_value_t[]){{"1", "Weapons are picked up; items respawn"},
+cvar_t	deathmatch = {.name = "deathmatch", .string = "1", .serverinfo = true,
+	.description = "Deathmatch rules, read by the game code (the meanings are the stock game's). 0 is single "
+		"player or coop, which runs NetQuake's progs.dat unless the game directory has only a qwprogs.dat. "
+		"Serverinfo.",
+	.values = (const cvar_value_t[]){{"0", "Single player or coop (NetQuake's progs.dat)"},
+		{"1", "Weapons are picked up; items respawn"},
 		{"2", "Weapons stay; armor, ammo and health don't respawn"},
 		{"3", "Weapons stay; items respawn, ammo in half the time"},
 		{"4", "Spawn with all weapons and full ammo; no weapons or ammo on the map"},
 		{"5", "Spawn with all weapons and some ammo; no weapons on the map"}, {0}}};
+cvar_t	coop = {.name = "coop", .string = "0",
+	.description = "Cooperative play, read by NetQuake's game code when deathmatch is 0: players respawn where "
+		"they died and keep their weapons.",
+	.values = (const cvar_value_t[]){{"0", "Single player"}, {"1", "Coop"}, {0}}};
+cvar_t	skill = {.name = "skill", .string = "1",
+	.description = "The difficulty of NetQuake's game (deathmatch 0): which monsters a map spawns, and how they "
+		"fight. Takes effect at the next map.",
+	.values = (const cvar_value_t[]){{"0", "Easy"}, {"1", "Normal"}, {"2", "Hard"}, {"3", "Nightmare"}, {0}}};
 static cvar_t	spawn = {.name = "spawn", .string = "0", .serverinfo = true,
 	.description = "A serverinfo key left for the game code; neither the engine nor the stock game reads it."};
 static cvar_t	watervis = {.name = "watervis", .string = "0", .serverinfo = true,
@@ -351,14 +362,14 @@ void SV_DropClient (client_t *drop)
 		{
 			// call the prog function for removing a client
 			// this will set the body to a dead frame, among other things
-			pr.global_struct->self = EDICT_TO_PROG(drop->edict);
-			PR_ExecuteProgram (pr.global_struct->ClientDisconnect);
+			PR_GLOBAL(self) = EDICT_TO_PROG(drop->edict);
+			PR_ExecuteProgram (PR_GLOBAL(ClientDisconnect));
 		}
 		else if (pr.SpectatorDisconnect)
 		{
 			// call the prog function for removing a client
 			// this will set the body to a dead frame, among other things
-			pr.global_struct->self = EDICT_TO_PROG(drop->edict);
+			PR_GLOBAL(self) = EDICT_TO_PROG(drop->edict);
 			PR_ExecuteProgram (pr.SpectatorDisconnect);
 		}
 	}
@@ -895,9 +906,9 @@ static void SVC_DirectConnect (void)
 	newcl->lockedtill = 0;
 
 	// call the progs to get default spawn parms for the new client
-	PR_ExecuteProgram (pr.global_struct->SetNewParms);
+	PR_ExecuteProgram (PR_GLOBAL(SetNewParms));
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
-		newcl->spawn_parms[i] = (&pr.global_struct->parm1)[i];
+		newcl->spawn_parms[i] = PR_PARM(i);
 
 	if (newcl->spectator)
 		Con_Printf ("Spectator %s connected\n", newcl->name);
@@ -1611,6 +1622,8 @@ static void SV_InitLocal (void)
 	Cvar_RegisterVariable (&maxspectators);
 	Cvar_RegisterVariable (&hostname);
 	Cvar_RegisterVariable (&deathmatch);
+	Cvar_RegisterVariable (&coop);
+	Cvar_RegisterVariable (&skill);
 	Cvar_RegisterVariable (&spawn);
 	Cvar_RegisterVariable (&watervis);
 

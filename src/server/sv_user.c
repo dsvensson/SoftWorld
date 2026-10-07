@@ -510,19 +510,19 @@ static void SV_Spawn_f (void)
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_TOTALSECRETS);
-	ClientReliableWrite_Long (host_client, (int)pr.global_struct->total_secrets);
+	ClientReliableWrite_Long (host_client, (int)PR_GLOBAL(total_secrets));
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_TOTALMONSTERS);
-	ClientReliableWrite_Long (host_client, (int)pr.global_struct->total_monsters);
+	ClientReliableWrite_Long (host_client, (int)PR_GLOBAL(total_monsters));
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_SECRETS);
-	ClientReliableWrite_Long (host_client, (int)pr.global_struct->found_secrets);
+	ClientReliableWrite_Long (host_client, (int)PR_GLOBAL(found_secrets));
 
 	ClientReliableWrite_Begin (host_client, svc_updatestatlong, 6);
 	ClientReliableWrite_Byte (host_client, STAT_MONSTERS);
-	ClientReliableWrite_Long (host_client, (int)pr.global_struct->killed_monsters);
+	ClientReliableWrite_Long (host_client, (int)PR_GLOBAL(killed_monsters));
 
 	// get the client to check and download skins
 	// when that is completed, a begin command will be issued
@@ -570,6 +570,14 @@ static void SV_PutClientInGame (void)
 {
 	int		i;
 
+	if (host_client->newparms)
+	{	// a new game: the parms its progs starts a player with
+		host_client->newparms = false;
+		PR_ExecuteProgram (PR_GLOBAL(SetNewParms));
+		for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
+			host_client->spawn_parms[i] = PR_PARM(i);
+	}
+
 	if (host_client->spectator)
 	{
 		SV_SpawnSpectator ();
@@ -577,11 +585,11 @@ static void SV_PutClientInGame (void)
 		if (pr.SpectatorConnect) {
 			// copy spawn parms out of the client_t
 			for (i=0 ; i< NUM_SPAWN_PARMS ; i++)
-				(&pr.global_struct->parm1)[i] = host_client->spawn_parms[i];
+				PR_PARM(i) = host_client->spawn_parms[i];
 
 			// call the spawn function
-			pr.global_struct->time = (float)sv.time;
-			pr.global_struct->self = EDICT_TO_PROG(sv_player);
+			PR_GLOBAL(time) = (float)sv.time;
+			PR_GLOBAL(self) = EDICT_TO_PROG(sv_player);
 			PR_ExecuteProgram (pr.SpectatorConnect);
 		}
 		return;
@@ -589,17 +597,17 @@ static void SV_PutClientInGame (void)
 
 	// copy spawn parms out of the client_t
 	for (i=0 ; i< NUM_SPAWN_PARMS ; i++)
-		(&pr.global_struct->parm1)[i] = host_client->spawn_parms[i];
+		PR_PARM(i) = host_client->spawn_parms[i];
 
 	// call the spawn function
-	pr.global_struct->time = (float)sv.time;
-	pr.global_struct->self = EDICT_TO_PROG(sv_player);
-	PR_ExecuteProgram (pr.global_struct->ClientConnect);
+	PR_GLOBAL(time) = (float)sv.time;
+	PR_GLOBAL(self) = EDICT_TO_PROG(sv_player);
+	PR_ExecuteProgram (PR_GLOBAL(ClientConnect));
 
 	// actually spawn the player
-	pr.global_struct->time = (float)sv.time;
-	pr.global_struct->self = EDICT_TO_PROG(sv_player);
-	PR_ExecuteProgram (pr.global_struct->PutClientInServer);
+	PR_GLOBAL(time) = (float)sv.time;
+	PR_GLOBAL(self) = EDICT_TO_PROG(sv_player);
+	PR_ExecuteProgram (PR_GLOBAL(PutClientInServer));
 }
 
 /*
@@ -625,9 +633,9 @@ static void SV_SwitchSide (bool spectator)
 		return;
 
 	// the old side leaves, as SV_DropClient has it
-	pr.global_struct->self = EDICT_TO_PROG(sv_player);
+	PR_GLOBAL(self) = EDICT_TO_PROG(sv_player);
 	if (!host_client->spectator)
-		PR_ExecuteProgram (pr.global_struct->ClientDisconnect);
+		PR_ExecuteProgram (PR_GLOBAL(ClientDisconnect));
 	else if (pr.SpectatorDisconnect)
 		PR_ExecuteProgram (pr.SpectatorDisconnect);
 
@@ -641,9 +649,9 @@ static void SV_SwitchSide (bool spectator)
 
 	// and comes in on the new one, as a new client would
 	SV_SetUpClientEdict (host_client);
-	PR_ExecuteProgram (pr.global_struct->SetNewParms);
+	PR_ExecuteProgram (PR_GLOBAL(SetNewParms));
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
-		host_client->spawn_parms[i] = (&pr.global_struct->parm1)[i];
+		host_client->spawn_parms[i] = PR_PARM(i);
 	SV_PutClientInGame ();
 	host_client->sendinfo = true;
 }
@@ -1265,9 +1273,9 @@ static void SV_Kill_f (void)
 		return;
 	}
 	
-	pr.global_struct->time = (float)sv.time;
-	pr.global_struct->self = EDICT_TO_PROG(sv_player);
-	PR_ExecuteProgram (pr.global_struct->ClientKill);
+	PR_GLOBAL(time) = (float)sv.time;
+	PR_GLOBAL(self) = EDICT_TO_PROG(sv_player);
+	PR_ExecuteProgram (PR_GLOBAL(ClientKill));
 }
 
 /*
@@ -1542,6 +1550,19 @@ static void SV_NoSnap_f(void)
 	}
 }
 
+/*
+==================
+SV_CSQC_f
+
+enablecsqc and disablecsqc: whether the client runs CSQC, which FTE_PEXT_CSQC
+has it say; the server sends QuakeC's stats either way, and has no entities
+of CSQC's to send
+==================
+*/
+static void SV_CSQC_f (void)
+{
+}
+
 typedef struct
 {
 	char	*name;
@@ -1561,6 +1582,8 @@ static ucmd_t ucmds[] =
 
 	{"drop", SV_Drop_f},
 	{"pings", SV_Pings_f},
+	{"enablecsqc", SV_CSQC_f},
+	{"disablecsqc", SV_CSQC_f},
 
 // issued by hand at client consoles	
 	{"rate", SV_Rate_f},
@@ -1839,11 +1862,11 @@ static void SV_RunCmd (usercmd_t *ucmd)
 
 	if (!host_client->spectator)
 	{
-		pr.global_struct->frametime = (float)sv.frametime;
+		PR_GLOBAL(frametime) = (float)sv.frametime;
 
-		pr.global_struct->time = (float)sv.time;
-		pr.global_struct->self = EDICT_TO_PROG(sv_player);
-		PR_ExecuteProgram (pr.global_struct->PlayerPreThink);
+		PR_GLOBAL(time) = (float)sv.time;
+		PR_GLOBAL(self) = EDICT_TO_PROG(sv_player);
+		PR_ExecuteProgram (PR_GLOBAL(PlayerPreThink));
 
 		SV_RunThink (sv_player);
 	}
@@ -1911,8 +1934,8 @@ static void SV_RunCmd (usercmd_t *ucmd)
 			ent = EDICT_NUM(n);
 			if (!ent->v.touch || (playertouch[n/8]&(1<<(n%8))))
 				continue;
-			pr.global_struct->self = EDICT_TO_PROG(ent);
-			pr.global_struct->other = EDICT_TO_PROG(sv_player);
+			PR_GLOBAL(self) = EDICT_TO_PROG(ent);
+			PR_GLOBAL(other) = EDICT_TO_PROG(sv_player);
 			PR_ExecuteProgram (ent->v.touch);
 			playertouch[n/8] |= 1 << (n%8);
 		}
@@ -1930,13 +1953,13 @@ static void SV_PostRunCmd(void)
 	// run post-think
 
 	if (!host_client->spectator) {
-		pr.global_struct->time = (float)sv.time;
-		pr.global_struct->self = EDICT_TO_PROG(sv_player);
-		PR_ExecuteProgram (pr.global_struct->PlayerPostThink);
+		PR_GLOBAL(time) = (float)sv.time;
+		PR_GLOBAL(self) = EDICT_TO_PROG(sv_player);
+		PR_ExecuteProgram (PR_GLOBAL(PlayerPostThink));
 		SV_RunNewmis ();
 	} else if (pr.SpectatorThink) {
-		pr.global_struct->time = (float)sv.time;
-		pr.global_struct->self = EDICT_TO_PROG(sv_player);
+		PR_GLOBAL(time) = (float)sv.time;
+		PR_GLOBAL(self) = EDICT_TO_PROG(sv_player);
 		PR_ExecuteProgram (pr.SpectatorThink);
 	}
 }

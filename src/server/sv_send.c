@@ -528,7 +528,7 @@ void SV_ClientStats (const client_t *client, int stats[MAX_STATS])
 	if (!client->spectator)
 		stats[STAT_ACTIVEWEAPON] = (int)ent->v.weapon;
 	// stuff the sigil bits into the high bits of items for sbar
-	stats[STAT_ITEMS] = (int)ent->v.items | ((int)pr.global_struct->serverflags << 28);
+	stats[STAT_ITEMS] = (int)ent->v.items | ((int)PR_GLOBAL(serverflags) << 28);
 	if (client->z_ext & Z_EXT_VIEWHEIGHT)
 		stats[STAT_VIEWHEIGHT] = (int)ent->v.view_ofs[2];
 }
@@ -541,29 +541,62 @@ Performs a delta update of the stats array.  This should only be performed
 when a reliable message can be delivered this frame.
 =======================
 */
+// an integer stat's change, as id sends it
+static void SV_WriteStat (client_t *client, int i, int value)
+{
+	if (value >=0 && value <= 255)
+	{
+		ClientReliableWrite_Begin(client, svc_updatestat, 3);
+		ClientReliableWrite_Byte(client, i);
+		ClientReliableWrite_Byte(client, value);
+	}
+	else
+	{
+		ClientReliableWrite_Begin(client, svc_updatestatlong, 6);
+		ClientReliableWrite_Byte(client, i);
+		ClientReliableWrite_Long(client, value);
+	}
+}
+
+// the word QuakeC's stat i is for a client
+static const int *SV_QCStat (const client_t *client, int i)
+{
+	if (sv.qcstats[i].global)
+		return (const int *)&pr.globals[sv.qcstats[i].ofs];
+	return (const int *)&client->edict->v + sv.qcstats[i].ofs;
+}
+
 static void SV_UpdateClientStats (client_t *client)
 {
-	int		stats[MAX_STATS];
-	int		i;
+	int			stats[MAX_STATS];
+	int			i;
+	const int	*v;
 
 	SV_ClientStats (client, stats);
 	for (i=0 ; i<MAX_STATS ; i++)
 		if (stats[i] != client->stats[i])
 		{
 			client->stats[i] = stats[i];
-			if (stats[i] >=0 && stats[i] <= 255)
-			{
-				ClientReliableWrite_Begin(client, svc_updatestat, 3);
-				ClientReliableWrite_Byte(client, i);
-				ClientReliableWrite_Byte(client, stats[i]);
-			}
-			else
-			{
-				ClientReliableWrite_Begin(client, svc_updatestatlong, 6);
-				ClientReliableWrite_Byte(client, i);
-				ClientReliableWrite_Long(client, stats[i]);
-			}
+			SV_WriteStat (client, i, stats[i]);
 		}
+
+	// QuakeC's (FTE's clientstat and globalstat), which only CSQC reads
+	if (!(client->fteext & FTE_PEXT_CSQC))
+		return;
+	for (i=MAX_STATS ; i<MAX_CL_STATS ; i++)
+	{
+		if (!sv.qcstats[i].type || *(v = SV_QCStat (client, i)) == client->stats[i])
+			continue;
+		client->stats[i] = *v;
+		if (sv.qcstats[i].type == ev_float)
+		{
+			ClientReliableWrite_Begin(client, svc_fte_updatestatfloat, 6);
+			ClientReliableWrite_Byte(client, i);
+			ClientReliableWrite_Float(client, *(const float *)v);
+		}
+		else
+			SV_WriteStat (client, i, *v);
+	}
 }
 
 /*

@@ -378,6 +378,28 @@ const char *FS_FileSource (void)
 	return com_filesource;
 }
 
+bool FS_InGameDir (const char *path)
+{
+	searchpath_t	*search;
+	char			netpath[MAX_OSPATH];
+	int				i;
+
+	for (search = com_searchpaths ; search && search != com_base_searchpaths ; search = search->next)
+	{
+		if (search->pack)
+		{
+			for (i = 0 ; i < search->pack->numfiles ; i++)
+				if (!strcmp (search->pack->files[i].name, path))
+					return true;
+			continue;
+		}
+		snprintf (netpath, sizeof(netpath), "%s/%s", search->filename, path);
+		if (Sys_FileTime (netpath) != -1)
+			return true;
+	}
+	return false;
+}
+
 int COM_FOpenFile (const char *filename, FILE **file)
 {
 	searchpath_t	*search;

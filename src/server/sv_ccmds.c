@@ -305,26 +305,19 @@ static void SV_Give_f (void)
 
 /*
 ======================
-SV_Map_f
+SV_GotoLevel
 
-handle a 
-map <mapname>
-command from the console or progs.
+The server on a level, taking the connected clients along with their spawn
+parms as parms says: map's, changelevel's and restart's
 ======================
 */
-static void SV_Map_f (void)
+static void SV_GotoLevel (const char *name, spawnparms_t parms)
 {
 	char	level[MAX_QPATH];
 	char	expanded[MAX_QPATH];
 	FILE	*f;
 
-	if (Cmd_Argc() != 2)
-	{
-		Con_Printf ("map <levelname> : continue game on a new level\n");
-		return;
-	}
-	Q_strncpyz (level, Cmd_Argv(1), sizeof(level));
-
+	Q_strncpyz (level, name, sizeof(level));		// name may be sv.name, which spawning clears
 
 	// check to make sure the level exists
 	snprintf (expanded, sizeof(expanded), "maps/%s.bsp", level);
@@ -339,13 +332,65 @@ static void SV_Map_f (void)
 	SV_BroadcastCommand ("changing\n");
 	SV_SendMessagesToAll ();
 
-	SV_SpawnServer (level);
+	SV_SpawnServer (level, parms);
 
 	SV_BroadcastCommand ("reconnect\n");
 
 	// the player of a listen server joins the game
 	if (!host.dedicated && !SV_HasLocalClient ())
 		Cbuf_AddText ("connect local\n");
+}
+
+/*
+======================
+SV_Map_f
+
+map <mapname>: as FTE's, a new game on the level for NetQuake's progs and
+when no level runs (SetNewParms, no serverflags); QuakeWorld's keep their
+players' parms (SetChangeParms), as QuakeWorld's map always did
+======================
+*/
+static void SV_Map_f (void)
+{
+	if (Cmd_Argc() != 2)
+	{
+		Con_Printf ("map <levelname> : start a game on a level\n");
+		return;
+	}
+	SV_GotoLevel (Cmd_Argv(1), sv.state == ss_dead || pr.nq ? SPAWNPARMS_NEW : SPAWNPARMS_CHANGE);
+}
+
+/*
+======================
+SV_Changelevel_f
+
+changelevel <mapname>: on to the level, the players with the parms the progs
+gives them for it (SetChangeParms); what QuakeC's changelevel does
+======================
+*/
+static void SV_Changelevel_f (void)
+{
+	if (Cmd_Argc() != 2)
+	{
+		Con_Printf ("changelevel <levelname> : continue the game on a new level\n");
+		return;
+	}
+	SV_GotoLevel (Cmd_Argv(1), SPAWNPARMS_CHANGE);
+}
+
+/*
+======================
+SV_Restart_f
+
+restart: the level again, the players with the parms they began it with, as
+NetQuake's; id1's progs restart a single player's game so when the player dies
+======================
+*/
+static void SV_Restart_f (void)
+{
+	if (sv.state == ss_dead)
+		return;
+	SV_GotoLevel (sv.name, SPAWNPARMS_KEEP);
 }
 
 
@@ -912,8 +957,11 @@ void SV_InitOperatorCommands (void)
 	Cmd_AddCommand ("status", SV_Status_f, "Shows the server's load and each client's frags, userid, address, "
 		"name, rate, ping and packet loss.");
 
-	Cmd_AddCommand ("map", SV_Map_f, "Starts the server on a map, taking the connected clients with it. "
-		"Usage: map <mapname>");
+	Cmd_AddCommand ("map", SV_Map_f, "Starts the server on a map, taking the connected clients with it; for "
+		"NetQuake's progs a new game. Usage: map <mapname>");
+	Cmd_AddCommand ("changelevel", SV_Changelevel_f, "Goes on to a map, the players keeping what the game "
+		"gives them for it, as QuakeC's changelevel does. Usage: changelevel <mapname>");
+	Cmd_AddCommand ("restart", SV_Restart_f, "Starts the map over, the players with what they began it with.");
 	Cmd_AddCommand ("killserver", SV_KillServer_f, "Ends the game, dropping every client.");
 	Cmd_AddCommand ("setmaster", SV_SetMaster_f, "Sets the master servers heartbeats go to, at port 27000 "
 		"unless given; none for no master. Usage: setmaster <address|none> [address ...]");

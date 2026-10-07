@@ -292,10 +292,10 @@ static void MVD_WritePlayer (sizebuf_t *msg, int num, const mvdplayer_t *p, cons
 static void MVD_Stats (const client_t *cl, int *stats)
 {
 	SV_ClientStats (cl, stats);
-	stats[STAT_TOTALSECRETS] = (int)pr.global_struct->total_secrets;
-	stats[STAT_TOTALMONSTERS] = (int)pr.global_struct->total_monsters;
-	stats[STAT_SECRETS] = (int)pr.global_struct->found_secrets;
-	stats[STAT_MONSTERS] = (int)pr.global_struct->killed_monsters;
+	stats[STAT_TOTALSECRETS] = (int)PR_GLOBAL(total_secrets);
+	stats[STAT_TOTALMONSTERS] = (int)PR_GLOBAL(total_monsters);
+	stats[STAT_SECRETS] = (int)PR_GLOBAL(found_secrets);
+	stats[STAT_MONSTERS] = (int)PR_GLOBAL(killed_monsters);
 }
 
 // a player's stats that differ from what was last said, all of them without

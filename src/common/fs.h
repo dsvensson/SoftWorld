@@ -40,6 +40,9 @@ byte	*FS_LoadFile (const char *path, int *length);
 // in; empty when it wasn't
 const char	*FS_FileSource (void);
 
+// whether the game directory has the file itself, above the base's (id1, qw)
+bool	FS_InGameDir (const char *path);
+
 // sees each file FS_LoadFile loads, as it is loaded (f_modified's checks)
 void	FS_SetLoadHook (void (*hook) (const char *path, const byte *data, int length));
 
