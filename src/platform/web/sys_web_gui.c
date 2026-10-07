@@ -100,6 +100,11 @@ char *Sys_GetClipboardText (void)
 	return IN_PastedText ();
 }
 
+void Sys_SetClipboardText (const char *text)
+{
+	IN_CopyText (text);
+}
+
 /*
 ===============================================================================
 

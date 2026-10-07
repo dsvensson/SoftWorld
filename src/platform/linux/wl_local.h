@@ -76,6 +76,7 @@ void	WL_SetTitle (const char *latin1);
 void	WL_SetIdleInhibit (bool inhibit);
 void	WL_Activate (void);
 char	*WL_GetClipboardText (void);
+void	WL_SetClipboardText (const char *text);
 
 // the GPU the compositor draws with, as a DRM device number
 bool	WL_MainDevice (unsigned *major, unsigned *minor);

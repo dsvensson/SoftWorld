@@ -281,4 +281,11 @@ addToLibrary({
 		InWeb.pasted = null;
 		return text ? stringToNewUTF8(text) : 0;
 	},
+
+	// the browser lets a page write the clipboard just after a key or click
+	// (the copy's), and over https or on localhost only
+	web_in_copy__deps: ['$UTF8ToString'],
+	web_in_copy: (text) => {
+		navigator.clipboard?.writeText(UTF8ToString(text)).catch(() => {});
+	},
 });

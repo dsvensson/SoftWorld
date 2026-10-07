@@ -145,6 +145,19 @@ char *Sys_GetClipboardText (void)
 	}
 }
 
+void Sys_SetClipboardText (const char *text)
+{
+	@autoreleasepool
+	{
+		NSString	*string = [NSString stringWithUTF8String:text];
+
+		if (!string)
+			return;
+		[[NSPasteboard generalPasteboard] clearContents];
+		[[NSPasteboard generalPasteboard] setString:string forType:NSPasteboardTypeString];
+	}
+}
+
 /*
 ===============================================================================
 

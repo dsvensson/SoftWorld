@@ -91,6 +91,12 @@ char *Sys_GetClipboardText (void)
 	return window ? window->GetClipboardText () : NULL;
 }
 
+void Sys_SetClipboardText (const char *text)
+{
+	if (window)
+		window->SetClipboardText (text);
+}
+
 /*
 ===============================================================================
 

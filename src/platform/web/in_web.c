@@ -62,6 +62,7 @@ bool	web_in_raw (void);
 void	web_in_takemotion (int *dx, int *dy);
 int		web_in_takewheel (void);
 char	*web_in_pasted (void);
+void	web_in_copy (const char *text);
 
 // the keys by KeyboardEvent.code, but the letters' and digits', placed as the
 // Windows scancodes are: the keypad is the navigation keys, as without Num Lock
@@ -202,6 +203,11 @@ void IN_PumpEvents (void)
 char *IN_PastedText (void)
 {
 	return web_in_pasted ();
+}
+
+void IN_CopyText (const char *text)
+{
+	web_in_copy (text);
 }
 
 /*

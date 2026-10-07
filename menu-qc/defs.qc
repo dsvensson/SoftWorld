@@ -62,6 +62,9 @@ string(string command, optional float bindmap) findkeysforcommand = #610;
 string(float key, optional float bindmap) getkeybind = #342;
 float(float key, string binding, optional float bindmap) setkeybind = #630;
 
+// the clipboard (cliptype 0), FTE's by name
+void(float cliptype, string text) clipboard_set = #0:clipboard_set;
+
 // SoftWorld's: the window fills the screen
 float() isfullscreen = #0:isfullscreen;
 

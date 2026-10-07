@@ -24,7 +24,8 @@ x11_t x11;
 static int  x11_width, x11_height;
 static bool x11_fullscreen, x11_screensaver, x11_inhibited;
 static Atom x11_protocols, x11_delete, x11_state, x11_fullscreenatom;
-static Atom x11_active, x11_name, x11_utf8, x11_clipboard, x11_incr, x11_property;
+static Atom x11_active, x11_name, x11_utf8, x11_clipboard, x11_incr, x11_property, x11_targets;
+static char *x11_owned;    // the clipboard's text while we hold it
 
 static void X11_SetTitle (const char *text);
 static void X11_SetIdleInhibit (bool inhibit);
@@ -79,6 +80,7 @@ static bool X11_Init (int width, int height)
 	x11_clipboard = XInternAtom (x11.display, "CLIPBOARD", False);
 	x11_incr = XInternAtom (x11.display, "INCR", False);
 	x11_property = XInternAtom (x11.display, "SOFTWORLD_SELECTION", False);
+	x11_targets = XInternAtom (x11.display, "TARGETS", False);
 	XSetWMProtocols (x11.display, x11.window, &x11_delete, 1);
 	XSetWMNormalHints (x11.display, x11.window, &size);
 	XSetClassHint (x11.display, x11.window, &class);
@@ -107,6 +109,8 @@ static void X11_Shutdown (void)
 	XCloseDisplay (x11.display);
 	memset (&x11, 0, sizeof(x11));
 	x11_fullscreen = false;
+	free (x11_owned);
+	x11_owned = NULL;
 }
 
 static VkResult X11_CreateSurface (VkInstance instance, VkSurfaceKHR *surface)
@@ -212,6 +216,34 @@ static void X11_ReadState (void)
 	X11_SetIdleInhibit (ActiveApp && !Minimized && x11_fullscreen);
 }
 
+// A paste of the clipboard we hold: our text as the target asked for (UTF-8,
+// or Latin-1, which ASCII is too), or the targets there are
+static void X11_AnswerSelection (const XSelectionRequestEvent *request)
+{
+	XSelectionEvent reply = {.type = SelectionNotify, .display = request->display, .requestor = request->requestor,
+		.selection = request->selection, .target = request->target, .property = None, .time = request->time};
+	Atom            targets[3] = {x11_targets, x11_utf8, XA_STRING};
+	Atom            property = request->property != None ? request->property : request->target;    // an old client's
+
+	if (x11_owned && request->selection == x11_clipboard)
+	{
+		if (request->target == x11_targets)
+		{
+			XChangeProperty (x11.display, request->requestor, property, XA_ATOM, 32, PropModeReplace,
+				(unsigned char *)targets, 3);
+			reply.property = property;
+		}
+		else if (request->target == x11_utf8 || request->target == XA_STRING)
+		{
+			XChangeProperty (x11.display, request->requestor, property, request->target, 8, PropModeReplace,
+				(unsigned char *)x11_owned, (int)strlen (x11_owned));
+			reply.property = property;
+		}
+	}
+	XSendEvent (x11.display, request->requestor, False, 0, (XEvent *)&reply);
+	XFlush (x11.display);
+}
+
 // XPending flushes requests so the main loop cannot wait for events
 // from requests that are still buffered locally.
 static int X11_ReadEvents (void)
@@ -259,6 +291,16 @@ static int X11_ReadEvents (void)
 			if (event.xclient.message_type == x11_protocols && event.xclient.format == 32
 				&& (Atom)event.xclient.data.l[0] == x11_delete)
 				Cbuf_AddText ("quit\n");
+			break;
+		case SelectionRequest:
+			X11_AnswerSelection (&event.xselectionrequest);
+			break;
+		case SelectionClear:
+			if (event.xselectionclear.selection == x11_clipboard)
+			{
+				free (x11_owned);
+				x11_owned = NULL;
+			}
 			break;
 		}
 	}
@@ -394,6 +436,9 @@ static char *X11_GetClipboardText (void)
 	Atom   targets[2] = {x11_utf8, XA_STRING};
 	int    i;
 
+	// ours: the requests for it aren't answered while this waits
+	if (x11_owned && XGetSelectionOwner (x11.display, x11_clipboard) == x11.window)
+		return strdup (x11_owned);
 	if (XGetSelectionOwner (x11.display, x11_clipboard) == None)
 		return NULL;
 
@@ -416,6 +461,24 @@ static char *X11_GetClipboardText (void)
 	return NULL;
 }
 
+// The clipboard held from the last input event on, as the ICCCM asks
+static void X11_SetClipboardText (const char *text)
+{
+	char *copy = strdup (text);
+
+	if (!copy)
+		return;
+	free (x11_owned);
+	x11_owned = copy;
+	XSetSelectionOwner (x11.display, x11_clipboard, x11.window, x11.time ? x11.time : CurrentTime);
+	if (XGetSelectionOwner (x11.display, x11_clipboard) != x11.window)
+	{
+		free (x11_owned);
+		x11_owned = NULL;
+	}
+	XFlush (x11.display);
+}
+
 const window_backend_t window_x11 =
 {
 	.name = "X11",
@@ -433,6 +496,7 @@ const window_backend_t window_x11 =
 	.SetIdleInhibit = X11_SetIdleInhibit,
 	.Activate = X11_Activate,
 	.GetClipboardText = X11_GetClipboardText,
+	.SetClipboardText = X11_SetClipboardText,
 	.PrintInfo = X11_PrintInfo,
 	.InputInit = IN_X11Init,
 	.InputShutdown = IN_X11Shutdown,

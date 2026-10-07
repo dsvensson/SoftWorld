@@ -90,6 +90,8 @@ void	Sys_SendKeyEvents (void);
 
 // returns the clipboard's text as a malloc'd string the caller frees, or NULL
 char	*Sys_GetClipboardText (void);
+// puts text (UTF-8) on the clipboard, what pastes in other programs
+void	Sys_SetClipboardText (const char *text);
 
 // the root certificates the system trusts (for HTTPS), each handed to add as
 // it is: DER, or PEM text whose length counts its ending NUL (a bundle of

@@ -50,6 +50,8 @@ void	IN_WindowActivated (bool active);
 
 // the text pasted last (Ctrl+V lets the browser paste it), malloc'd; NULL for none
 char	*IN_PastedText (void);
+// text (UTF-8) to the clipboard, where the browser lets the page
+void	IN_CopyText (const char *text);
 
 // in_gamepad_web.c
 void	IN_InitGamepad (void);

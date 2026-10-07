@@ -1038,6 +1038,108 @@ static const struct wl_data_device_listener	wl_datadevice_listener =
 };
 
 /*
+===============================================================================
+
+COPYING
+
+The clipboard we hold: a data source offering our text, written to whoever
+pastes it through the pipe they send
+
+===============================================================================
+*/
+
+static struct wl_data_source	*wl_source;		// the clipboard's, while we hold it
+static char						*wl_owned;		// its text
+
+static void WL_SourceTarget (void *data, struct wl_data_source *source, const char *mime)
+{
+	(void)data;
+	(void)source;
+	(void)mime;
+}
+
+// a paste: our text written whole (it is short), the pipe closed
+static void WL_SourceSend (void *data, struct wl_data_source *source, const char *mime, int32_t fd)
+{
+	const char	*p = wl_owned ? wl_owned : "";
+	size_t		left = strlen (p);
+	ssize_t		n;
+
+	(void)data;
+	(void)source;
+	(void)mime;
+	while (left && ((n = write (fd, p, left)) > 0 || (n < 0 && errno == EINTR)))
+		if (n > 0)
+		{
+			p += n;
+			left -= (size_t)n;
+		}
+	close (fd);
+}
+
+// another took the clipboard
+static void WL_SourceCancelled (void *data, struct wl_data_source *source)
+{
+	(void)data;
+	wl_data_source_destroy (source);
+	if (source != wl_source)
+		return;		// one we replaced
+	wl_source = NULL;
+	free (wl_owned);
+	wl_owned = NULL;
+}
+
+// nothing is dragged from here
+static void WL_SourceDropped (void *data, struct wl_data_source *source)
+{
+	(void)data;
+	(void)source;
+}
+
+static void WL_SourceAction (void *data, struct wl_data_source *source, uint32_t action)
+{
+	(void)data;
+	(void)source;
+	(void)action;
+}
+
+static const struct wl_data_source_listener	wl_source_listener =
+{
+	.target = WL_SourceTarget,
+	.send = WL_SourceSend,
+	.cancelled = WL_SourceCancelled,
+	.dnd_drop_performed = WL_SourceDropped,
+	.dnd_finished = WL_SourceDropped,
+	.action = WL_SourceAction,
+};
+
+/*
+================
+WL_SetClipboardText
+
+Ours from the last input event on: the compositor takes a selection only from
+a client the user just used
+================
+*/
+void WL_SetClipboardText (const char *text)
+{
+	char	*copy;
+
+	if (!way.datadevices || !wl_datadevice || !(copy = strdup (text)))
+		return;
+	free (wl_owned);
+	wl_owned = copy;
+	wl_source = wl_data_device_manager_create_data_source (way.datadevices);
+	wl_data_source_add_listener (wl_source, &wl_source_listener, NULL);
+	wl_data_source_offer (wl_source, TEXT_MIME);
+	wl_data_source_offer (wl_source, "text/plain");
+	wl_data_source_offer (wl_source, "UTF8_STRING");
+	wl_data_source_offer (wl_source, "STRING");
+	wl_data_device_set_selection (wl_datadevice, wl_source, way.lastserial);
+	wl_display_flush (way.display);
+}
+
+/*
 ================
 WL_GetClipboardText
 
@@ -1053,6 +1155,9 @@ char *WL_GetClipboardText (void)
 	ssize_t			got;
 	struct pollfd	p;
 
+	// ours: what we'd write the pipe with, as it isn't read while we wait
+	if (wl_source && wl_owned)
+		return strdup (wl_owned);
 	if (!wl_selection || wl_data_offer_get_user_data (wl_selection) != &wl_hastext || pipe2 (fds, O_CLOEXEC))
 		return NULL;
 	wl_data_offer_receive (wl_selection, TEXT_MIME, fds[1]);
@@ -1193,6 +1298,11 @@ void WL_Shutdown (void)
 	if (!way.display)
 		return;
 	WL_SetIdleInhibit (false);
+	if (wl_source)
+		wl_data_source_destroy (wl_source);
+	wl_source = NULL;
+	free (wl_owned);
+	wl_owned = NULL;
 	if (wl_decoration)
 		zxdg_toplevel_decoration_v1_destroy (wl_decoration);
 	if (wl_toplevel)
@@ -1345,6 +1455,7 @@ const window_backend_t	window_wayland =
 	.SetIdleInhibit = WL_SetIdleInhibit,
 	.Activate = WL_Activate,
 	.GetClipboardText = WL_GetClipboardText,
+	.SetClipboardText = WL_SetClipboardText,
 	.PrintInfo = WL_PrintInfo,
 	.MainDevice = WL_MainDevice,
 	.SetFrameSize = WL_SetFrameSize,

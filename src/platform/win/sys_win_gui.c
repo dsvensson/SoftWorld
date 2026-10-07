@@ -128,6 +128,39 @@ char *Sys_GetClipboardText (void)
 	return copy;
 }
 
+/*
+================
+Sys_SetClipboardText
+
+As Unicode, which Windows gives as ANSI too to those that ask
+================
+*/
+void Sys_SetClipboardText (const char *text)
+{
+	int		n = MultiByteToWideChar (CP_UTF8, 0, text, -1, NULL, 0);
+	HGLOBAL	data;
+	wchar_t	*wide;
+
+	if (n <= 0 || !(data = GlobalAlloc (GMEM_MOVEABLE, (size_t)n * sizeof(wchar_t))))
+		return;
+	if (!(wide = GlobalLock (data)))
+	{
+		GlobalFree (data);
+		return;
+	}
+	MultiByteToWideChar (CP_UTF8, 0, text, -1, wide, n);
+	GlobalUnlock (data);
+	if (!OpenClipboard (mainwindow))
+	{
+		GlobalFree (data);
+		return;
+	}
+	EmptyClipboard ();
+	if (!SetClipboardData (CF_UNICODETEXT, data))
+		GlobalFree (data);		// else the clipboard's
+	CloseClipboard ();
+}
+
 void Sys_SendKeyEvents (void)
 {
 	MSG		msg;

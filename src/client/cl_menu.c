@@ -543,6 +543,33 @@ static bool M_ClientState (qcvm_t *vm)
 	return true;
 }
 
+// void clipboard_set(float cliptype, string text): the clipboard's (cliptype 0;
+// not the selection, 1), Quake's coloured characters as their plain ones
+static bool M_ClipboardSet (qcvm_t *vm)
+{
+	const char	*s = QC_ArgString (vm, 1);
+	char		text[1024];
+	size_t		n;
+	int			c;
+
+	if (QC_DoubleToInt (QC_ArgFloat (vm, 0)) != 0)
+		return true;
+	for (n = 0 ; *s && n < sizeof(text) - 1 ; s++)
+	{
+		c = *(const unsigned char *)s & 127;
+		if (c >= 0x12 && c <= 0x1b)
+			c = '0' + c - 0x12;		// the gold digits
+		else if (c == 0x10 || c == 0x11)
+			c = c == 0x10 ? '[' : ']';
+		else if (c < ' ' || c == 127)
+			c = c == '\n' || c == '\t' ? c : ' ';
+		text[n++] = (char)c;
+	}
+	text[n] = 0;
+	Sys_SetClipboardText (text);
+	return true;
+}
+
 // float isfullscreen(): SoftWorld's, the window filling the screen
 static bool M_IsFullscreen (qcvm_t *vm)
 {
@@ -576,6 +603,7 @@ static const struct
 	{"getkeybind", M_GetKeyBind},
 	{"setkeybind", M_SetKeyBind},
 	{"clientstate", M_ClientState},
+	{"clipboard_set", M_ClipboardSet},
 	{"isfullscreen", M_IsFullscreen},
 };
 

@@ -35,6 +35,7 @@ typedef struct
 	void	(*SetIdleInhibit) (bool inhibit);
 	void	(*Activate) (void);
 	char	*(*GetClipboardText) (void);
+	void	(*SetClipboardText) (const char *utf8);
 	void	(*PrintInfo) (bool all);
 
 	// These may be unset when the display provides no such information.
