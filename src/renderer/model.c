@@ -88,13 +88,16 @@ static void Mod_FreeData (model_t *mod)
 ===============
 Mod_FlushAll
 
-Forces every model to reload, e.g. after the game directory changed.
+Forces every model to reload, e.g. after the game directory changed. The
+surface cache's blocks point into the brush models' surfaces, so it forgets
+them first.
 ===============
 */
 static void Mod_FlushAll (void)
 {
 	int		i;
 
+	D_FlushCaches ();
 	for (i = 0 ; i < mod_numknown ; i++)
 	{
 		Mod_FreeData (mod_known[i]);
@@ -209,6 +212,9 @@ byte *Mod_LeafPVS (mleaf_t *leaf, model_t *model)
 /*
 ===================
 Mod_ClearAll
+
+The brush and sprite models reload; the surface cache forgets the surfaces
+first (Mod_FlushAll)
 ===================
 */
 void Mod_ClearAll (void)
@@ -216,6 +222,7 @@ void Mod_ClearAll (void)
 	int		i;
 	model_t	*mod;
 
+	D_FlushCaches ();
 	for (i = 0 ; i < mod_numknown ; i++)
 	{
 		mod = mod_known[i];

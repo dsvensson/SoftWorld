@@ -644,13 +644,14 @@ byte *FS_LoadFile (const char *path, int *length)
 ============
 FS_AddGamedirCallback
 
-The callbacks run when the game directory changes, so data loaded from the
-old directory can be dropped.
+The callbacks run after the game directory changes, so data loaded from the
+old directory can be dropped: when nothing uses it (FS_FlushGamedir)
 ============
 */
 #define MAX_GAMEDIR_CALLBACKS	8
 static void	(*gamedir_callbacks[MAX_GAMEDIR_CALLBACKS])(void);
 static int	num_gamedir_callbacks;
+static bool	gamedir_changed;		// the callbacks are owed a run
 
 void FS_AddGamedirCallback (void (*callback)(void))
 {
@@ -671,6 +672,26 @@ void FS_RemoveGamedirCallback (void (*callback)(void))
 			return;
 		}
 	}
+}
+
+/*
+============
+FS_FlushGamedir
+
+The callbacks, where the game directory changed since they last ran. Not
+while a level is on: they free its models and its sounds (a server's gamedir
+command mid-level changes the search path, and the next level reloads)
+============
+*/
+void FS_FlushGamedir (void)
+{
+	int		i;
+
+	if (!gamedir_changed)
+		return;
+	gamedir_changed = false;
+	for (i = 0 ; i < num_gamedir_callbacks ; i++)
+		gamedir_callbacks[i] ();
 }
 
 /*
@@ -823,11 +844,8 @@ void COM_Gamedir (char *dir)
 		com_searchpaths = next;
 	}
 
-	//
-	// flush all data, so it will be forced to reload
-	//
-	for (i = 0 ; i < num_gamedir_callbacks ; i++)
-		gamedir_callbacks[i] ();
+	// the data loaded from the old one dropped once nothing uses it
+	gamedir_changed = true;
 
 	if (!strcmp(dir,"id1") || !strcmp(dir, "qw"))
 		return;

@@ -631,6 +631,7 @@ static void CL_ParseServerData (void)
 	}
 
 	COM_Gamedir(str);
+	FS_FlushGamedir ();		// the last level's models and sounds are done with
 
 	//ZOID--run the autoexec.cfg in the gamedir
 	//if it exists

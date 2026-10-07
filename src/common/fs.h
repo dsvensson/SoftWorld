@@ -43,9 +43,11 @@ const char	*FS_FileSource (void);
 // sees each file FS_LoadFile loads, as it is loaded (f_modified's checks)
 void	FS_SetLoadHook (void (*hook) (const char *path, const byte *data, int length));
 
-// called whenever the game directory changes
+// called after the game directory changes, from FS_FlushGamedir: by the
+// client at a level's start, or while it has none
 void	FS_AddGamedirCallback (void (*callback)(void));
 void	FS_RemoveGamedirCallback (void (*callback)(void));
+void	FS_FlushGamedir (void);
 
 // the paths under the search path that begin with partial: files with one of
 // the extensions (NULL-terminated, each with its dot), and the directories

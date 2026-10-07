@@ -425,7 +425,6 @@ void CL_ClearState (void)
 	S_StopAllSounds (true);
 
 	Con_DPrintf ("Clearing memory\n");
-	D_FlushCaches ();
 	Mod_ClearAll ();
 
 	CL_ClearTEnts ();
@@ -1733,9 +1732,14 @@ void CL_Frame (void)
 
 	// send intentions now
 	CL_SendChatState ();
-	// resend a connection request if necessary
+	// resend a connection request if necessary; with no level loaded, what
+	// an old game directory loaded can go
 	if (cls.state == ca_disconnected)
+	{
+		if (!cls.demoplayback)
+			FS_FlushGamedir ();
 		CL_CheckForResend ();
+	}
 	else if (cls.physframe)
 		CL_SendCmd ();
 	else
