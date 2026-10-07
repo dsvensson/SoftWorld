@@ -1,7 +1,7 @@
 // sb_info.qc -- the server browser's info popup: the selected server's
-// players, serverinfo and sources, kept fresh while it is up (sb_liveupdate)
+// players and serverinfo, kept fresh while it is up (sb_liveupdate)
 
-float	sb_infopage;		// 0 players, 1 serverinfo, 2 sources
+float	sb_infopage;		// 0 players, 1 serverinfo
 float	sb_infopos;			// the page's top line
 float	sb_infoupdate;		// when the server is asked again
 
@@ -158,7 +158,7 @@ void(float x, float y, float w, float h, float i) SB_Info_Players =
 /*
 ==============================================================================
 
-THE SERVERINFO AND THE SOURCES
+THE SERVERINFO
 
 ==============================================================================
 */
@@ -197,22 +197,6 @@ void(float x, float y, float w, float h, float i) SB_Info_Rules =
 			Pad (rules[k].value, floor (w / 8) - 14)), 0, 31), FALSE);
 };
 
-// the sources, red those that named the server, the line chosen marked
-void(float x, float y, float w, float h, float i) SB_Info_Sources =
-{
-	float	n = gethostcachevalue (SLIST_SOURCES), k, rows = floor (h / 8) - 1;
-
-	sb_infopos = max (0, min (sb_infopos, n - 1));
-	UI_Print (x, y, " type    name", TRUE);
-	for (k = 0 ; k < n && k < rows ; k++)
-	{
-		UI_Print (x, y + 8 + k * 8, sprintf ("%s   %s", Pad (gethostcachesource (k, "type"), 6),
-			gethostcachesource (k, "name")), hostcacheinsource (i, k));
-		if (k == sb_infopos)
-			UI_Char (x + 56, y + 8 + k * 8, 0x8d);
-	}
-};
-
 /*
 ==============================================================================
 
@@ -228,12 +212,11 @@ typedef struct
 	void(float x, float y, float w, float h, float i)	draw;
 } infopage_t;
 
-#define	SB_INFOPAGES	3
+#define	SB_INFOPAGES	2
 
 infopage_t	sb_infopages[SB_INFOPAGES] = {
 	{"players", 0, SB_Info_Players},
-	{"serverinfo", 8, SB_Info_Rules},
-	{"sources", 19, SB_Info_Sources}
+	{"serverinfo", 8, SB_Info_Rules}
 };
 
 void() SB_Info_Draw =
@@ -241,7 +224,7 @@ void() SB_Info_Draw =
 	float		w = 240, h = 112 + (sb_vh >= 240 ? 40 : 0), x, y;
 	vector		at = SB_DialogBox (w, h);
 	infopage_t	page = sb_infopages[sb_infopage];
-	string		tabs = " players serverinfo sources ";
+	string		tabs = " players serverinfo ";
 
 	x = at_x - 4;
 	y = at_y - 4;

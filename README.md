@@ -289,7 +289,7 @@ dropped rather than waited for. 64 watch at most: a relay in front serves more.
 
 Multiplayer in the menu (and `menu_multiplayer`, F5's, or `menu_slist`) is a server browser that
 looks and works as ezQuake's: its Servers, Sources, Players and Options pages, the info of a server
-(Enter: its players, serverinfo and sources; Q there watches its game through QTV), its keys (typing
+(Enter: its players and serverinfo; Q there watches its game through QTV), its keys (typing
 searches the names, Alt+1–8 sorts, Ctrl+2–8 shows columns, Space scans again, Ctrl+J joins, Ctrl+O
 watches, Ctrl+C copies the address, Ins adds a server) and its `sb_*` cvars, with ezQuake's
 defaults. Its list is found as qualia's is: last time's servers are shown at once, the masters and
