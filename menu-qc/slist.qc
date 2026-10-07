@@ -209,7 +209,7 @@ THE SERVERS
 // the keys, by FTE's names, and the serverinfo's
 float	key_ping, key_map, key_name, key_address, key_numplayers, key_numspectators, key_gamedir, key_timelimit,
 	key_fraglimit, key_isproxy, key_state, key_freeplayers, key_player0, key_serverinfo, key_version, key_progs,
-	key_maxclients, key_maxspectators, key_deathmatch, key_status, key_teamplay;
+	key_maxclients, key_maxspectators, key_deathmatch, key_status, key_teamplay, key_qtv;
 
 void() SB_Keys =
 {
@@ -236,6 +236,7 @@ void() SB_Keys =
 	key_deathmatch = gethostcacheindexforkey ("deathmatch");
 	key_status = gethostcacheindexforkey ("status");
 	key_teamplay = gethostcacheindexforkey ("teamplay");
+	key_qtv = gethostcacheindexforkey ("qtv");
 };
 
 string(float key, float i) SB_Get =
@@ -648,6 +649,25 @@ void(float i, float spectate) SB_Connect =
 	}
 };
 
+// its game watched through QTV, where the QTV list (qtv_api_url) has a stream
+// of it (ezQuake's q); the browser closes after, as for joining
+void(float i) SB_WatchQTV =
+{
+	string	stream = SB_Get (key_qtv, i);
+
+	if (stream == "")
+	{
+		print (sprintf ("No QTV stream address found for '%s'\n", SB_Get (key_address, i)));
+		return;
+	}
+	localcmd (sprintf ("qtvplay %s\n", stream));
+	if (cvar ("sb_autohide"))
+	{
+		setkeydest (KEY_GAME);
+		m_state = M_NONE;
+	}
+};
+
 // the address, or with Alt the name and address
 void(float i) SB_Copy =
 {
@@ -1025,6 +1045,9 @@ void(float c) SB_Info_Char =
 	case 'o':
 	case 's':
 		SB_Connect (sb_pos, TRUE);
+		break;
+	case 'q':
+		SB_WatchQTV (sb_pos);
 		break;
 	case 'c':
 		SB_Copy (sb_pos);

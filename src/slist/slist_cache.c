@@ -29,8 +29,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // skipped, so a later version can add some), its serverinfo from there as it
 // came. Rosters aren't kept: a stale one is worse than none. The source lines
 // and from= are SoftWorld's, which qualia skips: the sources that named a
-// server, by name, so it is listed under them before they answer. A line
-// that doesn't read costs only itself, and another header the whole file.
+// server, by name, so it is listed under them before they answer; and qtv=,
+// its game's QTV stream before the QTV list is read again. A line that
+// doesn't read costs only itself, and another header the whole file.
 
 #include "slist_local.h"
 
@@ -120,6 +121,11 @@ static bool SL_ParseCacheLine (char *line, const int *sourcemap, slserver_t *s)
 					s->sources |= 1ull << sourcemap[n];
 				value = *end == ',' ? end + 1 : end;
 			}
+			continue;
+		}
+		if (!Q_strcasecmp (field, "qtv"))
+		{
+			Q_strncpyz (s->qtv, value, sizeof(s->qtv));
 			continue;
 		}
 		n = strtoll (value, &end, 10);
@@ -226,6 +232,8 @@ bool SL_SaveCache (const char *path, const slserver_t *servers, int count, const
 		if (servers[i].seen)
 			fprintf (f, "seen=%lld ", (long long)servers[i].seen);
 		fprintf (f, "players=%i specs=%i ", servers[i].players, servers[i].spectators);
+		if (servers[i].qtv[0])
+			fprintf (f, "qtv=%s ", servers[i].qtv);
 		if (servers[i].sources)
 		{
 			fprintf (f, "from=");

@@ -275,6 +275,51 @@ static void TestListing (void)
 	CHECK (!strcmp (l.info[3], "\\hostname\\Somewhere\\map\\dm6"));
 }
 
+typedef struct
+{
+	int			count;
+	netadr_t	server[4];
+	char		stream[4][SL_MAXSTREAM];
+} streams_t;
+
+static void StreamEntry (void *ctx, netadr_t server, const char *stream)
+{
+	streams_t	*s = ctx;
+
+	if (s->count == 4)
+		return;
+	s->server[s->count] = server;
+	Q_strncpyz (s->stream[s->count], stream, sizeof(s->stream[0]));
+	s->count++;
+}
+
+// the QTV list as qtvapi.quakeworld.nu has it: each game's stream, as
+// qtvplay takes it, by its server's address, the players' objects within
+// passed by; a link without a stream, and what isn't JSON, given nothing
+static void TestQTVList (void)
+{
+	const char	*json = "{\"Servers\":[{\"GameStates\":[{\"Hostname\":\"100.36.32.147\",\"IpAddress\":\"100.36.32.147\","
+		"\"Port\":27500,\"Link\":\"http://nicotinelounge.com:28000/watch.qtv?sid=1\",\"Players\":[{\"Name\":\"a\\\"b\","
+		"\"Port\":1}]},{\"IpAddress\":\"10.0.0.2\",\"Port\":27501,\"Link\":\"http://qtv.example/\"},"
+		"{\"IpAddress\":\"10.0.0.3\",\"Port\":28501,\"Link\":\"7@qtv.example:28000\"}]}],\"ServerCount\":3}";
+	char		deep[200];
+	streams_t	s = {0};
+	int			i;
+
+	CHECK (SL_ParseQTVList (json, strlen (json), StreamEntry, &s) == 2);
+	CHECK (s.count == 2 && SameAdr (s.server[0], Adr ("100.36.32.147:27500")));
+	CHECK (!strcmp (s.stream[0], "1@nicotinelounge.com:28000"));
+	CHECK (SameAdr (s.server[1], Adr ("10.0.0.3:28501")) && !strcmp (s.stream[1], "7@qtv.example:28000"));
+	CHECK (SL_ParseQTVList ("<html>", 6, StreamEntry, &s) == -1);
+	CHECK (SL_ParseQTVList ("{\"a\":[1,2", 9, StreamEntry, &s) == -1);
+	// nested past reason: refused, not followed down
+	for (i = 0 ; i < (int)sizeof(deep) - 1 ; i++)
+		deep[i] = i < 100 ? '[' : ']';
+	deep[0] = '{';
+	deep[sizeof(deep) - 1] = 0;
+	CHECK (SL_ParseQTVList (deep, strlen (deep), StreamEntry, &s) == -1);
+}
+
 static void TestAddresses (void)
 {
 	char		name[64], out[64];
@@ -324,6 +369,7 @@ static void TestCache (void)
 	servers[0].players = 1;
 	servers[0].spectators = 1;
 	servers[0].sources = 3;
+	Q_strncpyz (servers[0].qtv, "3@qtv.example:28000", sizeof(servers[0].qtv));
 	servers[1] = Server ("[2a02:1234::7]:27502", 51, brown);
 	servers[1].sources = 2;
 	servers[2] = (slserver_t){.address = Adr ("10.0.0.9:27500"), .info = sl_noinfo, .ping = -1, .routeping = -1};
@@ -337,6 +383,7 @@ static void TestCache (void)
 		CHECK (back[0].players == 1 && back[0].spectators == 1 && back[0].sources == 3);
 		CHECK (!strcmp (back[0].info, servers[0].info));
 		CHECK (back[0].state == SL_CACHED && !back[0].samples && !back[0].numroster);
+		CHECK (!strcmp (back[0].qtv, "3@qtv.example:28000") && !back[1].qtv[0]);
 		CHECK (SameAdr (back[1].address, servers[1].address) && !strcmp (back[1].info, brown));
 		CHECK (back[2].ping == -1 && !back[2].seen && !*back[2].info);
 		SL_FreeServers (back, n);
@@ -916,6 +963,7 @@ int main (void)
 	TestSources ();
 	TestMarks ();
 	TestListing ();
+	TestQTVList ();
 	TestAddresses ();
 	TestCache ();
 	TestOrder ();

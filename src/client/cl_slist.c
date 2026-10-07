@@ -104,13 +104,17 @@ static cvar_t	sb_pinglimit = {.name = "sb_pinglimit", .string = "80", .archive =
 static cvar_t	sb_showproxies = {.name = "sb_showproxies", .string = "0", .archive = true,
 	.description = "The server browser's proxies (qizmo, qwfwd) among the servers: 0 hidden, 1 shown, 2 alone."};
 
+static cvar_t	qtv_api_url = {.name = "qtv_api_url", .string = "http://qtvapi.quakeworld.nu/api/v1/servers",
+	.description = "The list of the game servers' QTV streams, as ezQuake's: the server browser's q watches a "
+		"server's game through its stream. Empty for none."};
+
 static cvar_t	*const sb_cvars[] =
 {
 	&sb_status, &sb_showping, &sb_showaddress, &sb_showmap, &sb_showgamedir, &sb_showplayers, &sb_showfraglimit,
 	&sb_showtimelimit, &sb_pingtimeout, &sb_pingspersec, &sb_pings, &sb_infotimeout, &sb_inforetries, &sb_infospersec,
 	&sb_proxinfopersec, &sb_proxretries, &sb_proxtimeout, &sb_mastertimeout, &sb_masterretries, &sb_liveupdate,
 	&sb_sortservers, &sb_sortplayers, &sb_sortsources, &sb_autohide, &sb_hideempty, &sb_hidenotempty, &sb_hidefull,
-	&sb_hidedead, &sb_hidehighping, &sb_pinglimit, &sb_showproxies,
+	&sb_hidedead, &sb_hidehighping, &sb_pinglimit, &sb_showproxies, &qtv_api_url,
 };
 
 static struct
@@ -245,6 +249,7 @@ static void SB_Config (slconfig_t *c)
 	c->proxytimeout = SB_Clamp (sb_proxtimeout.value, 100, 10000) / 1000;
 	c->masterretries = (int)SB_Clamp (sb_masterretries.value, 1, 10);
 	c->mastertimeout = SB_Clamp (sb_mastertimeout.value, 100, 10000) / 1000;
+	Q_strncpyz (c->qtvlist, qtv_api_url.string, sizeof(c->qtvlist));
 }
 
 // the list run, the cache shown; once

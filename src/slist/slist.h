@@ -84,6 +84,14 @@ size_t	SL_FormatMarks (const slsource_t *sources, int count, char *buf, size_t s
 void	SL_ParseListing (const char *data, size_t length,
 	void (*entry) (void *ctx, const char *address, const char *info, size_t infolen), void *ctx);
 
+// The QTV list (ezQuake's qtv_api_url, qtvapi.quakeworld.nu's JSON): each game
+// server's stream, its IpAddress and Port, and its Link, a relay's
+// http://host:port/watch.qtv?sid=N, given as the N@host:port qtvplay takes;
+// the streams, -1 when it isn't one
+#define SL_MAXSTREAM	64
+int		SL_ParseQTVList (const char *json, size_t length,
+	void (*stream) (void *ctx, netadr_t server, const char *stream), void *ctx);
+
 // an address with the port it left out, IPv6's put in [ ]
 void	SL_WithPort (const char *address, int port, char *out, size_t size);
 // host and port apart (the port defaultport where it has none); false if it
@@ -132,6 +140,7 @@ typedef struct
 	slstate_t	state;
 	int64_t		seen;		// unix seconds when it last answered; 0 never
 	uint64_t	sources;	// the sources that named it, by their index
+	char		qtv[SL_MAXSTREAM];	// its game on QTV, stream@host:port (the QTV list's); "" none
 } slserver_t;
 
 // a serverinfo's value of key, in value; "" when it has none
@@ -155,6 +164,7 @@ typedef struct
 	double	proxytimeout;
 	int		masterretries;
 	double	mastertimeout;
+	char	qtvlist[256];	// the QTV list's URL, "" none
 } slconfig_t;
 
 void	SL_DefaultConfig (slconfig_t *c);
@@ -236,6 +246,7 @@ enum
 	SLK_DIRECTPING,		// the ping not through relays
 	SLK_HOPS,			// the relays on the way
 	SLK_SAMPLES,		// this scan's pings
+	SLK_QTV,			// its game's QTV stream, stream@host:port
 	SLK_TOOMANY,		// a custom key past the last there is room for
 	SLK_PLAYER0 = 32,
 	SLK_CUSTOM = SLK_PLAYER0 + SL_MAXPLAYERS

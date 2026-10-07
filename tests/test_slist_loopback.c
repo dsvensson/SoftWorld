@@ -192,7 +192,7 @@ static void Serve (void)
 {
 	tcpsocket_t	*c;
 	netadr_t	from;
-	char		request[1024], response[512], list[128];
+	char		request[1024], response[512], list[256];
 	double		until;
 	int			n = 0, got;
 
@@ -209,6 +209,14 @@ static void Serve (void)
 	}
 	if (!strncmp (request, "GET /old ", 9))
 		snprintf (response, sizeof(response), "HTTP/1.0 302 Found\r\nLocation: /list\r\nContent-Length: 0\r\n\r\n");
+	else if (!strncmp (request, "GET /qtv ", 9))
+	{
+		// the QTV list: the quiet server's game on a relay
+		snprintf (list, sizeof(list), "{\"Servers\":[{\"GameStates\":[{\"IpAddress\":\"127.0.0.1\",\"Port\":%i,"
+			"\"Link\":\"http://qtv.example:28000/watch.qtv?sid=4\"}]}]}",
+			(unsigned short)BigShort ((short)addresses[QUIET].port));
+		snprintf (response, sizeof(response), "HTTP/1.0 200 OK\r\nContent-Length: %i\r\n\r\n%s", (int)strlen (list), list);
+	}
 	else
 	{
 		snprintf (list, sizeof(list), "# a list\n127.0.0.1:%i\n", (unsigned short)BigShort ((short)addresses[LISTED].port));
@@ -316,6 +324,7 @@ int main (void)
 	c.pings = 2;
 	c.pingtimeout = c.infotimeout = c.proxytimeout = c.mastertimeout = 0.3;
 	c.inforetries = c.proxyretries = c.masterretries = 2;
+	snprintf (c.qtvlist, sizeof(c.qtvlist), "http://127.0.0.1:%i/qtv", listenport);
 
 	// no cache: nothing, before a packet goes
 	CHECK (SL_Start (DIR, CACHE, sources, 3));
@@ -356,10 +365,23 @@ int main (void)
 		&& latest->sources[2].state == SLSRC_ANSWERED);
 	CHECK (latest && latest->sources[0].servers == 4 && latest->sources[1].servers == 1 && latest->sources[2].servers == 1);
 
+	// the QTV list, read after the sources: the quiet server's game a stream
+	for (until = Sys_DoubleTime () + 3 ; Sys_DoubleTime () < until && (!(s = Find (QUIET)) || !s->qtv[0]) ; )
+	{
+		Serve ();
+		Take ();
+		UDP_Wait (&fakes[SILENT], 1, 0.005);
+	}
+	s = Find (QUIET);
+	CHECK (s && !strcmp (s->qtv, "4@qtv.example:28000"));
+	s = Find (BUSY);
+	CHECK (s && !s->qtv[0]);
+
 	// asked again ahead of the rest
 	SL_Describe (addresses[QUIET]);
 	for (until = Sys_DoubleTime () + 3, value[0] = 0 ; Sys_DoubleTime () < until && strcmp (value, "quiet server again") ; )
 	{
+		Serve ();
 		Take ();
 		Info (Find (QUIET), "hostname", value);
 		UDP_Wait (&fakes[SILENT], 1, 0.005);
@@ -377,6 +399,8 @@ int main (void)
 	Info (s, "hostname", value);
 	CHECK (s && s->state == SL_CACHED && s->ping >= 0 && s->players == 7 && !s->numroster && !strcmp (value, "busy server"));
 	CHECK (s && s->sources == 1);
+	s = Find (QUIET);
+	CHECK (s && !strcmp (s->qtv, "4@qtv.example:28000"));
 	SL_Shutdown ();
 	SL_FreeSnapshot (latest);
 

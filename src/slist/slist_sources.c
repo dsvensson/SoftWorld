@@ -247,6 +247,216 @@ void SL_ParseListing (const char *data, size_t length,
 /*
 ==============================================================================
 
+THE QTV LIST
+
+JSON as qtvapi.quakeworld.nu gives it: {"Servers": [{"GameStates": [{
+"Hostname", "IpAddress", "Port", "Link", "Players": [...]}, ...]}], ...}. Read
+as JSON, each object for the IpAddress, Port and Link it has, wherever it
+is; it comes from the network, so its nesting is bounded.
+
+==============================================================================
+*/
+
+#define SL_JSONDEPTH	32
+
+typedef struct
+{
+	const char	*p, *end;
+	int			depth, count;
+	void		(*stream) (void *ctx, netadr_t server, const char *stream);
+	void		*ctx;
+} sljson_t;
+
+static void SL_JsonSpace (sljson_t *j)
+{
+	while (j->p < j->end && isspace ((byte)*j->p))
+		j->p++;
+}
+
+// a string into out, cut to its size; escapes as the characters they are
+// (\uXXXX a ?); false if it isn't one
+static bool SL_JsonString (sljson_t *j, char *out, size_t size)
+{
+	size_t	n = 0;
+	char	c;
+
+	if (j->p == j->end || *j->p != '"')
+		return false;
+	for (j->p++ ; j->p < j->end && *j->p != '"' ; j->p++)
+	{
+		c = *j->p;
+		if (c == '\\')
+		{
+			if (++j->p == j->end)
+				return false;
+			switch (*j->p)
+			{
+			case 'n':	c = '\n'; break;
+			case 't':	c = '\t'; break;
+			case 'r':	c = '\r'; break;
+			case 'b':	c = '\b'; break;
+			case 'f':	c = '\f'; break;
+			case 'u':
+				c = '?';
+				j->p += j->end - j->p > 4 ? 4 : j->end - j->p - 1;
+				break;
+			default:	c = *j->p; break;
+			}
+		}
+		if (n + 1 < size)
+			out[n++] = c;
+	}
+	if (size)
+		out[n] = 0;
+	if (j->p == j->end)
+		return false;
+	j->p++;
+	return true;
+}
+
+static bool SL_JsonValue (sljson_t *j, char *text, size_t size, double *number);
+
+// an object: the stream of the one with IpAddress, Port and Link
+static bool SL_JsonObject (sljson_t *j)
+{
+	char	key[32], text[256], ip[64] = "", link[256] = "", stream[SL_MAXSTREAM], host[192], *slash, *sid;
+	double	number = 0, port = -1;
+	netadr_t	a;
+
+	j->p++;
+	SL_JsonSpace (j);
+	if (j->p < j->end && *j->p == '}')
+	{
+		j->p++;
+		return true;
+	}
+	for (;;)
+	{
+		SL_JsonSpace (j);
+		if (!SL_JsonString (j, key, sizeof(key)))
+			return false;
+		SL_JsonSpace (j);
+		if (j->p == j->end || *j->p++ != ':')
+			return false;
+		text[0] = 0;
+		if (!SL_JsonValue (j, text, sizeof(text), &number))
+			return false;
+		if (!strcmp (key, "IpAddress"))
+			Q_strncpyz (ip, text, sizeof(ip));
+		else if (!strcmp (key, "Port"))
+			port = number;
+		else if (!strcmp (key, "Link"))
+			Q_strncpyz (link, text, sizeof(link));
+		SL_JsonSpace (j);
+		if (j->p < j->end && *j->p == ',')
+		{
+			j->p++;
+			continue;
+		}
+		if (j->p == j->end || *j->p++ != '}')
+			return false;
+		break;
+	}
+
+	// a relay's http://host:port/watch.qtv?sid=N, as N@host:port
+	if (!*ip || port <= 0 || port > 65535 || !*link || !SL_ParseAddress (ip, (int)port, &a))
+		return true;
+	if (!Q_strncasecmp (link, "http://", 7) || !Q_strncasecmp (link, "https://", 8))
+	{
+		Q_strncpyz (host, strstr (link, "://") + 3, sizeof(host));
+		if ((slash = strchr (host, '/')))
+			*slash = 0;
+		if (!(sid = strstr (link, "sid=")) || !isdigit ((byte)sid[4]))
+			return true;
+		snprintf (stream, sizeof(stream), "%d@%s", atoi (sid + 4), host);
+	}
+	else if (strchr (link, '@'))
+		Q_strncpyz (stream, link, sizeof(stream));
+	else
+		return true;
+	j->stream (j->ctx, a, stream);
+	j->count++;
+	return true;
+}
+
+static bool SL_JsonArray (sljson_t *j)
+{
+	char	text[8];
+	double	number;
+
+	j->p++;
+	SL_JsonSpace (j);
+	if (j->p < j->end && *j->p == ']')
+	{
+		j->p++;
+		return true;
+	}
+	for (;;)
+	{
+		if (!SL_JsonValue (j, text, sizeof(text), &number))
+			return false;
+		SL_JsonSpace (j);
+		if (j->p < j->end && *j->p == ',')
+		{
+			j->p++;
+			continue;
+		}
+		return j->p < j->end && *j->p++ == ']';
+	}
+}
+
+// a value: a string's text, a number, the literals; objects and arrays walked
+static bool SL_JsonValue (sljson_t *j, char *text, size_t size, double *number)
+{
+	char	digits[64], *stop;
+	size_t	n = 0;
+	bool	ok;
+
+	SL_JsonSpace (j);
+	if (j->p == j->end)
+		return false;
+	switch (*j->p)
+	{
+	case '"':
+		return SL_JsonString (j, text, size);
+	case '{':
+	case '[':
+		if (j->depth == SL_JSONDEPTH)
+			return false;
+		j->depth++;
+		ok = *j->p == '{' ? SL_JsonObject (j) : SL_JsonArray (j);
+		j->depth--;
+		return ok;
+	default:
+		// a number, true, false or null
+		while (j->p < j->end && (isalnum ((byte)*j->p) || *j->p == '-' || *j->p == '+' || *j->p == '.'))
+		{
+			if (n < sizeof(digits) - 1)
+				digits[n++] = *j->p;
+			j->p++;
+		}
+		digits[n] = 0;
+		*number = strtod (digits, &stop);
+		return n > 0;
+	}
+}
+
+int SL_ParseQTVList (const char *json, size_t length,
+	void (*stream) (void *ctx, netadr_t server, const char *stream), void *ctx)
+{
+	sljson_t	j = {json, json + length, 0, 0, stream, ctx};
+	char		text[8];
+	double		number;
+
+	SL_JsonSpace (&j);
+	if (j.p == j.end || *j.p != '{' || !SL_JsonValue (&j, text, sizeof(text), &number))
+		return -1;
+	return j.count;
+}
+
+/*
+==============================================================================
+
 ADDRESSES
 
 ==============================================================================

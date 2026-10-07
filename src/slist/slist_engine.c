@@ -65,6 +65,15 @@ typedef struct
 	slconfig_t	config;
 } slorder_t;
 
+#define SL_QTVBATCH		-2		// a batch's source: the QTV list's streams (its servers' info)
+
+// a game's stream on QTV, by its server's address
+typedef struct
+{
+	netadr_t	address;
+	char		stream[SL_MAXSTREAM];
+} slstream_t;
+
 // what a source came to: a master to ask, or servers
 typedef struct slbatch_s
 {
@@ -91,6 +100,7 @@ typedef struct
 	char			dir[1024];
 	slsource_t		sources[SL_MAXSOURCES];
 	int				numsources;
+	char			qtvlist[256];	// the QTV list's URL, "" none
 } slinbox_t;
 
 typedef struct
@@ -435,7 +445,51 @@ static void SL_ReadSource (slinbox_t *inbox, const slsource_t *s, slbatch_t *b)
 	b->ok = true;
 }
 
-// the marked sources in order, each posted as it is read, then the end
+// a stream the QTV list has, for the server at its address
+static void SL_Streamed (void *ctx, netadr_t server, const char *stream)
+{
+	slbatch_t	*b = ctx;
+	void		*grown;
+	int			size;
+
+	if (b->numservers == SL_MAXSERVERS)
+		return;
+	if (b->numservers == b->maxservers)
+	{
+		size = b->maxservers ? b->maxservers * 2 : 64;
+		if (!(grown = realloc (b->servers, (size_t)size * sizeof(*b->servers))))
+			return;
+		b->servers = grown;
+		b->maxservers = size;
+	}
+	b->servers[b->numservers].address = server;
+	if ((b->servers[b->numservers].info = malloc (strlen (stream) + 1)))
+	{
+		strcpy (b->servers[b->numservers].info, stream);
+		b->numservers++;
+	}
+}
+
+// the QTV list's streams (ezQuake's qtv_api_url), in a batch of their own
+static slbatch_t *SL_ReadQTVList (const char *url)
+{
+	slbatch_t	*b = calloc (1, sizeof(*b));
+	char		error[128], *data;
+	size_t		length;
+
+	if (!b)
+		return NULL;
+	b->source = SL_QTVBATCH;
+	if (!(data = SL_HttpGet (url, SL_MAXLIST, &length, error, sizeof(error))))
+		snprintf (b->message, sizeof(b->message), "Server browser: the QTV list: %s\n", error);
+	else if (!(b->ok = SL_ParseQTVList (data, length, SL_Streamed, b) >= 0))
+		snprintf (b->message, sizeof(b->message), "Server browser: the QTV list (%s) isn't one\n", url);
+	free (data);
+	return b;
+}
+
+// the marked sources in order, each posted as it is read, then the end; then
+// the QTV list, which a scan doesn't wait for
 static void SL_ReadSources (void *arg)
 {
 	slinbox_t	*inbox = arg;
@@ -455,11 +509,13 @@ static void SL_ReadSources (void *arg)
 		b->source = -1;
 		SL_Post (inbox, b);
 	}
+	if (*inbox->qtvlist && !atomic_load (&inbox->abandoned) && (b = SL_ReadQTVList (inbox->qtvlist)))
+		SL_Post (inbox, b);
 	SL_ReleaseInbox (inbox);
 }
 
 // the reader of a scan's sources, started; NULL if it couldn't be
-static slinbox_t *SL_StartReading (const slsource_t *sources, int numsources)
+static slinbox_t *SL_StartReading (const slsource_t *sources, int numsources, const char *qtvlist)
 {
 	slinbox_t	*inbox = calloc (1, sizeof(*inbox));
 	systhread_t	*t;
@@ -472,6 +528,7 @@ static slinbox_t *SL_StartReading (const slsource_t *sources, int numsources)
 	Q_strncpyz (inbox->dir, sl.dir, sizeof(inbox->dir));
 	memcpy (inbox->sources, sources, (size_t)numsources * sizeof(*sources));
 	inbox->numsources = numsources;
+	Q_strncpyz (inbox->qtvlist, qtvlist, sizeof(inbox->qtvlist));
 	if (!(t = Sys_StartThread ("slist-sources", SL_ReadSources, inbox)))
 	{
 		free (inbox);
@@ -501,7 +558,38 @@ typedef struct
 	slinbox_t			*inbox;
 	bool				scanning, sourcesdone;
 	unsigned			generation;
+	slstream_t			*streams;		// the QTV list's, by address
+	int					numstreams;
+	bool				streamsread;	// this run's list read: servers not in it have none
 } slengine_t;
+
+// the address a stream is the game of, in order
+static int SL_CompareStreams (const void *a, const void *b)
+{
+	const slstream_t	*x = a, *y = b;
+	int					c = memcmp (x->address.ip, y->address.ip, sizeof(x->address.ip));
+
+	return c ? c : (int)x->address.port - (int)y->address.port;
+}
+
+// the servers' streams as the QTV list has them, where one was read
+static void SL_ApplyStreams (slengine_t *e)
+{
+	slstream_t	key, *found;
+	slserver_t	*s;
+	int			i;
+
+	if (!e->streamsread)
+		return;
+	for (i = 0 ; i < e->sched.numhosts ; i++)
+	{
+		s = &e->sched.hosts[i].e;
+		key.address = s->address;
+		found = e->numstreams ? bsearch (&key, e->streams, (size_t)e->numstreams, sizeof(*e->streams),
+			SL_CompareStreams) : NULL;
+		Q_strncpyz (s->qtv, found ? found->stream : "", sizeof(s->qtv));
+	}
+}
 
 static void SL_Send (const void *data, int length, netadr_t to)
 {
@@ -601,11 +689,32 @@ static void SL_Restart (slengine_t *e, const slorder_t *order, double now)
 		SL_ReleaseInbox (e->inbox);
 	}
 	e->nummasters = 0;
-	e->inbox = SL_StartReading (e->sources, e->numsources);
+	e->inbox = SL_StartReading (e->sources, e->numsources, e->config.qtvlist);
 	e->sourcesdone = !e->inbox;
 	if (!e->inbox)
 		SL_Message ("Server browser: the sources can't be read\n");
 	e->scanning = true;
+}
+
+// the QTV list read, in place of the one before
+static void SL_TakeStreams (slengine_t *e, const slbatch_t *b)
+{
+	slstream_t	*streams = b->numservers ? malloc ((size_t)b->numservers * sizeof(*streams)) : NULL;
+	int			i;
+
+	if (b->numservers && !streams)
+		return;
+	for (i = 0 ; i < b->numservers ; i++)
+	{
+		streams[i].address = b->servers[i].address;
+		Q_strncpyz (streams[i].stream, b->servers[i].info, sizeof(streams[i].stream));
+	}
+	if (b->numservers)
+		qsort (streams, (size_t)b->numservers, sizeof(*streams), SL_CompareStreams);
+	free (e->streams);
+	e->streams = streams;
+	e->numstreams = b->numservers;
+	e->streamsread = true;
 }
 
 // what the reader posted: masters to ask, servers listed; true if any came
@@ -624,7 +733,14 @@ static bool SL_TakeBatches (slengine_t *e, int64_t epoch)
 	{
 		next = b->next;
 		any = true;
-		if (b->source < 0)
+		if (b->source == SL_QTVBATCH)
+		{
+			if (b->message[0])
+				SL_Message ("%s", b->message);
+			if (b->ok)
+				SL_TakeStreams (e, b);
+		}
+		else if (b->source < 0)
 			e->sourcesdone = true;
 		else if (b->source < e->numsources)
 		{
@@ -775,12 +891,14 @@ static void SL_Engine (void *arg)
 					}
 				e->scanning = false;
 				changed = true;
+				SL_ApplyStreams (e);
 				SL_SaveTable (e);
 			}
 		}
 
 		if (changed && now - published >= SL_PUBLISH)
 		{
+			SL_ApplyStreams (e);
 			e->generation++;
 			SL_Publish (SL_Snapshot (e));
 			changed = false;
@@ -790,6 +908,7 @@ static void SL_Engine (void *arg)
 	}
 
 	// what was learned kept
+	SL_ApplyStreams (e);
 	SL_SaveTable (e);
 	if (e->inbox)
 	{
@@ -797,6 +916,7 @@ static void SL_Engine (void *arg)
 		SL_ReleaseInbox (e->inbox);
 	}
 	SLS_Free (&e->sched);
+	free (e->streams);
 	free (buf);
 	free (e);
 }

@@ -46,7 +46,7 @@ static const char	*const sl_keynames[] =
 	"freeplayers", "basegame", "flags", "timelimit", "fraglimit",
 	"mod", "protocol", "numbots", "numspectators", "numhumans", "qcstatus", "category",
 	"isfavorite", "islocal", "isproxy", "serverinfo",
-	"state", "seen", "directping", "hops", "samples"
+	"state", "seen", "directping", "hops", "samples", "qtv"
 };
 
 static const struct
@@ -240,6 +240,9 @@ const char *SL_KeyString (const slview_t *v, const slserver_t *s, int key, char 
 		return SL_InfoValue (s->info, "qcstatus", buf, size);
 	case SLK_SERVERINFO:
 		Q_strncpyz (buf, s->info, size);
+		return buf;
+	case SLK_QTV:
+		Q_strncpyz (buf, s->qtv, size);
 		return buf;
 	default:
 		if (key >= 0 && key < SLK_TOOMANY)
