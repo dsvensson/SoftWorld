@@ -123,7 +123,7 @@ void Host_Frame (double time)
 	}
 	Cbuf_Execute ();
 
-	SV_Frame (time);
+	SV_Frame (time, false);
 }
 
 /*

@@ -1742,11 +1742,14 @@ static void SV_PreRunCmd(void)
 SV_PMTypeForClient
 
 From the player's movetype, as mvdsv has it: noclip is a spectator's
-movement, QuakeWorld's own for clients that don't know the new one
+movement, QuakeWorld's own for clients that don't know the new one; none for
+NetQuake's players, which the server moves (FTE's sv_nqplayerphysics)
 ===================
 */
 int SV_PMTypeForClient (const client_t *cl)
 {
+	if (SV_NQPhysics (cl))
+		return PM_NONE;		// the server moves it: the client doesn't predict
 	switch ((int)cl->edict->v.movetype)
 	{
 	case MOVETYPE_NOCLIP:
@@ -2083,7 +2086,19 @@ void SV_ExecuteClientMessage (client_t *cl)
 					cl->teleport_outgoing = 0;
 			}
 
-			if (!sv.paused) {
+			if (SV_NQPhysics (cl))
+			{	// NetQuake's: the view and buttons now, the move in the world's frame
+				if (!sv.paused)
+				{
+					VectorCopy (newcmd.angles, sv_player->v.v_angle);
+					sv_player->v.button0 = (float)(newcmd.buttons & 1);
+					sv_player->v.button2 = (float)((newcmd.buttons & 2) >> 1);
+					if (newcmd.impulse)
+						sv_player->v.impulse = newcmd.impulse;
+					cl->nqcmd = newcmd;
+				}
+			}
+			else if (!sv.paused) {
 				SV_PreRunCmd();
 
 				int		dropped = cl->netchan.dropped;

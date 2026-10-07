@@ -161,7 +161,7 @@ void Host_Frame (double time)
 	Cbuf_Execute ();
 
 	if (SV_Active ())
-		SV_Frame (time);
+		SV_Frame (time, !CL_KeysInGame ());
 
 	CL_Frame ();
 }

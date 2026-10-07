@@ -810,6 +810,625 @@ static void SV_Physics_Step (edict_t *ent)
 	SV_CheckWaterTransition (ent);
 }
 
+/*
+===============================================================================
+
+NETQUAKE'S PLAYERS
+
+NetQuake's progs move their players as NetQuake does (id's SV_ClientThink and
+SV_Physics_Client), in the world's frame, by the newest move each sent; the
+client doesn't predict them (PM_NONE). FTE's sv_nqplayerphysics does the same
+for NetQuake's single player.
+
+===============================================================================
+*/
+
+static vec3_t	nq_forward, nq_right, nq_up;
+static vec3_t	nq_wishdir;
+static float	nq_wishspeed;
+static bool		nq_onground;
+
+// whether a client moves as NetQuake's do
+bool SV_NQPhysics (const client_t *cl)
+{
+	return pr.nq && !cl->spectator;
+}
+
+static void SV_UserFriction (void)
+{
+	float	*vel = sv_player->v.velocity, *origin = sv_player->v.origin;
+	float	speed, newspeed, control, friction;
+	vec3_t	start, stop;
+	trace_t	trace;
+
+	speed = sqrtf (vel[0]*vel[0] + vel[1]*vel[1]);
+	if (!speed)
+		return;
+
+// if the leading edge is over a dropoff, increase friction
+	start[0] = stop[0] = origin[0] + vel[0]/speed*16;
+	start[1] = stop[1] = origin[1] + vel[1]/speed*16;
+	start[2] = origin[2] + sv_player->v.mins[2];
+	stop[2] = start[2] - 34;
+
+	trace = SV_Move (start, vec3_origin, vec3_origin, stop, true, sv_player);
+
+	friction = sv.movevars.friction;
+	if (trace.fraction == 1.0)
+		friction *= 2;		// NetQuake's edgefriction
+
+// apply friction
+	control = speed < sv.movevars.stopspeed ? sv.movevars.stopspeed : speed;
+	newspeed = speed - (float)sv.frametime*control*friction;
+
+	if (newspeed < 0)
+		newspeed = 0;
+	newspeed /= speed;
+
+	vel[0] = vel[0] * newspeed;
+	vel[1] = vel[1] * newspeed;
+	vel[2] = vel[2] * newspeed;
+}
+
+static void SV_Accelerate (void)
+{
+	int		i;
+	float	addspeed, accelspeed, currentspeed;
+
+	currentspeed = DotProduct (sv_player->v.velocity, nq_wishdir);
+	addspeed = nq_wishspeed - currentspeed;
+	if (addspeed <= 0)
+		return;
+	accelspeed = sv.movevars.accelerate*(float)sv.frametime*nq_wishspeed;
+	if (accelspeed > addspeed)
+		accelspeed = addspeed;
+
+	for (i=0 ; i<3 ; i++)
+		sv_player->v.velocity[i] += accelspeed*nq_wishdir[i];
+}
+
+// as id had it, the whole wish speed scaling the acceleration
+static void SV_AirAccelerate (vec3_t wishveloc)
+{
+	int		i;
+	float	addspeed, wishspd, accelspeed, currentspeed;
+
+	wishspd = VectorNormalize (wishveloc);
+	if (wishspd > 30)
+		wishspd = 30;
+	currentspeed = DotProduct (sv_player->v.velocity, wishveloc);
+	addspeed = wishspd - currentspeed;
+	if (addspeed <= 0)
+		return;
+	accelspeed = sv.movevars.accelerate*nq_wishspeed*(float)sv.frametime;
+	if (accelspeed > addspeed)
+		accelspeed = addspeed;
+
+	for (i=0 ; i<3 ; i++)
+		sv_player->v.velocity[i] += accelspeed*wishveloc[i];
+}
+
+static void DropPunchAngle (void)
+{
+	float	len;
+
+	len = VectorNormalize (sv_player->v.punchangle);
+	len -= 10*(float)sv.frametime;
+	if (len < 0)
+		len = 0;
+	VectorScale (sv_player->v.punchangle, len, sv_player->v.punchangle);
+}
+
+static void SV_WaterMove (const usercmd_t *cmd)
+{
+	int		i;
+	vec3_t	wishvel;
+	float	speed, newspeed, wishspeed, addspeed, accelspeed;
+	float	*velocity = sv_player->v.velocity;
+
+//
+// user intentions
+//
+	AngleVectors (sv_player->v.v_angle, nq_forward, nq_right, nq_up);
+
+	for (i=0 ; i<3 ; i++)
+		wishvel[i] = nq_forward[i]*cmd->forwardmove + nq_right[i]*cmd->sidemove;
+
+	if (!cmd->forwardmove && !cmd->sidemove && !cmd->upmove)
+		wishvel[2] -= 60;		// drift towards bottom
+	else
+		wishvel[2] += cmd->upmove;
+
+	wishspeed = Length (wishvel);
+	if (wishspeed > sv.movevars.maxspeed)
+	{
+		VectorScale (wishvel, sv.movevars.maxspeed/wishspeed, wishvel);
+		wishspeed = sv.movevars.maxspeed;
+	}
+	wishspeed *= 0.7f;
+
+//
+// water friction
+//
+	speed = Length (velocity);
+	if (speed)
+	{
+		newspeed = speed - (float)sv.frametime * speed * sv.movevars.friction;
+		if (newspeed < 0)
+			newspeed = 0;
+		VectorScale (velocity, newspeed/speed, velocity);
+	}
+	else
+		newspeed = 0;
+
+//
+// water acceleration
+//
+	if (!wishspeed)
+		return;
+
+	addspeed = wishspeed - newspeed;
+	if (addspeed <= 0)
+		return;
+
+	VectorNormalize (wishvel);
+	accelspeed = sv.movevars.accelerate * wishspeed * (float)sv.frametime;
+	if (accelspeed > addspeed)
+		accelspeed = addspeed;
+
+	for (i=0 ; i<3 ; i++)
+		velocity[i] += accelspeed * wishvel[i];
+}
+
+static void SV_WaterJump (void)
+{
+	if (sv.time > sv_player->v.teleport_time || !sv_player->v.waterlevel)
+	{
+		sv_player->v.flags = (float)((int)sv_player->v.flags & ~FL_WATERJUMP);
+		sv_player->v.teleport_time = 0;
+	}
+	sv_player->v.velocity[0] = sv_player->v.movedir[0];
+	sv_player->v.velocity[1] = sv_player->v.movedir[1];
+}
+
+static void SV_AirMove (const usercmd_t *cmd)
+{
+	int		i;
+	vec3_t	wishvel;
+	float	fmove, smove;
+
+	AngleVectors (sv_player->v.angles, nq_forward, nq_right, nq_up);
+
+	fmove = cmd->forwardmove;
+	smove = cmd->sidemove;
+
+// hack to not let you back into teleporter
+	if (sv.time < sv_player->v.teleport_time && fmove < 0)
+		fmove = 0;
+
+	for (i=0 ; i<3 ; i++)
+		wishvel[i] = nq_forward[i]*fmove + nq_right[i]*smove;
+
+	if ((int)sv_player->v.movetype != MOVETYPE_WALK)
+		wishvel[2] = cmd->upmove;
+	else
+		wishvel[2] = 0;
+
+	VectorCopy (wishvel, nq_wishdir);
+	nq_wishspeed = VectorNormalize (nq_wishdir);
+	if (nq_wishspeed > sv.movevars.maxspeed)
+	{
+		VectorScale (wishvel, sv.movevars.maxspeed/nq_wishspeed, wishvel);
+		nq_wishspeed = sv.movevars.maxspeed;
+	}
+
+	if (sv_player->v.movetype == MOVETYPE_NOCLIP)
+	{
+		VectorCopy (wishvel, sv_player->v.velocity);
+	}
+	else if (nq_onground)
+	{
+		SV_UserFriction ();
+		SV_Accelerate ();
+	}
+	else
+	{	// not on ground, so little effect on velocity
+		SV_AirAccelerate (wishvel);
+	}
+}
+
+/*
+===================
+SV_ClientThink
+
+host_client's newest move, as NetQuake applies it before the world's frame:
+the move fields specify an intended velocity in pix/sec, the angle fields an
+exact angular motion in degrees
+===================
+*/
+static void SV_ClientThink (void)
+{
+	const usercmd_t	*cmd = &host_client->nqcmd;
+	vec3_t			v_angle;
+	float			*angles = sv_player->v.angles;
+
+	if (sv_player->v.movetype == MOVETYPE_NONE)
+		return;
+
+	nq_onground = ((int)sv_player->v.flags & FL_ONGROUND) != 0;
+
+	DropPunchAngle ();
+
+//
+// if dead, behave differently
+//
+	if (sv_player->v.health <= 0)
+		return;
+
+//
+// angles
+// show 1/3 the pitch angle and all the roll angle
+	VectorAdd (sv_player->v.v_angle, sv_player->v.punchangle, v_angle);
+	angles[ROLL] = PM_CalcRoll (sv_player->v.angles, sv_player->v.velocity)*4;
+	if (!sv_player->v.fixangle)
+	{
+		angles[PITCH] = -v_angle[PITCH]/3;
+		angles[YAW] = v_angle[YAW];
+	}
+
+	if ((int)sv_player->v.flags & FL_WATERJUMP)
+	{
+		SV_WaterJump ();
+		return;
+	}
+//
+// walk
+//
+	if (sv_player->v.waterlevel >= 2 && sv_player->v.movetype != MOVETYPE_NOCLIP)
+	{
+		SV_WaterMove (cmd);
+		return;
+	}
+
+	SV_AirMove (cmd);
+}
+
+/*
+=============
+SV_CheckStuck
+
+This is a big hack to try and fix the rare case of getting stuck in the world
+clipping hull.
+=============
+*/
+static void SV_CheckStuck (edict_t *ent)
+{
+	int		i, j;
+	int		z;
+	vec3_t	org;
+
+	if (!SV_TestEntityPosition(ent))
+	{
+		VectorCopy (ent->v.origin, ent->v.oldorigin);
+		return;
+	}
+
+	VectorCopy (ent->v.origin, org);
+	VectorCopy (ent->v.oldorigin, ent->v.origin);
+	if (!SV_TestEntityPosition(ent))
+	{
+		Con_DPrintf ("Unstuck.\n");
+		SV_LinkEdict (ent, true);
+		return;
+	}
+
+	for (z=0 ; z< 18 ; z++)
+		for (i=-1 ; i <= 1 ; i++)
+			for (j=-1 ; j <= 1 ; j++)
+			{
+				ent->v.origin[0] = org[0] + i;
+				ent->v.origin[1] = org[1] + j;
+				ent->v.origin[2] = org[2] + z;
+				if (!SV_TestEntityPosition(ent))
+				{
+					Con_DPrintf ("Unstuck.\n");
+					SV_LinkEdict (ent, true);
+					return;
+				}
+			}
+
+	VectorCopy (org, ent->v.origin);
+	Con_DPrintf ("player is stuck.\n");
+}
+
+// a player's water level and type, as NetQuake has them; true when swimming
+static bool SV_CheckWater (edict_t *ent)
+{
+	vec3_t	point;
+	int		cont;
+
+	point[0] = ent->v.origin[0];
+	point[1] = ent->v.origin[1];
+	point[2] = ent->v.origin[2] + ent->v.mins[2] + 1;
+
+	ent->v.waterlevel = 0;
+	ent->v.watertype = CONTENTS_EMPTY;
+	cont = SV_PointContents (point);
+	if (cont <= CONTENTS_WATER)
+	{
+		ent->v.watertype = (float)cont;
+		ent->v.waterlevel = 1;
+		point[2] = ent->v.origin[2] + (ent->v.mins[2] + ent->v.maxs[2])*0.5f;
+		cont = SV_PointContents (point);
+		if (cont <= CONTENTS_WATER)
+		{
+			ent->v.waterlevel = 2;
+			point[2] = ent->v.origin[2] + ent->v.view_ofs[2];
+			cont = SV_PointContents (point);
+			if (cont <= CONTENTS_WATER)
+				ent->v.waterlevel = 3;
+		}
+	}
+
+	return ent->v.waterlevel > 1;
+}
+
+static void SV_WallFriction (edict_t *ent, trace_t *trace)
+{
+	vec3_t	forward, right, up;
+	float	d, i;
+	vec3_t	into, side;
+
+	AngleVectors (ent->v.v_angle, forward, right, up);
+	d = DotProduct (trace->plane.normal, forward);
+
+	d += 0.5;
+	if (d >= 0)
+		return;
+
+// cut the tangential velocity
+	i = DotProduct (trace->plane.normal, ent->v.velocity);
+	VectorScale (trace->plane.normal, i, into);
+	VectorSubtract (ent->v.velocity, into, side);
+
+	ent->v.velocity[0] = side[0] * (1 + d);
+	ent->v.velocity[1] = side[1] * (1 + d);
+}
+
+/*
+=====================
+SV_TryUnstick
+
+Player has come to a dead stop, possibly due to the problem with limited
+float precision at some angle joins in the BSP hull.
+
+Try fixing by pushing one pixel in each direction.
+
+This is a hack, but in the interest of good gameplay...
+======================
+*/
+static int SV_TryUnstick (edict_t *ent, const vec3_t oldvel)
+{
+	static const vec3_t	dirs[8] = {{2, 0, 0}, {0, 2, 0}, {-2, 0, 0}, {0, -2, 0},
+		{2, 2, 0}, {-2, 2, 0}, {2, -2, 0}, {-2, -2, 0}};
+	int		i;
+	vec3_t	oldorg, dir;
+	int		clip;
+	trace_t	steptrace;
+
+	VectorCopy (ent->v.origin, oldorg);
+
+	for (i=0 ; i<8 ; i++)
+	{
+	// try pushing a little in an axial direction
+		VectorCopy (dirs[i], dir);
+		SV_PushEntity (ent, dir);
+
+	// retry the original move
+		ent->v.velocity[0] = oldvel[0];
+		ent->v.velocity[1] = oldvel[1];
+		ent->v.velocity[2] = 0;
+		clip = SV_FlyMove (ent, 0.1f, &steptrace);
+
+		if (fabsf (oldorg[1] - ent->v.origin[1]) > 4 || fabsf (oldorg[0] - ent->v.origin[0]) > 4)
+			return clip;
+
+	// go back to the original pos and try again
+		VectorCopy (oldorg, ent->v.origin);
+	}
+
+	VectorCopy (vec3_origin, ent->v.velocity);
+	return 7;		// still not moving
+}
+
+/*
+=====================
+SV_WalkMove
+
+A player's move, up steps
+======================
+*/
+#define	STEPSIZE	18
+static void SV_WalkMove (edict_t *ent)
+{
+	vec3_t		upmove, downmove;
+	vec3_t		oldorg, oldvel;
+	vec3_t		nosteporg, nostepvel;
+	int			clip;
+	int			oldonground;
+	trace_t		steptrace, downtrace;
+
+//
+// do a regular slide move unless it looks like you ran into a step
+//
+	oldonground = (int)ent->v.flags & FL_ONGROUND;
+	ent->v.flags = (float)((int)ent->v.flags & ~FL_ONGROUND);
+
+	VectorCopy (ent->v.origin, oldorg);
+	VectorCopy (ent->v.velocity, oldvel);
+
+	clip = SV_FlyMove (ent, (float)sv.frametime, &steptrace);
+
+	if (!(clip & 2))
+		return;		// move didn't block on a step
+
+	if (!oldonground && ent->v.waterlevel == 0)
+		return;		// don't stair up while jumping
+
+	if (ent->v.movetype != MOVETYPE_WALK)
+		return;		// gibbed by a trigger
+
+	if ((int)ent->v.flags & FL_WATERJUMP)
+		return;
+
+	VectorCopy (ent->v.origin, nosteporg);
+	VectorCopy (ent->v.velocity, nostepvel);
+
+//
+// try moving up and forward to go up a step
+//
+	VectorCopy (oldorg, ent->v.origin);	// back to start pos
+
+	VectorCopy (vec3_origin, upmove);
+	VectorCopy (vec3_origin, downmove);
+	upmove[2] = STEPSIZE;
+	downmove[2] = -STEPSIZE + oldvel[2]*(float)sv.frametime;
+
+// move up
+	SV_PushEntity (ent, upmove);	// FIXME: don't link?
+
+// move forward
+	ent->v.velocity[0] = oldvel[0];
+	ent->v.velocity[1] = oldvel[1];
+	ent->v.velocity[2] = 0;
+	clip = SV_FlyMove (ent, (float)sv.frametime, &steptrace);
+
+// check for stuckness, possibly due to the limited precision of floats
+// in the clipping hulls
+	if (clip)
+	{
+		if (fabsf (oldorg[1] - ent->v.origin[1]) < 0.03125f && fabsf (oldorg[0] - ent->v.origin[0]) < 0.03125f)
+		{	// stepping up didn't make any progress
+			clip = SV_TryUnstick (ent, oldvel);
+		}
+	}
+
+// extra friction based on view angle
+	if (clip & 2)
+		SV_WallFriction (ent, &steptrace);
+
+// move down
+	downtrace = SV_PushEntity (ent, downmove);	// FIXME: don't link?
+
+	if (downtrace.plane.normal[2] > 0.7)
+	{
+		if (ent->v.solid == SOLID_BSP)
+		{
+			ent->v.flags = (float)((int)ent->v.flags | FL_ONGROUND);
+			ent->v.groundentity = EDICT_TO_PROG(downtrace.ent);
+		}
+	}
+	else
+	{
+// if the push down didn't end up on good ground, use the move without
+// the step up.  This happens near wall / slope combinations, and can
+// cause the player to hop up higher on a slope too steep to climb
+		VectorCopy (nosteporg, ent->v.origin);
+		VectorCopy (nostepvel, ent->v.velocity);
+	}
+}
+
+/*
+================
+SV_Physics_Client
+
+A NetQuake player's turn in the world's frame: PlayerPreThink, the move its
+movetype makes, PlayerPostThink
+================
+*/
+static void SV_Physics_Client (edict_t *ent)
+{
+	float	gravity;
+
+//
+// call standard client pre-think
+//
+	PR_GLOBAL(time) = (float)sv.time;
+	PR_GLOBAL(self) = EDICT_TO_PROG(ent);
+	PR_ExecuteProgram (PR_GLOBAL(PlayerPreThink));
+
+//
+// do a move
+//
+	SV_CheckVelocity (ent);
+
+//
+// decide which move function to call
+//
+	switch ((int)ent->v.movetype)
+	{
+	case MOVETYPE_NONE:
+		if (!SV_RunThink (ent))
+			return;
+		break;
+
+	case MOVETYPE_WALK:
+		if (!SV_RunThink (ent))
+			return;
+		if (!SV_CheckWater (ent) && !((int)ent->v.flags & FL_WATERJUMP))
+		{
+			gravity = pr.fofs_gravity ? E_FLOAT (ent, pr.fofs_gravity) : 0;
+			SV_AddGravity (ent, gravity ? gravity : 1);
+		}
+		SV_CheckStuck (ent);
+		SV_WalkMove (ent);
+		break;
+
+	case MOVETYPE_TOSS:
+	case MOVETYPE_BOUNCE:
+		SV_Physics_Toss (ent);
+		break;
+
+	case MOVETYPE_FLY:
+		if (!SV_RunThink (ent))
+			return;
+		SV_FlyMove (ent, (float)sv.frametime, NULL);
+		break;
+
+	case MOVETYPE_NOCLIP:
+		if (!SV_RunThink (ent))
+			return;
+		VectorMA (ent->v.origin, (float)sv.frametime, ent->v.velocity, ent->v.origin);
+		break;
+
+	default:
+		SV_Error ("SV_Physics_Client: bad movetype %i", (int)ent->v.movetype);
+	}
+
+//
+// call standard player post-think
+//
+	SV_LinkEdict (ent, true);
+
+	PR_GLOBAL(time) = (float)sv.time;
+	PR_GLOBAL(self) = EDICT_TO_PROG(ent);
+	PR_ExecuteProgram (PR_GLOBAL(PlayerPostThink));
+}
+
+// the players NetQuake's way: each one's newest move, before the world's frame
+static void SV_ClientThinks (void)
+{
+	int		i;
+
+	for (i=0, host_client = svs.clients ; i<MAX_CLIENTS ; i++, host_client++)
+	{
+		if (host_client->state != cs_spawned || !SV_NQPhysics (host_client))
+			continue;
+		sv_player = host_client->edict;
+		SV_ClientThink ();
+	}
+}
+
 //============================================================================
 
 void SV_ProgStartFrame (void)
@@ -890,6 +1509,12 @@ SV_NextFrameWait
 Seconds until SV_Physics runs again, for the host to sleep in between
 ================
 */
+// the shortest physics step: FTE's 0.013 while NetQuake's players move in it
+static double SV_MinTic (void)
+{
+	return pr.nq && sv_mintic.value > 0.013f ? 0.013 : sv_mintic.value;
+}
+
 double SV_NextFrameWait (void)
 {
 	double	wait;
@@ -902,7 +1527,7 @@ double SV_NextFrameWait (void)
 	for (i=0 ; i<MAX_CLIENTS ; i++)
 		if (svs.clients[i].state != cs_free)
 			break;
-	wait = sv.physicstime + (i == MAX_CLIENTS ? sv_maxtic.value : sv_mintic.value) - sv.time;
+	wait = sv.physicstime + (i == MAX_CLIENTS ? sv_maxtic.value : SV_MinTic ()) - sv.time;
 	if (wait < 0)
 		return 0;
 	return wait > 0.1 ? 0.1 : wait;
@@ -915,13 +1540,16 @@ void SV_Physics (void)
 
 // don't bother running a frame if sys_ticrate seconds haven't passed
 	sv.frametime = sv.time - sv.physicstime;
-	if (sv.frametime < sv_mintic.value)
+	if (sv.frametime < SV_MinTic ())
 		return;
 	if (sv.frametime > sv_maxtic.value)
 		sv.frametime = sv_maxtic.value;
 	sv.physicstime = sv.time;
 
 	PR_GLOBAL(frametime) = (float)sv.frametime;
+
+	if (pr.nq)
+		SV_ClientThinks ();
 
 	SV_ProgStartFrame ();
 	PR_RunThreads ();
@@ -940,7 +1568,15 @@ void SV_Physics (void)
 			SV_LinkEdict (ent, true);	// force retouch even for stationary
 
 		if (i > 0 && i <= MAX_CLIENTS)
-			continue;		// clients are run directly from packets
+		{	// QuakeWorld's are run directly from packets
+			host_client = &svs.clients[i-1];
+			if (host_client->state == cs_spawned && SV_NQPhysics (host_client))
+			{
+				sv_player = ent;
+				SV_Physics_Client (ent);
+			}
+			continue;
+		}
 
 		SV_RunEntity (ent);
 		SV_RunNewmis ();

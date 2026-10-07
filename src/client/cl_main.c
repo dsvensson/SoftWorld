@@ -1672,6 +1672,11 @@ double CL_FrameWait (void)
 	return wait > 0 ? wait : 0;
 }
 
+bool CL_KeysInGame (void)
+{
+	return cls.key_dest == key_game;
+}
+
 /*
 ==================
 CL_Frame

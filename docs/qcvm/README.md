@@ -131,6 +131,11 @@ behaviour.
   track loses its loop track, the stats are longs; temp entities are multicast where they
   happen. A message it doesn't know is dropped with a warning. `EF_MUZZLEFLASH` becomes
   `svc_muzzleflash`, and `punchangle` the client's kicks.
+- **NetQuake's players** move as NetQuake moves them (id's `SV_ClientThink` and
+  `SV_Physics_Client`), in the world's frame (at least every 0.013 s, FTE's) by the newest
+  move each sent, which is read before it; the client doesn't predict them (`PM_NONE`), as with
+  FTE's `sv_nqplayerphysics`. A listen server's game of one (`maxclients 1`) holds still while
+  its player's menu or console is up, as FTE's `PAUSE_AUTO`.
 - **The world** is read-only once the map runs (a write is a warning and skipped).
 - **Threads:** those sleeping resume after `StartFrame`.
 - **Autocvars** follow their cvars.

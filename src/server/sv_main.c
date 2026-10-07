@@ -1485,22 +1485,51 @@ static void SV_CheckVars (void)
 
 /*
 ==================
+SV_HeldStill
+
+A game of one, a listen server's for its own player alone, holds still
+while that player is away (the menu or the console has the keys), as FTE's
+PAUSE_AUTO: no plaque, nothing sent of it
+==================
+*/
+static bool SV_HeldStill (bool away)
+{
+	client_t	*cl;
+	int			i, players = 0;
+
+	if (!away || host.dedicated || maxclients.value != 1)
+		return false;
+	for (i = 0, cl = svs.clients ; i < MAX_CLIENTS ; i++, cl++)
+	{
+		if (cl->state == cs_free)
+			continue;
+		if (cl->state != cs_spawned || cl->netchan.remote_address.type != NA_LOOPBACK)
+			return false;
+		players++;
+	}
+	return players == 1;
+}
+
+/*
+==================
 SV_Frame
 
 ==================
 */
-void SV_Frame (double time)
+void SV_Frame (double time, bool away)
 {
 	static double	start, end;
-	
+	bool			still;
+
 	start = Sys_DoubleTime ();
 	svs.stats.idle += start - end;
-	
+
 // keep the random time dependent
 	rand ();
 
 // decide the simulation time
-	if (!sv.paused)
+	still = sv.paused || SV_HeldStill (away);
+	if (!still)
 		sv.time += time;
 
 // check timeouts
@@ -1509,12 +1538,18 @@ void SV_Frame (double time)
 // toggle the log buffer if full
 	SV_CheckLog ();
 
+// NetQuake's players move in the world's frame, by the moves just read, as
+// NetQuake has it; QuakeWorld's as their moves come
+	if (pr.nq)
+		SV_ReadPackets ();
+
 // move autonomous things around if enough time has passed
-	if (!sv.paused)
+	if (!still)
 		SV_Physics ();
 
 // get packets
-	SV_ReadPackets ();
+	if (!pr.nq)
+		SV_ReadPackets ();
 
 	SV_CheckVars ();
 

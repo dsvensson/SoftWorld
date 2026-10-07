@@ -46,9 +46,10 @@ void SV_Kill (void)
 {
 }
 
-void SV_Frame (double time)
+void SV_Frame (double time, bool away)
 {
 	(void)time;
+	(void)away;
 }
 
 double SV_NextFrameWait (void)

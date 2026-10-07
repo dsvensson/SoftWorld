@@ -175,6 +175,7 @@ typedef struct client_s
 	char			userinfo[MAX_INFO_STRING];		// infostring
 
 	usercmd_t		lastcmd;			// for filling in big drops and partial predictions
+	usercmd_t		nqcmd;				// NetQuake's physics: the newest move, for the world's frame
 	double			localtime;			// of last message
 	bool			jump_held;			// don't jump again until the button is released
 
@@ -475,6 +476,7 @@ typedef enum
 } spawnparms_t;
 
 void SV_SpawnServer (char *server, spawnparms_t parms);
+bool SV_NQPhysics (const client_t *cl);	// it moves as NetQuake's players do (sv_phys.c)
 void SV_FlushSignon (void);
 
 // where QuakeC's Write builtins write

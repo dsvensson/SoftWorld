@@ -30,5 +30,7 @@ void	SV_Shutdown (void);		// ends the game and closes the logs, at exit
 bool	SV_Active (void);		// a map is running
 void	SV_Kill (void);			// ends the game, telling the clients
 
-void	SV_Frame (double time);	// reads packets, runs physics and answers
+// reads packets, runs physics and answers; away: this program's player isn't in
+// the game (its menu or console has the keys), which holds a game of one still
+void	SV_Frame (double time, bool away);
 double	SV_NextFrameWait (void);	// seconds until the server needs a frame
