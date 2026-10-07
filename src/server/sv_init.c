@@ -430,6 +430,7 @@ void SV_SpawnServer (char *server, spawnparms_t parms)
 
 	// wipe the entire per-level structure
 	memset (&sv, 0, sizeof(sv));
+	SV_NQNewLevel ();
 
 	sv.datagram.maxsize = sizeof(sv.datagram_buf);
 	sv.datagram.data = sv.datagram_buf;

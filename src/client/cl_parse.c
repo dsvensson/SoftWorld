@@ -1236,21 +1236,36 @@ static void CL_MuzzleFlash (void)
 {
 	vec3_t		fv, rv, uv;
 	dlight_t	*dl;
-	int			i;
+	int			i, j;
 	player_state_t	*pl;
+	const packet_entities_t	*pack;
 
 	i = MSG_ReadShort ();
 
-	if ((unsigned)(i-1) >= MAX_CLIENTS || CL_MVDQuiet ())
+	if (i < 1 || i >= MAX_EDICTS || CL_MVDQuiet ())
 		return;
 
+	if (i <= MAX_CLIENTS)
+	{
+		pl = &cl.frames[cl.parsecountmod].playerstate[i-1];
+		dl = CL_AllocDlight (i);
+		VectorCopy (pl->origin, dl->origin);
+		AngleVectors (pl->viewangles, fv, rv, uv);
+	}
+	else
+	{	// a monster of NetQuake's progs, where the last update has it
+		if (!cl.validsequence)
+			return;
+		pack = &cl.frames[cl.validsequence & UPDATE_MASK].packet_entities;
+		for (j = 0 ; j < pack->num_entities && pack->entities[j].number != i ; j++)
+			;
+		if (j == pack->num_entities)
+			return;
+		dl = CL_AllocDlight (i);
+		VectorCopy (pack->entities[j].origin, dl->origin);
+		AngleVectors (pack->entities[j].angles, fv, rv, uv);
+	}
 
-	pl = &cl.frames[cl.parsecountmod].playerstate[i-1];
-
-	dl = CL_AllocDlight (i);
-	VectorCopy (pl->origin,  dl->origin);
-	AngleVectors (pl->viewangles, fv, rv, uv);
-		
 	VectorMA (dl->origin, 18, fv, dl->origin);
 	dl->radius = (float)(200 + (rand()&31));
 	dl->minlight = 32;

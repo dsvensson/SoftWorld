@@ -125,6 +125,12 @@ behaviour.
   lightning's blood as QuakeWorld's temp entities, as FTE sends them), and `setmodel`'s box for
   every model. FTE's `clientstat` and `globalstat` (#232, #233) add stats from 32 up, sent to
   clients with `FTE_PEXT_CSQC`; `pr_checkextension` says `checkextension` answers.
+- **NetQuake's messages:** what NetQuake's progs write with the `Write` builtins is held until
+  a message is whole and written again in QuakeWorld's words (`sv_nqmsg.c`, as FTE's
+  `net_preparse.c`): the gunshot gets its count, the intermission each client's view, the cd
+  track loses its loop track, the stats are longs; temp entities are multicast where they
+  happen. A message it doesn't know is dropped with a warning. `EF_MUZZLEFLASH` becomes
+  `svc_muzzleflash`, and `punchangle` the client's kicks.
 - **The world** is read-only once the map runs (a write is a warning and skipped).
 - **Threads:** those sleeping resume after `StartFrame`.
 - **Autocvars** follow their cvars.

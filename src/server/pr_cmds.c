@@ -987,12 +987,6 @@ MESSAGE WRITING
 ===============================================================================
 */
 
-#define	MSG_BROADCAST	0		// unreliable to all
-#define	MSG_ONE			1		// reliable to one (msg_entity)
-#define	MSG_ALL			2		// reliable to all
-#define	MSG_INIT		3		// write to the init string
-#define	MSG_MULTICAST	4		// for multicast()
-
 // the buffer to write to, or NULL after QC_Error
 static sizebuf_t *WriteDest (qcvm_t *vm)
 {
@@ -1069,11 +1063,36 @@ static bool PF_WriteDone (client_t *one, sizebuf_t *msg)
 	return true;
 }
 
+// whether a write is a NetQuake progs' (to NetQuake's destinations, all but
+// multicast's), which sv_nqmsg.c writes as QuakeWorld's
+static bool PF_WriteIsNQ (qcvm_t *vm)
+{
+	return pr.nq && PF_ArgTrunc(vm, 0) != MSG_MULTICAST;
+}
+
+// a NetQuake progs' write, to sv_nqmsg.c; false after QC_Error
+static bool PF_WriteNQ (qcvm_t *vm, nqwrite_t kind, float value, const char *string)
+{
+	int			dest = PF_ArgTrunc(vm, 0);
+	client_t	*one = NULL;
+
+	if (dest < MSG_BROADCAST || dest > MSG_INIT)
+		return QC_Error (vm, "WriteDest: bad destination");
+	if (dest == MSG_INIT && sv.state != ss_loading)
+		return QC_Error (vm, "PF_Write_*: MSG_INIT can only be written in spawn functions");
+	if (dest == MSG_ONE && !(one = Write_GetClient (vm)))
+		return false;
+	SV_NQWrite (dest, one, kind, value, string);
+	return true;
+}
+
 static bool PF_WriteByte (qcvm_t *vm)
 {
 	client_t	*one;
 	sizebuf_t	*sb;
 
+	if (PF_WriteIsNQ (vm))
+		return PF_WriteNQ (vm, NQW_BYTE, (float)PF_ArgTrunc(vm, 1), NULL);
 	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
 	MSG_WriteByte (sb, PF_ArgTrunc(vm, 1));
@@ -1085,6 +1104,8 @@ static bool PF_WriteChar (qcvm_t *vm)
 	client_t	*one;
 	sizebuf_t	*sb;
 
+	if (PF_WriteIsNQ (vm))
+		return PF_WriteNQ (vm, NQW_CHAR, (float)PF_ArgTrunc(vm, 1), NULL);
 	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
 	MSG_WriteChar (sb, PF_ArgTrunc(vm, 1));
@@ -1096,6 +1117,8 @@ static bool PF_WriteShort (qcvm_t *vm)
 	client_t	*one;
 	sizebuf_t	*sb;
 
+	if (PF_WriteIsNQ (vm))
+		return PF_WriteNQ (vm, NQW_SHORT, (float)PF_ArgTrunc(vm, 1), NULL);
 	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
 	MSG_WriteShort (sb, PF_ArgTrunc(vm, 1));
@@ -1107,6 +1130,8 @@ static bool PF_WriteLong (qcvm_t *vm)
 	client_t	*one;
 	sizebuf_t	*sb;
 
+	if (PF_WriteIsNQ (vm))
+		return PF_WriteNQ (vm, NQW_LONG, (float)PF_ArgTrunc(vm, 1), NULL);
 	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
 	MSG_WriteLong (sb, PF_ArgTrunc(vm, 1));
@@ -1118,6 +1143,8 @@ static bool PF_WriteAngle (qcvm_t *vm)
 	client_t	*one;
 	sizebuf_t	*sb;
 
+	if (PF_WriteIsNQ (vm))
+		return PF_WriteNQ (vm, NQW_ANGLE, QC_ArgFloat(vm, 1), NULL);
 	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
 	MSG_WriteAngle (sb, QC_ArgFloat(vm, 1));
@@ -1129,6 +1156,8 @@ static bool PF_WriteCoord (qcvm_t *vm)
 	client_t	*one;
 	sizebuf_t	*sb;
 
+	if (PF_WriteIsNQ (vm))
+		return PF_WriteNQ (vm, NQW_COORD, QC_ArgFloat(vm, 1), NULL);
 	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
 	MSG_WriteCoord (sb, QC_ArgFloat(vm, 1));
@@ -1140,6 +1169,8 @@ static bool PF_WriteString (qcvm_t *vm)
 	client_t	*one;
 	sizebuf_t	*sb;
 
+	if (PF_WriteIsNQ (vm))
+		return PF_WriteNQ (vm, NQW_STRING, 0, QC_ArgString(vm, 1));
 	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
 	MSG_WriteString (sb, QC_ArgString(vm, 1));
@@ -1151,6 +1182,8 @@ static bool PF_WriteEntity (qcvm_t *vm)
 	client_t	*one;
 	sizebuf_t	*sb;
 
+	if (PF_WriteIsNQ (vm))
+		return PF_WriteNQ (vm, NQW_ENTITY, (float)PF_ArgEdictNum(vm, 1), NULL);
 	if (!(sb = PF_WriteTo (vm, &one)))
 		return false;
 	MSG_WriteShort (sb, PF_ArgEdictNum(vm, 1));

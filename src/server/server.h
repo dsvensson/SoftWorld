@@ -384,7 +384,7 @@ typedef struct
 // entity effects
 
 //define	EF_BRIGHTFIELD			1
-//define	EF_MUZZLEFLASH 			2
+#define	EF_MUZZLEFLASH 			2		// NetQuake's progs': svc_muzzleflash for QuakeWorld's
 #define	EF_BRIGHTLIGHT 			4
 #define	EF_DIMLIGHT 			8
 
@@ -476,6 +476,24 @@ typedef enum
 
 void SV_SpawnServer (char *server, spawnparms_t parms);
 void SV_FlushSignon (void);
+
+// where QuakeC's Write builtins write
+#define	MSG_BROADCAST	0		// unreliable to all
+#define	MSG_ONE			1		// reliable to one (msg_entity)
+#define	MSG_ALL			2		// reliable to all
+#define	MSG_INIT		3		// write to the init string
+#define	MSG_MULTICAST	4		// for multicast()
+
+// NetQuake's progs' writes, in QuakeWorld's words (sv_nqmsg.c): a write of a
+// kind to dest (MSG_BROADCAST to MSG_INIT; one for MSG_ONE), the frame's end
+// before its messages go out, and a level's start
+typedef enum
+{
+	NQW_BYTE, NQW_CHAR, NQW_SHORT, NQW_LONG, NQW_COORD, NQW_ANGLE, NQW_STRING, NQW_ENTITY
+} nqwrite_t;
+void SV_NQWrite (int dest, client_t *one, nqwrite_t kind, float value, const char *string);
+void SV_NQEndFrame (void);
+void SV_NQNewLevel (void);
 entity_state_t *SV_NewStatic (void);
 byte *SV_LeafPVS (int leafnum);
 byte *SV_LeafPHS (int leafnum);

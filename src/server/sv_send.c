@@ -488,6 +488,23 @@ static void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
 		ent->v.fixangle = 0;
 	}
 
+	// NetQuake's progs kick the view with punchangle, which QuakeWorld's
+	// clients take as kicks that they drop themselves, as FTE's server sends it
+	if (pr.nq)
+	{
+		while (ent->v.punchangle[0] < -3)
+		{
+			ent->v.punchangle[0] += 4;
+			MSG_WriteByte (msg, svc_bigkick);
+		}
+		while (ent->v.punchangle[0] < -1)
+		{
+			ent->v.punchangle[0] += 2;
+			MSG_WriteByte (msg, svc_smallkick);
+		}
+		ent->v.punchangle[1] = ent->v.punchangle[2] = 0;
+	}
+
 	// the server's time: in every datagram with FTE_PEXT_ACCURATETIMINGS,
 	// every few seconds with Z_EXT_SERVERTIME, which only keeps a clock near
 	if ((client->fteext & FTE_PEXT_ACCURATETIMINGS) ||
@@ -761,6 +778,10 @@ void SV_SendClientMessages (void)
 {
 	int			i, j;
 	client_t	*c;
+
+// NetQuake's progs' messages of the frame, all out
+	if (pr.nq && sv.state == ss_active)
+		SV_NQEndFrame ();
 
 // update frags, names, etc
 	SV_UpdateToReliableMessages ();
