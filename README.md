@@ -283,6 +283,26 @@ viewer joining starts from where the game was a second or less before that. A le
 on in the same stream. The game is written once, however many watch; a viewer too slow for it is
 dropped rather than waited for. 64 watch at most: a relay in front serves more.
 
+### Server browser
+
+Multiplayer in the menu (and `menu_multiplayer`, F5's, or `menu_slist`) is a server browser
+that looks and works as ezQuake's: its Servers, Sources, Players and Options pages, the info of a
+server (Enter: its players, serverinfo and sources), its keys (typing searches the names, Alt+1–8
+sorts, Ctrl+2–8 shows columns, Space scans again, Ctrl+J joins, Ctrl+O watches, Ctrl+C copies the
+address, Ins adds a server) and its `sb_*` cvars, with ezQuake's defaults. Its list is found as
+qualia's is: last time's servers are shown at once, the masters and lists are asked, every server
+is pinged (`sb_pings` sweeps at `sb_pingspersec`), and those that answer are asked what they are
+(`sb_infospersec`), the list filling as they do; qizmo's and qwfwd's tables of pings find shorter
+ways round. The selection stays on its server as the list changes.
+
+The sources are ezQuake's `sources.txt` (`master`, `file` and `url` lines, and `server` ones),
+`<basedir>/qw/sb/sources.txt`, else ezQuake's own (`<basedir>/ezquake/sb/sources.txt`, its lists
+beside it), else the QuakeServers.net and Asgaard masters; which are marked is in `qw/sb/marks.txt`,
+last time's servers in `qw/sb/servers.txt`, and those added by hand (`addserver <address>`) in
+`qw/sb/unbound.txt`. A url source is read over HTTP or HTTPS: its certificate is checked against the
+roots the system trusts (on Linux the bundle `SSL_CERT_FILE` names, else the distribution's). The
+page's list is empty: a browser has no UDP to ask servers with.
+
 ### In a browser
 
 The page needs the game's files from the site that serves it, and cross-origin isolation (the
@@ -399,9 +419,10 @@ client lacks. Traces see the world alone, not entities.
 The menu is QuakeC too: id's QuakeWorld menus, drawn as they always were, are `menu-qc`,
 compiled into `menu.dat` and carried in the client. It runs as FTE runs menu QuakeC (`m_init`,
 `m_draw`, `m_keydown`, `m_toggle`, `m_consolecommand`, FTE's builtin numbers and key codes),
-with the 2D builtins drawn 1:1 in the layout's pixels, its images made with `r_readimage` and
-`r_uploadimage` (the console's background with the version, and the fade, made again when the
-layout's width changes), and `isfullscreen` of SoftWorld's own. A `menu.dat` in the game
+with the 2D builtins drawn 1:1 in the layout's pixels (text tinted, fills blended), its images
+made with `r_readimage` and `r_uploadimage` (the console's background with the version, and the
+fade, made again when the layout's width changes), FTE's hostcache builtins over the server
+browser's list, and SoftWorld's own builtins (`isfullscreen`, the list's sources). A `menu.dat` in the game
 directory runs instead; one that fails gives way to the built-in one. `menu_restart` loads it
 again, `menu_builtins` lists the builtins it calls that the client lacks, and `quit` asks
 through it (`quit force` doesn't).

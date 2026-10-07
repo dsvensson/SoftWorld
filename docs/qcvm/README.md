@@ -148,12 +148,27 @@ It is the checklist for the rest of CSQC.
   with FTE's key codes and the character typed, `m_toggle` for Escape and `togglemenu`, and
   `m_consolecommand` for the commands it registers. `time` is the host's realtime.
 - **Builtins:** the standard library's, numbered for menus, and the client's: `precache_pic`,
-  `iscachedpic`, `drawpic`, `drawcharacter`, `drawrawstring`, `drawgetimagesize`,
+  `iscachedpic`, `drawpic`, `drawcharacter`, `drawrawstring`, `drawstring` (the colors written
+  in it, ezQuake's `&cRGB` and FTE's `^`), `stringwidth`, `drawfill`, `drawgetimagesize`,
   `r_uploadimage` (RGBA), `r_readimage` (RGBA, also `gfx/conchars` and `gfx/palette.lmp` as
   16x16), `localsound`, `setkeydest`, `getkeydest`, `keynumtostring`, `stringtokeynum`,
-  `findkeysforcommand`, `getkeybind`, `setkeybind`, `clientstate` (2 only in a game) and
-  SoftWorld's `isfullscreen`. Its 2D is drawn 1:1 in the layout's pixels, white and opaque,
-  clipped to the screen, and what it asks for never stops the program.
+  `findkeysforcommand`, `getkeybind`, `setkeybind`, `clientstate` (2 only in a game),
+  `clipboard_set` (the clipboard, cliptype 0) and SoftWorld's `isfullscreen`. Its 2D is drawn
+  1:1 in the layout's pixels, 8 by 8 a character: text takes its rgb as a tint of four bits a
+  channel and an alpha below 1 as half transparent, a fill its rgb and alpha as they are,
+  pictures neither. It is clipped to the screen, and what it asks for never stops the program.
+- **The server list:** FTE's hostcache builtins (611 to 622) over the client's (`cl_slist.c`):
+  `gethostcachevalue` (FTE's 0 to 7, and SoftWorld's from 100: whether it scans, the sweep and
+  sweeps, pings sent and to send, servers alive, dead and described, the list's generation, the
+  sources, the marked sources' servers), `gethostcacheindexforkey` (FTE's names, `player<N>`, `state` for cached, alive and
+  dead, and any serverinfo key), `gethostcachestring` and `gethostcachenumber` (a player as FTE
+  spells one, its team after), the masks as FTE tests them (in order, ANDed, or ORed with mask
+  512), `sethostcachesort` (and its flag 8, a key after the others), `resorthostcache` and
+  `refreshhostcache`. SoftWorld's own, by name: `gethostcacheindexforaddress`,
+  `refreshhostcacheentry` (a server asked again ahead of the rest), `hostcacheinsource`,
+  `gethostcachesource`, `sethostcachesourcemark`, `addhostcachesource`,
+  `removehostcachesource` and `addhostcacheserver`. A server's index holds from one `m_draw` to
+  the next: the list the engine finds is taken before it.
 - **Errors:** a QuakeC error prints its backtrace and shuts the menu down; a game directory's
   menu.dat gives way to the built-in one. `menu_restart` loads the menu again, and
   `menu_builtins` lists the builtins it calls that the client lacks.
