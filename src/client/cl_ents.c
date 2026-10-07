@@ -25,6 +25,7 @@ extern	cvar_t	cl_predict_players;
 extern	cvar_t	cl_predict_players2;
 extern	cvar_t	r_drawvweps;
 extern	cvar_t	r_rocketlight;
+extern	cvar_t	cl_deadbodyfilter, cl_gibfilter, cl_r2g;
 extern	cvar_t	cl_solid_players;
 
 static struct predicted_player {
@@ -759,6 +760,29 @@ void CL_ParsePacketEntities (bool delta)
 
 /*
 ===============
+CL_FilterModel
+
+Whether cl_deadbodyfilter or cl_gibfilter hides an entity, by its model and
+frame, as FTE does: player.mdl's deaths are its frames 41 to 102, and 49, 60,
+69, 84, 93 and 102 the last of each, the body on the ground
+===============
+*/
+static bool CL_FilterModel (int modelindex, int frame)
+{
+	if (modelindex == cl.playerindex)
+	{
+		if ((int)cl_deadbodyfilter.value == 2)
+			return frame >= 41 && frame <= 102;
+		if (cl_deadbodyfilter.value)
+			return frame == 49 || frame == 60 || frame == 69 || frame == 84 || frame == 93 || frame == 102;
+		return false;
+	}
+	return cl_gibfilter.value && (modelindex == cl.h_playerindex || modelindex == cl.gib1index
+		|| modelindex == cl.gib2index || modelindex == cl.gib3index);
+}
+
+/*
+===============
 CL_LinkPacketEntities
 
 ===============
@@ -806,7 +830,7 @@ static void CL_LinkPacketEntities (void)
 		if (!s1->modelindex)
 			continue;
 		model = CL_Model (s1->modelindex);
-		if (!model)
+		if (!model || CL_FilterModel (s1->modelindex, s1->frame))
 			continue;
 
 		// create a new entity
@@ -818,6 +842,9 @@ static void CL_LinkPacketEntities (void)
 
 		ent->keynum = s1->number;
 		ent->model = model;
+		// a rocket drawn as a grenade, its trail and light still a rocket's
+		if (cl_r2g.value && s1->modelindex == cl.rocketindex && CL_Model (cl.grenadeindex))
+			ent->model = CL_Model (cl.grenadeindex);
 		ent->alpha = s1->alpha;
 	
 		// set colormap
@@ -1397,7 +1424,7 @@ static void CL_LinkPlayers (void)
 		if (j == cl.viewplayer && !CL_MVDFlying ())
 			continue;
 
-		if (!state->modelindex || !CL_Model (state->modelindex))
+		if (!state->modelindex || !CL_Model (state->modelindex) || CL_FilterModel (state->modelindex, state->frame))
 			continue;
 
 		if (!Cam_DrawPlayer(j))

@@ -357,6 +357,8 @@ typedef struct
 	int			numvisedicts, oldnumvisedicts;
 
 	int			spikeindex, playerindex, flagindex;	// model indices, for effects
+	int			h_playerindex, gib1index, gib2index, gib3index;	// and the filters' (FTE's)
+	int			rocketindex, grenadeindex;
 
 	int			viewplayer;		// whose view is drawn: playernum, or who an MVD follows
 	float		mvd_server_time;	// an MVD's serverdata: the server's clock when it began

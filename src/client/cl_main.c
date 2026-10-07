@@ -102,6 +102,18 @@ cvar_t	r_rocketlight = {.name = "r_rocketlight", .string = "1", .archive = true,
 	.description = "Rockets light up what they fly past.",
 	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "On"}, {0}}};
 
+// FTE's names and values: what isn't drawn, and rockets drawn as grenades
+cvar_t	cl_deadbodyfilter = {.name = "cl_deadbodyfilter", .string = "0", .archive = true,
+	.description = "Hides dead players' bodies.",
+	.values = (const cvar_value_t[]){{"0", "Shown"}, {"1", "Hidden once they lie on the ground"},
+		{"2", "Hidden from the moment they die"}, {0}}};
+cvar_t	cl_gibfilter = {.name = "cl_gibfilter", .string = "0", .archive = true,
+	.description = "Hides gibs, and the heads of players blown to pieces.",
+	.values = (const cvar_value_t[]){{"0", "Shown"}, {"1", "Hidden"}, {0}}};
+cvar_t	cl_r2g = {.name = "cl_r2g", .string = "0", .archive = true,
+	.description = "Draws rockets with progs/grenade.mdl instead of progs/missile.mdl; their trail and light stay.",
+	.values = (const cvar_value_t[]){{"0", "Rockets"}, {"1", "Grenades"}, {0}}};
+
 static cvar_t  localid = {.name = "localid", .string = "",
 	.description = "The key a server browser on this machine sends with its commands, which it sets itself; "
 		"needed after its first command or a connect."};
@@ -1363,6 +1375,9 @@ static void CL_InitLocal (void)
 	Cvar_RegisterVariable (&cl_predict_players2);
 	Cvar_RegisterVariable (&r_drawvweps);
 	Cvar_RegisterVariable (&r_rocketlight);
+	Cvar_RegisterVariable (&cl_deadbodyfilter);
+	Cvar_RegisterVariable (&cl_gibfilter);
+	Cvar_RegisterVariable (&cl_r2g);
 	Cvar_RegisterVariable (&cl_predict_players);
 	Cvar_RegisterVariable (&cl_solid_players);
 

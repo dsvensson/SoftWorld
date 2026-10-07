@@ -434,6 +434,8 @@ static void Sound_NextDownload (void)
 	cl.playerindex = -1;
 	cl.spikeindex = -1;
 	cl.flagindex = -1;
+	cl.h_playerindex = cl.gib1index = cl.gib2index = cl.gib3index = -1;
+	cl.rocketindex = cl.grenadeindex = -1;
 	MSG_WriteByte (&cls.netchan.message, clc_stringcmd);
 //	MSG_WriteString (&cls.netchan.message, va("modellist %i 0", cl.servercount));
 	MSG_WriteString (&cls.netchan.message, va(modellist_name, cl.servercount, 0));
@@ -780,6 +782,18 @@ static void CL_ParseModellist (bool shortstart)
 			cl.playerindex = nummodels;
 		if (!strcmp(cl.model_name[nummodels],"progs/flag.mdl"))
 			cl.flagindex = nummodels;
+		if (!strcmp(cl.model_name[nummodels],"progs/h_player.mdl"))
+			cl.h_playerindex = nummodels;
+		if (!strcmp(cl.model_name[nummodels],"progs/gib1.mdl"))
+			cl.gib1index = nummodels;
+		if (!strcmp(cl.model_name[nummodels],"progs/gib2.mdl"))
+			cl.gib2index = nummodels;
+		if (!strcmp(cl.model_name[nummodels],"progs/gib3.mdl"))
+			cl.gib3index = nummodels;
+		if (!strcmp(cl.model_name[nummodels],"progs/missile.mdl"))
+			cl.rocketindex = nummodels;
+		if (!strcmp(cl.model_name[nummodels],"progs/grenade.mdl"))
+			cl.grenadeindex = nummodels;
 	}
 
 	n = MSG_ReadByte();
