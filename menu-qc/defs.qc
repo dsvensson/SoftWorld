@@ -37,6 +37,7 @@ float(string s) strlen = #52;
 string(string s, float start, float length) substring = #54;
 float(string s) tokenize = #58;
 string(float n) argv = #59;
+float() isserver = #60;
 float() clientstate = #62;
 void(string sample) localsound = #65;
 string(string format, ...) sprintf = #627;

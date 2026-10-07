@@ -1,6 +1,6 @@
-// menu.qc -- id's QuakeWorld menus, as the C menu had them: main, single
-// player, options, keys, help, and the quit screen; multiplayer is the server
-// browser (sb_*.qc)
+// menu.qc -- id's menus: QuakeWorld's main, options, keys, help and quit
+// screen, as the C menu had them, and NetQuake's single player; multiplayer is
+// the server browser (sb_*.qc)
 
 // what the menus show
 enum { M_NONE, M_MAIN, M_SINGLEPLAYER, M_OPTIONS, M_KEYS, M_HELP, M_QUIT, M_SLIST };
@@ -422,25 +422,64 @@ void(float key) M_Help_Key =
 
 SINGLE PLAYER
 
-What QuakeWorld has instead
+NetQuake's: a new game from the game directory's start map, NetQuake's
+progs.dat on the program's own server. Load and Save aren't there yet.
 
 ==============================================================================
 */
 
-void() M_SinglePlayer_Draw =
+float	m_singleplayer_cursor;
+float	m_newgame_asking;	// whether to end the game there is
+
+// the game there is ended, a new one on the start map
+void() M_NewGame =
 {
-	M_DrawPic (16, 4, "gfx/qplaque.lmp");
-	M_DrawTitle ("gfx/ttl_sgl.lmp");
-	M_DrawTextBox (60, 10 * 8, 23, 4);
-	M_PrintWhite (92, 12 * 8, "QuakeWorld is for");
-	M_PrintWhite (88, 13 * 8, "Internet play only");
+	M_Close ();
+	localcmd ("disconnect\nmaxclients 1\ndeathmatch 0\ncoop 0\nmap start\n");
 };
 
-// Escape or Enter: back to the main menu
+void() M_SinglePlayer_Draw =
+{
+	vector	size = drawgetimagesize ("gfx/sp_menu.lmp");
+
+	M_DrawPic (16, 4, "gfx/qplaque.lmp");
+	M_DrawTitle ("gfx/ttl_sgl.lmp");
+	M_DrawPic (72, 32, "gfx/sp_menu.lmp");
+	drawfill ([72 + menu_x, 52, 0], [size_x, size_y - 20, 0], '0 0 0', 0.6, 0);	// Load and Save, not yet
+	M_DrawPic (54, 32 + m_singleplayer_cursor * 20, sprintf ("gfx/menudot%d.lmp", floor (time * 10) % 6 + 1));
+	if (m_newgame_asking)
+	{	// NetQuake's question
+		M_DrawTextBox (56, 92, 24, 3);
+		M_PrintWhite (72, 104, "Are you sure you want to");
+		M_PrintWhite (72, 112, " start a new game? y/n");
+	}
+};
+
 void(float key) M_SinglePlayer_Key =
 {
-	if (key == K_ESCAPE || key == K_ENTER)
-		m_state = M_MAIN;
+	if (m_newgame_asking)
+	{
+		if (key == 'y')
+			M_NewGame ();
+		if (key == 'y' || key == 'n' || key == K_ESCAPE)
+			m_newgame_asking = FALSE;
+		return;
+	}
+	switch (key)
+	{
+	case K_ESCAPE:
+		M_Menu_Main_f ();
+		break;
+	case K_ENTER:
+		m_entersound = TRUE;
+		if (m_singleplayer_cursor != 0)
+			break;
+		if (clientstate () == 2 || isserver ())
+			m_newgame_asking = TRUE;		// a game would end
+		else
+			M_NewGame ();
+		break;
+	}
 };
 
 /*

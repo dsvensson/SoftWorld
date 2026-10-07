@@ -2,7 +2,8 @@
 
 QuakeWorld with a software renderer, grown from id Software's 1999 source release into a
 current Windows, macOS and Linux program, and a page in a browser: a client that hosts its own
-server, a dedicated server, and the protocol extensions today's servers and clients speak.
+server, a dedicated server, and the protocol extensions today's servers and clients speak. Its
+server runs NetQuake's single player too.
 
 - **Renderer:** software only, drawing 32-bit HDR pixels. The render size is 320×200 times a
   whole number, presented through Direct3D 11 on Windows, Metal 4 on macOS and Vulkan on
@@ -19,6 +20,11 @@ server, a dedicated server, and the protocol extensions today's servers and clie
   Servers stream their game to QTV's viewers at their port, as mvdsv's do.
 - **QuakeC:** a hardened VM with FTE's opcodes and builtins, multiprogs and threads; FTE's
   client-side QuakeC (CSQC), enough for KTX's weapon prediction.
+- **Single player:** NetQuake's `progs.dat` (id1's episodes, mods' games) on the program's own
+  server, from the menu's Single Player, played over QuakeWorld's protocol as FTE plays it:
+  NetQuake's player movement (the server's, unpredicted), its messages in QuakeWorld's words,
+  skill and coop, the level's monsters and secrets, the completed screen, and monsters' steps
+  smoothed. The game holds still while the menu or console is up.
 
 ## Building
 
@@ -169,6 +175,7 @@ the directory that holds `id1` (and `qw`, and mod directories):
 
 ```
 softworld -basedir C:\quake +map dm4
+softworld -basedir C:\quake +deathmatch 0 +maxclients 1 +map start
 softworld -basedir C:\quake +connect qw.example.com
 softworld -basedir C:\quake +playdemo mydemo.mvd
 softworld -basedir C:\quake +qtvplay 1@qtv.example.com:27599
@@ -407,8 +414,10 @@ and opcode `fteqcc` writes, about 200 of FTE's builtins, several progs in one VM
 QuakeC threads (`sleep`, `fork`), autocvars, and hard limits, so that a QuakeC error is an error
 with a backtrace, never a crash. [docs/qcvm](docs/qcvm) describes it.
 
-The server runs `qwprogs.dat` with FTE's server builtins and offers a `csprogs.dat`
-(`sv_csqc_progname`) in the serverinfo as FTE does. The client runs a server's csprogs as FTE's
+The server runs `qwprogs.dat` with FTE's server builtins, or NetQuake's `progs.dat` as FTE's
+server runs it: a game directory's own progs first, else `progs.dat` when `deathmatch` is 0
+(single player and coop) and `qwprogs.dat` when it isn't (`sv_progs` names one). It offers a
+`csprogs.dat` (`sv_csqc_progname`) in the serverinfo as FTE does. The client runs a server's csprogs as FTE's
 client does:
 - it downloads the csprogs into `csprogsvers` (`cl_download_csprogs`), checks it, and loads it
   with `csaddon.dat` where cheats apply;
@@ -423,7 +432,8 @@ autocvars become cvars, so its settings (`cl_predict_projectiles`, …) can be c
 `cl_nocsqc 1` keeps CSQC off, and `csqc_builtins` lists the builtins a csprogs calls that the
 client lacks. Traces see the world alone, not entities.
 
-The menu is QuakeC too: id's QuakeWorld menus, drawn as they always were, are `menu-qc`,
+The menu is QuakeC too: id's QuakeWorld menus, drawn as they always were, with NetQuake's
+single player in place of QuakeWorld's note that there was none, are `menu-qc`,
 compiled into `menu.dat` and carried in the client. It runs as FTE runs menu QuakeC (`m_init`,
 `m_draw`, `m_keydown`, `m_toggle`, `m_consolecommand`, FTE's builtin numbers and key codes),
 with the 2D builtins drawn 1:1 in the layout's pixels (text tinted, fills blended), its images
