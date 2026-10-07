@@ -34,6 +34,9 @@ You need Windows 10 or 11 on x64, and:
   without one, configuring fetches fteqw's QuakeC compiler and builds it with the host's
   compiler (seconds), under the build directory's `deps` (`SW_DEPS_DIR`), where later
   configures find it.
+- mbedTLS 3, for the server browser's HTTPS: WebRTC's (below) where it is in, else the one
+  CMake finds, else configuring fetches mbedTLS 3.6.7 and builds it into `deps` once (a
+  minute or so), as it does fteqcc.
 
 Build from a Visual Studio developer prompt (x64):
 
@@ -72,7 +75,7 @@ You need a Mac with Apple silicon on macOS 26 or later (Metal 4), and:
   `xcodebuild -downloadComponent MetalToolchain`. The Command Line Tools alone don't have it;
   the build finds Xcode's at `/Applications/Xcode.app` (`SW_XCODE_DEVELOPER_DIR` if elsewhere).
 - CMake 3.28 or later and Ninja (Homebrew's, for example).
-- fteqcc or git, as on Windows.
+- fteqcc or git, and mbedTLS or a configure that builds it, as on Windows.
 
 ```
 cmake --preset macos-m3
@@ -101,7 +104,7 @@ for the window) or an X11 desktop, a GPU with Vulkan 1.3, and:
   libXss. On Arch:
   `pacman -S cmake ninja clang lld vulkan-headers vulkan-icd-loader glslang wayland
   wayland-protocols libxkbcommon libpipewire libx11 libxi libxss`.
-- fteqcc or git, as on Windows.
+- fteqcc or git, and mbedTLS or a configure that builds it, as on Windows.
 
 ```
 cmake --preset linux-v4
@@ -364,7 +367,8 @@ package, vcpkg's, Homebrew's), and without one WebRTC is left out. `-DSW_WEBRTC=
 it: where there is none, configuring fetches libdatachannel and mbedTLS (with git), builds them
 with the programs' compilers and configurations (a minute or so) and installs them under the
 build directory's `deps`, where later configures find them, as fteqcc is; `SW_DEPS_DIR` puts
-them elsewhere, to share between build directories. `-DSW_WEBRTC=OFF` leaves WebRTC out. CI asks for it, and
+them elsewhere, to share between build directories. The server browser's HTTPS takes the
+same mbedTLS: a program has one. `-DSW_WEBRTC=OFF` leaves WebRTC out. CI asks for it, and
 caches what it builds. The page does it with the browser's own, which checks the broker's
 certificate itself; an https page reaches brokers only by `rtcs://`.
 
