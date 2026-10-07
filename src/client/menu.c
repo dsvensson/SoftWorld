@@ -184,7 +184,9 @@ void M_ToggleMenu_f (void)
 		m_state = m_none;
 		return;
 	}
-	if (cls.key_dest == key_console)
+	// the console closes in a game only: out of one it stays down, and
+	// Escape at it opens the menu as it does over the full console
+	if (cls.key_dest == key_console && cls.state == ca_active)
 	{
 		Con_ToggleConsole_f ();
 	}
@@ -943,7 +945,7 @@ static void M_Quit_Draw (void)
 void M_Init (void)
 {
 	Cmd_AddCommand ("togglemenu", M_ToggleMenu_f,
-		"Opens or closes the main menu (from another menu, goes back to it); closes the console if it is down.");
+		"Opens or closes the main menu (from another menu, goes back to it); closes the console if it is down in a game.");
 
 	Cmd_AddCommand ("menu_main", M_Menu_Main_f, "Opens the main menu.");
 	Cmd_AddCommand ("menu_options", M_Menu_Options_f, "Opens the options menu.");
