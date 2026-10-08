@@ -42,6 +42,7 @@ static struct
 	// the entry points (0 for those the progs lacks)
 	qc_func_t		init, shutdown, draw, keydown, keyup, toggle, consolecommand;
 	bool			drawfloats;		// DP's m_draw(float width, float height), not FTE's vector
+	double			callframe;		// host.realtime of the frame the calls in progress began in
 } menu;
 
 static void M_Load (void);
@@ -71,8 +72,16 @@ static void M_Failed (void)
 	M_Destroy ();
 }
 
+// The menu's QuakeC is running, and this is the engine called from inside it:
+// a print it makes draws the screen at once while the console is up. The menu
+// isn't entered again, as FTE's isn't.
+static bool M_Busy (void)
+{
+	return menu.qc.calls && menu.callframe == host.realtime;
+}
+
 // calls f, if not 0, its result in *ret (if not NULL); false (the menu gone)
-// on an error
+// on an error. From inside the menu's QuakeC, nothing (M_Busy).
 static bool M_Call (qc_func_t f, int argc, const qc_value_t *args, qc_value_t *ret)
 {
 	uint32_t	word, type;
@@ -82,12 +91,16 @@ static bool M_Call (qc_func_t f, int argc, const qc_value_t *args, qc_value_t *r
 		memset (ret, 0, sizeof(*ret));
 	if (!menu.qc.vm || !f)
 		return menu.qc.vm != NULL;
-	// a longjmp out of QuakeC (Host_Error's) left a call running: abandoned
+	if (M_Busy ())
+		return true;
+	// a longjmp out of QuakeC (Host_Error's) in an earlier frame left a call
+	// running: abandoned
 	if (menu.qc.calls)
 	{
 		QC_Abandon (menu.qc.vm);
 		menu.qc.calls = 0;
 	}
+	menu.callframe = host.realtime;
 	if (QC_FindGlobal (menu.qc.vm, "time", &word, &type) && type == QC_EV_FLOAT)
 		QC_Globals (menu.qc.vm)[word].f = (float)host.realtime;
 	if (QC_FindGlobal (menu.qc.vm, "frametime", &word, &type) && type == QC_EV_FLOAT)
@@ -109,7 +122,7 @@ static void M_Check (void)
 	qc_value_t	arg = QC_ValFloat (1);
 	bool		up = cls.key_dest == key_menu;
 
-	if (!menu.restart)
+	if (!menu.restart || M_Busy ())
 		return;
 	menu.restart = false;
 	M_Shutdown ();
@@ -137,6 +150,8 @@ void M_Draw (void)
 {
 	qc_value_t	args[2];
 
+	if (M_Busy ())
+		return;
 	M_Check ();
 	if (!menu.qc.vm || cls.key_dest != key_menu || !menu.draw)
 		return;
