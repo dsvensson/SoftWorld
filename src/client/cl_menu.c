@@ -48,6 +48,20 @@ static struct
 static void M_Load (void);
 static void M_Destroy (void);
 
+// The heap is reserved address space, committed as QuakeC uses it: with 64-bit
+// addresses a game run in the menu (qcquake2's Quake 2) has room by default.
+// The web and 32-bit builds reserve it in memory, or are short of addresses.
+#if UINTPTR_MAX > 0xFFFFFFFFu
+#define M_HEAP_DEFAULT	"1g"
+#else
+#define M_HEAP_DEFAULT	"16m"
+#endif
+
+static cvar_t	pr_menu_memsize = {.name = "pr_menu_memsize", .string = M_HEAP_DEFAULT,
+	.description = "The menu QuakeC's heap (memalloc), as FTE's: bytes, or k, m or g of them (\"64m\"); only "
+		"reserved, and used as QuakeC needs it, but for 32-bit and web builds (16m there). A game run in the "
+		"menu (qcquake2) wants \"1g\". Taken when the menu loads (menu_restart)."};
+
 /*
 ==============================================================================
 
@@ -595,6 +609,21 @@ static qc_progs_t *M_Progs (void)
 	return p;
 }
 
+// pr_menu_memsize's bytes, between 1 MiB and 1.5 GiB (the VM's addresses are 31 bits)
+static uint32_t M_HeapBytes (void)
+{
+	char	*end;
+	double	n = strtod (pr_menu_memsize.string, &end);
+
+	switch (tolower ((byte)*end))
+	{
+	case 'g':	n *= 1 << 30; break;
+	case 'm':	n *= 1 << 20; break;
+	case 'k':	n *= 1 << 10; break;
+	}
+	return !(n >= 1 << 20) ? 1u << 20 : n > 1536.0 * (1 << 20) ? 1536u << 20 : (uint32_t)n;
+}
+
 // m_draw's parameters: DP's two floats, or FTE's vector
 static bool M_DrawTakesFloats (const qc_progs_t *p)
 {
@@ -620,11 +649,12 @@ static void M_Load (void)
 			return;
 		QC_DefaultConfig (&config, QC_MENU);
 		config.developer = developer.value != 0;
-		// what a menu needs, kept small: the web reserves it all
-		config.limits.heap_bytes = 16 << 20;
+		config.limits.heap_bytes = M_HeapBytes ();
 		config.limits.max_edicts = 8192;
-		config.limits.progs = 1;
-		config.limits.progs_area_bytes = 1 << 20;
+		// a launcher's games (addprogs), in a quarter of the heap's size
+		config.limits.progs_area_bytes = config.limits.heap_bytes / 4;
+		if (config.limits.progs_area_bytes < 1 << 20)
+			config.limits.progs_area_bytes = 1 << 20;
 		menu.drawfloats = M_DrawTakesFloats (p);
 		menu.qc.vm = QC_Create (p, menu.builtins, &config, &menu.host, &menu.qc, &err);
 		QC_ReleaseProgs (p);
@@ -741,11 +771,13 @@ void M_Init (void)
 		"Lists the builtins the menu's QuakeC calls that the client lacks; with all, those it declares. "
 		"Usage: menu_builtins [all]");
 	FS_AddGamedirCallback (M_GamedirChanged);
+	Cvar_RegisterVariable (&pr_menu_memsize);
 
 	menu.qc.name = "Menu";
 	menu.qc.description = "A command of the menu's QuakeC.";
 	menu.qc.command = M_Command;
 	CLQC_InitHost (&menu.host);
+	CLQC_FileHost (&menu.host);
 
 	menu.builtins = QC_BuiltinsStandard (QC_NUMBERING_MENU);
 	if (!menu.builtins)

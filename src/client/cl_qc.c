@@ -172,6 +172,163 @@ static void CLQC_Trace (void *ctx, const char *line)
 	Con_Printf ("%s\n", line);
 }
 
+/*
+==============================================================================
+
+FILES
+
+QuakeC's files (fopen), at the paths the VM's sandbox leaves: read where the
+search path finds them, packs too; written in the game directory
+
+==============================================================================
+*/
+
+extern int	file_from_pak;
+
+typedef struct
+{
+	FILE	*f;
+	long	base;			// where the file starts (in its pack)
+	int		len;
+} clqcfile_t;
+
+static void *CLQC_FileOpen (void *ctx, const char *path, uint64_t *size)
+{
+	clqcfile_t	*file;
+	FILE		*f;
+	int			len;
+
+	(void)ctx;
+	if ((len = COM_FOpenFile (path, &f)) < 0)
+		return NULL;
+	file = Mem_Alloc (sizeof(*file));
+	file->f = f;
+	file->base = ftell (f);
+	file->len = len;
+	*size = (uint64_t)len;
+	return file;
+}
+
+static size_t CLQC_FileRead (void *ctx, void *file, uint64_t ofs, void *out, size_t n)
+{
+	clqcfile_t	*f = file;
+
+	(void)ctx;
+	if (ofs >= (uint64_t)f->len)
+		return 0;
+	if (n > (uint64_t)f->len - ofs)
+		n = (size_t)((uint64_t)f->len - ofs);
+	if (fseek (f->f, f->base + (long)ofs, SEEK_SET))
+		return 0;
+	return fread (out, 1, n, f->f);
+}
+
+static void CLQC_FileClose (void *ctx, void *file)
+{
+	clqcfile_t	*f = file;
+
+	(void)ctx;
+	fclose (f->f);
+	Mem_Free (f);
+}
+
+// a path in the game directory, its directories made if make
+static bool CLQC_GamePath (const char *path, char *full, size_t size, bool make)
+{
+	if (snprintf (full, size, "%s/%s", com_gamedir, path) >= (int)size)
+		return false;
+	if (make)
+		COM_CreatePath (full);
+	return true;
+}
+
+static bool CLQC_FileWrite (void *ctx, const char *path, const void *data, size_t size)
+{
+	char	full[MAX_OSPATH];
+	FILE	*f;
+	bool	ok;
+
+	(void)ctx;
+	if (!CLQC_GamePath (path, full, sizeof(full), true) || !(f = fopen (full, "wb")))
+		return false;
+	ok = fwrite (data, 1, size, f) == size;
+	return fclose (f) == 0 && ok;
+}
+
+static bool CLQC_FileRemove (void *ctx, const char *path)
+{
+	char	full[MAX_OSPATH];
+
+	(void)ctx;
+	return CLQC_GamePath (path, full, sizeof(full), false) && remove (full) == 0;
+}
+
+// over a file there is, as POSIX's rename (Windows' won't)
+static bool CLQC_FileRename (void *ctx, const char *from, const char *to)
+{
+	char	src[MAX_OSPATH], dst[MAX_OSPATH];
+
+	(void)ctx;
+	if (!CLQC_GamePath (from, src, sizeof(src), false) || !CLQC_GamePath (to, dst, sizeof(dst), true)
+		|| Sys_FileTime (src) == -1)
+		return false;
+	if (!rename (src, dst))
+		return true;
+	remove (dst);
+	return rename (src, dst) == 0;
+}
+
+static bool CLQC_FilePack (void *ctx, const char *path, char *pack, size_t size)
+{
+	const char	*source, *slash;
+	FILE		*f;
+
+	(void)ctx;
+	if (COM_FOpenFile (path, &f) < 0)
+		return false;
+	fclose (f);
+	source = FS_FileSource ();
+	slash = strrchr (source, '/');
+	Q_strncpyz (pack, file_from_pak ? slash ? slash + 1 : source : "", size);
+	return true;
+}
+
+void CLQC_FileHost (qc_host_t *h)
+{
+	h->file_open = CLQC_FileOpen;
+	h->file_read = CLQC_FileRead;
+	h->file_close = CLQC_FileClose;
+	h->file_write = CLQC_FileWrite;
+	h->file_remove = CLQC_FileRemove;
+	h->file_rename = CLQC_FileRename;
+	h->file_pack = CLQC_FilePack;
+}
+
+// another progs for addprogs, from the game directory
+static qc_progs_t *CLQC_LoadProgs (void *ctx, const char *file)
+{
+	byte			*data;
+	int				size;
+	qc_progs_t		*p;
+	qc_loaderror_t	lerr;
+	char			text[1024];
+
+	(void)ctx;
+	if (!*file || strstr (file, "..") || *file == '/' || *file == '\\' || strchr (file, ':'))
+	{
+		Con_Printf ("addprogs: refusing %s\n", file);
+		return NULL;
+	}
+	data = FS_LoadFile (file, &size);
+	if (!data)
+		return NULL;
+	p = QC_LoadProgs (data, (size_t)size, &lerr);
+	Mem_Free (data);
+	if (!p)
+		Con_Printf ("%s: %s\n", file, QC_LoadErrorText (&lerr, text, sizeof(text)));
+	return p;
+}
+
 void CLQC_InitHost (qc_host_t *h)
 {
 	h->warning = CLQC_Warning;
@@ -189,6 +346,7 @@ void CLQC_InitHost (qc_host_t *h)
 	h->is_demo = CLQC_IsDemo;
 	h->is_server = CLQC_IsServer;
 	h->trace = CLQC_Trace;
+	h->load_progs = CLQC_LoadProgs;
 }
 
 void CLQC_Failed (const clqc_t *qc)

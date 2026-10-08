@@ -42,6 +42,10 @@ typedef struct clqc_s
 // fills the callbacks every host of the client has
 void	CLQC_InitHost (qc_host_t *h);
 
+// QuakeC's files (fopen and the rest), into a host's: read through the search
+// path, written in the game directory
+void	CLQC_FileHost (qc_host_t *h);
+
 // a QuakeC error: its backtrace and what went wrong
 void	CLQC_Failed (const clqc_t *qc);
 

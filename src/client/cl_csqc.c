@@ -119,31 +119,6 @@ THE HOST
 ==============================================================================
 */
 
-// another progs for addprogs, from the game directory
-static qc_progs_t *CSQC_LoadAddon (void *ctx, const char *file)
-{
-	byte			*data;
-	int				size;
-	qc_progs_t		*p;
-	qc_loaderror_t	lerr;
-	char			text[1024];
-
-	(void)ctx;
-	if (!*file || strstr (file, "..") || *file == '/' || *file == '\\' || strchr (file, ':'))
-	{
-		Con_Printf ("addprogs: refusing %s\n", file);
-		return NULL;
-	}
-	data = FS_LoadFile (file, &size);
-	if (!data)
-		return NULL;
-	p = QC_LoadProgs (data, (size_t)size, &lerr);
-	Mem_Free (data);
-	if (!p)
-		Con_Printf ("%s: %s\n", file, QC_LoadErrorText (&lerr, text, sizeof(text)));
-	return p;
-}
-
 // an entity going: its trail ends, and if it is one of the server's, CSQC no
 // longer holds it (its next update makes it anew)
 static bool CSQC_OnRemove (void *ctx, qcvm_t *vm, qc_ent_t e)
@@ -2510,7 +2485,6 @@ void CSQC_RegisterVariables (void)
 	csqc.qc.description = "A command of the client-side QuakeC.";
 	csqc.qc.command = CSQC_Command;
 	CLQC_InitHost (&csqc_host);
-	csqc_host.load_progs = CSQC_LoadAddon;
 	csqc_host.on_remove = CSQC_OnRemove;
 
 	csqc.builtins = QC_BuiltinsStandard (QC_NUMBERING_CSQC);
