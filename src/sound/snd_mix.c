@@ -173,6 +173,123 @@ CHANNEL MIXING
 static void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int endtime);
 static void SND_PaintChannelFrom16 (channel_t *ch, sfxcache_t *sc, int endtime);
 
+/*
+===============================================================================
+
+QUAKEC'S SAMPLES
+
+What QuakeC queues (S_RawSamples) at the output's rate, by the time it plays.
+All of it is kept, as FTE keeps it, and what is queued is counted in the
+stream's own frames. qcquake's drivers take the sound's position as the frames
+they queued less those queued, wrapped to their ring, and count a wrap each
+time it goes back: a sample dropped, or a count a frame short, puts them a ring
+(1.5 s) ahead for good.
+
+===============================================================================
+*/
+
+#define RAW_MIN		65536			// sample pairs in the ring at first: 1.5 s at 44.1 kHz
+#define RAW_MAX		(1 << 21)		// and at most (47 s); a call that doesn't fit is dropped
+
+static portable_samplepair_t	*raw_samples;
+static int		raw_size;		// a power of two
+
+// The stream: its rate, the output time it started at, and the frames queued
+// before it. Output sample t is the stream's frame raw_first + (t - raw_start) *
+// raw_step; raw_frames counts every frame queued.
+static int		raw_hz;
+static double	raw_step;
+static int		raw_start;
+static int64_t	raw_first, raw_frames;
+
+// the frame output sample t comes from
+static int64_t S_RawFrame (int t)
+{
+	return raw_first + (int64_t)floor ((double)(t - raw_start) * raw_step);
+}
+
+// room in the ring for n more queued sample pairs, the ring grown (what is
+// queued kept at its times); false past RAW_MAX
+static bool S_RawRoom (int n)
+{
+	int		need = snd.rawend - snd.paintedtime + n, size, t;
+	portable_samplepair_t	*grown;
+
+	if (need <= raw_size)
+		return true;
+	if (need > RAW_MAX)
+		return false;
+	for (size = raw_size ? raw_size : RAW_MIN ; size < need ; size *= 2)
+		;
+	grown = Mem_Alloc ((size_t)size * sizeof(*grown));
+	for (t = snd.paintedtime ; t < snd.rawend ; t++)
+		grown[t & (size - 1)] = raw_samples[t & (raw_size - 1)];
+	Mem_Free (raw_samples);
+	raw_samples = grown;
+	raw_size = size;
+	return true;
+}
+
+bool S_RawSamples (int hz, int channels, const short *data, int frames)
+{
+	int		n, t, i;
+	portable_samplepair_t	*out;
+
+	if (!snd.started || hz <= 0 || frames <= 0 || (channels != 1 && channels != 2))
+		return false;
+	// after a gap, or at another rate, the stream starts again
+	if (snd.rawend < snd.paintedtime || hz != raw_hz)
+	{
+		snd.rawend = raw_start = snd.paintedtime;
+		raw_first = raw_frames;
+		raw_hz = hz;
+		raw_step = (double)hz / snd.dma.speed;
+	}
+	// the samples up to where the frame after these begins
+	for (n = 0 ; S_RawFrame (snd.rawend + n) < raw_frames + frames ; n++)
+		;
+	if (!S_RawRoom (n))
+		return false;
+	for (t = snd.rawend ; t < snd.rawend + n ; t++)
+	{
+		i = (int)(S_RawFrame (t) - raw_frames) * channels;
+		out = &raw_samples[t & (raw_size - 1)];
+		out->left = data[i];
+		out->right = data[i + channels - 1];
+	}
+	snd.rawend += n;
+	raw_frames += frames;
+	return true;
+}
+
+// The frames not yet mixed, from the one the next sample to mix comes from, as
+// FTE counts them (the mixing ahead of the device isn't counted): never more
+// than QuakeC queued, and only down as the mixing goes on. Half a frame more,
+// so a driver turning it back into frames (qcquake's) isn't one short.
+float S_RawQueued (void)
+{
+	int64_t	left;
+
+	if (!snd.started || snd.rawend <= snd.paintedtime)
+		return 0;
+	left = raw_frames - S_RawFrame (snd.paintedtime > raw_start ? snd.paintedtime : raw_start);
+	return (float)(((double)left + 0.5) / raw_hz);
+}
+
+// the queued samples up to endtime into the paint buffer
+static void S_PaintRaw (int endtime)
+{
+	int		t, stop = snd.rawend < endtime ? snd.rawend : endtime;
+	portable_samplepair_t	*in;
+
+	for (t = snd.paintedtime ; t < stop ; t++)
+	{
+		in = &raw_samples[t & (raw_size - 1)];
+		paintbuffer[t - snd.paintedtime].left += in->left;
+		paintbuffer[t - snd.paintedtime].right += in->right;
+	}
+}
+
 void S_PaintChannels(int endtime)
 {
 	int 	i;
@@ -190,6 +307,7 @@ void S_PaintChannels(int endtime)
 
 	// clear the paint buffer
 		Q_memset(paintbuffer, 0, (end - snd.paintedtime) * sizeof(portable_samplepair_t));
+		S_PaintRaw (end);
 
 	// paint in the channels.
 		ch = snd.channels;

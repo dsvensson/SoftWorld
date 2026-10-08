@@ -65,6 +65,7 @@ typedef struct
 	int			total_channels;
 	int			paintedtime;	// sample pairs mixed
 	int			soundtime;		// sample pairs the device has taken
+	int			rawend;			// where QuakeC's queued samples end (S_RawSamples)
 
 	int			viewentity;		// the listener's own entity
 	vec3_t		listener_origin;

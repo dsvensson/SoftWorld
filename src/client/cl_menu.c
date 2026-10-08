@@ -317,6 +317,66 @@ static bool M_LocalSound (qcvm_t *vm)
 	return true;
 }
 
+// float queueaudio(int hz, int channels, int type, void *data, int frames): frames
+// of 1 or 2 channels, FTE's types 8 (unsigned bytes), -8 (signed), -16 (signed 16
+// bit) and 288 (floats), after those queued; 1, -1 for nonsense, -2 for a type not taken
+static bool M_QueueAudio (qcvm_t *vm)
+{
+	int32_t		hz = QC_ArgInt (vm, 0), channels = QC_ArgInt (vm, 1), type = QC_ArgInt (vm, 2);
+	int32_t		frames = QC_ArgInt (vm, 4);
+	int			width = type == 8 || type == -8 ? 1 : type == -16 ? 2 : type == (256 | 32) ? 4 : 0;
+	size_t		n, i;
+	byte		*data;
+	short		*samples;
+	int16_t		s16;
+	float		f;
+
+	if (hz < 1 || (channels != 1 && channels != 2) || frames <= 0 || frames > 1 << 20)
+	{
+		QC_ReturnFloat (vm, -1);
+		return true;
+	}
+	if (!width)
+	{
+		QC_ReturnFloat (vm, -2);
+		return true;
+	}
+	n = (size_t)frames * channels;
+	data = Mem_Alloc (n * width);
+	samples = Mem_Alloc (n * sizeof(*samples));
+	if (QC_ReadMemory (vm, QC_ArgWord (vm, 3), data, n * width))
+	{
+		for (i = 0 ; i < n ; i++)
+			switch (type)
+			{
+			case 8:		samples[i] = (short)((data[i] - 128) << 8); break;
+			case -8:	samples[i] = (short)((signed char)data[i] << 8); break;
+			case -16:	memcpy (&s16, data + i*2, 2); samples[i] = s16; break;
+			default:
+				memcpy (&f, data + i*4, 4);
+				samples[i] = (short)(f >= 1 ? 32767 : f <= -1 ? -32768 : f * 32767);
+				break;
+			}
+		S_RawSamples (hz, channels, samples, frames);
+		QC_ReturnFloat (vm, 1);
+	}
+	else
+	{
+		QC_Warning (vm, "queueaudio: the samples aren't in memory");
+		QC_ReturnFloat (vm, -1);
+	}
+	Mem_Free (samples);
+	Mem_Free (data);
+	return true;
+}
+
+// float getqueuedaudiotime(): seconds of queueaudio's samples not yet played
+static bool M_GetQueuedAudioTime (qcvm_t *vm)
+{
+	QC_ReturnFloat (vm, S_RawQueued ());
+	return true;
+}
+
 // void setkeydest(float dest): 0 the game (from the menu), 2 the menu
 static bool M_SetKeyDest (qcvm_t *vm)
 {
@@ -444,6 +504,8 @@ static const struct
 	{"r_uploadimage", M_UploadImage},
 	{"r_readimage", M_ReadImage},
 	{"localsound", M_LocalSound},
+	{"queueaudio", M_QueueAudio},
+	{"getqueuedaudiotime", M_GetQueuedAudioTime},
 	{"setkeydest", M_SetKeyDest},
 	{"getkeydest", M_GetKeyDest},
 	{"keynumtostring", M_KeynumToString},

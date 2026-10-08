@@ -142,6 +142,14 @@ extern	cvar_t bgmvolume;
 extern	cvar_t volume;
 
 void S_LocalSound (char *s);
+
+// QuakeC's own sound (FTE's queueaudio): frames at hz of 16 bit samples, mono or
+// stereo (channels), played after those queued, as loud as a sound at full
+// volume (volume still applies). All of it is kept, as FTE's is, up to 47 s
+// queued at 44.1 kHz; false past that, or without an output.
+bool	S_RawSamples (int hz, int channels, const short *data, int frames);
+float	S_RawQueued (void);		// seconds of them not yet mixed
+
 sfxcache_t *S_LoadSound (sfx_t *s);
 
 void SND_InitScaletable (void);

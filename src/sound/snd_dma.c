@@ -532,6 +532,7 @@ void S_StopAllSounds(bool clear)
 			snd.channels[i].sfx = NULL;
 
 	Q_memset(snd.channels, 0, (size_t)snd.max_channels * sizeof(channel_t));
+	snd.rawend = 0;
 
 	if (clear)
 		S_ClearBuffer ();
