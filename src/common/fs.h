@@ -52,6 +52,10 @@ void	FS_AddGamedirCallback (void (*callback)(void));
 void	FS_RemoveGamedirCallback (void (*callback)(void));
 void	FS_FlushGamedir (void);
 
+// called around a change of the game directory, at once: leaving before the
+// search path changes, entered after (the client's configs)
+void	FS_SetGamedirHooks (void (*leaving)(void), void (*entered)(void));
+
 // the paths under the search path that begin with partial: files with one of
 // the extensions (NULL-terminated, each with its dot), and the directories
 // with such files in them, ending with '/'; a path the search path has twice

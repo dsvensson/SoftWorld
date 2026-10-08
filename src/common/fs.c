@@ -716,6 +716,14 @@ void FS_FlushGamedir (void)
 		gamedir_callbacks[i] ();
 }
 
+static void	(*gamedir_leaving)(void), (*gamedir_entered)(void);	// FS_SetGamedirHooks
+
+void FS_SetGamedirHooks (void (*leaving)(void), void (*entered)(void))
+{
+	gamedir_leaving = leaving;
+	gamedir_entered = entered;
+}
+
 /*
 =================
 COM_LoadPackFile
@@ -829,7 +837,8 @@ static void COM_AddGameDirectory (char *dir)
 ================
 COM_Gamedir
 
-Sets the gamedir and path to a different directory.
+Sets the gamedir and path to a different directory, the hooks around it
+(FS_SetGamedirHooks).
 ================
 */
 void COM_Gamedir (char *dir)
@@ -848,6 +857,8 @@ void COM_Gamedir (char *dir)
 
 	if (!strcmp(gamedirfile, dir))
 		return;		// still the same
+	if (gamedir_leaving)
+		gamedir_leaving ();
 	Q_strncpyz (gamedirfile, dir, sizeof(gamedirfile));
 
 	//
@@ -870,7 +881,12 @@ void COM_Gamedir (char *dir)
 	gamedir_changed = true;
 
 	if (!strcmp(dir,"id1") || !strcmp(dir, "qw"))
+	{	// the base's (id1 and qw) is qw's directory
+		snprintf (com_gamedir, sizeof(com_gamedir), "%s/qw", com_basedir);
+		if (gamedir_entered)
+			gamedir_entered ();
 		return;
+	}
 
 	snprintf (com_gamedir, sizeof(com_gamedir), "%s/%s", com_basedir, dir);
 
@@ -896,6 +912,9 @@ void COM_Gamedir (char *dir)
 		search->next = com_searchpaths;
 		com_searchpaths = search;		
 	}
+
+	if (gamedir_entered)
+		gamedir_entered ();
 }
 
 /*

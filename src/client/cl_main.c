@@ -1534,6 +1534,38 @@ void CL_WriteConfiguration (void)
 	}
 }
 
+/*
+===============
+CL_LeaveGamedir, CL_EnterGamedir
+
+A change of the game directory: the old one's config.cfg written, then the
+new one's configs run before what comes next. Where the game, or the one
+left, has its own quake.rc (a NetQuake game's; AD picks its status bar
+there), quake.rc runs, as FTE and NetQuake's game command run it; otherwise
+the game's own config.cfg and frontend.cfg, as QuakeWorld runs them.
+===============
+*/
+static bool	cl_gamerc;		// the game directory left had its own quake.rc
+
+static void CL_LeaveGamedir (void)
+{
+	CL_WriteConfiguration ();
+	cl_gamerc = FS_InGameDir ("quake.rc");
+}
+
+static void CL_EnterGamedir (void)
+{
+	FILE	*f;
+
+	if (cl_gamerc || FS_InGameDir ("quake.rc"))
+		Cbuf_InsertText ("cl_warncmd 0\nexec quake.rc\ncl_warncmd 1\n");
+	else if ((f = fopen (va("%s/config.cfg", com_gamedir), "r")))
+	{
+		fclose (f);
+		Cbuf_InsertText ("cl_warncmd 0\nexec config.cfg\nexec frontend.cfg\ncl_warncmd 1\n");
+	}
+}
+
 
 //============================================================================
 
@@ -1898,6 +1930,7 @@ void CL_Init (void)
 	CL_InitLocal ();
 	IN_Init ();
 	FS_AddGamedirCallback (CL_GameWad);
+	FS_SetGamedirHooks (CL_LeaveGamedir, CL_EnterGamedir);
 }
 
 /*

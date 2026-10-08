@@ -240,6 +240,8 @@ or another +; a - inside a word ("+playdemo dm3-final") or before a number
 ("+cl_rollangle -2") doesn't end one
 quake +prog jctest.qp +cmd amlev1
 quake -nosound +cmd amlev1
+Once only: after that (a game's quake.rc on a change of the game directory)
+the commands that set cvars, as FTE sets its command line's then
 ===============
 */
 static bool Cmd_StartsOption (const char *text, int i)
@@ -251,8 +253,22 @@ static bool Cmd_StartsOption (const char *text, int i)
 	return text[i] == '-' && !isdigit ((unsigned char)text[i+1]) && text[i+1] != '.';
 }
 
+// whether a command sets a cvar ("volume 0.05")
+static bool Cmd_SetsCvar (const char *text)
+{
+	char	name[64];
+	size_t	n = strcspn (text, " ");
+
+	if (n >= sizeof(name))
+		return false;
+	memcpy (name, text, n);
+	name[n] = 0;
+	return Cvar_FindVar (name) != NULL;
+}
+
 void Cmd_StuffCmds_f (void)
 {
+	static bool	stuffed;	// the whole command line ran
 	int		i, j;
 	int		s;
 	char	*text, *build, c;
@@ -295,8 +311,11 @@ void Cmd_StuffCmds_f (void)
 			c = text[j];
 			text[j] = 0;
 			
-			Q_strcat (build, text+i);
-			Q_strcat (build, "\n");
+			if (!stuffed || Cmd_SetsCvar (text+i))
+			{
+				Q_strcat (build, text+i);
+				Q_strcat (build, "\n");
+			}
 			text[j] = c;
 			i = j-1;
 		}
@@ -304,6 +323,7 @@ void Cmd_StuffCmds_f (void)
 	
 	if (build[0])
 		Cbuf_InsertText (build);
+	stuffed = true;
 	
 	Mem_Free (text);
 	Mem_Free (build);

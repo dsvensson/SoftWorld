@@ -565,10 +565,6 @@ CL_ParseServerData
 static void CL_ParseServerData (void)
 {
 	char	*str;
-	FILE	*f;
-	char	fn[MAX_OSPATH];
-	bool	cflag = false;
-	extern	char	gamedirfile[MAX_OSPATH];
 	int protover;
 	unsigned	fteext2;
 	
@@ -623,30 +619,10 @@ static void CL_ParseServerData (void)
 
 	cl.servercount = MSG_ReadLong ();
 
-	// game directory
+	// game directory; a new one's configs run (CL_EnterGamedir)
 	str = MSG_ReadString ();
-
-	if (Q_strcasecmp (gamedirfile, str)) {
-		// save current config
-		CL_WriteConfiguration (); 
-		cflag = true;
-	}
-
 	COM_Gamedir(str);
 	FS_FlushGamedir ();		// the last level's models and sounds are done with
-
-	//ZOID--run the autoexec.cfg in the gamedir
-	//if it exists
-	if (cflag) {
-		snprintf(fn, sizeof(fn), "%s/%s", com_gamedir, "config.cfg");
-		if ((f = fopen(fn, "r")) != NULL) {
-			fclose(f);
-			Cbuf_AddText ("cl_warncmd 0\n");
-			Cbuf_AddText("exec config.cfg\n");
-			Cbuf_AddText("exec frontend.cfg\n");
-			Cbuf_AddText ("cl_warncmd 1\n");
-		}
-	}
 
 	if (cls.mvdplayback)
 	{	// an MVD: the server's clock when it began; the watcher is the last slot

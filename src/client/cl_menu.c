@@ -101,14 +101,21 @@ static bool M_Call (qc_func_t f, int argc, const qc_value_t *args, qc_value_t *r
 	return ok;
 }
 
-// what changed since the menu last ran: a restart it is due
+// what changed since the menu last ran: a restart it is due, the menu up again
+// if it was (a game's quake.rc opens it, menu_main, before its gamedir's
+// change reaches the menu)
 static void M_Check (void)
 {
+	qc_value_t	arg = QC_ValFloat (1);
+	bool		up = cls.key_dest == key_menu;
+
 	if (!menu.restart)
 		return;
 	menu.restart = false;
 	M_Shutdown ();
 	M_Load ();
+	if (up)
+		M_Call (menu.toggle, 1, &arg, NULL);
 }
 
 // a command the menu's QuakeC registered: its whole line to m_consolecommand

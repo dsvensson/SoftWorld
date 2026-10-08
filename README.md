@@ -25,7 +25,8 @@ server runs NetQuake's single player too.
   with FTE's replacement deltas for its big levels (QuakeWorld's own keep QuakeWorld's deltas):
   NetQuake's player movement (the server's, unpredicted), its messages in QuakeWorld's words,
   skill and coop, the level's monsters and secrets, the completed screen, and monsters' steps
-  smoothed. The game holds still while the menu or console is up.
+  smoothed. The game holds still while the menu or console is up. `gamedir` runs a game's own
+  `quake.rc`, as NetQuake's `game` does (AD's picks its status bar there).
 
 ## Building
 
