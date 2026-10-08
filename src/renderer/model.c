@@ -1341,14 +1341,6 @@ static void * Mod_LoadAliasFrame (void * pin, int *pframeindex, int numv,
 // framename always points at a pheader->frames[].name buffer
 	Q_strncpyz (framename, pdaliasframe->name, sizeof(pheader->frames[0].name));
 
-	for (i=0 ; i<3 ; i++)
-	{
-	// these are byte values, so we don't have to worry about
-	// endianness
-		pbboxmin->v[i] = pdaliasframe->bboxmin.v[i];
-		pbboxmax->v[i] = pdaliasframe->bboxmax.v[i];
-	}
-
 	pinframe = (trivertx_t *)(pdaliasframe + 1);
 	pframe = Mod_ScratchAlloc (numv * sizeof(*pframe));
 
@@ -1364,6 +1356,21 @@ static void * Mod_LoadAliasFrame (void * pin, int *pframeindex, int numv,
 		for (k=0 ; k<3 ; k++)
 		{
 			pframe[j].v[k] = pinframe[j].v[k];
+		}
+	}
+
+	// the box is the vertices', not the file's: a model inside the view by its
+	// box isn't clipped (R_AliasCheckBBox), and tools write boxes short of
+	// the vertices (Copper's groups' are all 0)
+	*pbboxmin = *pbboxmax = pframe[0];
+	for (j=1 ; j<numv ; j++)
+	{
+		for (i=0 ; i<3 ; i++)
+		{
+			if (pbboxmin->v[i] > pframe[j].v[i])
+				pbboxmin->v[i] = pframe[j].v[i];
+			if (pbboxmax->v[i] < pframe[j].v[i])
+				pbboxmax->v[i] = pframe[j].v[i];
 		}
 	}
 
@@ -1383,7 +1390,7 @@ static void * Mod_LoadAliasGroup (void * pin, int *pframeindex, int numv,
 {
 	daliasgroup_t		*pingroup;
 	maliasgroup_t		*paliasgroup;
-	int					i, numframes;
+	int					i, j, numframes;
 	daliasinterval_t	*pin_intervals;
 	float				*poutintervals;
 	void				*ptemp;
@@ -1391,18 +1398,13 @@ static void * Mod_LoadAliasGroup (void * pin, int *pframeindex, int numv,
 	pingroup = (daliasgroup_t *)pin;
 
 	numframes = LittleLong (pingroup->numframes);
+	if (numframes < 1)
+		Sys_Error ("Mod_LoadAliasGroup: no frames");
 
 	paliasgroup = Mod_ScratchAlloc (sizeof (maliasgroup_t) +
 			(numframes - 1) * sizeof (paliasgroup->frames[0]));
 
 	paliasgroup->numframes = numframes;
-
-	for (i=0 ; i<3 ; i++)
-	{
-	// these are byte values, so we don't have to worry about endianness
-		pbboxmin->v[i] = pingroup->bboxmin.v[i];
-		pbboxmax->v[i] = pingroup->bboxmax.v[i];
-	}
 
 	*pframeindex = (int)((byte *)paliasgroup - (byte *)pheader);
 
@@ -1432,6 +1434,20 @@ static void * Mod_LoadAliasGroup (void * pin, int *pframeindex, int numv,
 									&paliasgroup->frames[i].bboxmin,
 									&paliasgroup->frames[i].bboxmax,
 									pheader, framename);
+	}
+
+	// the group's box holds its frames' (Mod_LoadAliasFrame), not the file's
+	*pbboxmin = paliasgroup->frames[0].bboxmin;
+	*pbboxmax = paliasgroup->frames[0].bboxmax;
+	for (i=1 ; i<numframes ; i++)
+	{
+		for (j=0 ; j<3 ; j++)
+		{
+			if (pbboxmin->v[j] > paliasgroup->frames[i].bboxmin.v[j])
+				pbboxmin->v[j] = paliasgroup->frames[i].bboxmin.v[j];
+			if (pbboxmax->v[j] < paliasgroup->frames[i].bboxmax.v[j])
+				pbboxmax->v[j] = paliasgroup->frames[i].bboxmax.v[j];
+		}
 	}
 
 	return ptemp;
