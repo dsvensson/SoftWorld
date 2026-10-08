@@ -33,6 +33,7 @@ bool	QC_LibRegister (qc_builtins_t *b, const qc_libentry_t *table, size_t count)
 bool	QC_RegisterConvert (qc_builtins_t *b);
 bool	QC_RegisterDigest (qc_builtins_t *b);
 bool	QC_RegisterEntity (qc_builtins_t *b);
+bool	QC_RegisterFile (qc_builtins_t *b);
 bool	QC_RegisterFormat (qc_builtins_t *b);
 bool	QC_RegisterHash (qc_builtins_t *b);
 bool	QC_RegisterHostcalls (qc_builtins_t *b);
@@ -68,6 +69,7 @@ typedef struct
 
 typedef struct qc_hashtables_s qc_hashtables_t;	// qc_lib_hash.c
 typedef struct qc_strbufs_s qc_strbufs_t;		// qc_lib_strbuf.c
+typedef struct qc_files_s qc_files_t;			// qc_lib_file.c
 
 struct qc_std_s
 {
@@ -76,6 +78,7 @@ struct qc_std_s
 	size_t			token_bytes;		// what the list is charged
 	qc_hashtables_t	*hash;
 	qc_strbufs_t	*bufs;
+	qc_files_t		*files;				// fopen's
 	size_t			container_bytes;	// charged against limits.container_bytes
 };
 
@@ -324,6 +327,26 @@ void	QC_EntityBlock (qcvm_t *vm, qc_sink_t *s, uint32_t e);
 void	QC_CoredumpText (qcvm_t *vm, qc_sink_t *s);
 // the call stack, a line per frame
 void	QC_BacktraceSink (const qcvm_t *vm, qc_sink_t *s);
+
+// Reads n bytes at ptr + ofs (a linear pointer, or a temp buffer as large);
+// a malloc'd copy, or NULL
+uint8_t	*QC_LibReadRange (qcvm_t *vm, uint32_t ptr, int32_t ofs, size_t n);
+
+// a checked destination for a write
+typedef struct
+{
+	bool		temp;
+	uint32_t	addr;			// linear
+	uint32_t	slot;			// temp
+	size_t		start;
+} qc_dest_t;
+
+// Checks a write of n bytes at ptr + ofs: linear memory (not 0), or a temp
+// buffer that may grow to 1 MiB
+bool	QC_LibDest (qcvm_t *vm, uint32_t ptr, int32_t ofs, size_t n, qc_dest_t *d);
+// Writes to a checked destination; a protected entity is skipped with a
+// warning. False if a temp buffer couldn't grow.
+bool	QC_LibWriteDest (qcvm_t *vm, const qc_dest_t *d, const uint8_t *bytes, size_t n);
 
 // n zeroed bytes of the QuakeC heap: the pointer, or 0; and freeing a block
 uint32_t	QC_LibHeapAlloc (qcvm_t *vm, uint32_t n);

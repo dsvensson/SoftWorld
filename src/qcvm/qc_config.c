@@ -36,6 +36,7 @@ void QC_DefaultConfig (qc_config_t *config, qc_kind_t kind)
 			.string_buffer_entries = 1u << 20,
 			.hash_tables = 1024,
 			.container_bytes = (size_t)64 << 20,
+			.files = 256,
 			.warnings_per_call = 64,
 		},
 		.charscheme = QC_CHARS_QUAKE,

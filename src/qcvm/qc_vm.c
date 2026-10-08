@@ -386,6 +386,7 @@ static void QC_FreeCore (qcvm_t *vm)
 {
 	uint32_t	i;
 
+	QC_LibCloseFiles (vm);
 	for (i = 0 ; i < vm->numprogs ; i++)
 		QC_FreeProgState (&vm->progs[i]);
 	free (vm->progs);

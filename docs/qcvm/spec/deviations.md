@@ -75,6 +75,10 @@ production code should leave them off.
 | `externcall` | passes on at most five argument slots | passes every remaining argument |
 | `findradius_list` | measures a different distance than `findradius` | the same test as `findradius` (distance to the box centre) |
 | `error` in developer mode | a warning | always fatal (`ErrorKind::QcError`) |
+| `fgets` of a file read whole (`FILE_READNL`) | returns the whole file again at every call | returns it once, then null |
+| `fgets` of a line longer than 4095 bytes | drops the byte after each piece | keeps it for the next call |
+| `fopen` of `tcp://`, `tls://`, `ws:` and `file:` names | network streams, and (behind a switch) any file | refused (−1) |
+| Files open at once | 256 a process | `Limits::files` (256) a VM |
 
 ## Kept on purpose (FTE design choices)
 

@@ -200,6 +200,118 @@ static uint8_t *QH_OnReadFile (void *ctx, const char *path, size_t *size)
 	return NULL;
 }
 
+static int QH_FindFile (const qh_host_t *host, const char *path)
+{
+	int		i;
+
+	for (i = 0 ; i < host->numfiles ; i++)
+		if (!strcmp (host->files[i].path, path))
+			return i;
+	return -1;
+}
+
+// an open file: a copy of the bytes, as a disk's file stays what it was
+typedef struct
+{
+	uint8_t	*data;
+	size_t	size;
+} qh_open_t;
+
+static void *QH_OnFileOpen (void *ctx, const char *path, uint64_t *size)
+{
+	qh_host_t	*host = ctx;
+	int			i = QH_FindFile (host, path);
+	qh_open_t	*f;
+
+	if (i < 0)
+		return NULL;
+	f = malloc (sizeof(*f));
+	f->data = malloc (host->files[i].size + 1);
+	memcpy (f->data, host->files[i].data, host->files[i].size);
+	f->size = host->files[i].size;
+	*size = f->size;
+	host->openfiles++;
+	return f;
+}
+
+static size_t QH_OnFileRead (void *ctx, void *file, uint64_t ofs, void *out, size_t n)
+{
+	const qh_open_t	*f = file;
+
+	(void)ctx;
+	if (ofs >= f->size)
+		return 0;
+	if (n > f->size - ofs)
+		n = (size_t)(f->size - ofs);
+	memcpy (out, f->data + ofs, n);
+	return n;
+}
+
+static void QH_OnFileClose (void *ctx, void *file)
+{
+	qh_open_t	*f = file;
+
+	((qh_host_t *)ctx)->openfiles--;
+	free (f->data);
+	free (f);
+}
+
+static bool QH_OnFileWrite (void *ctx, const char *path, const void *data, size_t size)
+{
+	qh_host_t	*host = ctx;
+	int			i = QH_FindFile (host, path);
+	uint8_t		*copy = malloc (size ? size : 1);
+
+	memcpy (copy, data, size);
+	if (i < 0)
+	{
+		host->files = realloc (host->files, sizeof(*host->files) * (size_t)(host->numfiles + 1));
+		host->files[host->numfiles++] = (qh_file_t){QH_Dup (path), copy, size, NULL};
+		return true;
+	}
+	free (host->files[i].data);
+	host->files[i].data = copy;
+	host->files[i].size = size;
+	return true;
+}
+
+static bool QH_OnFileRemove (void *ctx, const char *path)
+{
+	qh_host_t	*host = ctx;
+	int			i = QH_FindFile (host, path);
+
+	if (i < 0)
+		return false;
+	free (host->files[i].path);
+	free (host->files[i].data);
+	free (host->files[i].pack);
+	host->files[i] = host->files[--host->numfiles];
+	return true;
+}
+
+static bool QH_OnFileRename (void *ctx, const char *from, const char *to)
+{
+	qh_host_t	*host = ctx;
+	int			i = QH_FindFile (host, from);
+
+	if (i < 0 || QH_FindFile (host, to) >= 0)
+		return false;
+	free (host->files[i].path);
+	host->files[i].path = QH_Dup (to);
+	return true;
+}
+
+static bool QH_OnFilePack (void *ctx, const char *path, char *pack, size_t size)
+{
+	const qh_host_t	*host = ctx;
+	int				i = QH_FindFile (host, path);
+
+	if (i < 0)
+		return false;
+	snprintf (pack, size, "%s", host->files[i].pack ? host->files[i].pack : "");
+	return true;
+}
+
 static const qc_host_t	qh_host = {
 	.warning = QH_OnWarning,
 	.print = QH_OnPrint,
@@ -217,6 +329,13 @@ static const qc_host_t	qh_host = {
 	.sim_time = QH_OnSimTime,
 	.calendar_time = QH_OnCalendarTime,
 	.read_file = QH_OnReadFile,
+	.file_open = QH_OnFileOpen,
+	.file_read = QH_OnFileRead,
+	.file_close = QH_OnFileClose,
+	.file_write = QH_OnFileWrite,
+	.file_remove = QH_OnFileRemove,
+	.file_rename = QH_OnFileRename,
+	.file_pack = QH_OnFilePack,
 };
 
 /*
@@ -299,6 +418,7 @@ void QH_Free (qh_t *h)
 	{
 		free (host->files[i].path);
 		free (host->files[i].data);
+		free (host->files[i].pack);
 	}
 	free (host->files);
 	free (h->result);
@@ -479,5 +599,21 @@ void QH_AddFile (qh_t *h, const char *path, const void *data, size_t size)
 
 	memcpy (copy, data, size);
 	host->files = realloc (host->files, sizeof(*host->files) * (size_t)(host->numfiles + 1));
-	host->files[host->numfiles++] = (qh_file_t){QH_Dup (path), copy, size};
+	host->files[host->numfiles++] = (qh_file_t){QH_Dup (path), copy, size, NULL};
+}
+
+void QH_AddPackedFile (qh_t *h, const char *pack, const char *path, const void *data, size_t size)
+{
+	QH_AddFile (h, path, data, size);
+	h->host.files[h->host.numfiles - 1].pack = QH_Dup (pack);
+}
+
+const uint8_t *QH_File (const qh_t *h, const char *path, size_t *size)
+{
+	int		i = QH_FindFile (&h->host, path);
+
+	if (i < 0)
+		return NULL;
+	*size = h->host.files[i].size;
+	return h->host.files[i].data;
 }

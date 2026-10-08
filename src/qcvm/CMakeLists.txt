@@ -1,6 +1,6 @@
 sw_add_module(sw_qcvm
 	qc_autocvars.c qc_builtins.c qc_call.c qc_config.c qc_disasm.c qc_dtoa.c qc_error.c qc_exec.c qc_heap.c
-	qc_lib.c qc_lib_charset.c qc_lib_convert.c qc_lib_digest.c qc_lib_entity.c qc_lib_format.c qc_lib_hash.c
+	qc_lib.c qc_lib_charset.c qc_lib_convert.c qc_lib_digest.c qc_lib_entity.c qc_lib_file.c qc_lib_format.c qc_lib_hash.c
 	qc_lib_hostcalls.c qc_lib_introspect.c qc_lib_json.c qc_lib_math.c qc_lib_memory.c qc_lib_progs.c
 	qc_lib_reflect.c qc_lib_strbuf.c qc_lib_strftime.c qc_lib_string.c qc_lib_threads.c qc_lib_time.c
 	qc_lib_tokenize.c qc_lib_vector.c qc_map.c qc_mem.c qc_multiprogs.c qc_numbers.c qc_opcode.c qc_progs.c

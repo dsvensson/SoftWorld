@@ -82,6 +82,7 @@ The class A, A\* and B builtins visible to CSQC, by number.
 | 98 | `findfloat`, alias `findentity` | `entity(entity, .__variant, __variant)` | A | a raw 32-bit comparison; see [Entities and searching](#entities-and-searching) |
 | 99 | `checkextension` | `float(string)` | B | looked up in the host's list, exactly (case-sensitive) |
 | 102 | `anglemod` | `float(float)` | A | ± 360 until in [0, 360) (computed with a remainder; NaN passes through) |
+| 110–113 | `fopen`, `fclose`, `fgets`, `fputs` | | B | see [Files](#files) |
 | 114–119 | `strlen`, `strcat`, `substring`, `stov`, `strzone`, `strunzone` | | A | [strings.md](strings.md) |
 | 201 | `externcall` | `__variant(float prnum, string fn, ...)` | A | see [Introspection](#introspection) |
 | 202 | `addprogs` | `float(string)` | B | loads further progs into the VM (multiprogs); the host supplies them |
@@ -122,6 +123,7 @@ The class A, A\* and B builtins visible to CSQC, by number.
 | 495 | `cvar_type` | `float(string)` | B | bits: 1 exists, 2 archived, 4 private, 8 engine, 16 has a description, 32 read-only |
 | 496–500 | `numentityfields`, `entityfieldname`, `entityfieldtype`, `getentityfieldstring`, `putentityfieldstring` | | A | see [Field reflection and entity text](#field-reflection-and-entity-text) |
 | 510, 511 | `uri_escape`, `uri_unescape` | | A | [strings.md](strings.md) |
+| 503 | `whichpack` | `string(string, optional float flags)` | B | see [Files](#files) |
 | 512 | `num_for_edict` | `float(entity)` | A | the index |
 | 514–516 | `tokenize_console`, `argv_start_index`, `argv_end_index` | | A | [strings.md](strings.md) |
 | 517 | `buf_cvarlist` | `void(strbuf, string pat, string antipat)` | B | enumerates the host's cvars |
@@ -137,11 +139,12 @@ The class A, A\* and B builtins visible to CSQC, by number.
 | 613 | `parseentitydata` | `float(entity, string, optional float ofs)` | A | see [Field reflection and entity text](#field-reflection-and-entity-text) |
 | 627 | `sprintf` | | A | [strings.md](strings.md) |
 | 639 | `digest_hex` | | A | [strings.md](strings.md) |
+| 651, 652 | `frename`, `fremove` | `float(string from, string to)`, `float(string)` | B | see [Files](#files) |
 
 The engine builtins (class C) have the numbers 2, 3, 4, 8, 16, 19, 20, 32, 34, 35, 40, 41, 48, 64,
-67, 68, 69, 74–77, 80, 90, 92, 110–113, 177, 200, 207, 215–217, 219, 237–240, 242, 244, 263–286,
+67, 68, 69, 74–77, 80, 90, 92, 177, 200, 207, 215–217, 219, 237–240, 242, 244, 263–286,
 300–337, 340–348, 351, 354–379, 391–394, 404–431, 433–439, 443–447, 451, 452, 457, 483, 486–493,
-501–504, 513, 520, 521, 531, 533, 534, 536, 540–542, 603, 604, 606, 608–626, 628–632 and 650–654.
+501, 502, 504, 513, 520, 521, 531, 533, 534, 536, 540–542, 603, 604, 606, 608–626, 628–632, 650, 653 and 654.
 
 ## Builtins resolved by name
 
@@ -166,6 +169,9 @@ These CSQC builtins are declared `#0` and bound by name.
 | `generateentitydata` | `string(entity)` | A |
 | `digest_ptr` | `string(string alg, void *data, int len)` | A |
 | `cvars_haveunsaved` | `float()` | B |
+| `fread`, `fwrite` | `int(filestream, void *ptr, int size, optional int ofs)` | B |
+| `fseek`, `fsize` | `int(filestream, optional int)` | B |
+| `fseek64`, `fsize64` | `__int64(filestream, optional __int64)` | B |
 | `sind`, `cosd`, `tand`, `asind`, `acosd`, `atand`, `sqrtd`, `floord`, `ceild`, `fabsd` | `__double(__double)` | A |
 | `atan2d`, `powd` | `__double(__double, __double)` | A |
 | `logd` | `__double(__double v, optional __double base)` | A |
@@ -470,6 +476,34 @@ them.
 See [strings.md](strings.md). `digest_ptr(alg, ptr, len, [ofs])` hashes VM memory; an invalid range
 is a builtin error.
 
+### Files
+
+FTE's `FRIK_FILE`, over the host's file hooks; a file handle is a float, 1000 and up, at most
+`Limits::files` (256) open.
+
+- **Names**: one with `..`, `:`, `\` or a leading `/` is refused. Writing, removing and renaming
+  happen under `data/` in the game directory (a name that starts with `data/` is taken as it
+  is). Reading looks for `data/` + the name first, then the name itself, wherever the game's
+  search path has it (packs too); a config at the top or under `configs/` is never read outside
+  `data/`.
+- **`fopen(name, mode, optional minsize)`**: modes 0 read, 1 append (after what `data/`'s file
+  has), 2 write, 3 a handle that does nothing, 4 read the whole file at once, 5 the whole file
+  in a heap block (`fgets` returns its pointer), 6 that, written back when closed, at least
+  `minsize` bytes. −1 for anything else (FTE's `tcp://` streams too), a name refused, or a file
+  not found. A file to read streams from the host; one to write stays in memory, charged to
+  `Limits::container_bytes`, until `fclose` writes it.
+- **`fgets`**: the next line without its `\n` and `\r`s, a NUL as `C0 80`, at most 4095 bytes
+  (a longer line comes in pieces); null at the end.
+- **`fputs(fh, s...)`**, **`fwrite(fh, ptr, size, ofs)`** write at the position, which they
+  advance, and **`fread(fh, ptr, size, ofs)`** reads; both return the bytes moved. The whole of
+  `ptr + ofs` … `+ size` must be memory, or it is a builtin error.
+- **`fseek`/`fseek64(fh, pos)`** return the position before and move to `pos` if it is given
+  and not negative; **`fsize`/`fsize64(fh, size)`** return the size before and cut or
+  zero-extend a file to write (a warning for one to read).
+- **`fremove`, `frename`**: 0, −1 for a name refused, −5 when the host can't.
+- **`whichpack(name)`**: the pack the search path finds the file in, `""` for a file of its
+  own, null for none.
+
 ### Host hooks
 
 The class B builtins:
@@ -484,7 +518,7 @@ The class B builtins:
 - `cvars_haveunsaved`, `checkcommand`, `registercommand`;
 - `checkextension`: advertise only what is implemented;
 - `isdemo`, `isserver`;
-- file access: `coredump`, `loadfromfile`, `buf_loadfile`, `addprogs`.
+- file access: `coredump`, `loadfromfile`, `buf_loadfile`, `addprogs`, and [Files](#files).
 
 ## Entity storage
 
@@ -595,3 +629,5 @@ is the complete list. For the builtins in this document:
 | `ftos` prints float noise (`0.1` → `"0.100000001"`) | kept |
 | replacing a hash entry removes only the newest one for the key | kept |
 | `precache_file` is an engine builtin | not provided |
+| `fgets` of a file read whole (mode 4) returns it again at every call | fixed: once, then null |
+| `fgets` drops the byte after a 4095-byte piece of a line | fixed: kept for the next call |

@@ -70,9 +70,7 @@ static int64_t QC_Linear (uint32_t p, int32_t ofs)
 	return a >= 0 && a <= UINT32_MAX ? a : -1;
 }
 
-// Reads n bytes at ptr + ofs (a linear pointer, or a temp buffer as large);
-// a malloc'd copy, or NULL
-static uint8_t *QC_ReadRange (qcvm_t *vm, uint32_t ptr, int32_t ofs, size_t n)
+uint8_t *QC_LibReadRange (qcvm_t *vm, uint32_t ptr, int32_t ofs, size_t n)
 {
 	uint8_t		*out, *data;
 	uint32_t	size;
@@ -102,18 +100,7 @@ static uint8_t *QC_ReadRange (qcvm_t *vm, uint32_t ptr, int32_t ofs, size_t n)
 	return NULL;
 }
 
-// a checked destination for a write
-typedef struct
-{
-	bool		temp;
-	uint32_t	addr;			// linear
-	uint32_t	slot;			// temp
-	size_t		start;
-} qc_dest_t;
-
-// Checks a write of n bytes at ptr + ofs: linear memory (not 0), or a temp
-// buffer that may grow to 1 MiB
-static bool QC_Dest (qcvm_t *vm, uint32_t ptr, int32_t ofs, size_t n, qc_dest_t *d)
+bool QC_LibDest (qcvm_t *vm, uint32_t ptr, int32_t ofs, size_t n, qc_dest_t *d)
 {
 	qc_loc_t			loc;
 	qc_writeresult_t	r;
@@ -140,9 +127,7 @@ static bool QC_Dest (qcvm_t *vm, uint32_t ptr, int32_t ofs, size_t n, qc_dest_t 
 	}
 }
 
-// Writes to a checked destination; a protected entity is skipped with a
-// warning. False if a temp buffer couldn't grow.
-static bool QC_WriteDest (qcvm_t *vm, const qc_dest_t *d, const uint8_t *bytes, size_t n)
+bool QC_LibWriteDest (qcvm_t *vm, const qc_dest_t *d, const uint8_t *bytes, size_t n)
 {
 	uint32_t			ent;
 	uint8_t				*data;
@@ -239,11 +224,11 @@ static bool QC_Memcpy (qcvm_t *vm)
 		return QC_LibSoftError (vm, "memcpy: invalid size %#x", (uint32_t)size);
 	if (!size)
 		return true;
-	if (!QC_Dest (vm, dst, dofs, (size_t)size, &d))
+	if (!QC_LibDest (vm, dst, dofs, (size_t)size, &d))
 		return QC_LibSoftError (vm, "memcpy: invalid dest (%#x+%#x)", dst, (uint32_t)dofs);
-	if (!(bytes = QC_ReadRange (vm, src, sofs, (size_t)size)))
+	if (!(bytes = QC_LibReadRange (vm, src, sofs, (size_t)size)))
 		return QC_LibSoftError (vm, "memcpy: invalid source (%#x+%#x)", src, (uint32_t)sofs);
-	ok = QC_WriteDest (vm, &d, bytes, (size_t)size);
+	ok = QC_LibWriteDest (vm, &d, bytes, (size_t)size);
 	free (bytes);
 	if (!ok)
 		return QC_LibSoftError (vm, "memcpy: invalid dest (%#x+%#x)", dst, (uint32_t)dofs);
@@ -260,12 +245,12 @@ static bool QC_Memfill8 (qcvm_t *vm)
 	uint8_t		*fill;
 	bool		ok;
 
-	if (size < 0 || !QC_Dest (vm, dst, dofs, (size_t)size, &d))
+	if (size < 0 || !QC_LibDest (vm, dst, dofs, (size_t)size, &d))
 		return QC_LibSoftError (vm, "memfill8: invalid dest");
 	if (!(fill = malloc (size ? (size_t)size : 1)))
 		return QC_Fail (vm, QC_ERR_OUT_OF_MEMORY, QC_RES_HEAP, NULL);
 	memset (fill, (int)(value & 0xFF), (size_t)size);
-	ok = QC_WriteDest (vm, &d, fill, (size_t)size);
+	ok = QC_LibWriteDest (vm, &d, fill, (size_t)size);
 	free (fill);
 	if (!ok)
 		return QC_LibSoftError (vm, "memfill8: invalid dest");
@@ -364,9 +349,9 @@ static bool QC_Memcmp (qcvm_t *vm)
 		return QC_LibSoftError (vm, "memcmp: invalid size");
 	if (!size)
 		return true;
-	if (!(x = QC_ReadRange (vm, a, aofs, (size_t)size)))
+	if (!(x = QC_LibReadRange (vm, a, aofs, (size_t)size)))
 		return QC_LibSoftError (vm, "memcmp: invalid first pointer");
-	if (!(y = QC_ReadRange (vm, b, bofs, (size_t)size)))
+	if (!(y = QC_LibReadRange (vm, b, bofs, (size_t)size)))
 	{
 		free (x);
 		return QC_LibSoftError (vm, "memcmp: invalid second pointer");
@@ -492,7 +477,7 @@ static bool QC_Base64encodeBuiltin (qcvm_t *vm)
 	uint8_t		*data = NULL;
 	qc_sink_t	out;
 
-	if (size < 0 || (size > 0 && (!p || !(data = QC_ReadRange (vm, p, 0, (size_t)size)))))
+	if (size < 0 || (size > 0 && (!p || !(data = QC_LibReadRange (vm, p, 0, (size_t)size)))))
 	{
 		QC_ReturnZero (vm);
 		return QC_LibSoftError (vm, "base64encode: invalid pointer");

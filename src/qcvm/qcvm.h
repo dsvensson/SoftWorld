@@ -297,7 +297,9 @@ typedef struct
 	uint32_t	string_buffers;
 	uint32_t	string_buffer_entries;	// in one string buffer
 	uint32_t	hash_tables;
-	size_t		container_bytes;	// hash table, string buffer and token list contents
+	size_t		container_bytes;	// hash table, string buffer and token list contents, and
+									// what open files hold in memory
+	uint32_t	files;				// open files (FTE: 256)
 	uint32_t	warnings_per_call;	// reported per top-level call; the rest only counted
 } qc_limits_t;
 
@@ -574,6 +576,23 @@ typedef struct
 
 	// a file for QuakeC (buf_loadfile), malloc'd; the VM frees it
 	uint8_t		*(*read_file) (void *ctx, const char *path, size_t *size);
+
+	// QuakeC's files (fopen and the rest, FTE's FRIK_FILE), at paths the VM has
+	// checked: relative, without "..", ':' or '\'. Reading finds a file where
+	// the game's search path has it (packs too); writing, removing and renaming
+	// are in the game directory, whose subdirectories a write makes.
+	// A file to read and its size; NULL if there is none
+	void		*(*file_open) (void *ctx, const char *path, uint64_t *size);
+	// up to n bytes from ofs on: how many were read
+	size_t		(*file_read) (void *ctx, void *file, uint64_t ofs, void *out, size_t n);
+	void		(*file_close) (void *ctx, void *file);
+	// the whole file written; false if it couldn't be
+	bool		(*file_write) (void *ctx, const char *path, const void *data, size_t size);
+	bool		(*file_remove) (void *ctx, const char *path);
+	bool		(*file_rename) (void *ctx, const char *from, const char *to);
+	// where the search path has a file: its pack's name ("pak0.pak"), "" for a
+	// file of its own; false if there is no such file
+	bool		(*file_pack) (void *ctx, const char *path, char *pack, size_t size);
 	// another progs for addprogs, with a reference for the VM
 	qc_progs_t	*(*load_progs) (void *ctx, const char *name);
 

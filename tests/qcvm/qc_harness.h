@@ -31,6 +31,7 @@ typedef struct
 	char	*path;
 	uint8_t	*data;
 	size_t	size;
+	char	*pack;			// the pack it is in (whichpack), NULL for none
 } qh_file_t;
 
 // the host: what the builtins did and asked
@@ -45,8 +46,9 @@ typedef struct
 	int				numcvars;
 	char			**commands;		// registercommand's
 	int				numcommands;
-	qh_file_t		*files;			// what read_file finds
+	qh_file_t		*files;			// what read_file and file_open find, and file_write makes
 	int				numfiles;
+	int				openfiles;		// file_open's not yet closed
 	bool			has_now;		// calendar_time's answer, else the VM's UTC
 	qc_calendar_t	now;
 	bool			has_sim_time;	// gettime(5)'s
@@ -129,3 +131,6 @@ void		QH_ClearWarnings (qh_t *h);
 void		QH_SetCvar (qh_t *h, const char *name, const char *value);
 const char	*QH_Cvar (const qh_t *h, const char *name);		// NULL if none
 void		QH_AddFile (qh_t *h, const char *path, const void *data, size_t size);
+void		QH_AddPackedFile (qh_t *h, const char *pack, const char *path, const void *data, size_t size);
+// a file's bytes and size, NULL if there is none
+const uint8_t	*QH_File (const qh_t *h, const char *path, size_t *size);
