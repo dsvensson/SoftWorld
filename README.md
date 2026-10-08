@@ -418,7 +418,9 @@ with a backtrace, never a crash. [docs/qcvm](docs/qcvm) describes it.
 
 The server runs `qwprogs.dat` with FTE's server builtins, or NetQuake's `progs.dat` as FTE's
 server runs it: a game directory's own progs first, else `progs.dat` when `deathmatch` is 0
-(single player and coop) and `qwprogs.dat` when it isn't (`sv_progs` names one). It offers a
+(single player and coop) and `qwprogs.dat` when it isn't (`sv_progs` names one). A progs'
+`SV_ParseClientCommand` gets the clients' commands first, as FTE gives them, and hands back
+those it doesn't take with `clientcommand`. It offers a
 `csprogs.dat` (`sv_csqc_progname`) in the serverinfo as FTE does. The client runs a server's csprogs as FTE's
 client does:
 - it downloads the csprogs into `csprogsvers` (`cl_download_csprogs`), checks it, and loads it

@@ -259,6 +259,19 @@ void PR_ExecuteProgram (func_t fnum)
 		PR_RunError ();
 }
 
+// fnum (s)
+void PR_ExecuteProgramString (func_t fnum, const char *s)
+{
+	qc_value_t	arg;
+
+	if (!pr.vm)
+		SV_Error ("PR_ExecuteProgram: no progs");
+	QC_SetTime (pr.vm, sv.time);
+	arg = QC_ValWord (QC_TempString (pr.vm, s, strlen (s)));
+	if (!QC_Call (pr.vm, (qc_func_t)fnum, 1, &arg, NULL))
+		PR_RunError ();
+}
+
 /*
 ============
 PR_RunThreads
@@ -312,6 +325,37 @@ const char *PR_GetString (int num)
 string_t PR_SetString (const char *s)
 {
 	return (string_t)QC_HostString (pr.vm, s);
+}
+
+/*
+============
+PR_Builtins_f
+
+The builtins the running progs calls that the server doesn't have (with
+"all", those it declares)
+============
+*/
+static void PR_Builtins_f (void)
+{
+	qc_unbound_t	*list;
+	bool			all = Cmd_Argc () > 1 && !strcmp (Cmd_Argv (1), "all");
+	uint32_t		n, i;
+
+	if (!pr.vm)
+	{
+		Con_Printf ("No progs is running\n");
+		return;
+	}
+	n = QC_UnboundBuiltins (pr.vm, !all, NULL, 0);
+	list = Mem_Alloc (((size_t)n + 1) * sizeof(*list));
+	QC_UnboundBuiltins (pr.vm, !all, list, n);
+	for (i = 0 ; i < n ; i++)
+		if (list[i].number)
+			Con_Printf ("#%-4u %s\n", list[i].number, list[i].name);
+		else
+			Con_Printf ("      %s\n", list[i].name);
+	Con_Printf ("%u builtins %s the server lacks\n", n, all ? "declared" : "called");
+	Mem_Free (list);
 }
 
 /*
@@ -1249,6 +1293,7 @@ void PR_LoadProgs (void)
 	pr.SpectatorConnect = (func_t)QC_FindFunction (pr.vm, "SpectatorConnect");
 	pr.SpectatorThink = (func_t)QC_FindFunction (pr.vm, "SpectatorThink");
 	pr.SpectatorDisconnect = (func_t)QC_FindFunction (pr.vm, "SpectatorDisconnect");
+	pr.ParseClientCommand = (func_t)QC_FindFunction (pr.vm, "SV_ParseClientCommand");
 }
 
 
@@ -1281,4 +1326,6 @@ void PR_Init (void)
 		"to compare what two builds made of a map.");
 	Cmd_AddCommand ("profile", PR_Profile_f, "Starts counting the statements each QuakeC function runs; "
 		"after that, lists the ten that ran the most and starts the counts over.");
+	Cmd_AddCommand ("pr_builtins", PR_Builtins_f, "Lists the builtins the running progs calls that the server "
+		"lacks; with all, those it declares. Usage: pr_builtins [all]");
 }

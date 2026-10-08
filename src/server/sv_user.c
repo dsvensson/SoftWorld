@@ -483,7 +483,9 @@ static void SV_PreSpawn_f (void)
 ==================
 SV_SetUpClientEdict
 
-A client's edict, fresh for a player or a spectator
+A client's edict, fresh for a player or a spectator. NetQuake's progs keep
+what they set in it before (AD's ext_csqc, at its CSQC's csqcping), as FTE
+leaves it them: it was cleared when the last client in the slot dropped
 ==================
 */
 static void SV_SetUpClientEdict (client_t *cl)
@@ -493,7 +495,8 @@ static void SV_SetUpClientEdict (client_t *cl)
 	ent = cl->edict;
 
 	QC_ClaimEdict (pr.vm, (qc_ent_t)NUM_FOR_EDICT(ent));	// in case QuakeC removed it
-	memset (&ent->v, 0, QC_FieldWords (pr.vm) * 4);
+	if (!pr.nq)
+		memset (&ent->v, 0, QC_FieldWords (pr.vm) * 4);
 	ent->alpha = 0;
 	memset (ent->colormod, 0, sizeof(ent->colormod));
 	ent->v.colormap = (float)NUM_FOR_EDICT(ent);
@@ -1626,78 +1629,116 @@ static void SV_CSQC_f (void)
 {
 }
 
+// whether QuakeC's SV_ParseClientCommand sees a command, as FTE has it
+typedef enum
+{
+	UCMD_QC,			// first, the engine running it if QuakeC hands it back
+	UCMD_NOQC,			// the connection's: never
+	UCMD_QCAFTER		// after the engine ran it, from a client in the game
+} ucmdqc_t;
+
 typedef struct
 {
-	char	*name;
-	void	(*func) (void);
+	char		*name;
+	void		(*func) (void);
+	ucmdqc_t	qc;
 } ucmd_t;
 
 static ucmd_t ucmds[] =
 {
-	{"new", SV_New_f},
-	{"modellist", SV_Modellist_f},
-	{"soundlist", SV_Soundlist_f},
-	{"prespawn", SV_PreSpawn_f},
-	{"spawn", SV_Spawn_f},
-	{"begin", SV_Begin_f},
-	{"join", SV_Join_f},
-	{"observe", SV_Observe_f},
+	{"new", SV_New_f, UCMD_NOQC},
+	{"modellist", SV_Modellist_f, UCMD_NOQC},
+	{"soundlist", SV_Soundlist_f, UCMD_NOQC},
+	{"prespawn", SV_PreSpawn_f, UCMD_NOQC},
+	{"spawn", SV_Spawn_f, UCMD_NOQC},
+	{"begin", SV_Begin_f, UCMD_NOQC},
+	{"join", SV_Join_f, UCMD_QC},
+	{"observe", SV_Observe_f, UCMD_QC},
 
-	{"drop", SV_Drop_f},
-	{"pings", SV_Pings_f},
-	{"enablecsqc", SV_CSQC_f},
-	{"disablecsqc", SV_CSQC_f},
+	{"drop", SV_Drop_f, UCMD_QC},
+	{"pings", SV_Pings_f, UCMD_QC},
+	{"enablecsqc", SV_CSQC_f, UCMD_QCAFTER},
+	{"disablecsqc", SV_CSQC_f, UCMD_QCAFTER},
 
 // issued by hand at client consoles	
-	{"rate", SV_Rate_f},
-	{"kill", SV_Kill_f},
-	{"setpos", SV_SetPos_f},
-	{"pause", SV_Pause_f},
-	{"msg", SV_Msg_f},
+	{"rate", SV_Rate_f, UCMD_QC},
+	{"kill", SV_Kill_f, UCMD_QC},
+	{"setpos", SV_SetPos_f, UCMD_QC},
+	{"pause", SV_Pause_f, UCMD_QC},
+	{"msg", SV_Msg_f, UCMD_QC},
 
-	{"say", SV_Say_f},
-	{"say_team", SV_Say_Team_f},
+	{"say", SV_Say_f, UCMD_QC},
+	{"say_team", SV_Say_Team_f, UCMD_QC},
 
-	{"setinfo", SV_SetInfo_f},
+	{"setinfo", SV_SetInfo_f, UCMD_QC},
 
-	{"serverinfo", SV_ShowServerinfo_f},
+	{"serverinfo", SV_ShowServerinfo_f, UCMD_QC},
 
-	{"download", SV_BeginDownload_f},
-	{"nextdl", SV_NextDownload_f},
-	{"stopdownload", SV_StopDownload_f},
+	{"download", SV_BeginDownload_f, UCMD_QC},
+	{"nextdl", SV_NextDownload_f, UCMD_NOQC},
+	{"stopdownload", SV_StopDownload_f, UCMD_QC},
 
-	{"ptrack", SV_PTrack_f}, //ZOID - used with autocam
+	{"ptrack", SV_PTrack_f, UCMD_QC}, //ZOID - used with autocam
 
-	{"snap", SV_NoSnap_f},
+	{"snap", SV_NoSnap_f, UCMD_QC},
 	
-	{NULL, NULL}
+	{NULL, NULL, UCMD_QC}
 };
+
+// s to QuakeC's SV_ParseClientCommand, the client's player as self
+static void SV_ParseClientCommand (const char *s)
+{
+	PR_GLOBAL(time) = (float)sv.time;
+	PR_GLOBAL(self) = EDICT_TO_PROG(sv_player);
+	PR_ExecuteProgramString (pr.ParseClientCommand, s);
+}
 
 /*
 ==================
 SV_ExecuteUserCommand
+
+A client's command. QuakeC's SV_ParseClientCommand, where the progs has it,
+gets it first, as FTE gives it (AD's CSQC says it runs with one): those it
+doesn't take, it hands back with clientcommand (fromqc), for the engine to run
 ==================
 */
-static void SV_ExecuteUserCommand (char *s)
+static void SV_ExecuteUserCommand (const char *s, bool fromqc)
 {
 	ucmd_t	*u;
-	
-	Cmd_TokenizeString (s);
-	sv_player = host_client->edict;
+	bool	qc = !fromqc && pr.ParseClientCommand;
 
-	SV_BeginRedirect (RD_CLIENT);
+	Cmd_TokenizeString ((char *)s);
+	sv_player = host_client->edict;
 
 	for (u=ucmds ; u->name ; u++)
 		if (!strcmp (Cmd_Argv(0), u->name) )
-		{
-			u->func ();
 			break;
-		}
+	if (qc && (!u->name || u->qc == UCMD_QC))
+	{
+		SV_ParseClientCommand (s);
+		return;
+	}
 
-	if (!u->name)
+	SV_BeginRedirect (RD_CLIENT);
+	if (u->name)
+		u->func ();
+	else
 		Con_Printf ("Bad user command: %s\n", Cmd_Argv(0));
-
 	SV_EndRedirect ();
+
+	if (qc && u->name && u->qc == UCMD_QCAFTER && host_client->state == cs_spawned)
+		SV_ParseClientCommand (s);
+}
+
+void SV_ClientCommand (client_t *cl, const char *s)
+{
+	client_t	*oldclient = host_client;
+	edict_t		*oldplayer = sv_player;
+
+	host_client = cl;
+	SV_ExecuteUserCommand (s, true);
+	host_client = oldclient;
+	sv_player = oldplayer;
 }
 
 /*
@@ -2194,7 +2235,7 @@ void SV_ExecuteClientMessage (client_t *cl)
 
 		case clc_stringcmd:	
 			s = MSG_ReadString ();
-			SV_ExecuteUserCommand (s);
+			SV_ExecuteUserCommand (s, false);
 			break;
 
 		case clc_tmove:

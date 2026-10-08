@@ -556,6 +556,8 @@ void SV_ClientStats (const client_t *client, int stats[MAX_STATS]);
 // sv_user.c
 //
 void SV_ExecuteClientMessage (client_t *cl);
+// a client's command as the engine runs it, QuakeC handing it back (clientcommand)
+void SV_ClientCommand (client_t *cl, const char *s);
 // the chunk a chunked download asked for, on the datagram or out of band
 void SV_DownloadDatagram (client_t *cl, sizebuf_t *msg);
 void SV_UserInit (void);

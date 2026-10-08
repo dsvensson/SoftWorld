@@ -148,7 +148,8 @@ behaviour.
   directory may be downloaded when `allow_download` is on.
 
 Developer commands: `edict`, `edicts`, `edictcount`, `edictdigest` (a hash per entity, to
-compare two builds on a map) and `profile`.
+compare two builds on a map), `profile`, and `pr_builtins`, the builtins the running progs calls
+that the server lacks (with `all`, those it declares).
 
 **The client** finds, downloads, checks and loads a server's csprogs as FTE's client does, and
 runs its lifecycle. The CSQC networking (entities, the parse hooks, input) and the drawing

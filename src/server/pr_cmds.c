@@ -1464,6 +1464,31 @@ static bool PF_globalstat (qcvm_t *vm)
 	return PF_AddStat (vm, "globalstat", PF_ArgTrunc(vm, 0), PF_ArgTrunc(vm, 1), true, word);
 }
 
+/*
+==============
+PF_clientcommand
+
+void(entity client, string s) clientcommand: the client's command as the
+engine runs it; SV_ParseClientCommand hands back those it doesn't take
+==============
+*/
+static bool PF_clientcommand (qcvm_t *vm)
+{
+	int			entnum = PF_ArgEdictNum(vm, 0);
+	client_t	*cl;
+
+	if (entnum < 1 || entnum > MAX_CLIENTS)
+		return QC_Error (vm, "clientcommand: not a client");
+	cl = &svs.clients[entnum-1];
+	if (cl->state < cs_connected)
+	{
+		QC_Warning (vm, "clientcommand: the client isn't connected");
+		return true;
+	}
+	SV_ClientCommand (cl, QC_ArgString(vm, 1));
+	return true;
+}
+
 
 // the engine's builtins, by id's numbers, over FTE's standard ones (those that
 // need no engine: QC_BuiltinsStandard); numbers neither has fail when called
@@ -1518,6 +1543,7 @@ static const struct
 	{82, "multicast", PF_multicast},
 	{232, "clientstat", PF_clientstat},
 	{233, "globalstat", PF_globalstat},
+	{440, "clientcommand", PF_clientcommand},
 };
 
 void PR_InitBuiltins (qc_builtins_t *b)

@@ -404,6 +404,11 @@ void SV_DropClient (client_t *drop)
 
 	drop->old_frags = 0;
 	drop->edict->v.frags = 0;
+	if (pr.nq && pr.vm)
+	{	// cleared for the next in the slot (SV_SetUpClientEdict), as FTE does
+		SV_UnlinkEdict (drop->edict);
+		memset (&drop->edict->v, 0, QC_FieldWords (pr.vm) * 4);
+	}
 	drop->name[0] = 0;
 	memset (drop->userinfo, 0, sizeof(drop->userinfo));
 

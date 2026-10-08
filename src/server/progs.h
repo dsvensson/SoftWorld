@@ -75,6 +75,7 @@ typedef struct
 	func_t			SpectatorConnect;
 	func_t			SpectatorThink;
 	func_t			SpectatorDisconnect;
+	func_t			ParseClientCommand;	// SV_ParseClientCommand, KRIMZON_SV_PARSECLIENTCOMMAND's
 } pr_state_t;
 
 extern	pr_state_t	pr;
@@ -90,6 +91,7 @@ void PR_Init (void);
 void PR_ResetStack (void);	// after an error left QuakeC running
 
 void PR_ExecuteProgram (func_t fnum);
+void PR_ExecuteProgramString (func_t fnum, const char *s);	// fnum (s)
 void PR_RunThreads (void);
 void PR_LoadProgs (void);
 void PR_FreeProgs (void);			// the VM gone, until the next map
