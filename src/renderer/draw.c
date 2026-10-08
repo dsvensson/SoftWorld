@@ -663,38 +663,47 @@ static void Draw_CharToConback (int num, byte *dest)
 
 }
 
+// The console's background: gfx/conback.lmp stretched over the console, the
+// version in its bottom right corner. In id's 320x200 one it is stamped into
+// the pic and stretched with it; a mod's pic of another size (QBJ3's 854x480,
+// Alkaline's 640x400) has it drawn over, crisp, in the stamp's colors
 static void Draw_ConsoleBackgroundNow (int lines, bool downloading)
 {
-	int				x, y, v;
+	int				x, y, v, len;
 	byte			*src;
 	byte			row[MAX_CONWIDTH];
 	int				f, fstep;
 	qpic_t			*conback;
 	char			ver[100];
 	static			char saveback[320*8];
+	hudpixel_t		stamp[256];
+	bool			classic;
 
 	conback = Draw_CachePic ("gfx/conback.lmp");
+	classic = conback->width == 320 && conback->height == 200;
+
+	if (downloading)
+		snprintf (ver, sizeof(ver), "%4.2f", VERSION);
+	else
+		snprintf (ver, sizeof(ver), "SoftWorld %4.2f", VERSION);
+	len = (int)strlen (ver);
 
 // hack the version number directly into the pic
-	if (downloading) {
-		snprintf (ver, sizeof(ver), "%4.2f", VERSION);
-		src = conback->data + 320 + 320*186 - 11 - 8*strlen(ver);
-	} else {
-		snprintf (ver, sizeof(ver), "SoftWorld %4.2f", VERSION);
-		src = conback->data + 320 - (strlen(ver)*8 + 11) + 320*186;
+	if (classic)
+	{
+		src = conback->data + 320 - (len*8 + 11) + 320*186;
+		memcpy(saveback, conback->data + 320*186, 320*8);
+		for (x=0 ; x<len ; x++)
+			Draw_CharToConback (ver[x], src+(x<<3));
 	}
 
-	memcpy(saveback, conback->data + 320*186, 320*8);
-	for (x=0 ; x<(int)strlen(ver) ; x++)
-		Draw_CharToConback (ver[x], src+(x<<3));
-
-// draw the pic, stretched to the con width
-	fstep = 320*0x10000/vid.conwidth;
+// draw the pic, stretched to the con width and height
+	fstep = conback->width*0x10000/vid.conwidth;
 
 	for (y=0 ; y<lines ; y++)
 	{
-		v = (vid.conheight - lines + y)*200/vid.conheight;
-		src = conback->data + v*320;
+		v = (vid.conheight - lines + y)*conback->height/vid.conheight;
+		src = conback->data + v*conback->width;
 		f = 0;
 		for (x=0 ; x<(int)vid.conwidth ; x++)
 		{
@@ -704,8 +713,25 @@ static void Draw_ConsoleBackgroundNow (int lines, bool downloading)
 		Draw_Image (0, y, row, 0, vid.conwidth, 1, draw_pal, -1);
 	}
 
-	// put it back
-	memcpy(conback->data + 320*186, saveback, 320*8);
+	if (classic)
+	{	// put it back
+		memcpy(conback->data + 320*186, saveback, 320*8);
+		return;
+	}
+	// the stamp's colors: a glyph's texel the palette's 0x60 on
+	for (x=0 ; x<256 ; x++)
+		stamp[x] = draw_pal[(0x60 + x) & 255];
+	y = lines - 14;
+	if (y <= -8)
+		return;
+	for (x=0 ; x<len ; x++)
+	{
+		src = draw_chars + ((ver[x]>>4)<<10) + ((ver[x]&15)<<3);
+		if (y < 0)
+			Draw_Image ((int)vid.conwidth - (len*8 + 11) + x*8, 0, src - 128*y, 128, 8, 8 + y, stamp, 0);
+		else
+			Draw_Image ((int)vid.conwidth - (len*8 + 11) + x*8, y, src, 128, 8, 8, stamp, 0);
+	}
 }
 
 /*

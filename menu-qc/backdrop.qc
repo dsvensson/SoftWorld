@@ -20,9 +20,33 @@ int(int *pal, int color) PaletteIndex =
 	return 0;
 };
 
-// gfx/conback.lmp with the version stamped in its bottom right corner, as
+// the version stamped into img (imgw wide) in its bottom right corner, as
 // Draw_ConsoleBackground did: a character's texels the palette's next rows on
-// (0x60 + the index), then stretched to the width with its fixed point steps
+// (0x60 + the index)
+void(int *img, int imgw, int *chars, int *pal) StampVersion =
+{
+	string	ver = "SoftWorld " SW_VERSION;
+	int		len = (int)strlen (ver);
+	int		x0 = imgw - (len * 8 + 11);
+	int		i, r, c, num, glyph;
+
+	for (i = 0 ; i < len ; i++)
+	{
+		num = (int)str2chr (ver, (float)i);
+		for (r = 0 ; r < 8 ; r++)
+			for (c = 0 ; c < 8 ; c++)
+			{
+				glyph = chars[((num >> 4) * 8 + r) * 128 + (num & 15) * 8 + c];
+				if ((glyph >> 24) & 255)
+					img[(186 + r) * imgw + x0 + i * 8 + c] = pal[(0x60 + PaletteIndex (pal, glyph)) & 255];
+			}
+	}
+};
+
+// gfx/conback.lmp stretched to the layout's width and its 200 lines with its
+// fixed point steps, the version in its corner: id's 320x200 one has it
+// stamped in before, a mod's of another size (QBJ3's 854x480) after, at the
+// layout's size
 void(int width, int *pal) MakeConback =
 {
 	// one pointer a declaration: fteqcc takes int *a, *b's b as an int **
@@ -30,14 +54,12 @@ void(int width, int *pal) MakeConback =
 	int		*chars;
 	int		*out;
 	int		w, h, cw, ch;
-	int		x, y, i, r, c, x0, num, glyph, fstep;
-	string	ver = "SoftWorld " SW_VERSION;
-	int		len = (int)strlen (ver);
+	int		x, y, i, sy, fstep;
 	int		opaque = 255 << 24;
 
 	conback = r_readimage ("gfx/conback.lmp", w, h);
 	chars = r_readimage ("gfx/conchars", cw, ch);
-	if (!conback || !chars || w != 320 || h != 200 || cw != 128 || ch != 128)
+	if (!conback || !chars || w <= 0 || h <= 0 || cw != 128 || ch != 128)
 	{
 		if (conback)
 			memfree (conback);
@@ -47,27 +69,21 @@ void(int width, int *pal) MakeConback =
 	}
 
 	// drawn opaque: its 255 too
-	for (i = 0 ; i < 320 * 200 ; i++)
+	for (i = 0 ; i < w * h ; i++)
 		conback[i] = conback[i] | opaque;
-
-	x0 = 320 - (len * 8 + 11);
-	for (i = 0 ; i < len ; i++)
-	{
-		num = (int)str2chr (ver, (float)i);
-		for (r = 0 ; r < 8 ; r++)
-			for (c = 0 ; c < 8 ; c++)
-			{
-				glyph = chars[((num >> 4) * 8 + r) * 128 + (num & 15) * 8 + c];
-				if ((glyph >> 24) & 255)
-					conback[(186 + r) * 320 + x0 + i * 8 + c] = pal[(0x60 + PaletteIndex (pal, glyph)) & 255];
-			}
-	}
+	if (w == 320 && h == 200)
+		StampVersion (conback, 320, chars, pal);
 
 	out = memalloc (width * 200 * 4);
-	fstep = 320 * 65536 / width;
+	fstep = w * 65536 / width;
 	for (y = 0 ; y < 200 ; y++)
+	{
+		sy = y * h / 200;
 		for (x = 0 ; x < width ; x++)
-			out[y * width + x] = conback[y * 320 + ((x * fstep) >> 16)];
+			out[y * width + x] = conback[sy * w + ((x * fstep) >> 16)];
+	}
+	if (w != 320 || h != 200)
+		StampVersion (out, width, chars, pal);
 	r_uploadimage (BACK_CONBACK, width, 200, out);
 	memfree (out);
 	memfree (conback);
