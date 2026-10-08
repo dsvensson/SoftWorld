@@ -44,12 +44,17 @@ cvar_t	cl_shownet = {.name = "cl_shownet", .string = "0",	// can be 0, 1, or 2
 	.values = (const cvar_value_t[]){{"0", "Nothing"}, {"1", "Each message's size in bytes"},
 		{"2", "Each message's commands, with their offsets"}, {0}}};
 
-cvar_t	cl_sbar		= {.name = "cl_sbar", .string = "0", .archive = true,
-	.description = "Where the status bar goes at viewsize 100 and above; smaller views always have it below.",
-	.values = (const cvar_value_t[]){{"0", "Over the view, without its backdrop"},
-		{"1", "Below the view, with its backdrop"}, {0}}};
+// the status bar's layout, numbered as ironwail numbers them; a game's QuakeC
+// status bar (QBJ3's) reads it too
+cvar_t	hudstyle	= {.name = "hudstyle", .string = "3", .archive = true,
+	.description = "The status bar's layout, as ironwail numbers them.",
+	.values = (const cvar_value_t[]){{"0", "Classic: id's, below the view (over it while scr_sbaralpha is under 1)"},
+		{"1", "Modern: the health and the ammo in the bottom corners, the ammo counts between them"},
+		{"2", "Modern, the ammo counts over the ammo"},
+		{"3", "QuakeWorld's: over the view without its backdrop, the weapons and the ammo counts at a side "
+			"(cl_hudswap); below a smaller view"}, {0}}};
 cvar_t	cl_hudswap	= {.name = "cl_hudswap", .string = "0", .archive = true,
-	.description = "Which side the heads-up status bar (cl_sbar 0) shows the weapons and ammo on.",
+	.description = "Which side QuakeWorld's status bar (hudstyle 3) shows the weapons and ammo on.",
 	.values = (const cvar_value_t[]){{"0", "Right"}, {"1", "Left"}, {0}}};
 // frames per second drawn; with independent physics 0 is no cap (vid_vsync still applies)
 static cvar_t	cl_maxfps	= {.name = "cl_maxfps", .string = "0", .archive = true,
@@ -1363,7 +1368,7 @@ static void CL_InitLocal (void)
 	Cvar_RegisterVariable (&cl_pitchspeed);
 	Cvar_RegisterVariable (&cl_anglespeedkey);
 	Cvar_RegisterVariable (&cl_shownet);
-	Cvar_RegisterVariable (&cl_sbar);
+	Cvar_RegisterVariable (&hudstyle);
 	Cvar_RegisterVariable (&cl_hudswap);
 	Cvar_RegisterVariable (&cl_maxfps);
 	Cvar_RegisterVariable (&cl_idlefps);

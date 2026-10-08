@@ -79,7 +79,7 @@ scr_state_t	scr;
 static float		scr_conlines;		// lines of console to display
 
 static float		oldscreensize, oldfov, oldviewmodelfov;
-static float		oldsbar;
+static bool		oldsbar;
 cvar_t		scr_viewsize = {.name = "viewsize", .string = "100", .archive = true,
 	.description = "How much of the screen the view takes, in percent, 30 to 120; 110 drops the inventory, "
 		"120 the status bar too."};
@@ -106,10 +106,13 @@ static cvar_t		scr_showpause = {.name = "showpause", .string = "1",
 static cvar_t		scr_printspeed = {.name = "scr_printspeed", .string = "8",
 	.description = "How fast centered text types out in an intermission, such as the finale's, "
 		"in characters a second."};
-// what QuakeC's status bars read for theirs (QBJ3's), as QuakeSpasm's and FTE's
-static cvar_t		scr_sbaralpha = {.name = "scr_sbaralpha", .string = "0.75", .archive = true,
-	.description = "How opaque the status bar a game's client-side QuakeC draws is, 0 to 1, as QuakeSpasm and FTE "
-		"have it; the client's own status bar is always opaque."};
+// the status bar's backdrops' opacity, the classic and modern ones', as
+// ironwail's; a game's QuakeC status bar reads it for its own (QBJ3's), as
+// QuakeSpasm's and FTE's
+cvar_t		scr_sbaralpha = {.name = "scr_sbaralpha", .string = "0.75", .archive = true,
+	.description = "How opaque the status bar's backdrops are, 0 to 1, as QuakeSpasm, ironwail and FTE have it: the "
+		"classic and modern ones' (the classic one over the view while under 1) and a game's client-side QuakeC's; "
+		"QuakeWorld's (hudstyle 3) are always opaque."};
 static cvar_t		scr_allowsnap = {.name = "scr_allowsnap", .string = "1",
 	.description = "Lets the server ask for a screenshot of the client (snap).",
 	.values = (const cvar_value_t[]){{"0", "Refused, telling the server"}, {"1", "Sent when asked"}, {0}}};
@@ -283,6 +286,7 @@ static void SCR_SetVrect (vrect_t *pvrectin, vrect_t *pvrect, int lineadj)
 	int		h;
 	float	size;
 	bool full = false;
+	bool below;
 
 	if (scr_viewsize.value >= 100.0) {
 		size = 100.0;
@@ -298,12 +302,12 @@ static void SCR_SetVrect (vrect_t *pvrectin, vrect_t *pvrect, int lineadj)
 	}
 	size /= 100.0;
 
-	if (!cl_sbar.value && full)
+	below = Sbar_Below (full);
+	if (!below)
 		h = pvrectin->height;
 	else
 		h = pvrectin->height - lineadj;
 
-//	h = (!cl_sbar.value && size==1.0) ? pvrectin->height : (pvrectin->height - lineadj);
 //	h = pvrectin->height - lineadj;
 	if (full)
 		pvrect->width = pvrectin->width;
@@ -316,7 +320,7 @@ static void SCR_SetVrect (vrect_t *pvrectin, vrect_t *pvrect, int lineadj)
 	}
 	pvrect->width &= ~7;
 	pvrect->height = (int)(pvrectin->height * size);
-	if (cl_sbar.value || !full) {
+	if (below) {
 		if (pvrect->height > pvrectin->height - lineadj)
 			pvrect->height = pvrectin->height - lineadj;
 	} else
@@ -1123,9 +1127,9 @@ void SCR_UpdateScreen (void)
 		vid.recalc_refdef = true;
 	}
 
-	if (oldsbar != cl_sbar.value)
+	if (oldsbar != Sbar_Below (scr_viewsize.value >= 100))
 	{
-		oldsbar = cl_sbar.value;
+		oldsbar = Sbar_Below (scr_viewsize.value >= 100);
 		vid.recalc_refdef = true;
 	}
 	

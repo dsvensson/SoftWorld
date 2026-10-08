@@ -403,7 +403,7 @@ extern	cvar_t	cl_pitchspeed;
 extern	cvar_t	cl_anglespeedkey;
 
 extern	cvar_t	cl_shownet;
-extern	cvar_t	cl_sbar;
+extern	cvar_t	hudstyle;
 extern	cvar_t	cl_hudswap;
 
 extern	cvar_t	cl_pitchdriftspeed;
@@ -585,6 +585,7 @@ void	CSQC_InputFrame (usercmd_t *cmd);	// a command about to be sent, as CSQC ch
 bool	CSQC_DrawView (bool *sbar);
 bool	CSQC_DrawHud (void);		// simple CSQC's status bar in place of the client's
 bool	CSQC_DrawScores (void);		// and its scores
+bool	CSQC_DrawsHud (void);		// it has CSQC_DrawHud
 bool	CSQC_DrawsView (void);
 // a matching csprogs is here already (none needs downloading)
 bool	CSQC_CheckDownload (const char *csprogsname, unsigned checksum, size_t size);

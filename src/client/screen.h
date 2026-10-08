@@ -44,3 +44,4 @@ typedef struct
 extern	scr_state_t	scr;
 
 extern	cvar_t		scr_viewsize;
+extern	cvar_t		scr_sbaralpha;

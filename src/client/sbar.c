@@ -45,6 +45,7 @@ static qpic_t	*sb_face_invis_invuln;
 
 static bool	sb_showscores;
 static bool	sb_showteamscores;
+static int	sbar_xofs;		// its left edge (Sbar_Draw)
 
 
 static void Sbar_DeathmatchOverlay (int start);
@@ -227,7 +228,7 @@ Sbar_DrawPic
 */
 static void Sbar_DrawPic (int x, int y, qpic_t *pic)
 {
-	Draw_Pic (x /* + ((vid.conwidth - 320)>>1) */, y + (vid.conheight-SBAR_HEIGHT), pic);
+	Draw_Pic (sbar_xofs + x, y + (vid.conheight-SBAR_HEIGHT), pic);
 }
 
 /*
@@ -239,7 +240,7 @@ JACK: Draws a portion of the picture in the status bar.
 
 static void Sbar_DrawSubPic(int x, int y, qpic_t *pic, int srcx, int srcy, int width, int height) 
 {
-	Draw_SubPic (x, y+(vid.conheight-SBAR_HEIGHT), pic, srcx, srcy, width, height);
+	Draw_SubPic (sbar_xofs + x, y+(vid.conheight-SBAR_HEIGHT), pic, srcx, srcy, width, height);
 }
 
 
@@ -250,7 +251,7 @@ Sbar_DrawTransPic
 */
 static void Sbar_DrawTransPic (int x, int y, qpic_t *pic)
 {
-	Draw_TransPic (x /*+ ((vid.conwidth - 320)>>1) */, y + (vid.conheight-SBAR_HEIGHT), pic);
+	Draw_TransPic (sbar_xofs + x, y + (vid.conheight-SBAR_HEIGHT), pic);
 }
 
 /*
@@ -262,7 +263,7 @@ Draws one solid graphics character
 */
 static void Sbar_DrawCharacter (int x, int y, int num)
 {
-	Draw_Character ( x /*+ ((vid.conwidth - 320)>>1) */ + 4, y + vid.conheight-SBAR_HEIGHT, num);
+	Draw_Character (sbar_xofs + x + 4, y + vid.conheight-SBAR_HEIGHT, num);
 }
 
 /*
@@ -273,7 +274,7 @@ Sbar_DrawString
 // in the colors a player's name in it may give
 static void Sbar_DrawString (int x, int y, char *str)
 {
-	Draw_MarkupString (x /*+ ((vid.conwidth - 320)>>1) */, y+ vid.conheight-SBAR_HEIGHT, str);
+	Draw_MarkupString (sbar_xofs + x, y+ vid.conheight-SBAR_HEIGHT, str);
 }
 
 /*
@@ -473,6 +474,49 @@ static bool Sbar_Deathmatch (void)
 	return !*dm || atoi (dm);
 }
 
+// hudstyle as ironwail bounds it, 0 to 3
+static int Sbar_HudStyle (void)
+{
+	return !(hudstyle.value > 0) ? 0 : hudstyle.value >= 3 ? 3 : (int)hudstyle.value;
+}
+
+// whether the status bar takes the lines below the view (full: a view of
+// viewsize 100 and over), rather than being drawn over it: the classic one
+// while opaque, as ironwail has it; QuakeWorld's in a smaller view; never the
+// modern ones or a game's QuakeC one
+bool Sbar_Below (bool full)
+{
+	if (CSQC_DrawsHud ())
+		return false;
+	switch (Sbar_HudStyle ())
+	{
+	case 0:
+		return scr_sbaralpha.value >= 1;
+	case 3:
+		return !full;
+	default:
+		return false;
+	}
+}
+
+// QuakeWorld's heads-up bar, without its backdrops: hudstyle 3 in a view of
+// the whole screen
+static bool Sbar_Headsup (void)
+{
+	return Sbar_HudStyle () == 3 && scr_viewsize.value >= 100;
+}
+
+// a backdrop (the bar's, the inventory's, the scores'): the classic and the
+// modern ones' by scr_sbaralpha, as ironwail's; QuakeWorld's opaque
+static void Sbar_DrawBackdrop (int x, int y, qpic_t *pic)
+{
+	if (Sbar_HudStyle () != 3 && scr_sbaralpha.value < 1)
+		Draw_QCPic ((float)(sbar_xofs + x), (float)(y + (int)vid.conheight - SBAR_HEIGHT), (float)pic->width,
+			(float)pic->height, pic, 0, 0, 1, 1, scr_sbaralpha.value);
+	else
+		Sbar_DrawPic (x, y, pic);
+}
+
 /*
 ===============
 Sbar_SoloScoreboard
@@ -487,7 +531,7 @@ static void Sbar_SoloScoreboard (void)
 	int		minutes, seconds, tens, units;
 	double	time = Sbar_Deathmatch () ? cl.time : CL_LevelTime ();
 
-	Sbar_DrawPic (0, 0, sb_scorebar);
+	Sbar_DrawBackdrop (0, 0, sb_scorebar);
 
 	if (!Sbar_Deathmatch ())
 	{
@@ -523,11 +567,11 @@ static void Sbar_DrawInventory (void)
 	bool	headsup;
 	bool    hudswap;
 
-	headsup = !(cl_sbar.value || scr_viewsize.value<100);
+	headsup = Sbar_Headsup ();
 	hudswap = cl_hudswap.value; // Get that nasty float out :)
 
 	if (!headsup)
-		Sbar_DrawPic (0, -24, sb_ibar);
+		Sbar_DrawBackdrop (0, -24, sb_ibar);
 // weapons
 	for (i=0 ; i<7 ; i++)
 	{
@@ -668,47 +712,60 @@ static void Sbar_DrawFrags (void)
 //=============================================================================
 
 
-/*
-===============
-Sbar_DrawFace
-===============
-*/
-static void Sbar_DrawFace (void)
+// the face: the powerups', else by the health, its pain a moment after a hit
+static qpic_t *Sbar_FacePic (void)
 {
-	int		f, anim;
+	int		items = cl.stats[STAT_ITEMS];
+	int		f;
 
-	if ( (cl.stats[STAT_ITEMS] & (IT_INVISIBILITY | IT_INVULNERABILITY) )
-	== (IT_INVISIBILITY | IT_INVULNERABILITY) )
-	{
-		Sbar_DrawPic (112, 0, sb_face_invis_invuln);
-		return;
-	}
-	if (cl.stats[STAT_ITEMS] & IT_QUAD) 
-	{
-		Sbar_DrawPic (112, 0, sb_face_quad );
-		return;
-	}
-	if (cl.stats[STAT_ITEMS] & IT_INVISIBILITY) 
-	{
-		Sbar_DrawPic (112, 0, sb_face_invis );
-		return;
-	}
-	if (cl.stats[STAT_ITEMS] & IT_INVULNERABILITY) 
-	{
-		Sbar_DrawPic (112, 0, sb_face_invuln);
-		return;
-	}
+	if ((items & (IT_INVISIBILITY | IT_INVULNERABILITY)) == (IT_INVISIBILITY | IT_INVULNERABILITY))
+		return sb_face_invis_invuln;
+	if (items & IT_QUAD)
+		return sb_face_quad;
+	if (items & IT_INVISIBILITY)
+		return sb_face_invis;
+	if (items & IT_INVULNERABILITY)
+		return sb_face_invuln;
 
 	if (cl.stats[STAT_HEALTH] >= 100)
 		f = 4;
 	else
 		f = cl.stats[STAT_HEALTH] / 20;
-	
-	if (cl.time <= cl.faceanimtime)
-		anim = 1;
-	else
-		anim = 0;
-	Sbar_DrawPic (112, 0, sb_faces[f][anim]);
+	if (f < 0)
+		f = 0;
+	return sb_faces[f][cl.time <= cl.faceanimtime];
+}
+
+// the ammo of the weapon in hand, NULL for none
+static qpic_t *Sbar_AmmoPic (void)
+{
+	int		items = cl.stats[STAT_ITEMS];
+
+	if (items & IT_SHELLS)
+		return sb_ammo[0];
+	if (items & IT_NAILS)
+		return sb_ammo[1];
+	if (items & IT_ROCKETS)
+		return sb_ammo[2];
+	if (items & IT_CELLS)
+		return sb_ammo[3];
+	return NULL;
+}
+
+// the armor worn, the disc while invulnerable, NULL for none
+static qpic_t *Sbar_ArmorPic (void)
+{
+	int		items = cl.stats[STAT_ITEMS];
+
+	if (items & IT_INVULNERABILITY)
+		return draw_disc;
+	if (items & IT_ARMOR3)
+		return sb_armor[2];
+	if (items & IT_ARMOR2)
+		return sb_armor[1];
+	if (items & IT_ARMOR1)
+		return sb_armor[0];
+	return NULL;
 }
 
 /*
@@ -718,46 +775,283 @@ Sbar_DrawNormal
 */
 static void Sbar_DrawNormal (void)
 {
-	if (cl_sbar.value || scr_viewsize.value<100)
-	Sbar_DrawPic (0, 0, sb_sbar);
+	qpic_t	*pic;
+
+	if (!Sbar_Headsup ())
+		Sbar_DrawBackdrop (0, 0, sb_sbar);
 
 // armor
 	if (cl.stats[STAT_ITEMS] & IT_INVULNERABILITY)
-	{
 		Sbar_DrawNum (24, 0, 666, 3, 1);
-		Sbar_DrawPic (0, 0, draw_disc);
+	else
+		Sbar_DrawNum (24, 0, cl.stats[STAT_ARMOR], 3, cl.stats[STAT_ARMOR] <= 25);
+	if ((pic = Sbar_ArmorPic ()))
+		Sbar_DrawPic (0, 0, pic);
+
+// face
+	Sbar_DrawPic (112, 0, Sbar_FacePic ());
+
+// health
+	Sbar_DrawNum (136, 0, cl.stats[STAT_HEALTH], 3, cl.stats[STAT_HEALTH] <= 25);
+
+// ammo icon
+	if ((pic = Sbar_AmmoPic ()))
+		Sbar_DrawPic (224, 0, pic);
+	Sbar_DrawNum (248, 0, cl.stats[STAT_AMMO], 3, cl.stats[STAT_AMMO] <= 10);
+}
+
+/*
+===============================================================================
+
+THE MODERN STATUS BARS
+
+ironwail's (hudstyle 1 and 2), over the view on the whole screen: the face and
+the health in the bottom left corner with the armor over them, the ammo in the
+bottom right corner, the weapons up the right side, the ammo counts in the
+middle of the bottom (1) or over the ammo (2), the keys to the right and the
+powerups to the left, the sigils a while after one is taken, and in deathmatch
+the frags down the left side.
+
+===============================================================================
+*/
+
+#define	SBAR2_MARGIN_X	16		// from the screen's edges
+#define	SBAR2_MARGIN_Y	10
+
+// a pic anywhere on the screen, its 255 transparent, clipped
+static void Sbar_ScreenPic (int x, int y, qpic_t *pic)
+{
+	if (pic)
+		Draw_ClippedPic (x, y, pic);
+}
+
+// the big numbers right aligned in digits places, at most 999, as ironwail's
+static void Sbar_ScreenNum (int x, int y, int num, int digits, int color)
+{
+	char	str[12], *ptr;
+	int		l;
+
+	l = Sbar_itoa (num > 999 ? 999 : num, str);
+	ptr = str;
+	if (l > digits)
+		ptr += l - digits;
+	if (l < digits)
+		x += (digits - l) * 24;
+	for ( ; *ptr ; ptr++, x += 24)
+		Sbar_ScreenPic (x, y, sb_nums[color][*ptr == '-' ? STAT_MINUS : *ptr - '0']);
+}
+
+// the small gold numbers, three places, 0 to 999
+static void Sbar_ScreenSmallNum (int x, int y, int num)
+{
+	char	str[12];
+	int		i;
+
+	snprintf (str, sizeof(str), "%3i", num < 0 ? 0 : num > 999 ? 999 : num);
+	for (i = 0 ; i < 3 ; i++)
+		if (str[i] != ' ')
+			Draw_Character (x + i*8, y, 18 + str[i] - '0');
+}
+
+// a stretch of the inventory bar (fractions of it) over w by h, by an alpha
+static void Sbar_InventoryBackdrop (int x, int y, int w, int h, float s, float t, float sw, float th, float alpha)
+{
+	Draw_QCPic ((float)x, (float)y, (float)w, (float)h, sb_ibar, s, t, sw, th, alpha);
+}
+
+// the sigils over the middle of the bottom, a while after one was taken (and
+// with the scores), the new one flashing in
+static void Sbar_ModernSigils (int style)
+{
+	int		items = cl.stats[STAT_ITEMS];
+	int		i, x, y;
+	double	t = 0;
+	float	a;
+
+	if (!(items & (15u<<28)) || cl.stats[STAT_HEALTH] <= 0)
+		return;
+	for (i = 0 ; i < 4 ; i++)
+		if ((items & (1u<<(28+i))) && cl.item_gettime[28+i] > t)
+			t = cl.item_gettime[28+i];
+	if (!sb_showscores && (cl.time - t > 3 || scr_viewsize.value >= 120))
+		return;
+
+	x = sbar_xofs + 160 - 16;
+	y = (int)vid.conheight - SBAR_HEIGHT + (sb_showscores ? -20 : style == 1 ? -8 : -4);
+	Sbar_InventoryBackdrop (x, y, 32, 16, 1 - 32/320.0f, 8/24.0f, 32/320.0f, 16/24.0f, 1);
+	for (i = 0 ; i < 4 ; i++)
+	{
+		if (!(items & (1u<<(28+i))))
+			continue;
+		a = (float)(cl.time - cl.item_gettime[28+i]);
+		if (a < 0)
+			a = 0;
+		a = a >= 1 ? 1 : 1 - floorf (fabsf (fmodf (a * 5, 2) - 1) * 3 + 0.5f) / 3;
+		Draw_QCPic ((float)(x + 8*i), (float)y, (float)sb_sigil[i]->width, (float)sb_sigil[i]->height, sb_sigil[i],
+			0, 0, 1, 1, a);
+	}
+}
+
+// the weapons up the right side, the one in hand further out; the ammo
+// counts; the keys to the right and the powerups to the left
+static void Sbar_ModernInventory (int style)
+{
+	int		w = (int)vid.conwidth, h = (int)vid.conheight;
+	int		items = cl.stats[STAT_ITEMS];
+	int		i, x, y, flashon;
+	bool	active;
+
+	if (scr_viewsize.value < 110)
+	{
+		x = w + 1;
+		y = (h - 148) / 2 + 16*7 / 2;
+		for (i = 0 ; i < 7 ; i++)
+		{
+			if (!(items & (IT_SHOTGUN<<i)))
+				continue;
+			active = cl.stats[STAT_ACTIVEWEAPON] == (IT_SHOTGUN<<i);
+			flashon = (int)((cl.time - cl.item_gettime[i]) * 10);
+			if (flashon < 0)
+				flashon = 0;
+			flashon = flashon >= 10 ? active : flashon % 5 + 2;
+			Sbar_ScreenPic (x - (active ? 24 : 18), y + 24 - 16*i, sb_weapons[flashon][i]);
+		}
+
+		if (style == 2)
+		{	// over the ammo, two by two
+			x = w - SBAR2_MARGIN_X - 52*2;
+			y = h - SBAR2_MARGIN_Y - 60 + 24;
+			for (i = 0 ; i < 2 ; i++)
+				Sbar_InventoryBackdrop (x, y - 10*i, 52*2, 10, i * (2*48/320.0f), 0, 2*48/320.0f, 10/24.0f,
+					scr_sbaralpha.value);
+			for (i = 0 ; i < 4 ; i++)
+				Sbar_ScreenSmallNum (x + 11 + 52 * (i&1), y - 10 * (i>>1), cl.stats[STAT_SHELLS+i]);
+		}
+		else
+		{	// the middle of the bottom, four in a row
+			x = w/2 - 96;
+			y = h - 9;
+			Sbar_InventoryBackdrop (x, y, 192, 10, 0, 0, 192/320.0f, 10/24.0f, scr_sbaralpha.value);
+			for (i = 0 ; i < 4 ; i++)
+				Sbar_ScreenSmallNum (x + 10 + 48*i, y, cl.stats[STAT_SHELLS+i]);
+		}
+	}
+
+	if (scr_viewsize.value < 110 && style == 2)
+	{
+		x = w - SBAR2_MARGIN_X - 16;
+		y = h - SBAR2_MARGIN_Y - 68 - 20 + 24;
 	}
 	else
 	{
-		Sbar_DrawNum (24, 0, cl.stats[STAT_ARMOR], 3
-		, cl.stats[STAT_ARMOR] <= 25);
-		if (cl.stats[STAT_ITEMS] & IT_ARMOR3)
-			Sbar_DrawPic (0, 0, sb_armor[2]);
-		else if (cl.stats[STAT_ITEMS] & IT_ARMOR2)
-			Sbar_DrawPic (0, 0, sb_armor[1]);
-		else if (cl.stats[STAT_ITEMS] & IT_ARMOR1)
-			Sbar_DrawPic (0, 0, sb_armor[0]);
+		x = w - SBAR2_MARGIN_X - 20;
+		y = h - SBAR2_MARGIN_Y - 68 + 24;
 	}
-	
-// face
-	Sbar_DrawFace ();
-	
-// health
-	Sbar_DrawNum (136, 0, cl.stats[STAT_HEALTH], 3
-	, cl.stats[STAT_HEALTH] <= 25);
+	for (i = 0 ; i < 6 ; i++)
+	{
+		if (i == 2)
+		{
+			if (scr_viewsize.value >= 110)
+				break;		// the keys alone in the smaller one
+			x = SBAR2_MARGIN_X + 4;
+			y = h - SBAR2_MARGIN_Y - 66 + 24;
+			if ((items & IT_INVULNERABILITY) || cl.stats[STAT_ARMOR] > 0)
+				y -= 24;	// over the armor
+		}
+		if (items & (1<<(17+i)))
+		{
+			Sbar_ScreenPic (x, y, sb_items[i]);
+			y -= 16;
+		}
+	}
+}
 
-// ammo icon
-	if (cl.stats[STAT_ITEMS] & IT_SHELLS)
-		Sbar_DrawPic (224, 0, sb_ammo[0]);
-	else if (cl.stats[STAT_ITEMS] & IT_NAILS)
-		Sbar_DrawPic (224, 0, sb_ammo[1]);
-	else if (cl.stats[STAT_ITEMS] & IT_ROCKETS)
-		Sbar_DrawPic (224, 0, sb_ammo[2]);
-	else if (cl.stats[STAT_ITEMS] & IT_CELLS)
-		Sbar_DrawPic (224, 0, sb_ammo[3]);
-	
-	Sbar_DrawNum (248, 0, cl.stats[STAT_AMMO], 3
-	, cl.stats[STAT_AMMO] <= 10);
+// deathmatch's frags down the left side, in the players' colors, the player's
+// own bracketed, with their names in the bigger one
+static void Sbar_ModernFrags (void)
+{
+	int				i, k, y, top, bottom;
+	char			num[12];
+	player_info_t	*s;
+
+	Sbar_SortFrags (false);
+	y = (int)vid.conheight / 4 - ((scoreboardlines >> 2) << 3);
+	if (y < 40)
+		y = 40;
+	for (i = 0 ; i < scoreboardlines ; i++, y += 8)
+	{
+		k = fragsort[i];
+		s = &cl.players[k];
+		if (!s->name[0] || s->spectator)
+			continue;
+
+		top = s->topcolor < 0 ? 0 : s->topcolor > 13 ? 13 : s->topcolor;
+		bottom = s->bottomcolor < 0 ? 0 : s->bottomcolor > 13 ? 13 : s->bottomcolor;
+		Draw_Fill (6, y + 1, 28, 4, Sbar_ColorForMap (top));
+		Draw_Fill (6, y + 5, 28, 3, Sbar_ColorForMap (bottom));
+
+		snprintf (num, sizeof(num), "%3i", s->frags);
+		Draw_Character (8, y, num[0]);
+		Draw_Character (16, y, num[1]);
+		Draw_Character (24, y, num[2]);
+		if (k == cl.playernum)
+		{
+			Draw_Character (2, y, 16);
+			Draw_Character (28, y, 17);
+		}
+		if (scr_viewsize.value < 110)
+			Draw_MarkupString (40, y, s->name);
+	}
+}
+
+static void Sbar_DrawModern (int style)
+{
+	int		w = (int)vid.conwidth, h = (int)vid.conheight;
+	bool	invuln = (cl.stats[STAT_ITEMS] & IT_INVULNERABILITY) != 0;
+	int		armor = invuln ? 666 : cl.stats[STAT_ARMOR];
+	int		x, y;
+	qpic_t	*pic;
+
+	if (sb_showscores || cl.stats[STAT_HEALTH] <= 0)
+		Sbar_SoloScoreboard ();
+	else if (scr_viewsize.value < 120)
+	{
+		x = SBAR2_MARGIN_X;
+		y = h - SBAR2_MARGIN_Y - 24;
+		Sbar_ScreenPic (x, y, Sbar_FacePic ());
+		Sbar_ScreenNum (x + 32, y, cl.stats[STAT_HEALTH], 3, cl.stats[STAT_HEALTH] <= 25);
+		if (armor > 0)
+		{
+			Sbar_ScreenNum (x + 32, y - 24, armor, 3, invuln || armor <= 25);
+			Sbar_ScreenPic (x, y - 24, Sbar_ArmorPic ());
+		}
+
+		x = w - SBAR2_MARGIN_X - 24;
+		if ((pic = Sbar_AmmoPic ()))
+		{
+			Sbar_ScreenPic (x, y, pic);
+			x -= 32;
+		}
+		Sbar_ScreenNum (x - 48, y, cl.stats[STAT_AMMO], 3, cl.stats[STAT_AMMO] <= 10);
+
+		Sbar_ModernInventory (style);
+		if (Sbar_Deathmatch ())
+			Sbar_ModernFrags ();
+	}
+	Sbar_ModernSigils (style);
+}
+
+//=============================================================================
+
+// the main line: the scores or the bar; the modern ones' all of theirs
+static void Sbar_DrawMain (int style)
+{
+	if (style == 1 || style == 2)
+		Sbar_DrawModern (style);
+	else if (sb_showscores || cl.stats[STAT_HEALTH] <= 0)
+		Sbar_SoloScoreboard ();
+	else
+		Sbar_DrawNormal ();
 }
 
 /*
@@ -767,17 +1061,23 @@ Sbar_Draw
 */
 void Sbar_Draw (void)
 {
-	bool headsup;
-	char st[512];
-
-	headsup = !(cl_sbar.value || scr_viewsize.value<100);
+	int		style;
+	bool	modern, headsup;
+	char	st[512];
 
 	if (scr.con_current == vid.conheight)
 		return;		// console is full screen
 
+	style = Sbar_HudStyle ();
+	modern = style == 1 || style == 2;
+	headsup = Sbar_Headsup ();
+	// the classic and the modern ones in the middle, as id's and ironwail's
+	// (the classic one at the left in deathmatch); QuakeWorld's at the left
+	sbar_xofs = style == 3 || (!style && Sbar_Deathmatch ()) ? 0 : ((int)vid.conwidth - 320) / 2;
+
 		
 // top line
-	if (scr.sb_lines > 24)
+	if (scr.sb_lines > 24 && !modern)
 	{
 		if (!cl.spectator || Cam_TrackNum () >= 0)
 			Sbar_DrawInventory ();
@@ -794,10 +1094,7 @@ void Sbar_Draw (void)
 				Sbar_DrawString (160-7*8,4, "SPECTATOR MODE");
 				Sbar_DrawString(160-14*8+4, 12, "Press [ATTACK] for AutoCamera");
 			} else {
-				if (sb_showscores || cl.stats[STAT_HEALTH] <= 0)
-					Sbar_SoloScoreboard ();
-				else
-					Sbar_DrawNormal ();
+				Sbar_DrawMain (style);
 
 //					Sbar_DrawString (160-14*8+4,4, "SPECTATOR MODE - TRACK CAMERA");
 				if (CL_MVDFlying ())
@@ -808,10 +1105,8 @@ void Sbar_Draw (void)
 						cl.players[Cam_TrackNum ()].name);
 				Sbar_DrawString(0, -8, st);
 			}
-		} else if (sb_showscores || cl.stats[STAT_HEALTH] <= 0)
-			Sbar_SoloScoreboard ();
-		else
-			Sbar_DrawNormal ();
+		} else
+			Sbar_DrawMain (style);
 	}
 
 // main screen deathmatch rankings
@@ -830,7 +1125,7 @@ void Sbar_Draw (void)
 		Sbar_TeamOverlay();
 
 
-	if (scr.sb_lines > 0)
+	if (scr.sb_lines > 0 && !modern)
 		Sbar_MiniDeathmatchOverlay ();
 }
 

@@ -2322,6 +2322,11 @@ bool CSQC_DrawScores (void)
 	return CSQC_DrawSimple ("CSQC_DrawScores");
 }
 
+bool CSQC_DrawsHud (void)
+{
+	return csqc.qc.vm && !CSQC_Entry ("CSQC_UpdateView") && CSQC_Entry ("CSQC_DrawHud");
+}
+
 // the VM and everything of it gone
 static void CSQC_Destroy (void)
 {

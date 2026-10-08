@@ -120,8 +120,11 @@ OPTIONS MENU
 */
 
 // a row: an action (by its place), a slider over a cvar from its left end's
-// value to its right end's, a step right, or a switch
-enum { OPT_ACTION, OPT_SLIDER, OPT_SWITCH, OPT_ALWAYSRUN, OPT_INVERTMOUSE };
+// value to its right end's, a step right, a switch, or the status bar's layout
+// (hudstyle), ironwail's menu's names for them
+enum { OPT_ACTION, OPT_SLIDER, OPT_SWITCH, OPT_ALWAYSRUN, OPT_INVERTMOUSE, OPT_HUDSTYLE };
+#define	HUDSTYLES	4
+string	hudstyles[HUDSTYLES] = {"classic", "modern 1", "modern 2", "quakeworld"};
 
 typedef struct
 {
@@ -147,7 +150,7 @@ option_t	options[OPTIONS_ITEMS] = {
 	{"Invert Mouse", OPT_INVERTMOUSE},
 	{"Lookspring", OPT_SWITCH, "lookspring"},
 	{"Lookstrafe", OPT_SWITCH, "lookstrafe"},
-	{"Use old status bar", OPT_SWITCH, "cl_sbar"},
+	{"HUD style", OPT_HUDSTYLE, "hudstyle"},
 	{"HUD on left side", OPT_SWITCH, "cl_hudswap"},
 	{"Mouse Look", OPT_SWITCH, "freelook"},
 	{"Use Mouse", OPT_SWITCH, "_windowed_mouse"}
@@ -175,6 +178,9 @@ void(float dir) M_AdjustSliders =
 		break;
 	case OPT_INVERTMOUSE:
 		M_SetValue ("m_pitch", -cvar ("m_pitch"));
+		break;
+	case OPT_HUDSTYLE:
+		M_SetValue (o.cvar, (bound (0, floor (cvar (o.cvar)), HUDSTYLES - 1) + HUDSTYLES + dir) % HUDSTYLES);
 		break;
 	}
 };
@@ -206,6 +212,9 @@ void() M_Options_Draw =
 			break;
 		case OPT_INVERTMOUSE:
 			M_DrawCheckbox (220, y, cvar ("m_pitch") < 0);
+			break;
+		case OPT_HUDSTYLE:
+			M_Print (220, y, hudstyles[bound (0, floor (cvar (o.cvar)), HUDSTYLES - 1)]);
 			break;
 		}
 	}
