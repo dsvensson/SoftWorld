@@ -487,6 +487,7 @@ typedef enum
 void SV_SpawnServer (char *server, spawnparms_t parms);
 bool SV_NQPhysics (const client_t *cl);	// it moves as NetQuake's players do (sv_phys.c)
 void SV_FlushSignon (void);
+void SV_SignonRoom (int size);		// the signon with room for size more: the next buffer if need be
 
 // where QuakeC's Write builtins write
 #define	MSG_BROADCAST	0		// unreliable to all
@@ -535,6 +536,9 @@ void SV_SendClientMessages (void);
 void SV_Multicast (vec3_t origin, int to);
 // to the clients with the FTE2 extensions fteext2 alone (none: QTV too)
 void SV_MulticastExt (vec3_t origin, int to, unsigned fteext2);
+// the broadcasts (sv.reliable_datagram and sv.datagram) to the clients, now:
+// each frame, and when another message wouldn't fit (FTE's)
+void SV_FlushBroadcasts (void);
 void SV_StartSound (edict_t *entity, int channel, const char *sample, int volume,
     float attenuation);
 void SV_ClientPrintf (client_t *cl, int level, char *fmt, ...);

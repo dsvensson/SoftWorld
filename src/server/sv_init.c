@@ -144,6 +144,15 @@ staticsound_t *SV_NewStaticSound (void)
 	return s;
 }
 
+void SV_SignonRoom (int size)
+{
+	if (sv.signon.cursize + size <= sv.signon.maxsize)
+		return;
+
+	sv.signon_buffer_size[sv.num_signon_buffers-1] = sv.signon.cursize;
+	SV_NewSignonBuffer ();
+}
+
 /*
 ================
 SV_FlushSignon
@@ -587,6 +596,12 @@ void SV_SpawnServer (char *server, spawnparms_t parms)
 	// create a baseline for more efficient communications
 	SV_CreateBaseline ();
 	sv.signon_buffer_size[sv.num_signon_buffers-1] = sv.signon.cursize;
+
+	// what the spawn functions broadcast is for no one: the clients get the
+	// level whole at its serverdata (Copper's monsters send their count to
+	// all as each spawns)
+	SZ_Clear (&sv.reliable_datagram);
+	SZ_Clear (&sv.datagram);
 
 	Info_SetValueForKey (svs.info, "map", sv.name, MAX_SERVERINFO_STRING, SV_InfoCharset ());
 	SV_MVDNewLevel ();

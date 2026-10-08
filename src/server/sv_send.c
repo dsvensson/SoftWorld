@@ -723,6 +723,51 @@ static bool SV_SendClientDatagram (client_t *client)
 
 /*
 =======================
+SV_FlushBroadcasts
+
+The broadcasts to the clients and QTV: each frame, and when another
+message wouldn't fit in them (FTE's). A level that is loading has no one to
+send them to: its clients get it whole at its serverdata, and what piled up
+for them before is dropped then (SV_New_f).
+=======================
+*/
+void SV_FlushBroadcasts (void)
+{
+	client_t	*client;
+	int			j;
+
+	if (sv.state == ss_loading)
+	{
+		SZ_Clear (&sv.reliable_datagram);
+		SZ_Clear (&sv.datagram);
+		return;
+	}
+
+	// append the broadcast messages to each client messages
+	for (j=0, client = svs.clients ; j<MAX_CLIENTS ; j++, client++)
+	{
+		if (client->state < cs_connected)
+			continue;	// reliables go to all connected or spawned
+
+		ClientReliableCheckBlock(client, sv.reliable_datagram.cursize);
+		ClientReliableWrite_SZ(client, sv.reliable_datagram.data, sv.reliable_datagram.cursize);
+
+		if (client->state != cs_spawned)
+			continue;	// datagrams only go to spawned
+		SZ_Write (&client->datagram
+			, sv.datagram.data
+			, sv.datagram.cursize);
+	}
+
+	// and to QTV
+	SV_MVDAll (sv.reliable_datagram.data, sv.reliable_datagram.cursize);
+	SV_MVDAll (sv.datagram.data, sv.datagram.cursize);
+	SZ_Clear (&sv.reliable_datagram);
+	SZ_Clear (&sv.datagram);
+}
+
+/*
+=======================
 SV_UpdateToReliableMessages
 =======================
 */
@@ -798,27 +843,7 @@ static void SV_UpdateToReliableMessages (void)
 	if (sv.datagram.overflowed)
 		SZ_Clear (&sv.datagram);
 
-	// append the broadcast messages to each client messages
-	for (j=0, client = svs.clients ; j<MAX_CLIENTS ; j++, client++)
-	{
-		if (client->state < cs_connected)
-			continue;	// reliables go to all connected or spawned
-
-		ClientReliableCheckBlock(client, sv.reliable_datagram.cursize);
-		ClientReliableWrite_SZ(client, sv.reliable_datagram.data, sv.reliable_datagram.cursize);
-
-		if (client->state != cs_spawned)
-			continue;	// datagrams only go to spawned
-		SZ_Write (&client->datagram
-			, sv.datagram.data
-			, sv.datagram.cursize);
-	}
-
-	// and to QTV
-	SV_MVDAll (sv.reliable_datagram.data, sv.reliable_datagram.cursize);
-	SV_MVDAll (sv.datagram.data, sv.datagram.cursize);
-	SZ_Clear (&sv.reliable_datagram);
-	SZ_Clear (&sv.datagram);
+	SV_FlushBroadcasts ();
 }
 
 

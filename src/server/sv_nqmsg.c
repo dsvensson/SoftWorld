@@ -279,6 +279,25 @@ static void NQ_ForClient (client_t *cl, int svc, const nqstream_t *s)
 		ClientReliableWrite_Angle (cl, ent->v.angles[i]);
 }
 
+// A message to a buffer all share, with room made for it, as FTE's server
+// makes it: the broadcasts go out at once when it wouldn't fit
+// (SV_FlushBroadcasts), the signon goes on in its next buffer. Copper's
+// monsters send their count to all as each spawns, a level of them at once.
+static void NQ_SendAll (const nqstream_t *s, int count, sizebuf_t *dest)
+{
+	byte		data[MAX_MSGLEN];
+	sizebuf_t	msg = {.data = data, .maxsize = sizeof(data), .allowoverflow = true,
+		.floatcoords = dest->floatcoords};
+
+	if (!NQ_Translate (s, count, &msg) || msg.overflowed)
+		return;
+	if (dest == &sv.signon)
+		SV_SignonRoom (msg.cursize);
+	else if (dest->cursize + msg.cursize > dest->maxsize)
+		SV_FlushBroadcasts ();
+	SZ_Write (dest, msg.data, msg.cursize);
+}
+
 // the whole message at the start of the stream for dest, to where it goes
 static void NQ_Send (int dest, const nqstream_t *s, int count)
 {
@@ -303,15 +322,15 @@ static void NQ_Send (int dest, const nqstream_t *s, int count)
 		NQ_SendOne (s->one, s, count);
 		break;
 	case MSG_ALL:
-		NQ_Translate (s, count, &sv.reliable_datagram);
+		NQ_SendAll (s, count, &sv.reliable_datagram);
 		break;
 	case MSG_INIT:
-		NQ_Translate (s, count, &sv.signon);
+		NQ_SendAll (s, count, &sv.signon);
 		break;
 	case MSG_BROADCAST:
 		if (svc != svc_temp_entity)
 		{
-			NQ_Translate (s, count, &sv.datagram);
+			NQ_SendAll (s, count, &sv.datagram);
 			break;
 		}
 		to = NQ_TempEntityMulticast (s, origin);

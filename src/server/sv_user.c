@@ -92,8 +92,10 @@ static void SV_New_f (void)
 
 //NOTE:  This doesn't go through ClientReliableWrite since it's before the user
 //spawns.  These functions are written to not overflow
+	// what was broadcast before the client has the level is for nobody:
+	// NetQuake's progs broadcast as their monsters set up in the first frames
 	if (host_client->num_backbuf) {
-		Con_Printf("WARNING %s: [SV_New] Back buffered (%d0, clearing", host_client->name, host_client->netchan.message.cursize); 
+		Con_DPrintf("WARNING %s: [SV_New] Back buffered (%d), clearing\n", host_client->name, host_client->netchan.message.cursize);
 		host_client->num_backbuf = 0;
 		SZ_Clear(&host_client->netchan.message);
 	}
