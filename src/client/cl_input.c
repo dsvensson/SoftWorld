@@ -722,10 +722,18 @@ static bool IN_OwnView (void)
 	return true;
 }
 
-// captured only while the view is the viewer's; else the mouse is let go
+// captured only while the view is the viewer's, or the menu asks for it; else
+// the mouse is let go
 bool IN_WantsMouse (void)
 {
-	return cls.key_dest == key_game && IN_OwnView ();
+	return (cls.key_dest == key_game && IN_OwnView ()) || M_GrabsMouse ();
+}
+
+void IN_TakeMouseMotion (int *dx, int *dy)
+{
+	*dx = in_mouse_dx;
+	*dy = in_mouse_dy;
+	in_mouse_dx = in_mouse_dy = 0;
 }
 
 // the menu's, and while watching someone else's view: attack takes the camera
@@ -760,6 +768,8 @@ static void IN_MouseMove (usercmd_t *cmd)
 	int		mx, my;
 	float	mouse_x, mouse_y;
 
+	if (M_GrabsMouse ())
+		return;		// the menu's, which M_Draw takes
 	mx = in_mouse_dx;
 	my = in_mouse_dy;
 	in_mouse_dx = in_mouse_dy = 0;

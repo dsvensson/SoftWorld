@@ -33,6 +33,7 @@ void M_Keydown (int key, int character);	// the key, and the character it types 
 void M_Keyup (int key);
 void M_ToggleMenu_f (void);	// Escape and togglemenu
 bool M_QuitPrompt (void);	// quit asks the menu: false if it can't
+bool M_GrabsMouse (void);	// the menu's QuakeC has the mouse captured, its motion its own
 
 //
 // the server browser's list for the menu (cl_slist.c)

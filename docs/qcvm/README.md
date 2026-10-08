@@ -177,14 +177,24 @@ It is the checklist for the rest of CSQC.
 - **Entry points:** `m_init` and `m_shutdown`, `m_draw` each frame the menu has the keys
   (FTE's `vector` of the layout's size, or DarkPlaces' two floats), `m_keydown` and `m_keyup`
   with FTE's key codes and the character typed, `m_toggle` for Escape and `togglemenu`, and
-  `m_consolecommand` for the commands it registers. `time` is the host's realtime.
+  `m_consolecommand` for the commands it registers. `Menu_InputEvent` gets the keys first (an
+  event it takes doesn't reach `m_keydown`), and the mouse's motion while it has the mouse
+  captured (`setcursormode`). `time` is the host's realtime. The menu isn't entered again from
+  inside its QuakeC (a print it makes draws the screen at once while the console is up).
 - **Builtins:** the standard library's, numbered for menus, and the client's: `precache_pic`,
   `iscachedpic`, `drawpic`, `drawcharacter`, `drawrawstring`, `drawstring` (the colors written
   in it, ezQuake's `&cRGB` and FTE's `^`), `stringwidth`, `drawfill`, `drawgetimagesize`,
-  `r_uploadimage` (RGBA), `r_readimage` (RGBA, also `gfx/conchars` and `gfx/palette.lmp` as
-  16x16), `localsound`, `setkeydest`, `getkeydest`, `keynumtostring`, `stringtokeynum`,
-  `findkeysforcommand`, `getkeybind`, `setkeybind`, `clientstate` (2 only in a game),
-  `clipboard_set` (the clipboard, cliptype 0) and SoftWorld's `isfullscreen`. Its 2D is drawn
+  `r_uploadimage` (FTE's formats 1, RGBA, and 15 and 16, a byte a pixel and a palette after),
+  `r_readimage` (RGBA, also `gfx/conchars` and `gfx/palette.lmp` as 16x16), `shaderforname`
+  (the name draws the image its shader's first stage maps), `localsound`, `queueaudio` and
+  `getqueuedaudiotime` (sound QuakeC makes, kept whole and counted in its own frames),
+  `setkeydest`, `getkeydest`, `setcursormode`, `getcursormode`, `keynumtostring`,
+  `stringtokeynum`, `findkeysforcommand`, `getkeybind`, `setkeybind`, `clientstate` (2 only in
+  a game), `clipboard_set` (the clipboard, cliptype 0) and SoftWorld's `isfullscreen`. Its files
+  (`fopen` and the rest) are FTE's sandbox in the game directory, and `addprogs` loads further
+  progs from it (a launcher's games). Its heap is `pr_menu_memsize` (1g, address space committed
+  as it is used; 16m on the web and 32-bit builds). Uploaded images are drawn at the size asked.
+  So FTE's guest engines run in it: Spike's qcquake and qcquake2. Its 2D is drawn
   1:1 in the layout's pixels, 8 by 8 a character: text takes its rgb as a tint of four bits a
   channel and an alpha below 1 as half transparent, a fill its rgb and alpha as they are,
   pictures neither. It is clipped to the screen, and what it asks for never stops the program.

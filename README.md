@@ -450,7 +450,9 @@ fade, made again when the layout's width changes), FTE's hostcache builtins over
 browser's list, and SoftWorld's own builtins (`isfullscreen`, the list's sources). A `menu.dat` in the game
 directory runs instead; one that fails gives way to the built-in one. `menu_restart` loads it
 again, `menu_builtins` lists the builtins it calls that the client lacks, and `quit` asks
-through it (`quit force` doesn't).
+through it (`quit force` doesn't). It has what FTE's guest engines need (files, sound it makes
+itself, paletted images, the mouse captured for it, `addprogs`, a heap of `pr_menu_memsize`), so
+Spike's qcquake and qcquake2, Quake and Quake 2 compiled to menu QuakeC, run in it.
 
 ## License
 

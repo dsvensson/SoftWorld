@@ -29,3 +29,6 @@ void IN_Move (usercmd_t *cmd);
 
 // forgets pending mouse motion and stick positions
 void IN_ClearStates (void);
+
+// the mouse's motion since it was last taken, for a menu that has it captured
+void IN_TakeMouseMotion (int *dx, int *dy);

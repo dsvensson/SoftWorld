@@ -40,8 +40,9 @@ static struct
 	bool			gamedirfailed;	// its menu.dat failed: the built-in one, until the gamedir changes
 
 	// the entry points (0 for those the progs lacks)
-	qc_func_t		init, shutdown, draw, keydown, keyup, toggle, consolecommand;
+	qc_func_t		init, shutdown, draw, keydown, keyup, toggle, consolecommand, inputevent;
 	bool			drawfloats;		// DP's m_draw(float width, float height), not FTE's vector
+	bool			grab;			// setcursormode(false): the mouse captured, its motion the menu's
 	double			callframe;		// host.realtime of the frame the calls in progress began in
 } menu;
 
@@ -145,6 +146,38 @@ static void M_Check (void)
 		M_Call (menu.toggle, 1, &arg, NULL);
 }
 
+// FTE's Menu_InputEvent: an event (0 a key down, 1 up, 2 mouse motion) the
+// menu's QuakeC took, if it has the entry point
+static bool M_InputEvent (int type, float a, float b)
+{
+	qc_value_t	args[4], ret;
+	qc_word_t	w;
+
+	if (!menu.inputevent)
+		return false;
+	args[0] = QC_ValFloat ((float)type);
+	args[1] = QC_ValFloat (a);
+	args[2] = QC_ValFloat (b);
+	args[3] = QC_ValFloat (0);		// the device
+	if (!M_Call (menu.inputevent, 4, args, &ret))
+		return true;		// failed: the menu is gone
+	w.u = ret.w[0];
+	return w.f != 0;
+}
+
+/*
+================
+M_GrabsMouse
+
+The menu's QuakeC asked for the mouse (setcursormode false): it is captured,
+and its motion goes to Menu_InputEvent
+================
+*/
+bool M_GrabsMouse (void)
+{
+	return menu.qc.vm && menu.grab && menu.inputevent && cls.key_dest == key_menu;
+}
+
 // a command the menu's QuakeC registered: its whole line to m_consolecommand
 static void M_Command (clqc_t *qc, const char *line)
 {
@@ -170,6 +203,16 @@ void M_Draw (void)
 	if (!menu.qc.vm || cls.key_dest != key_menu || !menu.draw)
 		return;
 	SB_Adopt ();		// the server list, as the keys after this draw find it
+	if (M_GrabsMouse ())
+	{
+		int		dx, dy;
+
+		IN_TakeMouseMotion (&dx, &dy);
+		if (dx || dy)
+			M_InputEvent (2, (float)dx, (float)dy);
+		if (!menu.qc.vm)
+			return;
+	}
 	QC_RunThreads (menu.qc.vm, NULL);
 	Draw_ResetClipArea ();
 	if (menu.drawfloats)
@@ -203,8 +246,12 @@ void M_Keydown (int key, int character)
 	M_Check ();
 	if (scan < 0)
 		return;
+	if (character < 32 || character >= 127)
+		character = 0;
+	if (M_InputEvent (0, (float)scan, (float)character))
+		return;
 	args[0] = QC_ValFloat ((float)scan);
-	args[1] = QC_ValFloat (character >= 32 && character < 127 ? (float)character : 0);
+	args[1] = QC_ValFloat ((float)character);
 	M_Call (menu.keydown, 2, args, NULL);
 }
 
@@ -214,6 +261,8 @@ void M_Keyup (int key)
 	int			scan = Key_ToFTE (key);
 
 	if (scan < 0)
+		return;
+	if (M_InputEvent (1, (float)scan, 0))
 		return;
 	args[0] = QC_ValFloat ((float)scan);
 	args[1] = QC_ValFloat (0);
@@ -435,6 +484,25 @@ static bool M_SetKeyDest (qcvm_t *vm)
 	return true;
 }
 
+// void setcursormode(float usecursor, optional string image, optional vector hotspot,
+// optional float scale): false captures the mouse for Menu_InputEvent's motion; the
+// pointer's image isn't taken
+static bool M_SetCursorMode (qcvm_t *vm)
+{
+	menu.grab = QC_ArgFloat (vm, 0) == 0;
+	return true;
+}
+
+// float getcursormode(optional float effective): whether the pointer is the menu's
+// (not captured); effective: whether the mouse is captured for it now
+static bool M_GetCursorMode (qcvm_t *vm)
+{
+	bool	effective = QC_Argc (vm) > 0 && QC_ArgFloat (vm, 0) != 0;
+
+	QC_ReturnFloat (vm, (effective ? M_GrabsMouse () : menu.grab) ? 0.0f : 1.0f);
+	return true;
+}
+
 // float getkeydest(): 2 the menu, else 0
 static bool M_GetKeyDest (qcvm_t *vm)
 {
@@ -554,6 +622,8 @@ static const struct
 	{"getqueuedaudiotime", M_GetQueuedAudioTime},
 	{"setkeydest", M_SetKeyDest},
 	{"getkeydest", M_GetKeyDest},
+	{"setcursormode", M_SetCursorMode},
+	{"getcursormode", M_GetCursorMode},
 	{"keynumtostring", M_KeynumToString},
 	{"stringtokeynum", M_StringToKeynum},
 	{"findkeysforcommand", M_FindKeysForCommand},
@@ -580,6 +650,8 @@ static void M_Destroy (void)
 	menu.qc.vm = NULL;
 	menu.qc.calls = 0;
 	menu.init = menu.shutdown = menu.draw = menu.keydown = menu.keyup = menu.toggle = menu.consolecommand = 0;
+	menu.inputevent = 0;
+	menu.grab = false;
 }
 
 // the progs: the game directory's menu.dat unless it failed, else the built-in one
@@ -672,6 +744,7 @@ static void M_Load (void)
 			menu.keyup = QC_FindFunction (menu.qc.vm, "m_keyup");
 			menu.toggle = QC_FindFunction (menu.qc.vm, "m_toggle");
 			menu.consolecommand = QC_FindFunction (menu.qc.vm, "m_consolecommand");
+			menu.inputevent = QC_FindFunction (menu.qc.vm, "Menu_InputEvent");
 			if (M_Call (menu.init, 0, NULL, NULL))
 				return;
 		}
