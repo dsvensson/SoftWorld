@@ -106,6 +106,10 @@ static cvar_t		scr_showpause = {.name = "showpause", .string = "1",
 static cvar_t		scr_printspeed = {.name = "scr_printspeed", .string = "8",
 	.description = "How fast centered text types out in an intermission, such as the finale's, "
 		"in characters a second."};
+// what QuakeC's status bars read for theirs (QBJ3's), as QuakeSpasm's and FTE's
+static cvar_t		scr_sbaralpha = {.name = "scr_sbaralpha", .string = "0.75", .archive = true,
+	.description = "How opaque the status bar a game's client-side QuakeC draws is, 0 to 1, as QuakeSpasm and FTE "
+		"have it; the client's own status bar is always opaque."};
 static cvar_t		scr_allowsnap = {.name = "scr_allowsnap", .string = "1",
 	.description = "Lets the server ask for a screenshot of the client (snap).",
 	.values = (const cvar_value_t[]){{"0", "Refused, telling the server"}, {"1", "Sent when asked"}, {0}}};
@@ -443,6 +447,7 @@ void SCR_Init (void)
 	Cvar_RegisterVariable (&scr_fov);
 	Cvar_RegisterVariable (&r_viewmodel_fov);
 	Cvar_RegisterVariable (&scr_viewsize);
+	Cvar_RegisterVariable (&scr_sbaralpha);
 	Cvar_RegisterVariable (&scr_conspeed);
 	Cvar_RegisterVariable (&scr_showram);
 	Cvar_RegisterVariable (&scr_showturtle);
