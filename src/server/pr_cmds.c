@@ -217,6 +217,13 @@ static bool PF_setmodel (qcvm_t *vm)
 		VectorSubtract (mod->maxs, mod->mins, e->v.size);
 		SV_LinkEdict (e, false);
 	}
+	else if (pr.nq && sv.models[i])
+	{	// NetQuake's: a brush model's box (QuakeWorld's progs size their own)
+		VectorCopy (sv.models[i]->mins, e->v.mins);
+		VectorCopy (sv.models[i]->maxs, e->v.maxs);
+		VectorSubtract (e->v.maxs, e->v.mins, e->v.size);
+		SV_LinkEdict (e, false);
+	}
 	else if (pr.nq)
 	{	// no model: no box
 		for (i=0 ; i<3 ; i++)
@@ -673,6 +680,7 @@ static bool PF_precache_model (qcvm_t *vm)
 		if (!sv.model_precache[i])
 		{
 			sv.model_precache[i] = SV_LevelString (s);
+			SV_LoadBrushModel (i);
 			return true;
 		}
 		if (!strcmp(sv.model_precache[i], s))

@@ -77,7 +77,7 @@ typedef struct
 	char		*model_precache[MAX_MODELS];	// NULL terminated
 	char		*sound_precache[MAX_SOUNDS];	// NULL terminated
 	char		*lightstyles[MAX_LIGHTSTYLES];
-	cmodel_t	*models[MAX_MODELS];	// the world and its inline models
+	cmodel_t	*models[MAX_MODELS];	// the world and its inline models, and .bsp models (SV_LoadBrushModel)
 
 	// the stats QuakeC adds after id's (FTE's clientstat and globalstat), by
 	// number: a field of each client's entity, or a global
@@ -487,6 +487,8 @@ typedef enum
 void SV_SpawnServer (char *server, spawnparms_t parms);
 bool SV_NQPhysics (const client_t *cl);	// it moves as NetQuake's players do (sv_phys.c)
 void SV_FlushSignon (void);
+void SV_LoadBrushModel (int index);	// a precached .bsp's hulls, as sv.models[index]
+void SV_FreeBrushModels (void);
 void SV_SignonRoom (int size);		// the signon with room for size more: the next buffer if need be
 
 // where QuakeC's Write builtins write

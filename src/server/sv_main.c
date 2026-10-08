@@ -259,6 +259,7 @@ void SV_Kill (void)
 	if (sv.map)
 		CM_FreeMap (sv.map);
 	sv.map = NULL;
+	SV_FreeBrushModels ();
 	if (!host.dedicated)
 		NET_CloseSocket (NS_SERVER);
 	Con_Printf ("Server stopped.\n");

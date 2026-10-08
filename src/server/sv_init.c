@@ -155,6 +155,39 @@ void SV_SignonRoom (int size)
 
 /*
 ================
+SV_LoadBrushModel
+
+A precached brush model of a file of its own (Copper's exploding boxes'
+maps/b_explob.bsp): its hulls, for what is solid with it, as NetQuake's and
+FTE's servers load them. The level's are freed with it.
+================
+*/
+static cmap_t	*sv_brushmodels[MAX_MODELS];
+static int		sv_numbrushmodels;
+
+void SV_LoadBrushModel (int index)
+{
+	const char	*name = sv.model_precache[index];
+	size_t		len = strlen (name);
+	cmap_t		*map;
+
+	if (len < 4 || Q_strcasecmp (name + len - 4, ".bsp") || sv_numbrushmodels == MAX_MODELS)
+		return;
+	map = CM_LoadMap (name, NULL, NULL);
+	if (!map)
+		return;
+	sv_brushmodels[sv_numbrushmodels++] = map;
+	sv.models[index] = CM_WorldModel (map);
+}
+
+void SV_FreeBrushModels (void)
+{
+	while (sv_numbrushmodels)
+		CM_FreeMap (sv_brushmodels[--sv_numbrushmodels]);
+}
+
+/*
+================
 SV_FlushSignon
 
 Moves to the next signon buffer if needed
@@ -507,6 +540,7 @@ void SV_SpawnServer (char *server, spawnparms_t parms)
 	sv.map = CM_LoadMap (sv.modelname, &sv.map_checksum, &sv.map_checksum2);
 	if (oldmap)
 		CM_FreeMap (oldmap);
+	SV_FreeBrushModels ();		// the old level's
 	if (!sv.map)
 		SV_Error ("Couldn't load %s", sv.modelname);
 	sv.worldmodel = CM_WorldModel (sv.map);
