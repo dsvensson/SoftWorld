@@ -719,7 +719,7 @@ static void R_AliasSetupSkin (void)
 	r_affinetridesc.pskindesc = pskindesc;
 	r_affinetridesc.pskin = (void *)((byte *)paliashdr + pskindesc->skin);
 	r_affinetridesc.skinwidth = a_skinwidth;
-	r_affinetridesc.seamfixupX16 =  (a_skinwidth >> 1) << 16;
+	r_affinetridesc.seamfixupX16 = a_skinwidth << 15;	// half the skin, an odd one too
 	r_affinetridesc.skinheight = pmdl->skinheight;
 
 	if (currententity->skin)

@@ -1597,11 +1597,10 @@ static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 		pmodel->eyeposition[i] = LittleFloat (pinmodel->eyeposition[i]);
 	}
 
+	// any skin width: id's needed four for its assembly (QuakeSpasm has dropped
+	// the check too; Copper's null models are 2 by 1)
 	numskins = pmodel->numskins;
 	numframes = pmodel->numframes;
-
-	if (pmodel->skinwidth & 0x03)
-		Sys_Error ("Mod_LoadAliasModel: skinwidth not multiple of 4");
 
 	pheader->model = (int)((byte *)pmodel - (byte *)pheader);
 
