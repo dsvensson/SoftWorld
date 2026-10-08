@@ -346,7 +346,6 @@ Internal use only
 */
 static void SCR_CalcRefdef (void)
 {
-	vrect_t		pixels;
 	vrect_t		vrect;
 	float		size;
 
@@ -369,7 +368,6 @@ static void SCR_CalcRefdef (void)
 		Cvar_Set ("fov","170");
 
 	r_refdef.fov_x = SCR_WidenFov (scr_fov.value);
-	r_refdef.fov_y = CalcFov (r_refdef.fov_x, (float)r_refdef.vrect.width, (float)r_refdef.vrect.height);
 	r_refdef.viewmodel_fov_x = SCR_WidenFov (r_viewmodel_fov.value >= 10 && r_viewmodel_fov.value <= 170 ?
 		r_viewmodel_fov.value : scr_fov.value);
 
@@ -401,11 +399,49 @@ static void SCR_CalcRefdef (void)
 		scr.con_current = (float)vid.conheight;
 
 // notify the refresh of the change
-	pixels = scr.vrect;
-	pixels.x *= vid.scale;
-	pixels.y *= vid.scale;
-	pixels.width *= vid.scale;
-	pixels.height *= vid.scale;
+	SCR_ViewRect (NULL);
+}
+
+/*
+=================
+SCR_ViewRect
+
+The renderer's view: rect, in the layout's units, within the screen and
+rounded as SCR_SetVrect rounds (CSQC's VF_MIN and VF_SIZE); NULL for the
+screen's own, scr.vrect
+=================
+*/
+void SCR_ViewRect (const vrect_t *rect)
+{
+	vrect_t	r = rect ? *rect : scr.vrect;
+	vrect_t	pixels;
+
+	if (r.x < 0)
+	{
+		r.width += r.x;
+		r.x = 0;
+	}
+	if (r.y < 0)
+	{
+		r.height += r.y;
+		r.y = 0;
+	}
+	if (r.x > (int)vid.conwidth - 8)
+		r.x = (int)vid.conwidth - 8;
+	if (r.y > (int)vid.conheight - 2)
+		r.y = (int)vid.conheight - 2;
+	if (r.width > (int)vid.conwidth - r.x)
+		r.width = (int)vid.conwidth - r.x;
+	if (r.height > (int)vid.conheight - r.y)
+		r.height = (int)vid.conheight - r.y;
+	r.width = r.width < 8 ? 8 : r.width & ~7;
+	r.height = r.height < 2 ? 2 : r.height & ~1;
+
+	pixels.x = r.x * (int)vid.scale;
+	pixels.y = r.y * (int)vid.scale;
+	pixels.width = r.width * (int)vid.scale;
+	pixels.height = r.height * (int)vid.scale;
+	r_refdef.fov_y = CalcFov (r_refdef.fov_x, (float)pixels.width, (float)pixels.height);
 	R_ViewChanged (&pixels, vid.aspect);
 }
 
@@ -1143,7 +1179,9 @@ void SCR_UpdateScreen (void)
 // do 3D refresh drawing, and then update the screen
 //
 
-	SCR_TileClear ();
+	// a CSQC that draws the view has the screen (VF_MIN, VF_SIZE)
+	if (cls.state != ca_active || !CSQC_DrawsView ())
+		SCR_TileClear ();
 
 
 

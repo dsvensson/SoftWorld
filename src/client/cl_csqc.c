@@ -93,6 +93,7 @@ static struct
 	entity_t		engine[MAX_VISEDICTS];
 	int				numengine;
 	vec3_t			vieworg, viewangles;
+	vrect_t			view;				// VF_MIN and VF_SIZE, the layout's units (scr.vrect's)
 	bool			enginegun;			// the client draws its gun
 	bool			sbar, crosshair;	// VF_DRAWENGINESBAR, VF_DRAWCROSSHAIR
 	bool			drewsbar;			// as renderscene had it
@@ -944,6 +945,7 @@ static bool CS_ClearScene (qcvm_t *vm)
 	csqc.numlights = 0;
 	VectorCopy (csqc.vieworg, r_refdef.vieworg);
 	VectorCopy (csqc.viewangles, r_refdef.viewangles);
+	csqc.view = scr.vrect;
 	r_scene.viewent = &cl.viewent;
 	r_scene.drawviewmodel = false;
 	csqc.sbar = false;
@@ -1020,14 +1022,17 @@ static bool CS_AddEntityBuiltin (qcvm_t *vm)
 =================
 CS_RenderScene
 
-void renderscene(): the view, with CSQC's lights in the client's free slots
-for it; the status bar and crosshair as VF_DRAWENGINESBAR and
-VF_DRAWCROSSHAIR ask (the status bar after CSQC_UpdateView)
+void renderscene(): the view, in the rectangle VF_MIN and VF_SIZE give, with
+CSQC's lights in the client's free slots for it; the status bar and crosshair
+as VF_DRAWENGINESBAR and VF_DRAWCROSSHAIR ask (the status bar after
+CSQC_UpdateView)
 =================
 */
 static bool CS_RenderScene (qcvm_t *vm)
 {
 	int		slots[MAX_DLIGHTS], numslots = 0, i, j;
+	float	fov_y = r_refdef.fov_y;
+	bool	moved;
 
 	(void)vm;
 	if (!csqc.drawing)
@@ -1040,7 +1045,15 @@ static bool CS_RenderScene (qcvm_t *vm)
 			slots[numslots++] = j;
 		}
 
+	moved = memcmp (&csqc.view, &scr.vrect, sizeof(csqc.view)) != 0;
+	if (moved)
+		SCR_ViewRect (&csqc.view);
 	V_DrawView (csqc.crosshair);
+	if (moved)
+	{	// the screen's own for the next frame
+		SCR_ViewRect (NULL);
+		r_refdef.fov_y = fov_y;
+	}
 
 	for (i = 0 ; i < numslots ; i++)
 		memset (&cl.dlights[slots[i]], 0, sizeof(cl.dlights[0]));
@@ -1053,21 +1066,46 @@ static bool CS_RenderScene (qcvm_t *vm)
 =================
 CS_SetProperty
 
-float setproperty(float property, ...): the view's origin and angles, the
-player's view angles, whether the status bar and crosshair are drawn; 0 for a
-property the client can't set
+float setproperty(float property, ...): the view's rectangle (in the virtual
+screen's units), origin and angles, the player's view angles, whether the
+status bar and crosshair are drawn; 0 for a property the client can't set
 =================
 */
 static bool CS_SetProperty (qcvm_t *vm)
 {
 	int		prop = QC_FloatToInt (QC_ArgFloat (vm, 0));
 	float	f = QC_ArgFloat (vm, 1);
-	vec3_t	v;
+	vec3_t	v, size;
 
 	QC_ArgVector (vm, 1, v);
 	QC_ReturnFloat (vm, 1);
 	switch (prop)
 	{
+	case VF_MIN:
+		csqc.view.x = QC_FloatToInt (v[0]);
+		csqc.view.y = QC_FloatToInt (v[1]);
+		break;
+	case VF_MIN_X:
+		csqc.view.x = QC_FloatToInt (f);
+		break;
+	case VF_MIN_Y:
+		csqc.view.y = QC_FloatToInt (f);
+		break;
+	case VF_SIZE:
+		csqc.view.width = QC_FloatToInt (v[0]);
+		csqc.view.height = QC_FloatToInt (v[1]);
+		break;
+	case VF_SIZE_X:
+		csqc.view.width = QC_FloatToInt (f);
+		break;
+	case VF_SIZE_Y:
+		csqc.view.height = QC_FloatToInt (f);
+		break;
+	case VF_VIEWPORT:		// the min, then the size
+		QC_ArgVector (vm, 2, size);
+		csqc.view = (vrect_t){.x = QC_FloatToInt (v[0]), .y = QC_FloatToInt (v[1]), .width = QC_FloatToInt (size[0]),
+			.height = QC_FloatToInt (size[1])};
+		break;
 	case VF_ORIGIN:
 		VectorCopy (v, r_refdef.vieworg);
 		break;
@@ -1116,6 +1154,26 @@ static bool CS_GetProperty (qcvm_t *vm)
 
 	switch (prop)
 	{
+	case VF_MIN:
+		v[0] = (float)csqc.view.x;
+		v[1] = (float)csqc.view.y;
+		break;
+	case VF_MIN_X:
+		v[0] = (float)csqc.view.x;
+		break;
+	case VF_MIN_Y:
+		v[0] = (float)csqc.view.y;
+		break;
+	case VF_SIZE:
+		v[0] = (float)csqc.view.width;
+		v[1] = (float)csqc.view.height;
+		break;
+	case VF_SIZE_X:
+		v[0] = (float)csqc.view.width;
+		break;
+	case VF_SIZE_Y:
+		v[0] = (float)csqc.view.height;
+		break;
 	case VF_ORIGIN:
 		VectorCopy (r_refdef.vieworg, v);
 		break;
@@ -2255,6 +2313,7 @@ bool CSQC_DrawView (bool *sbar)
 	VectorCopy (r_refdef.vieworg, csqc.vieworg);
 	VectorCopy (r_refdef.viewangles, csqc.viewangles);
 	csqc.enginegun = r_scene.drawviewmodel;
+	csqc.view = scr.vrect;
 	csqc.sbar = false;
 	csqc.crosshair = false;
 	csqc.rendered = false;

@@ -43,5 +43,8 @@ typedef struct
 
 extern	scr_state_t	scr;
 
+// the renderer's view in rect, in the layout's units; NULL for scr.vrect
+void SCR_ViewRect (const vrect_t *rect);
+
 extern	cvar_t		scr_viewsize;
 extern	cvar_t		scr_sbaralpha;
