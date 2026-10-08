@@ -179,45 +179,333 @@ void CL_AddBeam (model_t *m, int ent, const vec3_t start, const vec3_t end)
 	Con_Printf ("beam list overflow!\n");	
 }
 
+// a temporary entity as the server sent it
+typedef struct
+{
+	int		type;
+	int		ent;			// a beam's
+	vec3_t	pos;			// its origin, a box's min, a beam's start
+	vec3_t	pos2;			// a beam's end, a box's max, a color (0 to 1)
+	vec3_t	vel;			// a velocity or a direction
+	int		count;
+	int		color, colors;	// palette colors: the first and how many from it
+	float	time;			// TEDP_CUSTOMFLASH's
+} tent_t;
+
+static void CL_ReadVector (vec3_t v)
+{
+	v[0] = MSG_ReadCoord ();
+	v[1] = MSG_ReadCoord ();
+	v[2] = MSG_ReadCoord ();
+}
+
 /*
 =================
-CL_SkipTEnt
+CL_ReadTEnt
 
-Reads past a temporary entity nothing is to show
+A temporary entity of any kind FTE's client reads: QuakeWorld's, FTE's
+(FTE_PEXT_TE_BULLET) and DarkPlaces'. One of another kind can't be read past,
+so it ends the game.
 =================
 */
-static void CL_SkipTEnt (int type)
+static void CL_ReadTEnt (tent_t *te)
 {
-	int		coords, i;
-
-	coords = 3;
-	switch (type)
+	memset (te, 0, sizeof(*te));
+	te->type = MSG_ReadByte ();
+	te->count = 1;
+	switch (te->type)
 	{
 	case TE_LIGHTNING1:
 	case TE_LIGHTNING2:
 	case TE_LIGHTNING3:
-		MSG_ReadShort ();	// the entity
-		coords = 6;			// start and end
+	case TE_BEAM:
+		te->ent = MSG_ReadShort ();
+		CL_ReadVector (te->pos);
+		CL_ReadVector (te->pos2);
 		break;
 	case TE_GUNSHOT:
 	case TE_BLOOD:
-		MSG_ReadByte ();	// the count
+		te->count = MSG_ReadByte ();
+		CL_ReadVector (te->pos);
 		break;
-	case TE_WIZSPIKE:
-	case TE_KNIGHTSPIKE:
 	case TE_SPIKE:
 	case TE_SUPERSPIKE:
 	case TE_EXPLOSION:
 	case TE_TAREXPLOSION:
+	case TE_WIZSPIKE:
+	case TE_KNIGHTSPIKE:
 	case TE_LAVASPLASH:
 	case TE_TELEPORT:
 	case TE_LIGHTNINGBLOOD:
+	case TE_BULLET:
+	case TE_SUPERBULLET:
+	case TE_NQEXPLOSION:
+	case TE_NQGUNSHOT:
+	case TEDP_GUNSHOTQUAD:
+	case TEDP_SPIKEQUAD:
+	case TEDP_SUPERSPIKEQUAD:
+	case TEDP_EXPLOSIONQUAD:
+	case TEDP_SMALLFLASH:
+	case TEDP_PLASMABURN:
+	case TEDP_TEI_BIGEXPLOSION:
+		CL_ReadVector (te->pos);
+		break;
+	case TE_EXPLOSION3_NEH:			// the color in coordinates
+	case TE_RAILTRAIL:
+		CL_ReadVector (te->pos);
+		CL_ReadVector (te->pos2);
+		break;
+	case TE_EXPLOSION2:
+		CL_ReadVector (te->pos);
+		te->color = MSG_ReadByte ();
+		te->colors = MSG_ReadByte ();
+		break;
+	case TEDP_BLOOD:
+	case TEDP_SPARK:
+		CL_ReadVector (te->pos);
+		te->vel[0] = (float)(signed char)MSG_ReadByte ();
+		te->vel[1] = (float)(signed char)MSG_ReadByte ();
+		te->vel[2] = (float)(signed char)MSG_ReadByte ();
+		te->count = MSG_ReadByte ();
+		break;
+	case TEDP_BLOODSHOWER:
+		CL_ReadVector (te->pos);
+		CL_ReadVector (te->pos2);
+		te->vel[2] = -MSG_ReadCoord ();
+		te->count = MSG_ReadShort () & 0xffff;
+		break;
+	case TEDP_EXPLOSIONRGB:
+		CL_ReadVector (te->pos);
+		te->pos2[0] = MSG_ReadByte () / 255.0f;
+		te->pos2[1] = MSG_ReadByte () / 255.0f;
+		te->pos2[2] = MSG_ReadByte () / 255.0f;
+		break;
+	case TEDP_PARTICLECUBE:
+		CL_ReadVector (te->pos);
+		CL_ReadVector (te->pos2);
+		CL_ReadVector (te->vel);
+		te->count = MSG_ReadShort () & 0xffff;
+		te->color = MSG_ReadByte ();
+		te->colors = MSG_ReadByte ();		// the gravity flag
+		te->time = MSG_ReadCoord ();		// the jitter
+		break;
+	case TEDP_PARTICLERAIN:
+	case TEDP_PARTICLESNOW:
+		CL_ReadVector (te->pos);
+		CL_ReadVector (te->pos2);
+		CL_ReadVector (te->vel);
+		te->count = MSG_ReadShort () & 0xffff;
+		te->color = MSG_ReadByte ();
+		break;
+	case TEDP_CUSTOMFLASH:
+		CL_ReadVector (te->pos);
+		te->count = MSG_ReadByte () * 8;				// the radius
+		te->time = (MSG_ReadByte () + 1) / 256.0f;
+		te->pos2[0] = MSG_ReadByte () / 127.0f;
+		te->pos2[1] = MSG_ReadByte () / 127.5f;
+		te->pos2[2] = MSG_ReadByte () / 127.0f;
+		break;
+	case TEDP_FLAMEJET:
+	case TEDP_SMOKE:
+	case TEDP_TEI_PLASMAHIT:
+		CL_ReadVector (te->pos);
+		CL_ReadVector (te->vel);
+		te->count = MSG_ReadByte ();
+		break;
+	case TEDP_TEI_G3:
+		CL_ReadVector (te->pos);
+		CL_ReadVector (te->pos2);
+		CL_ReadVector (te->vel);			// unused
 		break;
 	default:
-		Sys_Error ("CL_ParseTEnt: bad type");
+		Host_EndGame ("CL_ParseTEnt: bad type %i", te->type);
 	}
-	for (i=0 ; i<coords ; i++)
-		MSG_ReadCoord ();
+}
+
+// a spike's tink, now and then a ricochet
+static void CL_SpikeSound (vec3_t pos)
+{
+	int		rnd;
+
+	if ( rand() % 5 )
+		S_StartSound (-1, 0, cl_sfx_tink1, pos, 1, 1);
+	else
+	{
+		rnd = rand() & 3;
+		if (rnd == 1)
+			S_StartSound (-1, 0, cl_sfx_ric1, pos, 1, 1);
+		else if (rnd == 2)
+			S_StartSound (-1, 0, cl_sfx_ric2, pos, 1, 1);
+		else
+			S_StartSound (-1, 0, cl_sfx_ric3, pos, 1, 1);
+	}
+}
+
+// a light at pos for time seconds; color 0 0 0 is white
+static void CL_TEntLight (const vec3_t pos, float radius, float time, float decay, float r, float g, float b)
+{
+	dlight_t	*dl = CL_AllocDlight (0);
+
+	VectorCopy (pos, dl->origin);
+	dl->radius = radius;
+	dl->die = (float)(cl.time + time);
+	dl->decay = decay;
+	dl->color[0] = r;
+	dl->color[1] = g;
+	dl->color[2] = b;
+	dl->color[3] = 0.7f;
+}
+
+// an explosion's particles, light and sound, and with sprite its sprite
+static void CL_Explosion (vec3_t pos, bool sprite, float r, float g, float b)
+{
+	explosion_t	*ex;
+
+	R_ParticleExplosion (pos);
+	CL_TEntLight (pos, 350, 0.5f, 300, r, g, b);
+	S_StartSound (-1, 0, cl_sfx_r_exp3, pos, 1, 1);
+	if (sprite)
+	{
+		ex = CL_AllocExplosion ();
+		VectorCopy (pos, ex->origin);
+		ex->start = (float)cl.time;
+		ex->model = Mod_ForName ("progs/s_explod.spr", true);
+	}
+}
+
+/*
+=================
+CL_RunTEnt
+
+What a temporary entity shows: id's particles for each, as FTE's classic
+particles have them; those without stay unseen
+=================
+*/
+static void CL_RunTEnt (const tent_t *te)
+{
+	vec3_t		pos, vel, mid;
+	model_t		*m;
+
+	VectorCopy (te->pos, pos);
+	VectorCopy (te->vel, vel);
+	switch (te->type)
+	{
+	case TE_WIZSPIKE:			// spike hitting wall
+		R_RunParticleEffect (pos, vec3_origin, 20, 30);
+		S_StartSound (-1, 0, cl_sfx_wizhit, pos, 1, 1);
+		break;
+
+	case TE_KNIGHTSPIKE:			// spike hitting wall
+		R_RunParticleEffect (pos, vec3_origin, 226, 20);
+		S_StartSound (-1, 0, cl_sfx_knighthit, pos, 1, 1);
+		break;
+
+	case TE_SPIKE:			// spike hitting wall
+	case TE_BULLET:
+	case TEDP_SPIKEQUAD:
+		R_RunParticleEffect (pos, vec3_origin, 0, 10);
+		CL_SpikeSound (pos);
+		break;
+
+	case TE_SUPERSPIKE:			// super spike hitting wall
+	case TE_SUPERBULLET:
+	case TEDP_SUPERSPIKEQUAD:
+		R_RunParticleEffect (pos, vec3_origin, 0, 20);
+		CL_SpikeSound (pos);
+		break;
+
+	case TE_EXPLOSION:			// rocket explosion
+		CL_Explosion (pos, true, 0.2f, 0.1f, 0.05f);
+		break;
+	case TE_NQEXPLOSION:
+		CL_Explosion (pos, false, 0.2f, 0.1f, 0.05f);
+		break;
+	case TEDP_EXPLOSIONQUAD:
+		CL_Explosion (pos, true, 0.25f, 0.25f, 1);
+		break;
+	case TE_EXPLOSION3_NEH:
+	case TEDP_EXPLOSIONRGB:
+		CL_Explosion (pos, false, te->pos2[0], te->pos2[1], te->pos2[2]);
+		break;
+	case TEDP_TEI_BIGEXPLOSION:
+		CL_Explosion (pos, false, 2, 1.5f, 0.75f);
+		break;
+
+	case TE_EXPLOSION2:			// NetQuake's, in a color range
+		R_ParticleExplosion2 (pos, te->color, te->colors);
+		CL_TEntLight (pos, 350, 0.5f, 300, 0, 0, 0);
+		S_StartSound (-1, 0, cl_sfx_r_exp3, pos, 1, 1);
+		break;
+
+	case TE_TAREXPLOSION:			// tarbaby explosion
+		R_BlobExplosion (pos);
+		S_StartSound (-1, 0, cl_sfx_r_exp3, pos, 1, 1);
+		break;
+
+	case TE_LIGHTNING1:				// lightning bolts
+		CL_AddBeam (Mod_ForName ("progs/bolt.mdl", true), te->ent, te->pos, te->pos2);
+		break;
+	case TE_LIGHTNING2:
+		CL_AddBeam (Mod_ForName ("progs/bolt2.mdl", true), te->ent, te->pos, te->pos2);
+		break;
+	case TE_LIGHTNING3:
+		CL_AddBeam (Mod_ForName ("progs/bolt3.mdl", true), te->ent, te->pos, te->pos2);
+		break;
+	case TE_BEAM:					// the mission packs' beam.mdl, where the game has one
+		if ((m = Mod_ForName ("progs/beam.mdl", false)))
+			CL_AddBeam (m, te->ent, te->pos, te->pos2);
+		break;
+
+	case TE_LAVASPLASH:
+		R_LavaSplash (pos);
+		break;
+
+	case TE_TELEPORT:
+		R_TeleportSplash (pos);
+		break;
+
+	case TE_GUNSHOT:			// bullet hitting wall
+	case TE_NQGUNSHOT:
+	case TEDP_GUNSHOTQUAD:
+		R_RunParticleEffect (pos, vec3_origin, 0, 20*te->count);
+		break;
+
+	case TE_BLOOD:				// bullets hitting body
+		R_RunParticleEffect (pos, vec3_origin, 73, 20*te->count);
+		break;
+	case TEDP_BLOOD:
+		R_RunParticleEffect (pos, vel, 73, te->count);
+		break;
+	case TEDP_BLOODSHOWER:
+		VectorAdd (te->pos, te->pos2, mid);
+		VectorScale (mid, 0.5f, mid);
+		R_RunParticleEffect (mid, vel, 73, te->count);
+		break;
+
+	case TE_LIGHTNINGBLOOD:		// lightning hitting body
+		R_RunParticleEffect (pos, vec3_origin, 225, 50);
+		break;
+
+	case TEDP_SPARK:
+		R_RunParticleEffect (pos, vel, 224, te->count);
+		break;
+	case TEDP_FLAMEJET:
+		R_RunParticleEffect (pos, vel, 232, te->count);
+		break;
+	case TEDP_PLASMABURN:
+		R_RunParticleEffect (pos, vec3_origin, 15, 50);
+		break;
+
+	case TEDP_SMALLFLASH:
+		CL_TEntLight (pos, 200, 0.2f, 1000, 0, 0, 0);
+		break;
+	case TEDP_CUSTOMFLASH:
+		CL_TEntLight (pos, (float)te->count, te->time, te->count / te->time, te->pos2[0], te->pos2[1], te->pos2[2]);
+		break;
+
+	default:	// rails, cubes, weather and smoke: none of id's
+		break;
+	}
 }
 
 /*
@@ -227,165 +515,11 @@ CL_ParseTEnt
 */
 void CL_ParseTEnt (void)
 {
-	int		type;
-	vec3_t	pos;
-	dlight_t	*dl;
-	int		rnd;
-	explosion_t	*ex;
-	int		cnt;
+	tent_t	te;
 
-	type = MSG_ReadByte ();
-	if (CL_MVDQuiet ())
-	{	// a scan's or a seek's: long over
-		CL_SkipTEnt (type);
-		return;
-	}
-	switch (type)
-	{
-	case TE_WIZSPIKE:			// spike hitting wall
-		pos[0] = MSG_ReadCoord ();
-		pos[1] = MSG_ReadCoord ();
-		pos[2] = MSG_ReadCoord ();
-		R_RunParticleEffect (pos, vec3_origin, 20, 30);
-		S_StartSound (-1, 0, cl_sfx_wizhit, pos, 1, 1);
-		break;
-		
-	case TE_KNIGHTSPIKE:			// spike hitting wall
-		pos[0] = MSG_ReadCoord ();
-		pos[1] = MSG_ReadCoord ();
-		pos[2] = MSG_ReadCoord ();
-		R_RunParticleEffect (pos, vec3_origin, 226, 20);
-		S_StartSound (-1, 0, cl_sfx_knighthit, pos, 1, 1);
-		break;
-		
-	case TE_SPIKE:			// spike hitting wall
-		pos[0] = MSG_ReadCoord ();
-		pos[1] = MSG_ReadCoord ();
-		pos[2] = MSG_ReadCoord ();
-		R_RunParticleEffect (pos, vec3_origin, 0, 10);
-
-		if ( rand() % 5 )
-			S_StartSound (-1, 0, cl_sfx_tink1, pos, 1, 1);
-		else
-		{
-			rnd = rand() & 3;
-			if (rnd == 1)
-				S_StartSound (-1, 0, cl_sfx_ric1, pos, 1, 1);
-			else if (rnd == 2)
-				S_StartSound (-1, 0, cl_sfx_ric2, pos, 1, 1);
-			else
-				S_StartSound (-1, 0, cl_sfx_ric3, pos, 1, 1);
-		}
-		break;
-	case TE_SUPERSPIKE:			// super spike hitting wall
-		pos[0] = MSG_ReadCoord ();
-		pos[1] = MSG_ReadCoord ();
-		pos[2] = MSG_ReadCoord ();
-		R_RunParticleEffect (pos, vec3_origin, 0, 20);
-
-		if ( rand() % 5 )
-			S_StartSound (-1, 0, cl_sfx_tink1, pos, 1, 1);
-		else
-		{
-			rnd = rand() & 3;
-			if (rnd == 1)
-				S_StartSound (-1, 0, cl_sfx_ric1, pos, 1, 1);
-			else if (rnd == 2)
-				S_StartSound (-1, 0, cl_sfx_ric2, pos, 1, 1);
-			else
-				S_StartSound (-1, 0, cl_sfx_ric3, pos, 1, 1);
-		}
-		break;
-		
-	case TE_EXPLOSION:			// rocket explosion
-	// particles
-		pos[0] = MSG_ReadCoord ();
-		pos[1] = MSG_ReadCoord ();
-		pos[2] = MSG_ReadCoord ();
-		R_ParticleExplosion (pos);
-		
-	// light
-		dl = CL_AllocDlight (0);
-		VectorCopy (pos, dl->origin);
-		dl->radius = 350;
-		dl->die = (float)(cl.time + 0.5f);
-		dl->decay = 300;
-		dl->color[0] = 0.2f;
-		dl->color[1] = 0.1f;
-		dl->color[2] = 0.05f;
-		dl->color[3] = 0.7f;
-	
-	// sound
-		S_StartSound (-1, 0, cl_sfx_r_exp3, pos, 1, 1);
-	
-	// sprite
-		ex = CL_AllocExplosion ();
-		VectorCopy (pos, ex->origin);
-		ex->start = (float)cl.time;
-		ex->model = Mod_ForName ("progs/s_explod.spr", true);
-		break;
-		
-	case TE_TAREXPLOSION:			// tarbaby explosion
-		pos[0] = MSG_ReadCoord ();
-		pos[1] = MSG_ReadCoord ();
-		pos[2] = MSG_ReadCoord ();
-		R_BlobExplosion (pos);
-
-		S_StartSound (-1, 0, cl_sfx_r_exp3, pos, 1, 1);
-		break;
-
-	case TE_LIGHTNING1:				// lightning bolts
-		CL_ParseBeam (Mod_ForName("progs/bolt.mdl", true));
-		break;
-	
-	case TE_LIGHTNING2:				// lightning bolts
-		CL_ParseBeam (Mod_ForName("progs/bolt2.mdl", true));
-		break;
-	
-	case TE_LIGHTNING3:				// lightning bolts
-		CL_ParseBeam (Mod_ForName("progs/bolt3.mdl", true));
-		break;
-	
-	case TE_LAVASPLASH:	
-		pos[0] = MSG_ReadCoord ();
-		pos[1] = MSG_ReadCoord ();
-		pos[2] = MSG_ReadCoord ();
-		R_LavaSplash (pos);
-		break;
-	
-	case TE_TELEPORT:
-		pos[0] = MSG_ReadCoord ();
-		pos[1] = MSG_ReadCoord ();
-		pos[2] = MSG_ReadCoord ();
-		R_TeleportSplash (pos);
-		break;
-
-	case TE_GUNSHOT:			// bullet hitting wall
-		cnt = MSG_ReadByte ();
-		pos[0] = MSG_ReadCoord ();
-		pos[1] = MSG_ReadCoord ();
-		pos[2] = MSG_ReadCoord ();
-		R_RunParticleEffect (pos, vec3_origin, 0, 20*cnt);
-		break;
-		
-	case TE_BLOOD:				// bullets hitting body
-		cnt = MSG_ReadByte ();
-		pos[0] = MSG_ReadCoord ();
-		pos[1] = MSG_ReadCoord ();
-		pos[2] = MSG_ReadCoord ();
-		R_RunParticleEffect (pos, vec3_origin, 73, 20*cnt);
-		break;
-
-	case TE_LIGHTNINGBLOOD:		// lightning hitting body
-		pos[0] = MSG_ReadCoord ();
-		pos[1] = MSG_ReadCoord ();
-		pos[2] = MSG_ReadCoord ();
-		R_RunParticleEffect (pos, vec3_origin, 225, 50);
-		break;
-
-	default:
-		Sys_Error ("CL_ParseTEnt: bad type");
-	}
+	CL_ReadTEnt (&te);
+	if (!CL_MVDQuiet ())	// not a scan's or a seek's, long over
+		CL_RunTEnt (&te);
 }
 
 

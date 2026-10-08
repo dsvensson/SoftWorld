@@ -709,6 +709,8 @@ unsigned MSG_ReplacementBits (const entity_state_t *from, const entity_state_t *
 		bits |= UF_SCALE;
 	if (memcmp (to->colormod, from->colormod, sizeof(to->colormod)))
 		bits |= UF_COLORMOD;
+	if (to->traileffect != from->traileffect || to->emiteffect != from->emiteffect)
+		bits |= UF_TRAILEFFECT;
 	return bits;
 }
 
@@ -844,6 +846,17 @@ void MSG_WriteReplacement (sizebuf_t *sb, unsigned bits, const entity_state_t *t
 		MSG_WriteByte (sb, to->alpha ? to->alpha : 255);
 	if (bits & UF_SCALE)
 		MSG_WriteByte (sb, to->scale);
+	// the trail, its top bit an emitted effect after it
+	if (bits & UF_TRAILEFFECT)
+	{
+		if (to->emiteffect)
+		{
+			MSG_WriteShort (sb, (to->traileffect & PC_INDEX) | 0x8000);
+			MSG_WriteShort (sb, to->emiteffect & PC_INDEX);
+		}
+		else
+			MSG_WriteShort (sb, to->traileffect & PC_INDEX);
+	}
 	if (bits & UF_COLORMOD)
 	{
 		for (i=0 ; i<3 ; i++)
@@ -968,10 +981,14 @@ void MSG_ReadReplacement (unsigned bits, entity_state_t *to, unsigned mvdext1)
 		MSG_ReadByte ();
 		MSG_ReadByte ();
 	}
+	// effects past the precaches' are none, as FTE has them
 	if (bits & UF_TRAILEFFECT)
 	{
-		if (MSG_ReadShort () & 0x8000)
-			MSG_ReadShort ();
+		i = MSG_ReadShort () & 0xffff;
+		n = (i & 0x8000) ? MSG_ReadShort () & PC_INDEX : 0;
+		i &= PC_INDEX;
+		to->traileffect = (unsigned short)(i < MAX_PARTICLE_PRECACHE ? i : 0);
+		to->emiteffect = (unsigned short)(n < MAX_PARTICLE_PRECACHE ? n : 0);
 	}
 	if (bits & UF_COLORMOD)
 	{

@@ -83,8 +83,12 @@ static const char *svc_strings[] =
 	[60] = "svc_fte_modellistshort",
 	[66] = "svc_fte_spawnbaseline2",
 	[76] = "svc_fte_csqcentities",
+	[77] = "svc_fte_precache",
 	[78] = "svc_fte_updatestatstring",
 	[79] = "svc_fte_updatestatfloat",
+	[80] = "svc_fte_trailparticles",
+	[81] = "svc_fte_pointparticles",
+	[82] = "svc_fte_pointparticles1",
 	[83] = "svc_fte_cgamepacket",
 	[84] = "svc_fte_voicechat",
 	[90] = "svc_fte_cgamepacket_sized",
@@ -789,6 +793,73 @@ static void CL_ParseModellist (bool shortstart)
 	cls.downloadnumber = 0;
 	cls.downloadtype = dl_model;
 	Model_NextDownload ();
+}
+
+/*
+==================
+CL_ParsePrecache
+
+svc_fte_precache: a model or sound precached late, or a particle effect, which
+the server's list of them sends this way too (FTE's)
+==================
+*/
+static void CL_ParsePrecache (void)
+{
+	int		code = MSG_ReadShort () & 0xffff;
+	int		i = code & PC_INDEX;
+	char	*str = MSG_ReadString ();
+
+	switch (code & ~PC_INDEX)
+	{
+	case PC_MODEL:
+		if (i < 1 || i >= MAX_MODELS)
+			Host_EndGame ("svc_fte_precache: model %i", i);
+		Q_strncpyz (cl.model_name[i], str, sizeof(cl.model_name[i]));
+		cl.model_precache[i] = Mod_ForName (cl.model_name[i], false);
+		if (str[0] == '*' && cl.map)
+			cl.clipmodels[i] = CM_InlineModel (cl.map, cl.model_name[i]);
+		break;
+	case PC_SOUND:
+		if (i < 1 || i >= MAX_SOUNDS)
+			Host_EndGame ("svc_fte_precache: sound %i", i);
+		Q_strncpyz (cl.sound_name[i], str, sizeof(cl.sound_name[i]));
+		cl.sound_precache[i] = S_PrecacheSound (cl.sound_name[i]);
+		break;
+	case PC_PARTICLE:
+		if (i < 1 || i >= MAX_PARTICLE_PRECACHE)
+			Host_EndGame ("svc_fte_precache: particle effect %i", i);
+		Q_strncpyz (cl.particle_name[i], str, sizeof(cl.particle_name[i]));
+		break;
+	default:
+		Host_EndGame ("svc_fte_precache: kind %i", code >> 14);
+	}
+}
+
+/*
+==================
+CL_ParseParticleEffect
+
+svc_fte_trailparticles, svc_fte_pointparticles and svc_fte_pointparticles1: a
+particle effect of the server's list; the entity a trail is of is big with
+replacement deltas, as FTE writes it
+==================
+*/
+static void CL_ParseParticleEffect (int cmd)
+{
+	int		i, coords = cmd == svc_fte_pointparticles1 ? 3 : 6;
+
+	if (cmd == svc_fte_trailparticles)
+	{
+		if (cls.fteext2 & FTE_PEXT2_REPLACEMENTDELTAS)
+			MSG_ReadBigEntity ();
+		else
+			MSG_ReadShort ();
+	}
+	MSG_ReadShort ();			// the effect
+	for (i=0 ; i<coords ; i++)
+		MSG_ReadCoord ();
+	if (cmd == svc_fte_pointparticles)
+		MSG_ReadShort ();		// the count
 }
 
 /*
@@ -1696,6 +1767,15 @@ void CL_ParseServerMessage (void)
 		case svc_fte_cgamepacket:
 		case svc_fte_cgamepacket_sized:
 			CSQC_ParseEvent (cmd == svc_fte_cgamepacket_sized);
+			break;
+
+		case svc_fte_precache:
+			CL_ParsePrecache ();
+			break;
+		case svc_fte_trailparticles:
+		case svc_fte_pointparticles:
+		case svc_fte_pointparticles1:
+			CL_ParseParticleEffect (cmd);
 			break;
 			
 		case svc_spawnstaticsound:

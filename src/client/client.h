@@ -325,6 +325,7 @@ typedef struct
 //
 	char		model_name[MAX_MODELS][MAX_QPATH];
 	char		sound_name[MAX_SOUNDS][MAX_QPATH];
+	char		particle_name[MAX_PARTICLE_PRECACHE][MAX_QPATH];	// svc_fte_precache's effects
 
 	struct model_s		*model_precache[MAX_MODELS];
 

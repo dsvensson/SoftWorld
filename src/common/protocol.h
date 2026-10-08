@@ -121,6 +121,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	PROTOCOL_VERSION_FRAGMENT	(('F'<<0) + ('R'<<8) + ('A'<<16) + ('G'<<24))
 
 #define	FTE_PEXT_TRANS				0x00000008	// entity alpha
+#define	FTE_PEXT_TE_BULLET			0x00000400	// FTE's temp entities 14-21 (TE_BULLET...)
 #define	FTE_PEXT_ACCURATETIMINGS	0x00000040
 #define	FTE_PEXT_MODELDBL			0x00001000	// model numbers up to 511 in deltas
 #define	FTE_PEXT_ENTITYDBL			0x00002000	// entity numbers up to 1023
@@ -147,7 +148,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	SV_FTE_EXTENSIONS	(FTE_PEXT_TRANS | FTE_PEXT_ACCURATETIMINGS | FTE_PEXT_MODELDBL | FTE_PEXT_ENTITYDBL | \
 	FTE_PEXT_ENTITYDBL2 | FTE_PEXT_FLOATCOORDS | FTE_PEXT_COLOURMOD | FTE_PEXT_SPAWNSTATIC2 | \
 	FTE_PEXT_256PACKETENTITIES | FTE_PEXT_CHUNKEDDOWNLOADS | FTE_PEXT_CSQC)
-#define	CL_FTE_EXTENSIONS	SV_FTE_EXTENSIONS
+#define	CL_FTE_EXTENSIONS	(SV_FTE_EXTENSIONS | FTE_PEXT_TE_BULLET)
 #define	SV_FTE2_EXTENSIONS	FTE_PEXT2_REPLACEMENTDELTAS
 #define	CL_FTE2_EXTENSIONS	SV_FTE2_EXTENSIONS
 #define	SV_MVD1_EXTENSIONS	(MVD_PEXT1_FLOATCOORDS | MVD_PEXT1_HIGHLAGTELEPORT)
@@ -292,8 +293,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	svc_fte_modellistshort	60	// svc_modellist with a [short] start
 #define	svc_fte_spawnbaseline2	66	// an entity delta from nothing
 #define	svc_fte_csqcentities	76	// CSQC's entities: [short] number, (0x8000 removed) or its data, ..., [short] 0
+#define	svc_fte_precache	77		// [short] index | PC_ type, [string] name: a precache late or of its own kind
 #define	svc_fte_updatestatstring	78	// [byte] stat [string]
 #define	svc_fte_updatestatfloat	79	// [byte] stat [float]
+#define	svc_fte_trailparticles	80	// [entity] [short] effect [coord3] start [coord3] end
+#define	svc_fte_pointparticles	81	// [short] effect [coord3] origin [coord3] velocity [short] count
+#define	svc_fte_pointparticles1	82	// [short] effect [coord3] origin: one, unmoving
 #define	svc_fte_cgamepacket	83		// CSQC's own message, all it reads (CSQC_Parse_Event)
 #define	svc_fte_voicechat	84		// [byte] [byte] [byte] [short] n [n bytes]
 #define	svc_fte_updateentities	86	// FTE_PEXT2_REPLACEMENTDELTAS: [float] time, then [entity index]
@@ -511,6 +516,43 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	TE_TELEPORT			11
 #define	TE_BLOOD			12
 #define	TE_LIGHTNINGBLOOD	13
+// FTE_PEXT_TE_BULLET's
+#define	TE_BULLET			14
+#define	TE_SUPERBULLET		15
+#define	TE_EXPLOSION3_NEH	16	// [coord3] origin [coord3] color
+#define	TE_RAILTRAIL		17	// [coord3] start [coord3] end
+#define	TE_BEAM				18	// as the lightning: NetQuake's TE_BEAM
+#define	TE_EXPLOSION2		19	// [coord3] [byte] color [byte] colors: NetQuake's TE_EXPLOSION2
+#define	TE_NQEXPLOSION		20	// TE_EXPLOSION without its sprite
+#define	TE_NQGUNSHOT		21	// TE_GUNSHOT without its count
+// DarkPlaces' (FTE reads them)
+#define	TEDP_BLOOD			50	// [coord3] origin [char3] velocity [byte] count
+#define	TEDP_SPARK			51	// as TEDP_BLOOD
+#define	TEDP_BLOODSHOWER	52	// [coord3] min [coord3] max [coord] speed [short] count
+#define	TEDP_EXPLOSIONRGB	53	// [coord3] [byte3] color
+#define	TEDP_PARTICLECUBE	54	// [coord3] min [coord3] max [coord3] velocity [short] count [byte] color
+								// [byte] gravity [coord] jitter
+#define	TEDP_PARTICLERAIN	55	// [coord3] min [coord3] max [coord3] velocity [short] count [byte] color
+#define	TEDP_PARTICLESNOW	56	// as TEDP_PARTICLERAIN
+#define	TEDP_GUNSHOTQUAD	57	// [coord3]
+#define	TEDP_SPIKEQUAD		58	// [coord3]
+#define	TEDP_SUPERSPIKEQUAD	59	// [coord3]
+#define	TEDP_EXPLOSIONQUAD	70	// [coord3]
+#define	TEDP_SMALLFLASH		72	// [coord3]
+#define	TEDP_CUSTOMFLASH	73	// [coord3] [byte] radius/8 [byte] time*256-1 [byte3] color*128
+#define	TEDP_FLAMEJET		74	// [coord3] origin [coord3] velocity [byte] count
+#define	TEDP_PLASMABURN		75	// [coord3]
+#define	TEDP_TEI_G3			76	// [coord3] start [coord3] end [coord3] unused
+#define	TEDP_SMOKE			77	// [coord3] origin [coord3] direction [byte] count
+#define	TEDP_TEI_BIGEXPLOSION	78	// [coord3]
+#define	TEDP_TEI_PLASMAHIT	79	// [coord3] origin [coord3] direction [byte] count
+
+// svc_fte_precache's kinds, in the index's top bits
+#define	PC_MODEL			0x0000
+#define	PC_PARTICLE			0x4000
+#define	PC_SOUND			0x8000
+#define	PC_INDEX			0x3fff
+#define	MAX_PARTICLE_PRECACHE	1024	// particle effects by number (svc_fte_precache's), 1 the first
 
 
 /*
@@ -552,6 +594,7 @@ typedef struct entity_state_s
 	short	velocity[3];	// eight times its velocity
 	short	movement[3];	// its move: forward, side, up
 	int		weaponframe;
+	unsigned short	traileffect, emiteffect;	// UF_TRAILEFFECT: particle effects, svc_fte_precache's numbers
 } entity_state_t;
 
 

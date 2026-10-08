@@ -241,6 +241,36 @@ static void TestDeltas (void)
 	Check ((word & U_REMOVE) && num == 20, "remove 20", num, 20);
 }
 
+// replacement deltas' particle effects: a trail alone, a trail with an emitted
+// effect, and an emitted effect alone, read back as written
+static void TestReplacementEffects (void)
+{
+	static const unsigned short	effects[][2] = {{5, 0}, {1023, 7}, {0, 300}};
+	entity_state_t	from = {0}, to, got;
+	byte			data[64];
+	sizebuf_t		buf = {.data = data, .maxsize = sizeof(data)};
+	unsigned		bits;
+	size_t			i;
+
+	for (i = 0 ; i < sizeof(effects) / sizeof(effects[0]) ; i++)
+	{
+		to = from;
+		to.traileffect = effects[i][0];
+		to.emiteffect = effects[i][1];
+		bits = MSG_ReplacementBits (&from, &to);
+		Check ((bits & UF_TRAILEFFECT) != 0, "a changed effect sets UF_TRAILEFFECT", bits & UF_TRAILEFFECT, UF_TRAILEFFECT);
+		SZ_Clear (&buf);
+		MSG_WriteReplacement (&buf, bits, &to, 0);
+		MSG_BeginReading (&buf);
+		got = from;
+		MSG_ReadReplacement (MSG_ReadReplacementBits (), &got, 0);
+		Check (got.traileffect == to.traileffect, "trail effect", got.traileffect, to.traileffect);
+		Check (got.emiteffect == to.emiteffect, "emitted effect", got.emiteffect, to.emiteffect);
+		Check (msg_readcount == buf.cursize, "read what was written", msg_readcount, buf.cursize);
+	}
+	Check (MSG_ReplacementBits (&to, &to) == 0, "unchanged effects send nothing", MSG_ReplacementBits (&to, &to), 0);
+}
+
 int main (void)
 {
 	TestLongs ();
@@ -250,6 +280,7 @@ int main (void)
 	TestAngles (true);
 	TestReaderFollowsBuffer ();
 	TestDeltas ();
+	TestReplacementEffects ();
 
 	if (failures)
 	{

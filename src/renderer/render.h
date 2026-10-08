@@ -193,6 +193,7 @@ void R_RocketTrail (const vec3_t start, const vec3_t end, int type, float *carry
 
 void R_BlobExplosion (vec3_t org);
 void R_ParticleExplosion (vec3_t org);
+void R_ParticleExplosion2 (vec3_t org, int colorStart, int colorLength);	// NetQuake's, in a color range
 void R_LavaSplash (vec3_t org);
 void R_TeleportSplash (vec3_t org);
 

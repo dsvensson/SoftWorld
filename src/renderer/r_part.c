@@ -177,6 +177,40 @@ void R_ParticleExplosion (vec3_t org)
 
 /*
 ===============
+R_ParticleExplosion2
+
+NetQuake's explosion in a range of colors, colorLength from colorStart
+===============
+*/
+void R_ParticleExplosion2 (vec3_t org, int colorStart, int colorLength)
+{
+	int			i, j;
+	particle_t	*p;
+
+	if (colorLength < 1)
+		colorLength = 1;
+	for (i=0 ; i<512 ; i++)
+	{
+		if (!free_particles)
+			return;
+		p = free_particles;
+		free_particles = p->next;
+		p->next = active_particles;
+		active_particles = p;
+
+		p->die = (float)(r_scene.time + 0.3f);
+		p->color = (float)((colorStart + i % colorLength) & 255);
+		p->type = pt_blob;
+		for (j=0 ; j<3 ; j++)
+		{
+			p->org[j] = org[j] + ((rand()%32)-16);
+			p->vel[j] = (vec_t)((rand()%512)-256);
+		}
+	}
+}
+
+/*
+===============
 R_BlobExplosion
 
 ===============
