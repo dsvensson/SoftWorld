@@ -109,6 +109,38 @@ static void TestBlendSpan (void)
 	}
 }
 
+// light added over light, as particles blend: sources up past HDR's brightest
+// and under 0, multipliers 0 to past 1 and some under 0, by a z buffer or not
+static void TestPartSpan (void)
+{
+	uint32_t	dest[300], a[300], b[300];
+	float		zbuf[300], s[3][300], m[3][300];
+	const float	*src[3] = {s[0], s[1], s[2]}, *mul[3] = {m[0], m[1], m[2]};
+	int			r, i, c, count;
+
+	for (r = 0 ; r < ROUNDS ; r++)
+	{
+		float	zi = RandFloat (0.01f, 1), step = RandFloat (-1e-4f, 1e-4f);
+
+		count = RandRange (0, 300);
+		for (i = 0 ; i < 300 ; i++)
+		{
+			dest[i] = Rand () & 0x3FFFFFFF;
+			zbuf[i] = zi + (float)i * step + RandFloat (-2e-4f, 2e-4f) * (float)(Rand () & 1);
+			for (c = 0 ; c < 3 ; c++)
+			{
+				s[c][i] = RandFloat (-0.1f, 1.2f) * 1.1e12f;
+				m[c][i] = (Rand () & 3) ? RandFloat (0, 1.2f) : RandFloat (-0.5f, 0);
+			}
+		}
+		memcpy (a, dest, sizeof(a));
+		memcpy (b, dest, sizeof(b));
+		Simd_Scalar_PartSpan (a, (r & 1) ? zbuf : NULL, zi, step, src, mul, count);
+		TESTED (PartSpan) (b, (r & 1) ? zbuf : NULL, zi, step, src, mul, count);
+		Check ("PartSpan", r, !memcmp (a, b, sizeof(a)));
+	}
+}
+
 // fog over a span: pixels kept (top bit), sky (bit 30) and the rest, by a z
 // buffer or a stepped 1/z, some infinitely far (0), some past the table
 static void TestFogSpan (void)
@@ -460,6 +492,7 @@ int main (void)
 	TestLitRowRGB30 ();
 	TestAliasSpan ();
 	TestBlendSpan ();
+	TestPartSpan ();
 	TestFogSpan ();
 	TestExpand8 ();
 	TestCopyStream ();

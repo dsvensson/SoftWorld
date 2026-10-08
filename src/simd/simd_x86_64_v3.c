@@ -459,6 +459,56 @@ void Simd_V3_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, 
 	}
 }
 
+// one 10 bit channel of dest at bit shift: its light times m, plus s, as
+// simd_scalar.c adds it
+static inline __m256i Simd_V3_PartChannel (__m256i d, __m256 s, __m256 m, int shift)
+{
+	const __m256i	mask = _mm256_set1_epi32 (1023);
+	__m128i			count = _mm_cvtsi32_si128 (shift);
+	__m256			fd = _mm256_cvtepi32_ps (_mm256_and_si256 (_mm256_srl_epi32 (d, count), mask));
+	__m256			x;
+	__m256i			c;
+
+	fd = _mm256_mul_ps (fd, fd);
+	fd = _mm256_mul_ps (fd, fd);
+	x = _mm256_max_ps (_mm256_add_ps (s, _mm256_mul_ps (fd, m)), _mm256_setzero_ps ());
+	c = _mm256_cvttps_epi32 (_mm256_add_ps (_mm256_sqrt_ps (_mm256_sqrt_ps (x)), _mm256_set1_ps (0.5f)));
+	return _mm256_sll_epi32 (_mm256_min_epi32 (c, mask), count);
+}
+
+void Simd_V3_PartSpan (uint32_t *dest, const float *zbuf, float zi, float step,
+	const float *const src[3], const float *const mul[3], int count)
+{
+	const __m256	lane = _mm256_cvtepi32_ps (Simd_V3_Iota ());
+	const __m256	vzi = _mm256_set1_ps (zi);
+	const __m256	vstep = _mm256_set1_ps (step);
+	__m256i			d, out, m;
+	int				i;
+
+	for (i = 0 ; i < count ; i += 8)
+	{
+		// the lanes of the span in front of the z buffer
+		m = Simd_V3_Lanes (count - i);
+		if (zbuf)
+		{
+			__m256	idx = _mm256_add_ps (_mm256_set1_ps ((float)i), lane);	// whole numbers, exact
+			__m256	z = _mm256_add_ps (vzi, _mm256_mul_ps (idx, vstep));
+
+			m = _mm256_and_si256 (m, _mm256_castps_si256 (_mm256_cmp_ps (_mm256_maskload_ps (zbuf + i, m), z,
+				_CMP_LE_OQ)));
+		}
+		if (_mm256_testz_si256 (m, m))
+			continue;
+		d = _mm256_maskload_epi32 ((const int *)(dest + i), m);
+		out = _mm256_or_si256 (
+			Simd_V3_PartChannel (d, _mm256_maskload_ps (src[0] + i, m), _mm256_maskload_ps (mul[0] + i, m), 0),
+			_mm256_or_si256 (
+			Simd_V3_PartChannel (d, _mm256_maskload_ps (src[1] + i, m), _mm256_maskload_ps (mul[1] + i, m), 10),
+			Simd_V3_PartChannel (d, _mm256_maskload_ps (src[2] + i, m), _mm256_maskload_ps (mul[2] + i, m), 20)));
+		_mm256_maskstore_epi32 ((int *)(dest + i), m, out);
+	}
+}
+
 // the lookups and stores are all of it, and the compiler widens the stores
 void Simd_V3_Expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
 	int scale, int transparent)

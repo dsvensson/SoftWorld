@@ -105,6 +105,14 @@ void	simd_aliasspan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, in
 void	simd_blendspan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
 			int alpha, int count);
 
+// a span of light added over light (particles): each channel of dest[i]
+// becomes src[c][i] plus its light times mul[c][i], light being a channel to
+// the fourth (512^4 SDR white, 1023^4 the brightest), to the fourth root
+// rounded as simd_blendspan rounds, where zbuf is NULL or zbuf[i] is at most
+// zi + i * step; light under 0 is 0
+void	simd_partspan (uint32_t *dest, const float *zbuf, float zi, float step,
+			const float *const src[3], const float *const mul[3], int count);
+
 // how fog lies over the view: a pixel keeps weight (of 256) of its light and
 // takes the rest from the fog's color, blended as simd_blendspan blends. Its
 // weight is the table's entry for its 1/z: the bits of the float 1/z shifted

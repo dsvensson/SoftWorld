@@ -342,6 +342,37 @@ void Simd_Scalar_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zb
 	}
 }
 
+// a channel's light d^4 times m, plus s, back to its fourth root
+static inline unsigned Simd_Scalar_PartChannel (unsigned d, float s, float m)
+{
+	float		fd = (float)d, x;
+	unsigned	c;
+
+	fd *= fd;
+	fd *= fd;
+	x = s + fd * m;
+	x = x > 0 ? x : 0;
+	c = (unsigned)(sqrtf (sqrtf (x)) + 0.5f);
+	return c < 1023 ? c : 1023;
+}
+
+void Simd_Scalar_PartSpan (uint32_t *dest, const float *zbuf, float zi, float step,
+	const float *const src[3], const float *const mul[3], int count)
+{
+	uint32_t	d;
+	int			i;
+
+	for (i = 0 ; i < count ; i++)
+	{
+		if (zbuf && !(zbuf[i] <= zi + (float)i * step))
+			continue;
+		d = dest[i];
+		dest[i] = Simd_Scalar_PartChannel (d & 1023, src[0][i], mul[0][i])
+			| (Simd_Scalar_PartChannel ((d >> 10) & 1023, src[1][i], mul[1][i]) << 10)
+			| (Simd_Scalar_PartChannel ((d >> 20) & 1023, src[2][i], mul[2][i]) << 20);
+	}
+}
+
 // a channel fogged: its light weighted a (of 256) and the fog's, fog, ia, as
 // Simd_Scalar_BlendChannel blends
 static inline unsigned Simd_Scalar_FogChannel (unsigned s, float fog, float a, float ia)

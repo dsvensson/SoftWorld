@@ -565,6 +565,89 @@ void Simd_M3_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, 
 	}
 }
 
+// one 10 bit channel of dest at bit shift: its light times m, plus s, as
+// simd_scalar.c adds it
+static inline uint32x4_t Simd_M3_PartChannel (uint32x4_t d, float32x4_t s, float32x4_t m, int shift)
+{
+	const uint32x4_t	mask = vdupq_n_u32 (1023);
+	float32x4_t			fd = vcvtq_f32_u32 (vandq_u32 (vshlq_u32 (d, vdupq_n_s32 (-shift)), mask));
+	float32x4_t			x;
+	uint32x4_t			c;
+
+	fd = vmulq_f32 (fd, fd);
+	fd = vmulq_f32 (fd, fd);
+	x = vmaxq_f32 (vaddq_f32 (s, vmulq_f32 (fd, m)), vdupq_n_f32 (0));
+	c = vcvtq_u32_f32 (vaddq_f32 (vsqrtq_f32 (vsqrtq_f32 (x)), vdupq_n_f32 (0.5f)));
+	return vshlq_u32 (vminq_u32 (c, mask), vdupq_n_s32 (shift));
+}
+
+// four pixels from their light added and multiplied; lanes whose mask is
+// clear keep dest's
+static inline uint32x4_t Simd_M3_Part4 (uint32x4_t d, uint32x4_t m, const float *const s[3],
+	const float *const mul[3])
+{
+	uint32x4_t	out = vorrq_u32 (Simd_M3_PartChannel (d, vld1q_f32 (s[0]), vld1q_f32 (mul[0]), 0),
+		vorrq_u32 (Simd_M3_PartChannel (d, vld1q_f32 (s[1]), vld1q_f32 (mul[1]), 10),
+		Simd_M3_PartChannel (d, vld1q_f32 (s[2]), vld1q_f32 (mul[2]), 20)));
+
+	return vbslq_u32 (m, out, d);
+}
+
+void Simd_M3_PartSpan (uint32_t *dest, const float *zbuf, float zi, float step,
+	const float *const src[3], const float *const mul[3], int count)
+{
+	const float32x4_t	vzi = vdupq_n_f32 (zi), vstep = vdupq_n_f32 (step);
+	int32x4_t			idx = Simd_M3_Iota ();
+	uint32x4_t			d, m;
+	uint32_t			db[4];
+	float				zb[4], sb[3][4], mb[3][4];
+	const float			*s4[3], *m4[3];
+	int					i, c, n;
+
+	for (i = 0 ; i < count ; i += 4, idx = vaddq_s32 (idx, vdupq_n_s32 (4)))
+	{
+		n = count - i < 4 ? count - i : 4;
+		if (n == 4)
+		{
+			m = vdupq_n_u32 (0xFFFFFFFFu);
+			if (zbuf)
+				m = vcleq_f32 (vld1q_f32 (zbuf + i), vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep)));
+			if (!vmaxvq_u32 (m))
+				continue;
+			for (c = 0 ; c < 3 ; c++)
+			{
+				s4[c] = src[c] + i;
+				m4[c] = mul[c] + i;
+			}
+			d = vld1q_u32 (dest + i);
+			vst1q_u32 (dest + i, Simd_M3_Part4 (d, m, s4, m4));
+			continue;
+		}
+
+		// the last few, through buffers; the lanes past them change nothing
+		memset (db, 0, sizeof(db));
+		memset (zb, 0, sizeof(zb));
+		memset (sb, 0, sizeof(sb));
+		memset (mb, 0, sizeof(mb));
+		memcpy (db, dest + i, (size_t)n * 4);
+		if (zbuf)
+			memcpy (zb, zbuf + i, (size_t)n * 4);
+		for (c = 0 ; c < 3 ; c++)
+		{
+			memcpy (sb[c], src[c] + i, (size_t)n * 4);
+			memcpy (mb[c], mul[c] + i, (size_t)n * 4);
+			s4[c] = sb[c];
+			m4[c] = mb[c];
+		}
+		m = vdupq_n_u32 (0xFFFFFFFFu);
+		if (zbuf)
+			m = vcleq_f32 (vld1q_f32 (zb), vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep)));
+		d = vld1q_u32 (db);
+		vst1q_u32 (db, Simd_M3_Part4 (d, m, s4, m4));
+		memcpy (dest + i, db, (size_t)n * 4);
+	}
+}
+
 // one 10 bit channel at bit shift fogged, as simd_scalar.c fogs it
 static inline uint32x4_t Simd_M3_FogChannel (uint32x4_t p, float32x4_t fog, float32x4_t a, float32x4_t ia,
 	int shift)

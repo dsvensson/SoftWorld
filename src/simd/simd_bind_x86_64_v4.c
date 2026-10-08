@@ -75,6 +75,12 @@ void simd_blendspan (uint32_t *dest, const uint32_t *src, const float *zbuf, flo
 	Simd_V4_BlendSpan (dest, src, zbuf, zi, step, alpha, count);
 }
 
+void simd_partspan (uint32_t *dest, const float *zbuf, float zi, float step,
+	const float *const src[3], const float *const mul[3], int count)
+{
+	Simd_V4_PartSpan (dest, zbuf, zi, step, src, mul, count);
+}
+
 void simd_fogspan (uint32_t *dest, const float *zbuf, float zi, float step, int count,
 	const simd_fog_t *fog)
 {

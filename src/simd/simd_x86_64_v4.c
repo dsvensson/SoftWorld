@@ -449,6 +449,54 @@ void Simd_V4_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, 
 	}
 }
 
+// one 10 bit channel of dest at bit shift: its light times m, plus s, as
+// simd_scalar.c adds it
+static inline __m512i Simd_V4_PartChannel (__m512i d, __m512 s, __m512 m, int shift)
+{
+	const __m512i	mask = _mm512_set1_epi32 (1023);
+	__m512			fd = _mm512_cvtepi32_ps (_mm512_and_si512 (_mm512_srli_epi32 (d, (unsigned)shift), mask));
+	__m512			x;
+	__m512i			c;
+
+	fd = _mm512_mul_ps (fd, fd);
+	fd = _mm512_mul_ps (fd, fd);
+	x = _mm512_max_ps (_mm512_add_ps (s, _mm512_mul_ps (fd, m)), _mm512_setzero_ps ());
+	c = _mm512_cvttps_epi32 (_mm512_add_ps (_mm512_sqrt_ps (_mm512_sqrt_ps (x)), _mm512_set1_ps (0.5f)));
+	return _mm512_slli_epi32 (_mm512_min_epi32 (c, mask), (unsigned)shift);
+}
+
+void Simd_V4_PartSpan (uint32_t *dest, const float *zbuf, float zi, float step,
+	const float *const src[3], const float *const mul[3], int count)
+{
+	const __m512	lane = _mm512_cvtepi32_ps (Simd_V4_Iota ());
+	const __m512	vzi = _mm512_set1_ps (zi);
+	const __m512	vstep = _mm512_set1_ps (step);
+	__m512i			d, out;
+	__mmask16		m;
+	int				i;
+
+	for (i = 0 ; i < count ; i += 16)
+	{
+		m = Simd_V4_Lanes (count - i);
+		if (zbuf)
+		{
+			__m512	idx = _mm512_add_ps (_mm512_set1_ps ((float)i), lane);	// whole numbers, exact
+			__m512	z = _mm512_add_ps (vzi, _mm512_mul_ps (idx, vstep));
+
+			m = _mm512_mask_cmp_ps_mask (m, _mm512_maskz_loadu_ps (m, zbuf + i), z, _CMP_LE_OQ);
+		}
+		if (!m)
+			continue;
+		d = _mm512_maskz_loadu_epi32 (m, dest + i);
+		out = _mm512_or_si512 (
+			Simd_V4_PartChannel (d, _mm512_maskz_loadu_ps (m, src[0] + i), _mm512_maskz_loadu_ps (m, mul[0] + i), 0),
+			_mm512_or_si512 (
+			Simd_V4_PartChannel (d, _mm512_maskz_loadu_ps (m, src[1] + i), _mm512_maskz_loadu_ps (m, mul[1] + i), 10),
+			Simd_V4_PartChannel (d, _mm512_maskz_loadu_ps (m, src[2] + i), _mm512_maskz_loadu_ps (m, mul[2] + i), 20)));
+		_mm512_mask_storeu_epi32 (dest + i, m, out);
+	}
+}
+
 void Simd_V4_Expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
 	int scale, int transparent)
 {
