@@ -189,7 +189,7 @@ static void SV_Soundlist_f (void)
 //NOTE:  This doesn't go through ClientReliableWrite since it's before the user
 //spawns.  These functions are written to not overflow
 	if (host_client->num_backbuf) {
-		Con_Printf("WARNING %s: [SV_Soundlist] Back buffered (%d0, clearing", host_client->name, host_client->netchan.message.cursize); 
+		Con_Printf("WARNING %s: [SV_Soundlist] Back buffered (%d), clearing\n", host_client->name, host_client->netchan.message.cursize); 
 		host_client->num_backbuf = 0;
 		SZ_Clear(&host_client->netchan.message);
 	}
@@ -251,7 +251,7 @@ static void SV_Modellist_f (void)
 //NOTE:  This doesn't go through ClientReliableWrite since it's before the user
 //spawns.  These functions are written to not overflow
 	if (host_client->num_backbuf) {
-		Con_Printf("WARNING %s: [SV_Modellist] Back buffered (%d0, clearing", host_client->name, host_client->netchan.message.cursize); 
+		Con_Printf("WARNING %s: [SV_Modellist] Back buffered (%d), clearing\n", host_client->name, host_client->netchan.message.cursize); 
 		host_client->num_backbuf = 0;
 		SZ_Clear(&host_client->netchan.message);
 	}
@@ -441,7 +441,7 @@ static void SV_PreSpawn_f (void)
 //NOTE:  This doesn't go through ClientReliableWrite since it's before the user
 //spawns.  These functions are written to not overflow
 	if (host_client->num_backbuf) {
-		Con_Printf("WARNING %s: [SV_PreSpawn] Back buffered (%d0, clearing", host_client->name, host_client->netchan.message.cursize);
+		Con_Printf("WARNING %s: [SV_PreSpawn] Back buffered (%d), clearing\n", host_client->name, host_client->netchan.message.cursize);
 		host_client->num_backbuf = 0;
 		SZ_Clear(&host_client->netchan.message);
 	}

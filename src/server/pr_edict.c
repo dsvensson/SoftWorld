@@ -908,7 +908,7 @@ if (!strcmp(com_token, "light"))
 			else if (!strcmp (keyname, "colormod"))
 				sscanf (com_token, "%f %f %f", &ent->colormod[0], &ent->colormod[1], &ent->colormod[2]);
 			else
-				Con_Printf ("%s is not a field\n", keyname);
+				Con_DPrintf ("%s is not a field\n", keyname);
 			continue;
 		}
 
