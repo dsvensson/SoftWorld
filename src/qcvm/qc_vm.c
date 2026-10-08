@@ -951,6 +951,9 @@ bool QC_ReadMemory (const qcvm_t *vm, qc_ptr_t p, void *out, size_t len)
 	size_t		i;
 	qc_loc_t	loc;
 
+	// in one region, as a frame's pixels are: at once
+	if (len && len <= UINT32_MAX && QC_ReadBytes (&vm->mem, p, out, (uint32_t)len))
+		return true;
 	for (i = 0 ; i < len ; i++)
 	{
 		if ((uint64_t)p + i > UINT32_MAX)

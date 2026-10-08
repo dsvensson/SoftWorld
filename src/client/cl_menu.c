@@ -257,28 +257,60 @@ FTE's menu QuakeC builtins the menu needs, by FTE's numbers for menus
 ==============================================================================
 */
 
-// void r_uploadimage(string name, int width, int height, void *pixels, optional int datasize,
-// optional int format): straight RGBA bytes, FTE's format 1 (the only one taken)
+// int r_uploadimage(string name, int width, int height, void *pixels, optional int datasize,
+// optional int format): FTE's format 1, straight RGBA bytes (the default), or 15 and 16, a byte
+// a pixel and after them a palette of 256 RGB or RGBA; 1 if it was taken
 static bool M_UploadImage (qcvm_t *vm)
 {
 	const char	*imagename = QC_ArgString (vm, 0);
 	int32_t		w = QC_ArgInt (vm, 1), h = QC_ArgInt (vm, 2);
-	byte		*rgba;
-	size_t		size;
+	int32_t		format = QC_Argc (vm) > 5 ? QC_ArgInt (vm, 5) : 1;
+	int			palbytes = format == 15 ? 3 : format == 16 ? 4 : 0;
+	byte		*data, *rgba, *out;
+	const byte	*pal;
+	size_t		pixels, size, i;
 
-	if (QC_Argc (vm) < 4 || (QC_Argc (vm) > 5 && QC_ArgInt (vm, 5) != 1) || w <= 0 || h <= 0 || w > 4096 || h > 4096
-		|| (QC_Argc (vm) > 4 && QC_ArgInt (vm, 4) < w * h * 4))
+	QC_ReturnInt (vm, 0);
+	if (QC_Argc (vm) < 4 || w <= 0 || h <= 0 || w > 4096 || h > 4096 || (format != 1 && !palbytes))
 	{
-		QC_Warning (vm, "r_uploadimage: %s isn't %dx%d RGBA", imagename, w, h);
+		QC_Warning (vm, "r_uploadimage: %s isn't a %dx%d image of a format taken (%d)", imagename, w, h, format);
 		return true;
 	}
-	size = (size_t)w * h * 4;
-	rgba = Mem_Alloc (size);
-	if (!QC_ReadMemory (vm, QC_ArgWord (vm, 3), rgba, size))
+	pixels = (size_t)w * h;
+	size = palbytes ? pixels + 256 * (size_t)palbytes : pixels * 4;
+	if (QC_Argc (vm) > 4 && QC_ArgInt (vm, 4) < (int64_t)size)
+	{
+		QC_Warning (vm, "r_uploadimage: %s's %d bytes aren't %dx%d of format %d", imagename, QC_ArgInt (vm, 4), w, h,
+			format);
+		return true;
+	}
+	data = Mem_Alloc (size);
+	if (!QC_ReadMemory (vm, QC_ArgWord (vm, 3), data, size))
+	{
 		QC_Warning (vm, "r_uploadimage: %s's pixels aren't in memory", imagename);
-	else if (!Draw_UploadImage (imagename, w, h, rgba))
+		Mem_Free (data);
+		return true;
+	}
+	rgba = data;
+	if (palbytes)
+	{
+		rgba = out = Mem_Alloc (pixels * 4);
+		for (i = 0 ; i < pixels ; i++, out += 4)
+		{
+			pal = data + pixels + data[i] * palbytes;
+			out[0] = pal[0];
+			out[1] = pal[1];
+			out[2] = pal[2];
+			out[3] = palbytes == 4 ? pal[3] : 255;
+		}
+	}
+	if (Draw_UploadImage (imagename, w, h, rgba))
+		QC_ReturnInt (vm, 1);
+	else
 		QC_Warning (vm, "r_uploadimage: no room for %s", imagename);
-	Mem_Free (rgba);
+	if (rgba != data)
+		Mem_Free (rgba);
+	Mem_Free (data);
 	return true;
 }
 

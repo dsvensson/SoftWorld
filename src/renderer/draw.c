@@ -519,40 +519,6 @@ static void Draw_BlendNow (int x, int y, int w, int h, hudpixel_t p)
 
 /*
 ================
-Draw_RGBANow
-
-A premultiplied RGBA image at con x,y: opaque texels copied, clear ones
-skipped, the others over what is there
-================
-*/
-static void Draw_RGBANow (int x, int y, const hudpixel_t *src, int srcrow, int w, int h)
-{
-	int			k = (int)vid.scale;
-	int			u, v, i, j;
-	unsigned	a;
-	hudpixel_t	*dest, *block;
-
-	for (v=0 ; v<h ; v++, src += srcrow)
-		for (j=0 ; j<k ; j++)
-		{
-			dest = vid.hud + ((y+v)*k + j)*vid.rowpixels + x*k;
-			for (u=0 ; u<w ; u++)
-			{
-				if (!(a = HUD_A (src[u])))
-					continue;
-				block = dest + u*k;
-				if (a == 255)
-					for (i=0 ; i<k ; i++)
-						block[i] = src[u];
-				else
-					for (i=0 ; i<k ; i++)
-						block[i] = Draw_Over (src[u], block[i]);
-			}
-		}
-}
-
-/*
-================
 Draw_ImageHalf
 
 An 8 bit image through pal, half over what is there; texels of 0 are skipped
@@ -853,6 +819,59 @@ static void Draw_QCPicNow (const qpic_t *pic, const int *arg)
 	}
 }
 
+// QuakeC's images (Draw_QCImage), as Draw_QCPicNow draws pics: each column's
+// and row's texel found once, as a full-screen image is drawn every frame
+static void Draw_QCImageNow (const drawimage_t *img, const int *arg)
+{
+	static int	*cols;
+	static int	numcols;
+	int			k = (int)vid.scale;
+	int			x = (int16_t)(arg[0] & 0xffff), y = arg[0] >> 16;
+	int			w = arg[1] & 0xffff, h = arg[1] >> 16;
+	int			sx = arg[2] & 0xffff, sy = arg[2] >> 16, sw = arg[3] & 0xffff, sh = arg[3] >> 16;
+	int			px0 = (arg[4] & 0xffff) * k, py0 = (arg[4] >> 16) * k;
+	int			px1 = (arg[5] & 0xffff) * k, py1 = (arg[5] >> 16) * k;
+	unsigned	alpha = (unsigned)arg[6];
+	int			px, py, ty;
+	const hudpixel_t	*row;
+	hudpixel_t	*dest, p;
+
+	if (px0 < x*k)
+		px0 = x*k;
+	if (py0 < y*k)
+		py0 = y*k;
+	if (px1 > (x+w)*k)
+		px1 = (x+w)*k;
+	if (py1 > (y+h)*k)
+		py1 = (y+h)*k;
+	if (px1 <= px0 || py1 <= py0)
+		return;
+	if (px1 - px0 > numcols)
+	{
+		numcols = px1 - px0;
+		cols = Mem_Realloc (cols, (size_t)numcols * sizeof(*cols));
+	}
+	for (px=px0 ; px<px1 ; px++)
+		cols[px - px0] = sx + (int)((int64_t)(px - x*k) * sw / (w*k));
+	for (py=py0 ; py<py1 ; py++)
+	{
+		ty = sy + (int)((int64_t)(py - y*k) * sh / (h*k));
+		row = img->data + ty * img->width;
+		dest = vid.hud + py*vid.rowpixels;
+		for (px=px0 ; px<px1 ; px++)
+		{
+			p = row[cols[px - px0]];
+			if (alpha != 255)
+				p = ((p & 255) * alpha + 127) / 255 | (((p >> 8) & 255) * alpha + 127) / 255 << 8
+					| (((p >> 16) & 255) * alpha + 127) / 255 << 16 | (HUD_A (p) * alpha + 127) / 255 << 24;
+			if (HUD_A (p) == 255)
+				dest[px] = p;
+			else if (HUD_A (p))
+				dest[px] = Draw_Over (p, dest[px]);
+		}
+	}
+}
+
 /*
 ===============================================================================
 
@@ -867,13 +886,13 @@ typedef enum
 	DC_PIC,				// pic: x, y, srcx, srcy, width, height
 	DC_TRANSPIC,		// pic: x, y
 	DC_TRANSSUBPIC,		// pic: x, y, srcx, srcy, width, height
-	DC_IMAGE,			// image: x, y, srcx, srcy, width, height
 	DC_CONBACK,			// lines, downloading
 	DC_TILE,			// x, y, width, height
 	DC_FILL,			// x, y, width, height, palette index
 	DC_BLEND,			// x, y, width, height, premultiplied RGBA (on screen)
-	DC_QCPIC			// pic: x|y<<16, width|height<<16, srcx|srcy<<16, srcwidth|srcheight<<16,
+	DC_QCPIC,			// pic: x|y<<16, width|height<<16, srcx|srcy<<16, srcwidth|srcheight<<16,
 						//  clip x0|y0<<16, clip x1|y1<<16, alpha (Draw_QCPic)
+	DC_QCIMAGE			// image: as DC_QCPIC (Draw_QCImage)
 } drawop_t;
 
 typedef struct
@@ -961,10 +980,6 @@ void Draw_Flush (void)
 			Draw_Image (c->arg[0], c->arg[1], c->pic->data + c->arg[3] * c->pic->width + c->arg[2], c->pic->width,
 				c->arg[4], c->arg[5], draw_pal, TRANSPARENT_COLOR);
 			break;
-		case DC_IMAGE:
-			Draw_RGBANow (c->arg[0], c->arg[1], c->image->data + c->arg[3] * c->image->width + c->arg[2],
-				c->image->width, c->arg[4], c->arg[5]);
-			break;
 		case DC_CONBACK:
 			Draw_ConsoleBackgroundNow (c->arg[0], c->arg[1] != 0);
 			break;
@@ -979,6 +994,9 @@ void Draw_Flush (void)
 			break;
 		case DC_QCPIC:
 			Draw_QCPicNow (c->pic, c->arg);
+			break;
+		case DC_QCIMAGE:
+			Draw_QCImageNow (c->image, c->arg);
 			break;
 		}
 	}
@@ -1197,30 +1215,6 @@ void Draw_ClippedPic (int x, int y, const qpic_t *pic)
 }
 
 /*
-=============
-Draw_ClippedImage
-
-QuakeC's images (Draw_UploadImage), anywhere, clipped to the screen
-=============
-*/
-void Draw_ClippedImage (int x, int y, const drawimage_t *img)
-{
-	drawcmd_t	*c;
-	int			srcx = 0, srcy = 0, width = img->width, height = img->height;
-
-	if (!Draw_Clip (&x, &y, &srcx, &srcy, &width, &height))
-		return;
-	c = Draw_Record (DC_IMAGE, NULL);
-	c->image = img;
-	c->arg[0] = x;
-	c->arg[1] = y;
-	c->arg[2] = srcx;
-	c->arg[3] = srcy;
-	c->arg[4] = width;
-	c->arg[5] = height;
-}
-
-/*
 ================
 Draw_ConsoleBackground
 
@@ -1318,17 +1312,10 @@ void Draw_GetClipArea (int *x0, int *y0, int *x1, int *y1)
 	*y1 = set && draw_clip[3] < (int)vid.conheight ? draw_clip[3] : (int)vid.conheight;
 }
 
-/*
-=============
-Draw_QCPic
-
-QuakeC's pics (drawpic, drawsubpic): the part of the pic from s, t, sw by th
-of it (fractions), over the w by h con rectangle at x, y, by the alpha (0 to
-1); within the screen and the clip area
-=============
-*/
-void Draw_QCPic (float x, float y, float w, float h, const qpic_t *pic, float s, float t, float sw, float th,
-	float alpha)
+// what Draw_QCPic and Draw_QCImage record of a width by height source; *out
+// the call, left alone if nothing is drawn
+static void Draw_QCRect (drawop_t op, float x, float y, float w, float h, int width, int height, float s, float t,
+	float sw, float th, float alpha, drawcmd_t **out)
 {
 	drawcmd_t	*c;
 	int			ix, iy, iw, ih, sx, sy, ssw, ssh, cx0, cy0, cx1, cy1, a;
@@ -1344,22 +1331,23 @@ void Draw_QCPic (float x, float y, float w, float h, const qpic_t *pic, float s,
 		return;
 	s = s > 0 ? s : 0;
 	t = t > 0 ? t : 0;
-	sx = (int)floorf (s * pic->width + 0.5f);
-	sy = (int)floorf (t * pic->height + 0.5f);
-	ssw = (int)floorf (sw * pic->width + 0.5f);
-	ssh = (int)floorf (th * pic->height + 0.5f);
-	if (sx >= pic->width || sy >= pic->height || ssw <= 0 || ssh <= 0)
+	sx = (int)floorf (s * width + 0.5f);
+	sy = (int)floorf (t * height + 0.5f);
+	ssw = (int)floorf (sw * width + 0.5f);
+	ssh = (int)floorf (th * height + 0.5f);
+	if (sx >= width || sy >= height || ssw <= 0 || ssh <= 0)
 		return;
-	if (ssw > pic->width - sx)
-		ssw = pic->width - sx;
-	if (ssh > pic->height - sy)
-		ssh = pic->height - sy;
+	if (ssw > width - sx)
+		ssw = width - sx;
+	if (ssh > height - sy)
+		ssh = height - sy;
 
 	Draw_GetClipArea (&cx0, &cy0, &cx1, &cy1);
 	if (ix >= cx1 || iy >= cy1 || ix + iw <= cx0 || iy + ih <= cy0 || cx0 >= cx1 || cy0 >= cy1)
 		return;
 
-	c = Draw_Record (DC_QCPIC, pic);
+	c = Draw_Record (op, NULL);
+	*out = c;
 	c->arg[0] = (ix & 0xffff) | iy << 16;
 	c->arg[1] = iw | ih << 16;
 	c->arg[2] = sx | sy << 16;
@@ -1367,6 +1355,42 @@ void Draw_QCPic (float x, float y, float w, float h, const qpic_t *pic, float s,
 	c->arg[4] = cx0 | cy0 << 16;
 	c->arg[5] = cx1 | cy1 << 16;
 	c->arg[6] = a;
+}
+
+/*
+=============
+Draw_QCPic
+
+QuakeC's pics (drawpic, drawsubpic): the part of the pic from s, t, sw by th
+of it (fractions), over the w by h con rectangle at x, y, by the alpha (0 to
+1); within the screen and the clip area
+=============
+*/
+void Draw_QCPic (float x, float y, float w, float h, const qpic_t *pic, float s, float t, float sw, float th,
+	float alpha)
+{
+	drawcmd_t	*c = NULL;
+
+	Draw_QCRect (DC_QCPIC, x, y, w, h, pic->width, pic->height, s, t, sw, th, alpha, &c);
+	if (c)
+		c->pic = pic;
+}
+
+/*
+=============
+Draw_QCImage
+
+QuakeC's images (r_uploadimage) as Draw_QCPic draws pics
+=============
+*/
+void Draw_QCImage (float x, float y, float w, float h, const drawimage_t *img, float s, float t, float sw, float th,
+	float alpha)
+{
+	drawcmd_t	*c = NULL;
+
+	Draw_QCRect (DC_QCIMAGE, x, y, w, h, img->width, img->height, s, t, sw, th, alpha, &c);
+	if (c)
+		c->image = img;
 }
 
 /*

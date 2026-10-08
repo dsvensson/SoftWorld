@@ -55,12 +55,14 @@ void	Draw_ClippedPic (int x, int y, const qpic_t *pic);		// 255 transparent
 bool	Draw_UploadImage (const char *name, int width, int height, const byte *rgba);
 const drawimage_t	*Draw_FindImage (const char *name);
 void	Draw_ImageSize (const drawimage_t *img, int *width, int *height);
-void	Draw_ClippedImage (int x, int y, const drawimage_t *img);
 // a rectangle of a color (0-255 a channel) over what is there, alpha its cover
 void	Draw_BlendFill (int x, int y, int w, int h, int r, int g, int b, int alpha);
 // QuakeC's: a part of a pic (fractions of it) over a con rectangle by an alpha, and its clip area
 void	Draw_QCPic (float x, float y, float w, float h, const qpic_t *pic, float s, float t, float sw, float th,
 			float alpha);
+// the same of an image QuakeC made
+void	Draw_QCImage (float x, float y, float w, float h, const drawimage_t *img, float s, float t, float sw,
+			float th, float alpha);
 void	Draw_SetClipArea (float x, float y, float w, float h);
 void	Draw_ResetClipArea (void);
 void	Draw_GetClipArea (int *x0, int *y0, int *x1, int *y1);	// within the screen

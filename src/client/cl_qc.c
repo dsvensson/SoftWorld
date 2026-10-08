@@ -283,6 +283,97 @@ static float CLQC_Alpha (qcvm_t *vm, int arg)
 	return QC_Argc (vm) > arg ? QC_ArgFloat (vm, arg) : 1.0f;
 }
 
+/*
+==============================================================================
+
+SHADERS
+
+FTE's shaderforname makes a material of a shader's text. The 2D here has
+images and pics, no stages: a shader is the image or pic its first map names
+($rt:'s render target too), drawn under the shader's name.
+
+==============================================================================
+*/
+
+#define	CLQC_MAX_SHADERS	64
+
+static struct
+{
+	char	name[MAX_QPATH];
+	char	map[MAX_QPATH];
+} clqc_shaders[CLQC_MAX_SHADERS];
+static int	clqc_numshaders;
+
+// the image a pic name draws: QuakeC's (r_uploadimage), by a shader's name too
+static const drawimage_t *CLQC_FindImage (const char *picname)
+{
+	int		i;
+
+	for (i = 0 ; i < clqc_numshaders ; i++)
+		if (!strcmp (clqc_shaders[i].name, picname))
+		{
+			picname = clqc_shaders[i].map;
+			break;
+		}
+	return Draw_FindImage (picname);
+}
+
+// the texture a shader's first stage maps, its $ modifiers off ("$rt:$nearest:x"
+// is x); false without one
+static bool CLQC_ShaderMap (const char *text, char *map, size_t size)
+{
+	const char	*s = text, *tex, *colon;
+	size_t		len;
+
+	for ( ; *s ; s++)
+	{
+		if (strncmp (s, "map", 3) || (s > text && !isspace ((byte)s[-1])) || !isspace ((byte)s[3]))
+			continue;
+		for (tex = s + 3 ; isspace ((byte)*tex) ; tex++)
+			;
+		while (*tex == '$' && (colon = strchr (tex, ':')))
+			tex = colon + 1;
+		for (len = 0 ; tex[len] && !isspace ((byte)tex[len]) && tex[len] != '}' ; len++)
+			;
+		if (!len || len >= size)
+			return false;
+		memcpy (map, tex, len);
+		map[len] = 0;
+		return true;
+	}
+	return false;
+}
+
+// float shaderforname(string name, optional string defaultshader, ...): a
+// handle; the name draws what the shader maps (the name's own image or pic
+// without one)
+static bool CLQC_ShaderForName (qcvm_t *vm)
+{
+	const char	*shader = QC_ArgString (vm, 0);
+	char		map[MAX_QPATH];
+	int			i;
+
+	QC_ReturnFloat (vm, 0);
+	if (!*shader || strlen (shader) >= MAX_QPATH)
+		return true;
+	if (QC_Argc (vm) < 2 || !CLQC_ShaderMap (QC_ArgString (vm, 1), map, sizeof(map)))
+		Q_strncpyz (map, shader, sizeof(map));
+	for (i = 0 ; i < clqc_numshaders ; i++)
+		if (!strcmp (clqc_shaders[i].name, shader))
+			break;
+	if (i == CLQC_MAX_SHADERS)
+	{
+		QC_Warning (vm, "shaderforname: too many shaders");
+		return true;
+	}
+	if (i == clqc_numshaders)
+		clqc_numshaders++;
+	Q_strncpyz (clqc_shaders[i].name, shader, sizeof(clqc_shaders[i].name));
+	Q_strncpyz (clqc_shaders[i].map, map, sizeof(clqc_shaders[i].map));
+	QC_ReturnFloat (vm, (float)(i + 1));
+	return true;
+}
+
 // string precache_pic(string name, optional float flags): the name, or null if there is none
 static bool CLQC_PrecachePic (qcvm_t *vm)
 {
@@ -295,23 +386,33 @@ static bool CLQC_IsCachedPic (qcvm_t *vm)
 {
 	const char	*picname = QC_ArgString (vm, 0);
 
-	QC_ReturnFloat (vm, Draw_FindImage (picname) || Draw_TryCachePic (picname) ? 1.0f : 0.0f);
+	QC_ReturnFloat (vm, CLQC_FindImage (picname) || Draw_TryCachePic (picname) ? 1.0f : 0.0f);
 	return true;
 }
 
 // float drawpic(vector pos, string pic, vector size, vector rgb, float alpha, optional float flag):
-// an image QuakeC made (r_uploadimage) as it is, else a pic at the size (its own for '0 0')
+// an image QuakeC made (r_uploadimage), else a pic, at the size (its own for '0 0')
 static bool CLQC_DrawPic (qcvm_t *vm)
 {
 	const char			*picname = QC_ArgString (vm, 1);
 	const drawimage_t	*img;
 	qpic_t				*pic = NULL;
 	float				pos[3], size[3];
+	int					w, h;
 
 	QC_ArgVector (vm, 0, pos);
 	QC_ArgVector (vm, 2, size);
-	if ((img = Draw_FindImage (picname)))
-		Draw_ClippedImage ((int)CLQC_Coord (pos[0]), (int)CLQC_Coord (pos[1]), img);
+	if ((img = CLQC_FindImage (picname)))
+	{
+		if (!size[0] && !size[1])
+		{
+			Draw_ImageSize (img, &w, &h);
+			size[0] = (float)w;
+			size[1] = (float)h;
+		}
+		Draw_QCImage (CLQC_Coord (pos[0]), CLQC_Coord (pos[1]), size[0], size[1], img, 0, 0, 1, 1,
+			CLQC_Alpha (vm, 4));
+	}
 	else if ((pic = Draw_TryCachePic (picname)))
 	{
 		if (!size[0] && !size[1])
@@ -330,17 +431,23 @@ static bool CLQC_DrawPic (qcvm_t *vm)
 // float alpha, optional float flag): the part of the pic from srcpos, srcsize big (fractions of it)
 static bool CLQC_DrawSubPic (qcvm_t *vm)
 {
-	qpic_t	*pic;
-	float	pos[3], size[3], src[3], srcsize[3];
+	const char			*picname = QC_ArgString (vm, 2);
+	const drawimage_t	*img = CLQC_FindImage (picname);
+	qpic_t				*pic = NULL;
+	float				pos[3], size[3], src[3], srcsize[3];
 
-	if (!(pic = Draw_TryCachePic (QC_ArgString (vm, 2))))
+	if (!img && !(pic = Draw_TryCachePic (picname)))
 		return true;
 	QC_ArgVector (vm, 0, pos);
 	QC_ArgVector (vm, 1, size);
 	QC_ArgVector (vm, 3, src);
 	QC_ArgVector (vm, 4, srcsize);
-	Draw_QCPic (CLQC_Coord (pos[0]), CLQC_Coord (pos[1]), size[0], size[1], pic, src[0], src[1], srcsize[0],
-		srcsize[1], CLQC_Alpha (vm, 6));
+	if (img)
+		Draw_QCImage (CLQC_Coord (pos[0]), CLQC_Coord (pos[1]), size[0], size[1], img, src[0], src[1], srcsize[0],
+			srcsize[1], CLQC_Alpha (vm, 6));
+	else
+		Draw_QCPic (CLQC_Coord (pos[0]), CLQC_Coord (pos[1]), size[0], size[1], pic, src[0], src[1], srcsize[0],
+			srcsize[1], CLQC_Alpha (vm, 6));
 	return true;
 }
 
@@ -447,7 +554,7 @@ static bool CLQC_DrawGetImageSize (qcvm_t *vm)
 	float				size[3] = {0, 0, 0};
 	int					w, h;
 
-	if ((img = Draw_FindImage (picname)))
+	if ((img = CLQC_FindImage (picname)))
 	{
 		Draw_ImageSize (img, &w, &h);
 		size[0] = (float)w;
@@ -481,6 +588,7 @@ bool CLQC_DrawBuiltins (qc_builtins_t *b)
 		{"drawsetcliparea", CLQC_DrawSetClipArea},
 		{"drawresetcliparea", CLQC_DrawResetClipArea},
 		{"drawgetimagesize", CLQC_DrawGetImageSize},
+		{"shaderforname", CLQC_ShaderForName},
 	};
 	size_t	i;
 
