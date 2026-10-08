@@ -6,6 +6,9 @@
 
 #include "qc_local.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+
 static inline qc_exit_t QC_ExitOf (qc_exitkind_t kind)
 {
 	return (qc_exit_t){.kind = kind};
@@ -416,6 +419,86 @@ bool QC_MissingBuiltin (qcvm_t *vm, qc_func_t f)
 /*
 ==============================================================================
 
+WATCHPOINTS
+
+setwatchpoint's value is read before each statement, in the traced loop, so a
+change shows at the statement after the one that made it
+
+==============================================================================
+*/
+
+bool QC_SetWatch (qcvm_t *vm, const char *name, uint32_t type, uint32_t ptr)
+{
+	uint32_t	words = type == QC_EV_VECTOR ? 3 : type == QC_EV_INT64 || type == QC_EV_UINT64
+		|| type == QC_EV_DOUBLE ? 2 : 1, old[3] = {0, 0, 0};
+	char		*copy;
+
+	free (vm->watch.name);
+	vm->watch.name = NULL;
+	if (!name)
+		return true;
+	if (!ptr || !QC_ReadBytes (&vm->mem, ptr, old, words * 4) || !(copy = malloc (strlen (name) + 1)))
+		return false;
+	memcpy (copy, name, strlen (name) + 1);
+	vm->watch.name = copy;
+	vm->watch.type = type;
+	vm->watch.ptr = ptr;
+	vm->watch.words = words;
+	memcpy (vm->watch.old, old, sizeof(old));
+	return true;
+}
+
+bool QC_WatchChanged (const qcvm_t *vm)
+{
+	uint32_t	now[3] = {0, 0, 0};
+
+	// a value gone (an entity's memory shrunk) reads as zero
+	QC_ReadBytes (&vm->mem, vm->watch.ptr, now, vm->watch.words * 4);
+	return memcmp (now, vm->watch.old, vm->watch.words * 4) != 0;
+}
+
+// a watched value as FTE prints it: a float, a vector, else an int
+static void QC_WatchText (const qcvm_t *vm, const uint32_t w[3], char *buf, size_t size)
+{
+	switch (vm->watch.type)
+	{
+	case QC_EV_FLOAT:
+		snprintf (buf, size, "%g", (double)QC_BitsFloat (w[0]));
+		break;
+	case QC_EV_VECTOR:
+		snprintf (buf, size, "'%g %g %g'", (double)QC_BitsFloat (w[0]), (double)QC_BitsFloat (w[1]),
+			(double)QC_BitsFloat (w[2]));
+		break;
+	case QC_EV_INT64:
+		snprintf (buf, size, "%lld", (long long)(w[0] | (uint64_t)w[1] << 32));
+		break;
+	case QC_EV_UINT64:
+		snprintf (buf, size, "%llu", (unsigned long long)(w[0] | (uint64_t)w[1] << 32));
+		break;
+	case QC_EV_DOUBLE:
+		snprintf (buf, size, "%g", QC_BitsDouble (w[0] | (uint64_t)w[1] << 32));
+		break;
+	default:
+		snprintf (buf, size, "%d", (int32_t)w[0]);
+		break;
+	}
+}
+
+void QC_WatchReport (qcvm_t *vm)
+{
+	uint32_t	now[3] = {0, 0, 0};
+	char		was[96], is[96];
+
+	QC_ReadBytes (&vm->mem, vm->watch.ptr, now, vm->watch.words * 4);
+	QC_WatchText (vm, vm->watch.old, was, sizeof(was));
+	QC_WatchText (vm, now, is, sizeof(is));
+	QC_Warning (vm, "watch point \"%s\" changed from %s to %s", vm->watch.name, was, is);
+	memcpy (vm->watch.old, now, sizeof(now));
+}
+
+/*
+==============================================================================
+
 THE LOOP
 
 ==============================================================================
@@ -435,7 +518,7 @@ THE LOOP
 
 qc_exit_t QC_Run (qcvm_t *vm, uint32_t exit_depth, uint32_t *budget)
 {
-	if (vm->trace || vm->profiling)
+	if (vm->trace || vm->profiling || vm->watch.name)
 		return QC_RunTraced (vm, exit_depth, budget);
 	vm->traced = false;
 	return QC_RunPlain (vm, exit_depth, budget);

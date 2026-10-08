@@ -172,6 +172,7 @@ These CSQC builtins are declared `#0` and bound by name.
 | `fread`, `fwrite` | `int(filestream, void *ptr, int size, optional int ofs)` | B |
 | `fseek`, `fsize` | `int(filestream, optional int)` | B |
 | `fseek64`, `fsize64` | `__int64(filestream, optional __int64)` | B |
+| `setwatchpoint` | `void(string name, float type, void *ptr)` | A |
 | `sind`, `cosd`, `tand`, `asind`, `acosd`, `atand`, `sqrtd`, `floord`, `ceild`, `fabsd` | `__double(__double)` | A |
 | `atan2d`, `powd` | `__double(__double, __double)` | A |
 | `logd` | `__double(__double v, optional __double base)` | A |
@@ -463,6 +464,11 @@ them.
 - **`abort(optional ret)`**: unwinds every frame to the engine's entry, which returns `ret`.
 - **`traceon`, `traceoff`, `breakpoint`, `coredump`, `eprint`**: see the
   [table](#numbered-builtins).
+- **`setwatchpoint(name, type, ptr)`**: the value of the type at `ptr` (one word, three for a
+  vector, two for the 64-bit types) is compared before every statement; a change is the run
+  warning `watch point "name" changed from x to y` at the statement after it, QuakeC's change
+  or the host's. A null `ptr` stops it; an unreadable one is a warning. The VM runs its tracing
+  interpreter while a value is watched.
 
 ### Time
 

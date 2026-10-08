@@ -85,6 +85,11 @@ reload:
 	for ( ; ; pc++)
 	{
 #if QC_LOOP_TRACED
+		if (vm->watch.name && QC_WatchChanged (vm))
+		{
+			vm->x.pc = pc;
+			return QC_ExitOf (QC_EXIT_WATCH);
+		}
 		if (vm->trace && !vm->traced)
 		{
 			vm->traced = true;

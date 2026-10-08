@@ -645,6 +645,16 @@ struct qcvm_s
 	bool				traced;			// the statement at x.pc was reported and runs next
 	bool				profiling;		// counting statements (progs' profile)
 
+	// setwatchpoint's value, checked before each statement while it is set
+	struct
+	{
+		char			*name;			// NULL: none
+		uint32_t		type;			// QC_EV_*
+		uint32_t		ptr;
+		uint32_t		words;
+		uint32_t		old[3];			// the value last seen
+	} watch;
+
 	qc_fieldfill_t		*remove_clears;
 	uint32_t			numremove_clears;
 	qc_fieldfill_t		*spawn_defaults;
@@ -753,6 +763,7 @@ typedef enum
 	QC_EXIT_BUILTIN,		// a builtin to call; execution resumes after the call
 	QC_EXIT_STATEOP,		// an animation opcode; execution resumes after it
 	QC_EXIT_TRACE,			// tracing: the statement at x.pc runs next
+	QC_EXIT_WATCH,			// the watched value changed: the statement at x.pc runs next
 	QC_EXIT_BUDGET,			// the budget is spent: the statement at x.pc had no effect
 	QC_EXIT_FAULT			// an error (vm->error)
 } qc_exitkind_t;
@@ -782,6 +793,12 @@ bool		QC_StringsEqual (qcvm_t *vm, uint32_t a, uint32_t b);
 bool		QC_PtrRead (qcvm_t *vm, uint32_t base, uint32_t offset, void *out, uint32_t n);
 bool		QC_PtrWrite (qcvm_t *vm, uint32_t base, uint32_t offset, const void *bytes, uint32_t n);
 bool		QC_MissingBuiltin (qcvm_t *vm, qc_func_t f);
+
+// setwatchpoint's value: watched (name NULL stops it; false if ptr can't be
+// read), whether it changed since last seen, and the change reported (a warning)
+bool		QC_SetWatch (qcvm_t *vm, const char *name, uint32_t type, uint32_t ptr);
+bool		QC_WatchChanged (const qcvm_t *vm);
+void		QC_WatchReport (qcvm_t *vm);
 
 // the words of the current progs' PARM slot i (zero past the eighth), and RETURN
 void		QC_ArgRaw (const qcvm_t *vm, int i, uint32_t out[3]);

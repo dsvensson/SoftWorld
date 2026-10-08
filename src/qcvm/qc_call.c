@@ -443,6 +443,9 @@ static bool QC_ExecuteInner (qcvm_t *vm, uint32_t exit_depth)
 		case QC_EXIT_TRACE:
 			QC_TraceLine (vm);
 			break;
+		case QC_EXIT_WATCH:
+			QC_WatchReport (vm);
+			break;
 		}
 	}
 }

@@ -191,6 +191,18 @@ static bool QC_Traceoff (qcvm_t *vm)
 	return true;
 }
 
+// void setwatchpoint(string name, float type, void *ptr): a warning (with the
+// stack) whenever the value of the type at ptr changes, until the next call;
+// a null ptr stops it
+static bool QC_Setwatchpoint (qcvm_t *vm)
+{
+	uint32_t	ptr = QC_ArgWord (vm, 2);
+
+	if (!QC_SetWatch (vm, ptr ? QC_ArgString (vm, 0) : NULL, (uint32_t)QC_LibArgInt (vm, 1), ptr))
+		QC_Warning (vm, "setwatchpoint: %#x isn't memory to watch", ptr);
+	return true;
+}
+
 // void breakpoint(): a "break statement" warning with the stack
 static bool QC_Breakpoint (qcvm_t *vm)
 {
@@ -262,6 +274,7 @@ static const qc_libentry_t	qc_introspect[] = {
 	{"abort", QC_AbortBuiltin, NULL, 0},
 	{"traceon", QC_Traceon, NULL, 0},
 	{"traceoff", QC_Traceoff, NULL, 0},
+	{"setwatchpoint", QC_Setwatchpoint, NULL, 0},
 	{"breakpoint", QC_Breakpoint, NULL, 0},
 	{"coredump", QC_Coredump, NULL, 0},
 	{"eprint", QC_Eprint, NULL, 0},

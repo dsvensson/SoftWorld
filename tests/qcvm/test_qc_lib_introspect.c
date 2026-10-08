@@ -10,7 +10,7 @@
 static void Setup (qc_asm_t *a, void *ctx)
 {
 	static const uint8_t	two[2] = {1, 1};
-	uint32_t				abort_g, gval, missing_name, missing_arg, seven, one, ninety_nine;
+	uint32_t				abort_g, gval, missing_name, missing_arg, seven, one, ninety_nine, watched;
 	qa_func_t				f;
 
 	(void)ctx;
@@ -45,6 +45,14 @@ static void Setup (qc_asm_t *a, void *ctx)
 	QA_Emit (a, QOP_STORE_F, seven, QA_PARM (0), 0);
 	QA_Emit (a, QOP_CALL1, abort_g, 0, 0);
 	QA_Emit (a, QOP_RETURN, one, 0, 0);
+
+	// bump() { watched += 1; watched += 1; }
+	QA_Builtin (a, "setwatchpoint", 0, 3);
+	watched = QA_Global (a, "watched", QC_EV_FLOAT, NULL, 0);
+	QA_Function (a, "bump", NULL, 0, 0);
+	QA_Emit (a, QOP_ADD_F, watched, one, watched);
+	QA_Emit (a, QOP_ADD_F, watched, one, watched);
+	QA_Emit (a, QOP_DONE, 0, 0, 0);
 }
 
 static qh_t *Harness (void)
@@ -198,6 +206,38 @@ static void TestDebuggingHooks (void)
 	QH_Free (menu);
 }
 
+// setwatchpoint: a warning at each change of the value, QuakeC's or the
+// host's, seen at the statement after it; a null pointer stops it
+static void TestWatchpoint (void)
+{
+	qh_t		*h = Harness ();
+	uint32_t	word = Global (h, "watched");
+	uint32_t	ptr = (uint32_t)((uint8_t *)&QC_Globals (h->vm)[word] - h->vm->mem.s.base);
+
+	QT_CHECK (QH_Call (h, "setwatchpoint", ARGS (QH_S (h, "w"), F (QC_EV_FLOAT), W (ptr)), NULL));
+	QH_ClearWarnings (h);
+	QT_CHECK (QH_Call (h, "bump", NOARGS, NULL));
+	if (QT_EQ_I (QH_NumWarnings (h), 2))
+	{
+		QT_EQ_S (QH_WarningText (h, 0), "watch point \"w\" changed from 0 to 1");
+		QT_EQ_S (QH_WarningText (h, 1), "watch point \"w\" changed from 1 to 2");
+	}
+	QC_Globals (h->vm)[word].f = 5;
+	QH_ClearWarnings (h);
+	QT_CHECK (QH_Call (h, "bump", NOARGS, NULL));
+	if (QT_EQ_I (QH_NumWarnings (h), 3))
+		QT_EQ_S (QH_WarningText (h, 0), "watch point \"w\" changed from 2 to 5");
+
+	QT_CHECK (QH_Call (h, "setwatchpoint", ARGS (QH_S (h, ""), F (0), W (0)), NULL));
+	QH_ClearWarnings (h);
+	QT_CHECK (QH_Call (h, "bump", NOARGS, NULL));
+	QT_EQ_I (QH_NumWarnings (h), 0);
+	QT_EQ_F (QC_Globals (h->vm)[word].f, 9);
+	QT_CHECK (QH_Call (h, "setwatchpoint", ARGS (QH_S (h, "x"), F (QC_EV_FLOAT), W (0x7FFFFFF0)), NULL));
+	QT_EQ_I (QH_NumWarnings (h), 1);
+	QH_Free (h);
+}
+
 int main (void)
 {
 	TestCheckbuiltinAndIsfunction ();
@@ -206,5 +246,6 @@ int main (void)
 	TestExternvalueAndExternset ();
 	TestAbort ();
 	TestDebuggingHooks ();
+	TestWatchpoint ();
 	return QT_Finish ("lib_introspect", "the VM as QuakeC sees it through its builtins");
 }
