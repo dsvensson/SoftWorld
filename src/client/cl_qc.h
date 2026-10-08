@@ -54,3 +54,7 @@ bool	CLQC_ReturnText (qcvm_t *vm, const char *text);
 // the server browser's hostcache builtins (cl_slist.c), into a host's; false
 // when there is no room
 bool	SB_Builtins (qc_builtins_t *b);
+
+// FTE's 2D builtins (drawpic, drawstring, ...), into a host's; false when
+// there is no room
+bool	CLQC_DrawBuiltins (qc_builtins_t *b);

@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 extern	qpic_t		*draw_disc;	// also used on sbar
 
 void Draw_Init (void);
+void Draw_WadPics (void);		// gfx.wad's pics again (W_LoadGameWad)
 void Draw_Character (int x, int y, int num);
 void Draw_ColoredCharacter (int x, int y, int num, unsigned color);	// a text color (markup.h)
 void Draw_MarkupString (int x, int y, const char *str);			// colored as the markup in it says
@@ -57,6 +58,12 @@ void	Draw_ImageSize (const drawimage_t *img, int *width, int *height);
 void	Draw_ClippedImage (int x, int y, const drawimage_t *img);
 // a rectangle of a color (0-255 a channel) over what is there, alpha its cover
 void	Draw_BlendFill (int x, int y, int w, int h, int r, int g, int b, int alpha);
+// QuakeC's: a part of a pic (fractions of it) over a con rectangle by an alpha, and its clip area
+void	Draw_QCPic (float x, float y, float w, float h, const qpic_t *pic, float s, float t, float sw, float th,
+			float alpha);
+void	Draw_SetClipArea (float x, float y, float w, float h);
+void	Draw_ResetClipArea (void);
+void	Draw_GetClipArea (int *x0, int *y0, int *x1, int *y1);	// within the screen
 // a pic as straight RGBA (Mem_Alloc'd, alpha 0 where transparent), NULL if
 // none: a loose .lmp, gfx.wad's, gfx/conchars, gfx/palette.lmp as 16x16
 byte	*Draw_ReadImage (const char *path, int *width, int *height);

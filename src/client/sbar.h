@@ -24,6 +24,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	SBAR_HEIGHT		24
 
 void Sbar_Init (void);
+bool Sbar_ShowingScores (void);		// +showscores is held
+void Sbar_WadPics (void);		// gfx.wad's pics again (W_LoadGameWad)
 
 // call whenever any of the client stats represented on the sbar changes
 

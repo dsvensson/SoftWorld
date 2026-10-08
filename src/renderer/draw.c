@@ -54,11 +54,28 @@ typedef struct cachepic_s
 	bool		missing;		// QuakeC asked, and there is none (until the gamedir changes)
 } cachepic_t;
 
-#define	MAX_CACHED_PICS		128
-#define	MAX_QUAKEC_PICS		64		// of them those QuakeC asked for first: the engine's have room
-static cachepic_t	menu_cachepics[MAX_CACHED_PICS];
-static int			menu_numcachepics;
+// as many as are asked for, but QuakeC's names at most MAX_QUAKEC_PICS (QBJ3's
+// status bar asks for over a hundred)
+#define	MAX_QUAKEC_PICS		1024
+static cachepic_t	*menu_cachepics;
+static int			menu_numcachepics, menu_maxcachepics;
 static int			draw_numquakecpics;
+
+// a new entry of the cache, named path
+static cachepic_t *Draw_NewCachePic (const char *path)
+{
+	cachepic_t	*pic;
+
+	if (menu_numcachepics == menu_maxcachepics)
+	{
+		menu_maxcachepics = menu_maxcachepics ? menu_maxcachepics * 2 : 128;
+		menu_cachepics = Mem_Realloc (menu_cachepics, (size_t)menu_maxcachepics * sizeof(*menu_cachepics));
+	}
+	pic = &menu_cachepics[menu_numcachepics++];
+	memset (pic, 0, sizeof(*pic));
+	Q_strncpyz (pic->name, path, sizeof(pic->name));
+	return pic;
+}
 
 
 qpic_t	*Draw_PicFromWad (char *lumpname)
@@ -82,12 +99,7 @@ qpic_t	*Draw_CachePic (char *path)
 			break;
 
 	if (i == menu_numcachepics)
-	{
-		if (menu_numcachepics == MAX_CACHED_PICS)
-			Sys_Error ("menu_numcachepics == MAX_CACHED_PICS");
-		menu_numcachepics++;
-		Q_strncpyz (pic->name, path, sizeof(pic->name));
-	}
+		pic = Draw_NewCachePic (path);
 
 	dat = pic->pic;
 
@@ -144,17 +156,22 @@ qpic_t *Draw_TryCachePic (const char *path)
 			break;
 	if (i == menu_numcachepics)
 	{
-		if (menu_numcachepics == MAX_CACHED_PICS || draw_numquakecpics == MAX_QUAKEC_PICS
-			|| strlen (path) >= sizeof(pic->name))
+		if (draw_numquakecpics == MAX_QUAKEC_PICS || strlen (path) >= sizeof(pic->name))
 			return NULL;
-		menu_numcachepics++;
 		draw_numquakecpics++;
-		Q_strncpyz (pic->name, path, sizeof(pic->name));
+		pic = Draw_NewCachePic (path);
 	}
 	if (pic->pic || pic->missing)
 		return pic->pic;
 
 	dat = (qpic_t *)FS_LoadFile ((char *)path, &len);
+	if (!dat && !strchr (strrchr (path, '/') ? strrchr (path, '/') : path, '.'))
+	{	// "gfx/inter" for gfx/inter.lmp, as FTE finds it
+		char	lmp[MAX_QPATH];
+
+		snprintf (lmp, sizeof(lmp), "%s.lmp", path);
+		dat = (qpic_t *)FS_LoadFile (lmp, &len);
+	}
 	if (dat)
 	{
 		SwapPic (dat);
@@ -166,8 +183,8 @@ qpic_t *Draw_TryCachePic (const char *path)
 			dat = NULL;
 		}
 	}
-	else if ((dat = Draw_WadPic (path)))
-		pic->wad = true;
+	else if ((dat = Draw_WadPic (path)) || (!strchr (path, '/') && (dat = W_TryGetPic (path))))
+		pic->wad = true;		// gfx/<lump>, or the lump by itself ("sbar")
 	pic->pic = dat;
 	pic->missing = !dat;
 	return dat;
@@ -206,15 +223,22 @@ Draw_Init
 */
 void Draw_Init (void)
 {
+	Draw_WadPics ();
+	FS_AddGamedirCallback (Draw_FlushCache);
+}
+
+// gfx.wad's characters, disc and backtile, again when it changes
+void Draw_WadPics (void)
+{
 	draw_chars = W_GetLumpName ("conchars");
 	draw_disc = W_GetLumpName ("disc");
 	draw_backtile = W_GetLumpName ("backtile");
-	FS_AddGamedirCallback (Draw_FlushCache);
 
 	r_rectdesc.width = draw_backtile->width;
 	r_rectdesc.height = draw_backtile->height;
 	r_rectdesc.ptexbytes = draw_backtile->data;
 	r_rectdesc.rowbytes = draw_backtile->width;
+	Draw_Invalidate ();
 }
 
 /*
@@ -750,6 +774,60 @@ static void Draw_TileClearNow (int x, int y, int w, int h)
 }
 
 /*
+================
+Draw_QCPicNow
+
+A source rectangle of a pic over a con rectangle, a texel a screen pixel
+nearest it (so a pic drawn at half its size on a doubled layout is drawn
+whole), within the clip rectangle; 255 transparent, the rest by the alpha
+over what is there
+================
+*/
+static void Draw_QCPicNow (const qpic_t *pic, const int *arg)
+{
+	int			k = (int)vid.scale;
+	int			x = (int16_t)(arg[0] & 0xffff), y = arg[0] >> 16;
+	int			w = arg[1] & 0xffff, h = arg[1] >> 16;
+	int			sx = arg[2] & 0xffff, sy = arg[2] >> 16, sw = arg[3] & 0xffff, sh = arg[3] >> 16;
+	int			px0 = (arg[4] & 0xffff) * k, py0 = (arg[4] >> 16) * k;
+	int			px1 = (arg[5] & 0xffff) * k, py1 = (arg[5] >> 16) * k;
+	unsigned	alpha = (unsigned)arg[6], c;
+	int			px, py, tx, ty;
+	const byte	*row;
+	hudpixel_t	*dest, p;
+
+	if (px0 < x*k)
+		px0 = x*k;
+	if (py0 < y*k)
+		py0 = y*k;
+	if (px1 > (x+w)*k)
+		px1 = (x+w)*k;
+	if (py1 > (y+h)*k)
+		py1 = (y+h)*k;
+	for (py=py0 ; py<py1 ; py++)
+	{
+		ty = sy + (int)((int64_t)(py - y*k) * sh / (h*k));
+		row = pic->data + ty * pic->width;
+		dest = vid.hud + py*vid.rowpixels;
+		for (px=px0 ; px<px1 ; px++)
+		{
+			tx = sx + (int)((int64_t)(px - x*k) * sw / (w*k));
+			if (row[tx] == TRANSPARENT_COLOR)
+				continue;
+			p = draw_pal[row[tx]];
+			if (alpha == 255)
+			{
+				dest[px] = p;
+				continue;
+			}
+			c = ((p & 255) * alpha + 127) / 255 | (((p >> 8) & 255) * alpha + 127) / 255 << 8
+				| (((p >> 16) & 255) * alpha + 127) / 255 << 16;
+			dest[px] = Draw_Over (c | (hudpixel_t)alpha << 24, dest[px]);
+		}
+	}
+}
+
+/*
 ===============================================================================
 
 THE CALLS OF A FRAME
@@ -767,7 +845,9 @@ typedef enum
 	DC_CONBACK,			// lines, downloading
 	DC_TILE,			// x, y, width, height
 	DC_FILL,			// x, y, width, height, palette index
-	DC_BLEND			// x, y, width, height, premultiplied RGBA (on screen)
+	DC_BLEND,			// x, y, width, height, premultiplied RGBA (on screen)
+	DC_QCPIC			// pic: x|y<<16, width|height<<16, srcx|srcy<<16, srcwidth|srcheight<<16,
+						//  clip x0|y0<<16, clip x1|y1<<16, alpha (Draw_QCPic)
 } drawop_t;
 
 typedef struct
@@ -870,6 +950,9 @@ void Draw_Flush (void)
 			break;
 		case DC_BLEND:
 			Draw_BlendNow (c->arg[0], c->arg[1], c->arg[2], c->arg[3], (hudpixel_t)c->arg[4]);
+			break;
+		case DC_QCPIC:
+			Draw_QCPicNow (c->pic, c->arg);
 			break;
 		}
 	}
@@ -1000,6 +1083,8 @@ void Draw_SubPic (int x, int y, qpic_t *pic, int srcx, int srcy, int width, int 
 {
 	drawcmd_t	*c;
 
+	if (!pic)
+		Sys_Error ("Draw_SubPic: no pic");
 	if ((x < 0) ||
 		((unsigned)(x + width) > vid.conwidth) ||
 		(y < 0) ||
@@ -1174,6 +1259,92 @@ void Draw_Fill (int x, int y, int w, int h, int color)
 
 /*
 =============
+Draw_SetClipArea
+
+QuakeC's clip rectangle (drawsetcliparea) for its pics and fills; reset
+leaves them the screen
+=============
+*/
+static int	draw_clip[4];		// x0, y0, x1, y1 in con units, all 0 for the screen
+
+void Draw_SetClipArea (float x, float y, float w, float h)
+{
+	draw_clip[0] = (int)floorf (x);
+	draw_clip[1] = (int)floorf (y);
+	draw_clip[2] = (int)floorf (x + w);
+	draw_clip[3] = (int)floorf (y + h);
+	if (!draw_clip[0] && !draw_clip[1] && !draw_clip[2] && !draw_clip[3])
+		draw_clip[3] = -1;		// empty, not the screen
+}
+
+void Draw_ResetClipArea (void)
+{
+	memset (draw_clip, 0, sizeof(draw_clip));
+}
+
+void Draw_GetClipArea (int *x0, int *y0, int *x1, int *y1)
+{
+	bool	set = draw_clip[0] || draw_clip[1] || draw_clip[2] || draw_clip[3];
+
+	*x0 = set && draw_clip[0] > 0 ? draw_clip[0] : 0;
+	*y0 = set && draw_clip[1] > 0 ? draw_clip[1] : 0;
+	*x1 = set && draw_clip[2] < (int)vid.conwidth ? draw_clip[2] : (int)vid.conwidth;
+	*y1 = set && draw_clip[3] < (int)vid.conheight ? draw_clip[3] : (int)vid.conheight;
+}
+
+/*
+=============
+Draw_QCPic
+
+QuakeC's pics (drawpic, drawsubpic): the part of the pic from s, t, sw by th
+of it (fractions), over the w by h con rectangle at x, y, by the alpha (0 to
+1); within the screen and the clip area
+=============
+*/
+void Draw_QCPic (float x, float y, float w, float h, const qpic_t *pic, float s, float t, float sw, float th,
+	float alpha)
+{
+	drawcmd_t	*c;
+	int			ix, iy, iw, ih, sx, sy, ssw, ssh, cx0, cy0, cx1, cy1, a;
+
+	if (!(x > -16384 && x < 16384 && y > -16384 && y < 16384 && w > 0 && w < 16384 && h > 0 && h < 16384))
+		return;
+	ix = (int)floorf (x);
+	iy = (int)floorf (y);
+	iw = (int)floorf (w + 0.5f);
+	ih = (int)floorf (h + 0.5f);
+	a = !(alpha > 0) ? 0 : alpha >= 1 ? 255 : (int)(alpha * 255 + 0.5f);
+	if (iw <= 0 || ih <= 0 || !a)
+		return;
+	s = s > 0 ? s : 0;
+	t = t > 0 ? t : 0;
+	sx = (int)floorf (s * pic->width + 0.5f);
+	sy = (int)floorf (t * pic->height + 0.5f);
+	ssw = (int)floorf (sw * pic->width + 0.5f);
+	ssh = (int)floorf (th * pic->height + 0.5f);
+	if (sx >= pic->width || sy >= pic->height || ssw <= 0 || ssh <= 0)
+		return;
+	if (ssw > pic->width - sx)
+		ssw = pic->width - sx;
+	if (ssh > pic->height - sy)
+		ssh = pic->height - sy;
+
+	Draw_GetClipArea (&cx0, &cy0, &cx1, &cy1);
+	if (ix >= cx1 || iy >= cy1 || ix + iw <= cx0 || iy + ih <= cy0 || cx0 >= cx1 || cy0 >= cy1)
+		return;
+
+	c = Draw_Record (DC_QCPIC, pic);
+	c->arg[0] = (ix & 0xffff) | iy << 16;
+	c->arg[1] = iw | ih << 16;
+	c->arg[2] = sx | sy << 16;
+	c->arg[3] = ssw | ssh << 16;
+	c->arg[4] = cx0 | cy0 << 16;
+	c->arg[5] = cx1 | cy1 << 16;
+	c->arg[6] = a;
+}
+
+/*
+=============
 Draw_BlendFill
 
 QuakeC's fills (the menu's): clipped to the screen as recorded
@@ -1182,21 +1353,23 @@ QuakeC's fills (the menu's): clipped to the screen as recorded
 void Draw_BlendFill (int x, int y, int w, int h, int r, int g, int b, int alpha)
 {
 	drawcmd_t	*c;
+	int			cx0, cy0, cx1, cy1;
 
-	if (x < 0)
+	Draw_GetClipArea (&cx0, &cy0, &cx1, &cy1);
+	if (x < cx0)
 	{
-		w += x;
-		x = 0;
+		w -= cx0 - x;
+		x = cx0;
 	}
-	if (y < 0)
+	if (y < cy0)
 	{
-		h += y;
-		y = 0;
+		h -= cy0 - y;
+		y = cy0;
 	}
-	if (x + w > (int)vid.conwidth)
-		w = (int)vid.conwidth - x;
-	if (y + h > (int)vid.conheight)
-		h = (int)vid.conheight - y;
+	if (x + w > cx1)
+		w = cx1 - x;
+	if (y + h > cy1)
+		h = cy1 - y;
 	alpha = alpha < 0 ? 0 : alpha > 255 ? 255 : alpha;
 	if (w <= 0 || h <= 0 || !alpha)
 		return;

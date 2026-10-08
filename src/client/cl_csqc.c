@@ -1652,6 +1652,7 @@ static void CSQC_SetFrameGlobals (void)
 	CSQC_SetFloat ("player_localnum", (float)(cls.mvdplayback ? cl.viewplayer : cl.playernum));
 	CSQC_SetFloat ("player_localentnum", (float)(viewed + 1));
 	CSQC_SetFloat ("intermission", (float)cl.intermission);
+	CSQC_SetFloat ("intermission_time", (float)cl.completed_time);
 	CSQC_SetVector ("pmove_org", cl.simorg);
 	CSQC_SetVector ("view_angles", cl.viewangles);
 }
@@ -2285,6 +2286,42 @@ bool CSQC_DrawView (bool *sbar)
 	return true;
 }
 
+/*
+=================
+CSQC_DrawHud, CSQC_DrawScores
+
+QuakeSpasm-Spiked's simple CSQC, as FTE runs it: a progs without
+CSQC_UpdateView may draw the status bar, CSQC_DrawHud (virtsize, showscores)
+in place of the client's, and the scores, CSQC_DrawScores, where the client
+draws its scoreboard or intermission. False when it doesn't, for the client to.
+=================
+*/
+static bool CSQC_DrawSimple (const char *entry)
+{
+	qc_func_t	f;
+	qc_value_t	args[2];
+
+	if (!csqc.qc.vm || CSQC_Entry ("CSQC_UpdateView") || !(f = CSQC_Entry (entry)))
+		return false;
+	CSQC_SetFrameGlobals ();
+	args[0] = QC_ValVector ((float)vid.conwidth, (float)vid.conheight, 0);
+	args[1] = QC_ValFloat (Sbar_ShowingScores () ? 1.0f : 0.0f);
+	Draw_ResetClipArea ();
+	CSQC_Call (f, 2, args);
+	Draw_ResetClipArea ();
+	return true;
+}
+
+bool CSQC_DrawHud (void)
+{
+	return CSQC_DrawSimple ("CSQC_DrawHud");
+}
+
+bool CSQC_DrawScores (void)
+{
+	return CSQC_DrawSimple ("CSQC_DrawScores");
+}
+
 // the VM and everything of it gone
 static void CSQC_Destroy (void)
 {
@@ -2413,7 +2450,7 @@ void CSQC_RegisterVariables (void)
 	csqc_host.on_remove = CSQC_OnRemove;
 
 	csqc.builtins = QC_BuiltinsStandard (QC_NUMBERING_CSQC);
-	if (!csqc.builtins)
+	if (!csqc.builtins || !CLQC_DrawBuiltins (csqc.builtins))
 		Sys_Error ("CSQC_RegisterVariables: out of memory");
 	for (i = 0 ; i < sizeof(csqc_builtins) / sizeof(csqc_builtins[0]) ; i++)
 		if (!QC_BuiltinsSet (csqc.builtins, csqc_builtins[i].name, csqc_builtins[i].func))

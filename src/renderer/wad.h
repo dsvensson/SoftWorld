@@ -68,6 +68,7 @@ typedef struct
 
 
 void	W_LoadWadFile (char *filename);
+void	W_LoadGameWad (void);		// the game directory's gfx.wad over it, when it has its own
 void	*W_GetLumpName (char *name);
 qpic_t	*W_TryGetPic (const char *name);		// a picture lump, or NULL
 

@@ -425,7 +425,10 @@ client does:
 - it tells the server CSQC runs, and takes its entities, events and stats (256, as floats and
   strings too);
 - sounds and temp entities go to CSQC first, as do the commands before they are sent;
-- CSQC draws the view: the scene builtins, a gun of its own, lights, trails and beams.
+- CSQC draws the view: the scene builtins, a gun of its own, lights, trails and beams;
+- or, without CSQC_UpdateView, the status bar and the scores over the client's view
+  (QuakeSpasm-Spiked's simple CSQC: CSQC_DrawHud and CSQC_DrawScores, as FTE runs it), with
+  FTE's 2D builtins and the game directory's own gfx.wad over the base's, as QBJ3's does.
 
 This is enough for KTX's weapon prediction on mvdsv: the gun, its sounds, projectiles and the
 lightning beam show at once, and the server's echo of each sound is dropped. The csprogs'

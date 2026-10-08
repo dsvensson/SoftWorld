@@ -112,7 +112,26 @@ static void Sbar_DontShowScores (void)
 Sbar_Init
 ===============
 */
+bool Sbar_ShowingScores (void)
+{
+	return sb_showscores;
+}
+
 void Sbar_Init (void)
+{
+	Sbar_WadPics ();
+
+	Cmd_AddCommand ("+showscores", Sbar_ShowScores, "Shows the scoreboard while held (bind to a key).");
+	Cmd_AddCommand ("-showscores", Sbar_DontShowScores,
+		"Hides the scoreboard (when the +showscores key is let go).");
+
+	Cmd_AddCommand ("+showteamscores", Sbar_ShowTeamScores, "Shows the teams' scores while held (bind to a key).");
+	Cmd_AddCommand ("-showteamscores", Sbar_DontShowTeamScores,
+		"Hides the teams' scores (when the +showteamscores key is let go).");
+}
+
+// gfx.wad's status bar pics, again when it changes
+void Sbar_WadPics (void)
 {
 	int		i;
 
@@ -191,14 +210,6 @@ void Sbar_Init (void)
 	sb_face_invis_invuln = Draw_PicFromWad ("face_inv2");
 	sb_face_quad = Draw_PicFromWad ("face_quad");
 
-	Cmd_AddCommand ("+showscores", Sbar_ShowScores, "Shows the scoreboard while held (bind to a key).");
-	Cmd_AddCommand ("-showscores", Sbar_DontShowScores,
-		"Hides the scoreboard (when the +showscores key is let go).");
-		
-	Cmd_AddCommand ("+showteamscores", Sbar_ShowTeamScores, "Shows the teams' scores while held (bind to a key).");
-	Cmd_AddCommand ("-showteamscores", Sbar_DontShowTeamScores,
-		"Hides the teams' scores (when the +showteamscores key is let go).");
-		
 	sb_sbar = Draw_PicFromWad ("sbar");
 	sb_ibar = Draw_PicFromWad ("ibar");
 	sb_scorebar = Draw_PicFromWad ("scorebar");

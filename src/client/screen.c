@@ -464,11 +464,16 @@ void SCR_Init (void)
 	Cmd_AddCommand ("sizeup",SCR_SizeUp_f, "Grows the view, adding 10 to viewsize, up to 120.");
 	Cmd_AddCommand ("sizedown",SCR_SizeDown_f, "Shrinks the view, taking 10 from viewsize, down to 30.");
 
+	SCR_WadPics ();
+
+	scr_initialized = true;
+}
+
+void SCR_WadPics (void)
+{
 	scr_ram = W_GetLumpName ("ram");
 	scr_net = W_GetLumpName ("net");
 	scr_turtle = W_GetLumpName ("turtle");
-
-	scr_initialized = true;
 }
 
 
@@ -1146,7 +1151,7 @@ void SCR_UpdateScreen (void)
 
 	if (cl.intermission == 1 && cls.key_dest == key_game)
 	{
-		if (sbar)
+		if (sbar && !CSQC_DrawScores ())
 			Sbar_IntermissionOverlay ();
 	}
 	else if (cl.intermission >= 2 && cls.key_dest == key_game)
@@ -1164,8 +1169,10 @@ void SCR_UpdateScreen (void)
 		SCR_DrawFPS ();
 		SCR_CheckDrawCenterString ();
 		CL_DrawItemTimers ();
-		if (sbar)
+		if (sbar && !CSQC_DrawHud ())
 			Sbar_Draw ();
+		else if (sbar && Sbar_ShowingScores ())
+			CSQC_DrawScores ();
 		SCR_DrawConsole ();
 		M_Draw ();
 	}

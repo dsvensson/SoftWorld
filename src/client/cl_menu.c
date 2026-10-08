@@ -135,6 +135,7 @@ void M_Draw (void)
 		return;
 	SB_Adopt ();		// the server list, as the keys after this draw find it
 	QC_RunThreads (menu.qc.vm, NULL);
+	Draw_ResetClipArea ();
 	if (menu.drawfloats)
 	{
 		args[0] = QC_ValFloat ((float)vid.conwidth);
@@ -146,6 +147,7 @@ void M_Draw (void)
 		args[0] = QC_ValVector ((float)vid.conwidth, (float)vid.conheight, 0);
 		M_Call (menu.draw, 1, args, NULL);
 	}
+	Draw_ResetClipArea ();
 	S_ExtraUpdate ();
 }
 
@@ -232,173 +234,6 @@ FTE's menu QuakeC builtins the menu needs, by FTE's numbers for menus
 
 ==============================================================================
 */
-
-// a coordinate of the 2D layout
-static int M_Coord (float f)
-{
-	if (!(f > -16384))
-		return -16384;
-	if (f > 16384)
-		return 16384;
-	return (int)floorf (f);
-}
-
-// the text color of QuakeC's rgb and alpha (args rgb and rgb + 1): a tint of
-// four bits a channel, half transparent below an alpha of 1; false where it
-// draws nothing. The size is 1:1, 8 by 8, whatever QuakeC asks.
-static bool M_TextColor (qcvm_t *vm, int rgbarg, unsigned *color)
-{
-	float	rgb[3] = {1, 1, 1}, alpha = 1;
-	int		c[3], i;
-
-	if (QC_Argc (vm) > rgbarg)
-		QC_ArgVector (vm, rgbarg, rgb);
-	if (QC_Argc (vm) > rgbarg + 1)
-		alpha = QC_ArgFloat (vm, rgbarg + 1);
-	if (!(alpha > 0))
-		return false;
-	for (i = 0 ; i < 3 ; i++)
-		c[i] = !(rgb[i] > 0) ? 0 : rgb[i] >= 1 ? 15 : (int)(rgb[i] * 15 + 0.5f);
-	*color = c[0] == 15 && c[1] == 15 && c[2] == 15 ? 0 : TEXT_RGB (c[0], c[1], c[2]);
-	if (alpha < 1)
-		*color |= TEXT_HALF;
-	return true;
-}
-
-// string precache_pic(string name, optional float flags): the name, or null if there is none
-static bool M_PrecachePic (qcvm_t *vm)
-{
-	QC_ReturnWord (vm, Draw_TryCachePic (QC_ArgString (vm, 0)) ? QC_ArgWord (vm, 0) : 0);
-	return true;
-}
-
-// float iscachedpic(string name)
-static bool M_IsCachedPic (qcvm_t *vm)
-{
-	const char	*picname = QC_ArgString (vm, 0);
-
-	QC_ReturnFloat (vm, Draw_FindImage (picname) || Draw_TryCachePic (picname) ? 1.0f : 0.0f);
-	return true;
-}
-
-// float drawpic(vector pos, string pic, vector size, vector rgb, float alpha, optional float flag):
-// an image QuakeC made (r_uploadimage), else a pic
-static bool M_DrawPic (qcvm_t *vm)
-{
-	const char			*picname = QC_ArgString (vm, 1);
-	const drawimage_t	*img;
-	qpic_t				*pic = NULL;
-	float				pos[3];
-
-	QC_ArgVector (vm, 0, pos);
-	if ((img = Draw_FindImage (picname)))
-		Draw_ClippedImage (M_Coord (pos[0]), M_Coord (pos[1]), img);
-	else if ((pic = Draw_TryCachePic (picname)))
-		Draw_ClippedPic (M_Coord (pos[0]), M_Coord (pos[1]), pic);
-	QC_ReturnFloat (vm, img || pic ? 1.0f : 0.0f);
-	return true;
-}
-
-// float drawcharacter(vector pos, float char, vector scale, vector rgb, float alpha, optional float flag)
-static bool M_DrawCharacter (qcvm_t *vm)
-{
-	float		pos[3];
-	unsigned	color;
-
-	QC_ArgVector (vm, 0, pos);
-	if (M_TextColor (vm, 3, &color))
-		Draw_ColoredCharacter (M_Coord (pos[0]), M_Coord (pos[1]), QC_DoubleToInt (QC_ArgFloat (vm, 1)) & 255, color);
-	QC_ReturnFloat (vm, 1);
-	return true;
-}
-
-// float drawrawstring(vector pos, string text, vector scale, vector rgb, float alpha, optional float flag)
-static bool M_DrawRawString (qcvm_t *vm)
-{
-	const char	*s = QC_ArgString (vm, 1);
-	float		pos[3];
-	unsigned	color;
-	int			x, y;
-
-	QC_ArgVector (vm, 0, pos);
-	x = M_Coord (pos[0]);
-	y = M_Coord (pos[1]);
-	if (M_TextColor (vm, 3, &color))
-		for ( ; *s && x < (int)vid.conwidth ; s++, x += 8)
-			Draw_ColoredCharacter (x, y, (unsigned char)*s, color);
-	QC_ReturnFloat (vm, 1);
-	return true;
-}
-
-// float drawstring(vector pos, string text, vector scale, vector rgb, float alpha, optional float flag):
-// the colors written in it (ezQuake's &cRGB, FTE's ^), the rgb where none are
-static bool M_DrawString (qcvm_t *vm)
-{
-	const char	*s = QC_ArgString (vm, 1);
-	markup_t	m;
-	float		pos[3];
-	unsigned	color;
-	int			x, y, c;
-
-	QC_ArgVector (vm, 0, pos);
-	x = M_Coord (pos[0]);
-	y = M_Coord (pos[1]);
-	if (M_TextColor (vm, 3, &color))
-		for (Markup_Begin (&m) ; (c = Markup_Next (&s, &m)) >= 0 && x < (int)vid.conwidth ; x += 8)
-			Draw_ColoredCharacter (x, y, c, m.color ? m.color | (color & TEXT_HALF) : color);
-	QC_ReturnFloat (vm, 1);
-	return true;
-}
-
-// float stringwidth(string text, float usecolours, optional vector fontsize):
-// 8 a character, the colors' codes none where usecolours
-static bool M_StringWidth (qcvm_t *vm)
-{
-	const char	*s = QC_ArgString (vm, 0);
-
-	QC_ReturnFloat (vm, 8.0f * (float)(QC_ArgFloat (vm, 1) != 0 ? Markup_Length (s) : (int)strlen (s)));
-	return true;
-}
-
-// float drawfill(vector pos, vector size, vector rgb, float alpha, optional float flag):
-// over what is there by the alpha, the flag's additive one too
-static bool M_DrawFill (qcvm_t *vm)
-{
-	float	pos[3], size[3], rgb[3];
-
-	QC_ArgVector (vm, 0, pos);
-	QC_ArgVector (vm, 1, size);
-	QC_ArgVector (vm, 2, rgb);
-	Draw_BlendFill (M_Coord (pos[0]), M_Coord (pos[1]), M_Coord (size[0]), M_Coord (size[1]),
-		(int)(rgb[0] * 255 + 0.5f), (int)(rgb[1] * 255 + 0.5f), (int)(rgb[2] * 255 + 0.5f),
-		(int)(QC_ArgFloat (vm, 3) * 255 + 0.5f));
-	QC_ReturnFloat (vm, 1);
-	return true;
-}
-
-// vector drawgetimagesize(string pic): '0 0 0' if there is none
-static bool M_DrawGetImageSize (qcvm_t *vm)
-{
-	const char			*picname = QC_ArgString (vm, 0);
-	const drawimage_t	*img;
-	qpic_t				*pic;
-	float				size[3] = {0, 0, 0};
-	int					w, h;
-
-	if ((img = Draw_FindImage (picname)))
-	{
-		Draw_ImageSize (img, &w, &h);
-		size[0] = (float)w;
-		size[1] = (float)h;
-	}
-	else if ((pic = Draw_TryCachePic (picname)))
-	{
-		size[0] = (float)pic->width;
-		size[1] = (float)pic->height;
-	}
-	QC_ReturnVector (vm, size);
-	return true;
-}
 
 // void r_uploadimage(string name, int width, int height, void *pixels, optional int datasize,
 // optional int format): straight RGBA bytes, FTE's format 1 (the only one taken)
@@ -584,15 +419,6 @@ static const struct
 	qc_builtin_t	func;
 } menu_builtins[] =
 {
-	{"precache_pic", M_PrecachePic},
-	{"iscachedpic", M_IsCachedPic},
-	{"drawpic", M_DrawPic},
-	{"drawcharacter", M_DrawCharacter},
-	{"drawrawstring", M_DrawRawString},
-	{"drawstring", M_DrawString},
-	{"stringwidth", M_StringWidth},
-	{"drawfill", M_DrawFill},
-	{"drawgetimagesize", M_DrawGetImageSize},
 	{"r_uploadimage", M_UploadImage},
 	{"r_readimage", M_ReadImage},
 	{"localsound", M_LocalSound},
@@ -811,7 +637,7 @@ void M_Init (void)
 	for (i = 0 ; i < sizeof(menu_builtins) / sizeof(menu_builtins[0]) ; i++)
 		if (!QC_BuiltinsSet (menu.builtins, menu_builtins[i].name, menu_builtins[i].func))
 			Sys_Error ("M_Init: out of memory");
-	if (!SB_Builtins (menu.builtins))
+	if (!SB_Builtins (menu.builtins) || !CLQC_DrawBuiltins (menu.builtins))
 		Sys_Error ("M_Init: out of memory");
 }
 

@@ -26,6 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "vid.h"
 
 void SCR_Init (void);
+void SCR_WadPics (void);		// gfx.wad's pics again (W_LoadGameWad)
 
 void SCR_UpdateScreen (void);
 

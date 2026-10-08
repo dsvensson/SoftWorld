@@ -583,6 +583,8 @@ void	CSQC_InputFrame (usercmd_t *cmd);	// a command about to be sent, as CSQC ch
 // draws the view if CSQC does (CSQC_UpdateView), and whether it asked for the
 // status bar; false to draw it as the client does
 bool	CSQC_DrawView (bool *sbar);
+bool	CSQC_DrawHud (void);		// simple CSQC's status bar in place of the client's
+bool	CSQC_DrawScores (void);		// and its scores
 bool	CSQC_DrawsView (void);
 // a matching csprogs is here already (none needs downloading)
 bool	CSQC_CheckDownload (const char *csprogsname, unsigned checksum, size_t size);

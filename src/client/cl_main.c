@@ -1834,6 +1834,22 @@ static void CL_FixupModelNames (void)
 //============================================================================
 
 /*
+===============
+CL_GameWad
+
+A game directory's own gfx.wad over the one at startup, as FTE takes it
+(QBJ3's status bar is in its own): the pics taken from it, again
+===============
+*/
+static void CL_GameWad (void)
+{
+	W_LoadGameWad ();
+	Draw_WadPics ();
+	SCR_WadPics ();
+	Sbar_WadPics ();
+}
+
+/*
 ====================
 CL_Init
 ====================
@@ -1876,6 +1892,7 @@ void CL_Init (void)
 	Sbar_Init ();
 	CL_InitLocal ();
 	IN_Init ();
+	FS_AddGamedirCallback (CL_GameWad);
 }
 
 /*
