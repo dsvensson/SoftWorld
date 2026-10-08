@@ -29,10 +29,7 @@ static bool QC_Gettime (qcvm_t *vm)
 // __double gettimed(optional int type): gettime in double precision
 static bool QC_Gettimed (qcvm_t *vm)
 {
-	uint64_t	bits = QC_DoubleBits (QC_GettimeClock (vm, QC_Argc (vm) > 0 ? QC_ArgInt (vm, 0) : 0));
-	uint32_t	w[3] = {(uint32_t)bits, (uint32_t)(bits >> 32), 0};
-
-	QC_ReturnRaw (vm, w);
+	QC_LibReturnDouble (vm, QC_GettimeClock (vm, QC_Argc (vm) > 0 ? QC_ArgInt (vm, 0) : 0));
 	return true;
 }
 

@@ -26,7 +26,7 @@ static bool QC_SetAutocvar (qcvm_t *vm, uint32_t pr, const qc_def_t *d, const ch
 	case QC_EV_INTEGER:
 	case QC_EV_UINT:
 		// C's atoi: strtol truncated to an int
-		QC_SetS (&vm->mem, at, (uint32_t)QC_Strtol (text, 10));
+		QC_SetS (&vm->mem, at, (uint32_t)QC_Strtol (text, 10, NULL));
 		break;
 	case QC_EV_VECTOR:
 		QC_ParseVector (text, v);

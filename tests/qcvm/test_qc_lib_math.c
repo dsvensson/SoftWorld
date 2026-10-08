@@ -7,7 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 
-static const char	*extra[] = {"anglesub", NULL};
+static const char	*extra[] = {"anglesub", "sind", "cosd", "tand", "asind", "acosd", "atand", "atan2d", "sqrtd", "powd",
+	"floord", "ceild", "fabsd", "logd", NULL};
 
 static qh_t *Harness (void)
 {
@@ -264,9 +265,52 @@ static void TestRandomvec (void)
 	QH_Free (h);
 }
 
+// a __double argument, and a result's
+static qc_value_t D (double d)
+{
+	uint64_t	u = QC_DoubleBits (d);
+
+	return (qc_value_t){{(uint32_t)u, (uint32_t)(u >> 32), 0}};
+}
+
+static double Double (qc_value_t r)
+{
+	return QC_BitsDouble (r.w[0] | (uint64_t)r.w[1] << 32);
+}
+
+// the __double functions: C's, in double precision throughout
+static void TestDoubles (void)
+{
+	static const struct
+	{
+		const char	*name;
+		double		x;
+		double		(*f) (double);
+	} cases[] = {{"sind", 1, sin}, {"cosd", 1, cos}, {"tand", 0.5, tan}, {"asind", 0.5, asin}, {"acosd", 0.5, acos},
+		{"atand", 1, atan}, {"sqrtd", 2, sqrt}, {"floord", -1.5, floor}, {"ceild", -1.5, ceil}, {"fabsd", -3.25, fabs}};
+	qh_t	*h = Harness ();
+	size_t	i;
+
+	for (i = 0 ; i < sizeof(cases) / sizeof(cases[0]) ; i++)
+		if (!QT_EQ_U (QC_DoubleBits (Double (QH_Raw (h, cases[i].name, ARGS (D (cases[i].x))))),
+			QC_DoubleBits (cases[i].f (cases[i].x))))
+			printf ("  %s(%g)\n", cases[i].name, cases[i].x);
+	// past float's precision
+	QT_EQ_F (Double (QH_Raw (h, "sqrtd", ARGS (D (2)))), sqrt (2.0));
+	QT_CHECK (Double (QH_Raw (h, "sqrtd", ARGS (D (2)))) != (double)(float)sqrt (2.0));
+	QT_EQ_F (Double (QH_Raw (h, "floord", ARGS (D (16777217.5)))), 16777217.0);
+	QT_EQ_F (Double (QH_Raw (h, "atan2d", ARGS (D (1), D (1)))), atan2 (1.0, 1.0));
+	QT_EQ_F (Double (QH_Raw (h, "powd", ARGS (D (2), D (40)))), 1099511627776.0);
+	// logd: natural, or in a base
+	QT_EQ_F (Double (QH_Raw (h, "logd", ARGS (D (exp (2.0))))), log (exp (2.0)));
+	QT_EQ_F (Double (QH_Raw (h, "logd", ARGS (D (1000), D (10)))), log (1000.0) / log (10.0));
+	QH_Free (h);
+}
+
 int main (void)
 {
 	TestTranscendental ();
+	TestDoubles ();
 	TestRounding ();
 	TestBoundMinMax ();
 	TestModulo ();

@@ -8,7 +8,7 @@
 #include <stdio.h>
 
 // builtins FTE binds by name that its CSQC declarations don't list
-static const char	*extra[] = {"argc", "instr", "ftou", "utof", "strcmp", NULL};
+static const char	*extra[] = {"argc", "instr", "ftou", "utof", "strcmp", "stod", "stol", "stoul", NULL};
 
 // CSQC with QuakeWorld's charset defaults (utf8_enable 0, the Quake scheme)
 static qh_t *Harness (void)
@@ -269,6 +269,39 @@ static void TestStov (void)
 	QH_Free (h);
 }
 
+static uint64_t Wide (qc_value_t r)
+{
+	return r.w[0] | (uint64_t)r.w[1] << 32;
+}
+
+// stod, stol and stoul: C's strtod, strtol and strtoul in two words, the bytes
+// read in the __out parameter when it is passed
+static void TestStodStol (void)
+{
+	qh_t	*h = Harness ();
+
+	QT_EQ_F (QC_BitsDouble (Wide (QH_Raw (h, "stod", ARGS (QH_S (h, "  0.1x"), I (99))))), 0.1);
+	QT_EQ_U (QH_ParmWord (h, 1), 5);
+	QT_EQ_F (QC_BitsDouble (Wide (QH_Raw (h, "stod", ARGS (QH_S (h, "16777217"))))), 16777217.0);
+	QT_EQ_F (QC_BitsDouble (Wide (QH_Raw (h, "stod", ARGS (QH_S (h, "nope"), I (99))))), 0);
+	QT_EQ_U (QH_ParmWord (h, 1), 0);
+
+	QT_EQ_U (Wide (QH_Raw (h, "stol", ARGS (QH_S (h, "-9000000000z"), I (10), I (99)))), (uint64_t)-9000000000ll);
+	QT_EQ_U (QH_ParmWord (h, 2), 11);
+	QT_EQ_U (Wide (QH_Raw (h, "stol", ARGS (QH_S (h, "0x7f"), I (0)))), 127);
+	QT_EQ_U (Wide (QH_Raw (h, "stol", ARGS (QH_S (h, "777"), I (8), I (99)))), 511);
+	QT_EQ_U (QH_ParmWord (h, 2), 3);
+	QT_EQ_U (Wide (QH_Raw (h, "stol", ARGS (QH_S (h, "99999999999999999999"), I (10)))), (uint64_t)INT64_MAX);
+	// a base C doesn't have reads nothing
+	QT_EQ_U (Wide (QH_Raw (h, "stol", ARGS (QH_S (h, "12"), I (99), I (5)))), 0);
+	QT_EQ_U (QH_ParmWord (h, 2), 0);
+
+	QT_EQ_U (Wide (QH_Raw (h, "stoul", ARGS (QH_S (h, "ffffffffffffffff"), I (16), I (99)))), UINT64_MAX);
+	QT_EQ_U (QH_ParmWord (h, 2), 16);
+	QT_EQ_U (Wide (QH_Raw (h, "stoul", ARGS (QH_S (h, "-1"), I (10)))), UINT64_MAX);
+	QH_Free (h);
+}
+
 int main (void)
 {
 	TestFtos ();
@@ -279,6 +312,7 @@ int main (void)
 	TestFtoiItof ();
 	TestFtouUtof ();
 	TestStof ();
+	TestStodStol ();
 	TestStov ();
 	return QT_Finish ("lib_convert", "numbers become text and text numbers as FTE makes them");
 }

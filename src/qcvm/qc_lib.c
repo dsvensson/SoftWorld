@@ -244,6 +244,31 @@ float QC_LibOptFloat (const qcvm_t *vm, int i, float def)
 	return QC_Argc (vm) > i ? QC_ArgFloat (vm, i) : def;
 }
 
+uint64_t QC_LibArg64 (const qcvm_t *vm, int i)
+{
+	uint32_t	w[3];
+
+	QC_ArgRaw (vm, i, w);
+	return w[0] | (uint64_t)w[1] << 32;
+}
+
+void QC_LibReturn64 (qcvm_t *vm, uint64_t bits)
+{
+	const uint32_t	w[3] = {(uint32_t)bits, (uint32_t)(bits >> 32), 0};
+
+	QC_ReturnRaw (vm, w);
+}
+
+double QC_LibArgDouble (const qcvm_t *vm, int i)
+{
+	return QC_BitsDouble (QC_LibArg64 (vm, i));
+}
+
+void QC_LibReturnDouble (qcvm_t *vm, double d)
+{
+	QC_LibReturn64 (vm, QC_DoubleBits (d));
+}
+
 uint32_t QC_LibEntArg (qcvm_t *vm, int i)
 {
 	uint32_t	e = QC_ArgWord (vm, i);

@@ -166,6 +166,15 @@ These CSQC builtins are declared `#0` and bound by name.
 | `generateentitydata` | `string(entity)` | A |
 | `digest_ptr` | `string(string alg, void *data, int len)` | A |
 | `cvars_haveunsaved` | `float()` | B |
+| `sind`, `cosd`, `tand`, `asind`, `acosd`, `atand`, `sqrtd`, `floord`, `ceild`, `fabsd` | `__double(__double)` | A |
+| `atan2d`, `powd` | `__double(__double, __double)` | A |
+| `logd` | `__double(__double v, optional __double base)` | A |
+| `stod` | `__double(string, optional __out int used)` | A |
+| `stol`, `stoul` | `__int64(string, int base, optional __out int used)`, `__uint64(...)` | A |
+
+The double functions are C's, in double precision; fteqcc's C library maps `sin`, `sqrt`,
+`floor` and the rest onto them. `stod`, `stol` and `stoul` are C's `strtod`, `strtol` and
+`strtoul` (bases 0 and 2–36; another reads nothing), with the bytes read in `used`, as `endptr`.
 
 Every other `#0` builtin is class C, including `getplayerkeyfloat`, which csprogs uses. In FTE's
 catalogue, `Readint64` differs in case from the engine's name, and `#0:gettime` does not resolve

@@ -719,7 +719,7 @@ static bool QC_JsonGetInteger (qcvm_t *vm)
 	if (n.type == QC_JSON_NUMBER || n.type == QC_JSON_TRUE || n.type == QC_JSON_FALSE)
 		v = QC_DoubleToInt (QC_NodeNumber (&n));
 	else if (n.type == QC_JSON_STRING)
-		v = (int32_t)QC_Strtol (QC_String (vm, n.a), 10);
+		v = (int32_t)QC_Strtol (QC_String (vm, n.a), 10, NULL);
 	QC_ReturnInt (vm, v);
 	return true;
 }

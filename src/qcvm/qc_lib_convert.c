@@ -1,5 +1,6 @@
 // qc_lib_convert.c -- numbers as text and back: ftos, vtos, etos, itos, htos,
-// stoi, stoh, ftoi, itof, ftou, utof, stof, stov (docs/spec/strings.md)
+// stoi, stoh, ftoi, itof, ftou, utof, stof, stod, stol, stoul, stov
+// (docs/spec/strings.md)
 
 #include "qc_lib.h"
 
@@ -133,14 +134,14 @@ TEXT AS NUMBERS
 // the prefixes; this follows the documentation.
 static bool QC_Stoi (qcvm_t *vm)
 {
-	QC_ReturnInt (vm, (int32_t)QC_Strtol (QC_ArgString (vm, 0), 0));
+	QC_ReturnInt (vm, (int32_t)QC_Strtol (QC_ArgString (vm, 0), 0, NULL));
 	return true;
 }
 
 // int stoh(string): C's strtoul in base 16, cut to 32 bits
 static bool QC_Stoh (qcvm_t *vm)
 {
-	QC_ReturnWord (vm, (uint32_t)QC_Strtoul (QC_ArgString (vm, 0), 16));
+	QC_ReturnWord (vm, (uint32_t)QC_Strtoul (QC_ArgString (vm, 0), 16, NULL));
 	return true;
 }
 
@@ -195,6 +196,43 @@ static bool QC_Stof (qcvm_t *vm)
 	return true;
 }
 
+// an __out int parameter: the bytes read, if the caller passed it
+static void QC_SetUsed (qcvm_t *vm, int i, size_t used)
+{
+	if (QC_Argc (vm) > i)
+		QC_SetArgWord (vm, i, (uint32_t)used);
+}
+
+// __double stod(string, optional __out int used): C's strtod, the bytes read in used
+static bool QC_Stod (qcvm_t *vm)
+{
+	size_t	used;
+
+	QC_LibReturnDouble (vm, QC_Strtod (QC_ArgString (vm, 0), &used));
+	QC_SetUsed (vm, 1, used);
+	return true;
+}
+
+// __int64 stol(string, int base, optional __out int used): C's 64-bit strtol
+static bool QC_Stol (qcvm_t *vm)
+{
+	size_t	used;
+
+	QC_LibReturn64 (vm, (uint64_t)QC_Strtol (QC_ArgString (vm, 0), (uint32_t)QC_ArgInt (vm, 1), &used));
+	QC_SetUsed (vm, 2, used);
+	return true;
+}
+
+// __uint64 stoul(string, int base, optional __out int used): C's 64-bit strtoul
+static bool QC_Stoul (qcvm_t *vm)
+{
+	size_t	used;
+
+	QC_LibReturn64 (vm, QC_Strtoul (QC_ArgString (vm, 0), (uint32_t)QC_ArgInt (vm, 1), &used));
+	QC_SetUsed (vm, 2, used);
+	return true;
+}
+
 void QC_ParseVector (const char *s, float out[3])
 {
 	size_t	i = s[0] == '\'', used;
@@ -244,6 +282,9 @@ static const qc_libentry_t	qc_convert[] = {
 	{"ftou", QC_Ftou, NULL, 0},
 	{"utof", QC_Utof, NULL, 0},
 	{"stof", QC_Stof, NULL, 0},
+	{"stod", QC_Stod, NULL, 0},
+	{"stol", QC_Stol, NULL, 0},
+	{"stoul", QC_Stoul, NULL, 0},
 	{"stov", QC_Stov, NULL, 0},
 };
 

@@ -238,6 +238,100 @@ static bool QC_Random (qcvm_t *vm)
 	return true;
 }
 
+/*
+==============================================================================
+
+DOUBLES
+
+fteqcc's C library maps C's double functions (sin, sqrt, floor...) onto
+these: a __double argument and result, two words each
+
+==============================================================================
+*/
+
+static bool QC_Double1 (qcvm_t *vm, double (*f) (double))
+{
+	QC_LibReturnDouble (vm, f (QC_LibArgDouble (vm, 0)));
+	return true;
+}
+
+static bool QC_Double2 (qcvm_t *vm, double (*f) (double, double))
+{
+	QC_LibReturnDouble (vm, f (QC_LibArgDouble (vm, 0), QC_LibArgDouble (vm, 1)));
+	return true;
+}
+
+static bool QC_Sind (qcvm_t *vm)
+{
+	return QC_Double1 (vm, sin);
+}
+
+static bool QC_Cosd (qcvm_t *vm)
+{
+	return QC_Double1 (vm, cos);
+}
+
+static bool QC_Tand (qcvm_t *vm)
+{
+	return QC_Double1 (vm, tan);
+}
+
+static bool QC_Asind (qcvm_t *vm)
+{
+	return QC_Double1 (vm, asin);
+}
+
+static bool QC_Acosd (qcvm_t *vm)
+{
+	return QC_Double1 (vm, acos);
+}
+
+static bool QC_Atand (qcvm_t *vm)
+{
+	return QC_Double1 (vm, atan);
+}
+
+static bool QC_Sqrtd (qcvm_t *vm)
+{
+	return QC_Double1 (vm, sqrt);
+}
+
+static bool QC_Floord (qcvm_t *vm)
+{
+	return QC_Double1 (vm, floor);
+}
+
+static bool QC_Ceild (qcvm_t *vm)
+{
+	return QC_Double1 (vm, ceil);
+}
+
+static bool QC_Fabsd (qcvm_t *vm)
+{
+	return QC_Double1 (vm, fabs);
+}
+
+static bool QC_Atan2d (qcvm_t *vm)
+{
+	return QC_Double2 (vm, atan2);
+}
+
+static bool QC_Powd (qcvm_t *vm)
+{
+	return QC_Double2 (vm, pow);
+}
+
+// __double logd(__double v, optional __double base): the natural log without a base
+static bool QC_Logd (qcvm_t *vm)
+{
+	double	r = log (QC_LibArgDouble (vm, 0));
+
+	if (QC_Argc (vm) > 1)
+		r /= log (QC_LibArgDouble (vm, 1));
+	QC_LibReturnDouble (vm, r);
+	return true;
+}
+
 // vector randomvec(): strictly inside the unit sphere, components k / 32767 *
 // 2 - 1 for 15-bit draws, drawn again until the length is below 1
 static bool QC_Randomvec (qcvm_t *vm)
@@ -280,6 +374,19 @@ static const qc_libentry_t	qc_math[] = {
 	{"logarithm", NULL, "log", 0},
 	{"anglemod", QC_Anglemod, NULL, 0},
 	{"anglesub", QC_Anglesub, NULL, 0},
+	{"sind", QC_Sind, NULL, 0},
+	{"cosd", QC_Cosd, NULL, 0},
+	{"tand", QC_Tand, NULL, 0},
+	{"asind", QC_Asind, NULL, 0},
+	{"acosd", QC_Acosd, NULL, 0},
+	{"atand", QC_Atand, NULL, 0},
+	{"atan2d", QC_Atan2d, NULL, 0},
+	{"sqrtd", QC_Sqrtd, NULL, 0},
+	{"powd", QC_Powd, NULL, 0},
+	{"floord", QC_Floord, NULL, 0},
+	{"ceild", QC_Ceild, NULL, 0},
+	{"fabsd", QC_Fabsd, NULL, 0},
+	{"logd", QC_Logd, NULL, 0},
 	{"random", QC_Random, NULL, 0},
 	{"randomvec", QC_Randomvec, NULL, 0},
 	{"randomvector", QC_Randomvec, NULL, 0},	// menu QuakeC's name (#41), numbered as an alias isn't

@@ -204,17 +204,39 @@ static void TestStrtod (void)
 
 static void TestCIntegers (void)
 {
-	QT_EQ_I (QC_Strtol ("  -12abc", 0), -12);
-	QT_EQ_I (QC_Strtol ("0x1f", 0), 31);
-	QT_EQ_I (QC_Strtol ("010", 0), 8);
-	QT_EQ_I (QC_Strtol ("08", 0), 0);
-	QT_EQ_I (QC_Strtol ("0x", 0), 0);
-	QT_EQ_I (QC_Strtol ("99999999999999999999", 10), INT64_MAX);
-	QT_EQ_I (QC_Strtol ("-99999999999999999999", 10), INT64_MIN);
-	QT_EQ_I (QC_Strtol ("-9223372036854775808", 10), INT64_MIN);
-	QT_EQ_U (QC_Strtoul ("-1", 16), UINT64_MAX);
-	QT_EQ_U (QC_Strtoul ("0x1F", 16), 31);
-	QT_EQ_U (QC_Strtoul ("1ffffffffffffffff", 16), UINT64_MAX);
+	size_t	used;
+
+	QT_EQ_I (QC_Strtol ("  -12abc", 0, NULL), -12);
+	QT_EQ_I (QC_Strtol ("0x1f", 0, NULL), 31);
+	QT_EQ_I (QC_Strtol ("010", 0, NULL), 8);
+	QT_EQ_I (QC_Strtol ("08", 0, NULL), 0);
+	QT_EQ_I (QC_Strtol ("0x", 0, NULL), 0);
+	QT_EQ_I (QC_Strtol ("99999999999999999999", 10, NULL), INT64_MAX);
+	QT_EQ_I (QC_Strtol ("-99999999999999999999", 10, NULL), INT64_MIN);
+	QT_EQ_I (QC_Strtol ("-9223372036854775808", 10, NULL), INT64_MIN);
+	QT_EQ_U (QC_Strtoul ("-1", 16, NULL), UINT64_MAX);
+	QT_EQ_U (QC_Strtoul ("0x1F", 16, NULL), 31);
+	QT_EQ_U (QC_Strtoul ("1ffffffffffffffff", 16, NULL), UINT64_MAX);
+
+	// the bytes read, as C's endptr: none without a digit, the sign and the
+	// white space then not counted
+	QT_EQ_I (QC_Strtol ("  -12abc", 0, &used), -12);
+	QT_EQ_U (used, 5);
+	QT_EQ_I (QC_Strtol ("0x1fg", 0, &used), 31);
+	QT_EQ_U (used, 4);
+	QT_EQ_I (QC_Strtol ("0x", 0, &used), 0);
+	QT_EQ_U (used, 1);
+	QT_EQ_I (QC_Strtol ("  -x", 10, &used), 0);
+	QT_EQ_U (used, 0);
+	QT_EQ_U (QC_Strtoul ("99999999999999999999z", 10, &used), UINT64_MAX);
+	QT_EQ_U (used, 20);
+	// bases C doesn't have read nothing
+	QT_EQ_I (QC_Strtol ("12", 1, &used), 0);
+	QT_EQ_U (used, 0);
+	QT_EQ_U (QC_Strtoul ("zz", 37, &used), 0);
+	QT_EQ_U (used, 0);
+	QT_EQ_U (QC_Strtoul ("zz", 36, &used), 35 * 36 + 35);
+	QT_EQ_U (used, 2);
 }
 
 static const char *Ftos (float v)

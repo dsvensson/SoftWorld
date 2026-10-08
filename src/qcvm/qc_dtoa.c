@@ -553,14 +553,20 @@ static uint32_t QC_DigitValue (char c)
 }
 
 // what strtol and strtoul share: white space, a sign, an optional 0x (base 16,
-// or base 0 which also takes a leading 0 for octal), digits
-static uint64_t QC_ParseCInteger (const char *s, uint32_t base, bool *negative, bool *overflow)
+// or base 0 which also takes a leading 0 for octal), digits; the bytes read in
+// *used (0 without a digit), as C's endptr. A base but 0 or 2 to 36 reads nothing.
+static uint64_t QC_ParseCInteger (const char *s, uint32_t base, bool *negative, bool *overflow, size_t *used)
 {
-	size_t		i = 0;
+	size_t		i = 0, start;
 	bool		hex;
 	uint64_t	value = 0;
 	uint32_t	d;
 
+	*negative = *overflow = false;
+	if (used)
+		*used = 0;
+	if (base == 1 || base > 36)
+		return 0;
 	while (QC_IsCSpace (s[i]))
 		i++;
 	*negative = s[i] == '-';
@@ -571,21 +577,22 @@ static uint64_t QC_ParseCInteger (const char *s, uint32_t base, bool *negative, 
 		base = hex ? 16 : s[i] == '0' ? 8 : 10;
 	if (base == 16 && hex)
 		i += 2;
-	*overflow = false;
-	for ( ; (d = QC_DigitValue (s[i])) < base ; i++)
+	for (start = i ; (d = QC_DigitValue (s[i])) < base ; i++)
 	{
 		if (value > (UINT64_MAX - d) / base)
 			*overflow = true;
 		else
 			value = value * base + d;
 	}
+	if (used)
+		*used = i > start ? i : 0;
 	return value;
 }
 
-int64_t QC_Strtol (const char *s, uint32_t base)
+int64_t QC_Strtol (const char *s, uint32_t base, size_t *used)
 {
 	bool		negative, overflow;
-	uint64_t	mag = QC_ParseCInteger (s, base, &negative, &overflow);
+	uint64_t	mag = QC_ParseCInteger (s, base, &negative, &overflow, used);
 
 	if (overflow)
 		return negative ? INT64_MIN : INT64_MAX;
@@ -594,10 +601,10 @@ int64_t QC_Strtol (const char *s, uint32_t base)
 	return mag > (uint64_t)INT64_MAX + 1 ? INT64_MIN : (int64_t)(0 - mag);
 }
 
-uint64_t QC_Strtoul (const char *s, uint32_t base)
+uint64_t QC_Strtoul (const char *s, uint32_t base, size_t *used)
 {
 	bool		negative, overflow;
-	uint64_t	mag = QC_ParseCInteger (s, base, &negative, &overflow);
+	uint64_t	mag = QC_ParseCInteger (s, base, &negative, &overflow, used);
 
 	if (overflow)
 		return UINT64_MAX;

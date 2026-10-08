@@ -109,6 +109,12 @@ char	*QC_LibConcat (qcvm_t *vm, int from, size_t *len);
 int32_t	QC_LibArgInt (const qcvm_t *vm, int i);				// a float truncated
 float	QC_LibOptFloat (const qcvm_t *vm, int i, float def);	// def if not passed
 
+// the two-word types (__double, __int64, __uint64): an argument's bits and a result
+uint64_t	QC_LibArg64 (const qcvm_t *vm, int i);
+void		QC_LibReturn64 (qcvm_t *vm, uint64_t bits);
+double		QC_LibArgDouble (const qcvm_t *vm, int i);
+void		QC_LibReturnDouble (qcvm_t *vm, double d);
+
 // an entity argument; past the entities, a warning and the world
 uint32_t	QC_LibEntArg (qcvm_t *vm, int i);
 
@@ -220,8 +226,8 @@ bool	QC_IsCSpace (int c);				// isspace in the C locale
 // number). Decimal numbers are rounded correctly; hex floats, inf, infinity,
 // nan and nan(chars) are read too.
 double	QC_Strtod (const char *s, size_t *used);
-int64_t	QC_Strtol (const char *s, uint32_t base);		// a 64-bit long, saturating
-uint64_t	QC_Strtoul (const char *s, uint32_t base);	// ULONG_MAX on overflow
+int64_t	QC_Strtol (const char *s, uint32_t base, size_t *used);		// a 64-bit long, saturating
+uint64_t	QC_Strtoul (const char *s, uint32_t base, size_t *used);	// ULONG_MAX on overflow
 
 // FTE's stov: an optional leading ', then up to three numbers apart by spaces or
 // tabs; a ' or something not a number ends it

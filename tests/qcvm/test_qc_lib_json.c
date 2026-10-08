@@ -469,10 +469,10 @@ static void TestNumbers (void)
 	QT_EQ_F (QC_Strtod (".5", &used), 0.5);
 	QT_EQ_F (QC_Strtod ("abc", &used), 0.0);
 	QT_EQ_F (QC_Strtod ("1e", &used), 1.0);
-	QT_EQ_I ((int32_t)QC_Strtol (" 42abc", 10), 42);
-	QT_EQ_I ((int32_t)QC_Strtol ("-7", 10), -7);
-	QT_EQ_I ((int32_t)QC_Strtol ("4294967297", 10), 1);
-	QT_EQ_I ((int32_t)QC_Strtol ("99999999999999999999", 10), -1);
+	QT_EQ_I ((int32_t)QC_Strtol (" 42abc", 10, NULL), 42);
+	QT_EQ_I ((int32_t)QC_Strtol ("-7", 10, NULL), -7);
+	QT_EQ_I ((int32_t)QC_Strtol ("4294967297", 10, NULL), 1);
+	QT_EQ_I ((int32_t)QC_Strtol ("99999999999999999999", 10, NULL), -1);
 }
 
 static void TestStrictGrammar (void)
