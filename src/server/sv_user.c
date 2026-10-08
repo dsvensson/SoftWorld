@@ -58,7 +58,7 @@ static void SV_New_f (void)
 {
 	char		*gamedir;
 	int			playernum;
-	unsigned	fteext;
+	unsigned	fteext, fteext2;
 
 	if (host_client->state == cs_spawned)
 		return;
@@ -74,11 +74,13 @@ static void SV_New_f (void)
 	}
 
 	// what the client's protocol has no room for, it won't see
-	if ((sv.num_edicts > 512 && !(host_client->fteext & FTE_PEXT_ENTITYDBL)) ||
+	if (!SV_ReplacementDeltas (host_client) && (
+		(sv.num_edicts > 512 && !(host_client->fteext & FTE_PEXT_ENTITYDBL)) ||
 		(sv.num_edicts > 1024 && !(host_client->fteext & FTE_PEXT_ENTITYDBL2)) ||
-		(sv.model_precache[256] && !(host_client->fteext & FTE_PEXT_MODELDBL)))
-		SV_ClientPrintf (host_client, PRINT_HIGH, "This map has more entities or models than your client's\n"
-			"protocol has room for: some will be invisible to you.\n");
+		sv.num_edicts > MAX_QW_EDICTS || sv.sound_precache[MAX_QW_SOUNDS] ||
+		(sv.model_precache[256] && !(host_client->fteext & FTE_PEXT_MODELDBL))))
+		SV_ClientPrintf (host_client, PRINT_HIGH, "This map has more entities, models or sounds than your\n"
+			"client's protocol has room for: some are lost on you.\n");
 
 	// send the info about the new client to all connected clients
 //	SV_FullClientUpdate (host_client, &sv.reliable_datagram);
@@ -106,6 +108,14 @@ static void SV_New_f (void)
 	{
 		MSG_WriteLong (&host_client->netchan.message, PROTOCOL_VERSION_FTE);
 		MSG_WriteLong (&host_client->netchan.message, (int)fteext);
+	}
+	fteext2 = host_client->fteext2;
+	if (!sv.replacementdeltas)
+		fteext2 &= ~FTE_PEXT2_REPLACEMENTDELTAS;
+	if (fteext2)
+	{
+		MSG_WriteLong (&host_client->netchan.message, PROTOCOL_VERSION_FTE2);
+		MSG_WriteLong (&host_client->netchan.message, (int)fteext2);
 	}
 	if (host_client->mvdext1)
 	{
@@ -156,7 +166,7 @@ SV_Soundlist_f
 static void SV_Soundlist_f (void)
 {
 	char		**s;
-	int			n;
+	int			n, i, max;
 
 	if (host_client->state != cs_connected)
 	{
@@ -182,18 +192,30 @@ static void SV_Soundlist_f (void)
 		SZ_Clear(&host_client->netchan.message);
 	}
 
-	MSG_WriteByte (&host_client->netchan.message, svc_soundlist);
-	MSG_WriteByte (&host_client->netchan.message, n);
-	for (s = sv.sound_precache+1 + n ; 
-		*s && host_client->netchan.message.cursize < (MAX_MSGLEN/2); 
-		s++, n++)
+	// past 255 sounds the list goes on with FTE's short start, to clients
+	// that can take the sound numbers, as the model list does
+	max = SV_ReplacementDeltas (host_client) ? MAX_SOUNDS : MAX_QW_SOUNDS;
+	if (n < 0 || n >= max - 1)
+		n = 0;
+	if (n > 255)
+	{
+		MSG_WriteByte (&host_client->netchan.message, svc_fte_soundlistshort);
+		MSG_WriteShort (&host_client->netchan.message, n);
+	}
+	else
+	{
+		MSG_WriteByte (&host_client->netchan.message, svc_soundlist);
+		MSG_WriteByte (&host_client->netchan.message, n);
+	}
+	for (s = sv.sound_precache+1+n, i = n+1 ;
+		i < max && *s && (!((i-1) & 255) || host_client->netchan.message.cursize < (MAX_MSGLEN/2));
+		s++, i++)
 		MSG_WriteString (&host_client->netchan.message, *s);
-
 	MSG_WriteByte (&host_client->netchan.message, 0);
 
 	// next msg
-	if (*s)
-		MSG_WriteByte (&host_client->netchan.message, n);
+	if (i < max && *s)
+		MSG_WriteByte (&host_client->netchan.message, (i-1) & 255);
 	else
 		MSG_WriteByte (&host_client->netchan.message, 0);
 }
@@ -273,6 +295,12 @@ void SV_WriteStatic (const client_t *client, sizebuf_t *msg, const entity_state_
 
 	if (!SV_EntityFits (client, s->number, s->modelindex))
 		return;
+	if (SV_ReplacementDeltas (client))
+	{	// as FTE's: an update from nothing, without a number
+		MSG_WriteByte (msg, svc_fte_spawnstatic2);
+		MSG_WriteReplacement (msg, UF_RESET | MSG_ReplacementBits (&nullstate, s), s, client->mvdext1);
+		return;
+	}
 	if (client->fteext & FTE_PEXT_SPAWNSTATIC2)
 	{
 		MSG_WriteByte (msg, svc_fte_spawnstatic2);
@@ -307,6 +335,13 @@ void SV_WriteBaseline (const client_t *client, sizebuf_t *msg, int entnum)
 	if (!entnum || !ent->baseline.modelindex || !SV_EntityFits (client, entnum, 0))
 		return;
 	SV_ClientBaseline (client, ent, &base);
+	if (SV_ReplacementDeltas (client))
+	{	// as FTE's: FTE's entity number, then an update from nothing
+		MSG_WriteByte (msg, svc_fte_spawnbaseline2);
+		MSG_WriteBigEntity (msg, entnum);
+		MSG_WriteReplacement (msg, UF_RESET | MSG_ReplacementBits (&nullstate, &base), &base, client->mvdext1);
+		return;
+	}
 	if (client->fteext & FTE_PEXT_SPAWNSTATIC2)
 	{
 		MSG_WriteByte (msg, svc_fte_spawnbaseline2);
@@ -328,11 +363,34 @@ void SV_WriteBaseline (const client_t *client, sizebuf_t *msg, int entnum)
 
 /*
 ==================
+SV_WriteStaticSound
+
+FTE's svc_fte_spawnstaticsound2 for a static sound past 255, to a client with
+replacement deltas (FTE's server the same); the others don't get it
+==================
+*/
+static void SV_WriteStaticSound (const client_t *client, sizebuf_t *msg, const staticsound_t *s)
+{
+	int		i;
+
+	if (!SV_ReplacementDeltas (client))
+		return;
+	MSG_WriteByte (msg, svc_fte_spawnstaticsound2);
+	MSG_WriteByte (msg, 1);		// the sound a short
+	for (i=0 ; i<3 ; i++)
+		MSG_WriteCoord (msg, s->origin[i]);
+	MSG_WriteShort (msg, s->sound);
+	MSG_WriteByte (msg, s->volume);
+	MSG_WriteByte (msg, s->attenuation);
+}
+
+/*
+==================
 SV_PreSpawn_f
 
 The level's static entities, then its entity baselines, then its signon
-buffers, as many as fit in half a message at a time; the client asks for
-the rest from the number it gets back
+buffers, then its static sounds past 255, as many as fit in half a message
+at a time; the client asks for the rest from the number it gets back
 ==================
 */
 static void SV_PreSpawn_f (void)
@@ -355,7 +413,7 @@ static void SV_PreSpawn_f (void)
 		return;
 	}
 
-	total = (unsigned)(sv.num_static_entities + sv.num_baselines + sv.num_signon_buffers);
+	total = (unsigned)(sv.num_static_entities + sv.num_baselines + sv.num_signon_buffers + sv.num_static_sounds);
 	buf = atoi(Cmd_Argv(2));
 	if (buf >= total)
 		buf = 0;
@@ -393,6 +451,9 @@ static void SV_PreSpawn_f (void)
 			SV_WriteStatic (host_client, msg, &sv.static_entities[buf]);
 		else if (buf < (unsigned)(sv.num_static_entities + sv.num_baselines))
 			SV_WriteBaseline (host_client, msg, (int)buf - sv.num_static_entities);
+		else if (buf >= (unsigned)(sv.num_static_entities + sv.num_baselines + sv.num_signon_buffers))
+			SV_WriteStaticSound (host_client, msg,
+				&sv.static_sounds[buf - sv.num_static_entities - sv.num_baselines - sv.num_signon_buffers]);
 		else
 		{
 			// a signon buffer whole, into a message with room for it
@@ -2004,6 +2065,10 @@ void SV_ExecuteClientMessage (client_t *cl)
 
 	host_client = cl;
 	sv_player = host_client->edict;
+
+	// the packets the client got, by its netchan's header; what it didn't get
+	// of the entities is sent again
+	SV_DeltasAcked (cl);
 
 //	seq_hash = (cl->netchan.incoming_sequence & 0xffff) ; // ^ QW_CHECK_HASH;
 	seq_hash = cl->netchan.incoming_sequence;

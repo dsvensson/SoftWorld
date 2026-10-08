@@ -88,3 +88,19 @@ void	MSG_ReadDeltaUsercmd (struct usercmd_s *from, struct usercmd_s *cmd);
 int		MSG_ReadEntityHeader (int word, int *bits, int *ext, unsigned fteext);
 void	MSG_ReadDeltaEntity (const struct entity_state_s *from, struct entity_state_s *to, int number,
 			int bits, int ext, unsigned mvdext1);
+
+// FTE's replacement deltas (FTE_PEXT2_REPLACEMENTDELTAS): an entity index of
+// svc_fte_updateentities, FTE's entity number past 0x7fff, the UF_ bits of
+// what changed (and the writer's own flags, which it takes out), an update
+// (its bits, then its fields), and reading one: its bits, then its fields
+// over the state it changes
+void	MSG_WriteEntityIndex (sizebuf_t *sb, int number, bool remove);
+int		MSG_ReadEntityIndex (bool *remove);
+void	MSG_WriteBigEntity (sizebuf_t *sb, int number);
+int		MSG_ReadBigEntity (void);
+// FTE's variable length number: the first byte's leading ones count the bytes after it
+uint64_t	MSG_ReadUInt64 (void);
+unsigned	MSG_ReplacementBits (const struct entity_state_s *from, const struct entity_state_s *to);
+void	MSG_WriteReplacement (sizebuf_t *sb, unsigned bits, const struct entity_state_s *to, unsigned mvdext1);
+unsigned	MSG_ReadReplacementBits (void);
+void	MSG_ReadReplacement (unsigned bits, struct entity_state_s *to, unsigned mvdext1);

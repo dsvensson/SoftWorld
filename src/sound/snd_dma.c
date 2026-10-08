@@ -33,7 +33,7 @@ static void S_StopAllSoundsC(void);
 // Internal sound data & structures
 // =======================================================================
 
-#define	MAX_SFX		512
+#define	MAX_SFX		4096		// the sounds known this session: a level's MAX_SOUNDS and more
 
 snd_state_t	snd;
 

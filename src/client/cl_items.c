@@ -233,7 +233,7 @@ static int Items_Away (away_t *away, double now)
 // whether the server sends the entity: a taken item isn't, until it is back
 static bool Items_Present (int entity)
 {
-	const packet_entities_t	*pack = &cl.frames[cl.validsequence & UPDATE_MASK].packet_entities;
+	const cl_entities_t	*pack = &cl.frames[cl.validsequence & UPDATE_MASK].packet_entities;
 	int						i;
 
 	for (i=0 ; i<pack->num_entities ; i++)

@@ -12,16 +12,17 @@ server runs NetQuake's single player too.
   from: the CPU copies nothing (in a browser, a copy a frame).
   Colored lighting (`.lit`, BSPX), BSP2 maps, translucency, skyboxes, fog and TGA textures
   from the map's worldspawn and files, and AVX-512, AVX2 and NEON kernels.
-- **Network:** the FTE, MVD1 and ZQuake extensions (float coordinates, 2048 entities, 4096
-  models, chunked downloads, …), mvdsv's player movement and its `pm_` keys. WebSocket next
-  to UDP: servers take browsers' clients on TCP at their port, as FTE's do. WebRTC to FTE's
-  servers, through their brokers.
+- **Network:** the FTE, MVD1 and ZQuake extensions (float coordinates, 4096 models, FTE's
+  replacement deltas for levels of up to 32768 entities and 2048 sounds, chunked downloads, …),
+  mvdsv's player movement and its `pm_` keys. WebSocket next to UDP: servers take browsers'
+  clients on TCP at their port, as FTE's do. WebRTC to FTE's servers, through their brokers.
 - **Demos:** QWD and MVD playback, MVD seeking (`demo_jump`), QTV (`qtvplay`), item timers.
   Servers stream their game to QTV's viewers at their port, as mvdsv's do.
 - **QuakeC:** a hardened VM with FTE's opcodes and builtins, multiprogs and threads; FTE's
   client-side QuakeC (CSQC), enough for KTX's weapon prediction.
 - **Single player:** NetQuake's `progs.dat` (id1's episodes, mods' games) on the program's own
-  server, from the menu's Single Player, played over QuakeWorld's protocol as FTE plays it:
+  server, from the menu's Single Player, played over QuakeWorld's protocol as FTE plays it,
+  with FTE's replacement deltas for its big levels (QuakeWorld's own keep QuakeWorld's deltas):
   NetQuake's player movement (the server's, unpredicted), its messages in QuakeWorld's words,
   skill and coop, the level's monsters and secrets, the completed screen, and monsters' steps
   smoothed. The game holds still while the menu or console is up.

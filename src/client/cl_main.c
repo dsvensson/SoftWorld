@@ -265,6 +265,8 @@ static void CL_SendConnectPacket (void)
 	// none is left out
 	if (cls.fteext)
 		Q_strncatz (data, va("0x%x 0x%x\n", PROTOCOL_VERSION_FTE, cls.fteext), sizeof(data));
+	if (cls.fteext2)
+		Q_strncatz (data, va("0x%x 0x%x\n", PROTOCOL_VERSION_FTE2, cls.fteext2), sizeof(data));
 	if (cls.mvdext1)
 		Q_strncatz (data, va("0x%x 0x%x\n", PROTOCOL_VERSION_MVD1, cls.mvdext1), sizeof(data));
 	// FTE's fragmentation where the path needs it (WebRTC), at the smaller of
@@ -421,6 +423,7 @@ void CL_ClearState (void)
 {
 	entity_t	**static_blocks = cl.static_blocks;
 	int			i, num_static_blocks = (cl.num_statics + STATIC_BLOCK - 1) / STATIC_BLOCK;
+	cl_entities_t	packs[UPDATE_BACKUP];
 
 	S_StopAllSounds (true);
 
@@ -434,7 +437,12 @@ void CL_ClearState (void)
 	if (cl.map)
 		CM_FreeMap (cl.map);
 	CL_FreeStatStrings ();
+	for (i=0 ; i<UPDATE_BACKUP ; i++)
+		packs[i] = (cl_entities_t){.entities = cl.frames[i].packet_entities.entities,
+			.max_entities = cl.frames[i].packet_entities.max_entities};
 	memset (&cl, 0, sizeof(cl));
+	for (i=0 ; i<UPDATE_BACKUP ; i++)
+		cl.frames[i].packet_entities = packs[i];
 	CL_ProcessServerInfo ();
 
 	SZ_Clear (&cls.netchan.message);
@@ -1064,7 +1072,7 @@ static void CL_ConnectionlessPacket (void)
 
 		// then the server's protocol extensions, (magic, mask) pairs to the
 		// end; unknown families are skipped
-		cls.fteext = cls.mvdext1 = 0;
+		cls.fteext = cls.fteext2 = cls.mvdext1 = 0;
 		cls.fragmtu = 0;
 		for (;;)
 		{
@@ -1075,6 +1083,8 @@ static void CL_ConnectionlessPacket (void)
 			Con_DPrintf ("The server offers protocol extensions 0x%x 0x%x\n", magic, mask);
 			if (magic == PROTOCOL_VERSION_FTE)
 				cls.fteext = mask & CL_FTEExtensions ();
+			else if (magic == PROTOCOL_VERSION_FTE2)
+				cls.fteext2 = mask & CL_FTE2_EXTENSIONS;
 			else if (magic == PROTOCOL_VERSION_MVD1)
 				cls.mvdext1 = mask & CL_MVD1_EXTENSIONS;
 			else if (magic == PROTOCOL_VERSION_FRAGMENT)

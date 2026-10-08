@@ -104,6 +104,15 @@ typedef struct player_info_s
 } player_info_t;
 
 
+// a frame's entities, as packet_entities_t holds them but as many as FTE's
+// replacement deltas bring (CL_FrameEntity makes the room)
+typedef struct
+{
+	int				num_entities;
+	int				max_entities;
+	entity_state_t	*entities;
+} cl_entities_t;
+
 typedef struct
 {
 	// generated on client side
@@ -115,8 +124,12 @@ typedef struct
 	double		receivedtime;	// time message was received, or -1
 	player_state_t	playerstate[MAX_CLIENTS];	// message received that reflects performing
 							// the usercmd
-	packet_entities_t	packet_entities;
+	cl_entities_t	packet_entities;
 	bool	invalid;		// true if the packet_entities delta was invalid
+	// FTE's replacement deltas: the players as entities, by number, the
+	// base of the next update with packet_entities
+	entity_state_t	playerents[MAX_CLIENTS];
+	int				numplayerents;
 } frame_t;
 
 
@@ -211,6 +224,7 @@ typedef struct
 // protocol extensions: from the challenge, those both ends know, asked for
 // in the connect packet; from svc_serverdata, those in use
 	unsigned	fteext;
+	unsigned	fteext2;
 	unsigned	mvdext1;
 	int			fragmtu;		// FTE's fragmentation: the server's mtu, then the one asked for; 0 for none
 
@@ -234,7 +248,7 @@ typedef struct
 extern client_static_t	cls;
 
 #define	STATIC_BLOCK	64				// static entities (torches, etc) come in blocks that never move
-#define	MAX_VISEDICTS		1024
+#define	MAX_VISEDICTS		4096
 #define NET_TIMINGS			256
 #define NET_TIMINGSMASK		255
 
@@ -636,6 +650,9 @@ void CL_ProcessServerInfo (void);
 // the view's height above the player's origin
 float CL_ViewHeight (void);
 void CL_ParsePacketEntities (bool delta);
+void CL_ParseReplacementEntities (void);	// FTE's svc_fte_updateentities
+// the entity at index of a frame's, with room made for it
+entity_state_t *CL_FrameEntity (cl_entities_t *pack, int index);
 void CL_SetSolidEntities (void);
 void CL_ParsePlayerinfo (void);
 

@@ -817,7 +817,7 @@ carried states, the lightstyles, the serverinfo. Only what is in use.
 static void MVD_Keyframe (uint32_t at)
 {
 	mvdkeyhead_t			head = {0};
-	const packet_entities_t	*pack;
+	const cl_entities_t	*pack;
 	mvdkey_t				*key;
 	int						i;
 
@@ -898,7 +898,7 @@ again.
 static void MVD_Restore (const mvdkey_t *key)
 {
 	mvdkeyhead_t		head;
-	packet_entities_t	*pack;
+	cl_entities_t	*pack;
 	lightstyle_t		*style;
 	int					i, slot;
 
@@ -930,6 +930,8 @@ static void MVD_Restore (const mvdkey_t *key)
 
 	pack = &cl.frames[head.entityframe & UPDATE_MASK].packet_entities;
 	pack->num_entities = head.numentities;
+	if (head.numentities)
+		CL_FrameEntity (pack, head.numentities - 1);
 	Key_Get (pack->entities, head.numentities * sizeof(entity_state_t));
 	cl.frames[head.entityframe & UPDATE_MASK].invalid = false;
 

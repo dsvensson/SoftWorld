@@ -202,8 +202,9 @@ forward to the present through the movement code instead (CL_LinkPlayers).
 
 What steps, as monsters move when they think ten times a second, goes from
 step to step instead, over the time between them (at most 0.3 s), as FTE
-moves its RENDER_STEP entities: that is what has an animated frame, as FTE
-guesses without the flag.
+moves its RENDER_STEP entities: what the server says steps, with FTE's
+replacement deltas, else what has an animated frame, as FTE guesses without
+the flag.
 
 The models' animation frames blend too, each into the next in a tenth of a
 second (r_lerpframes, drawn by the renderer): everything the server places,
@@ -407,7 +408,7 @@ CL_LerpSnapshot
 An update of the entities arrived: aim each one's trails at where it now is
 ===============
 */
-static void CL_LerpSnapshot (const packet_entities_t *pack)
+static void CL_LerpSnapshot (const cl_entities_t *pack)
 {
 	const entity_state_t	*s;
 	entlerp_t	*l;
@@ -584,7 +585,7 @@ static void CL_EntityPlace (const entity_state_t *s, vec3_t origin, vec3_t angle
 		return;
 	}
 
-	if (s->frame)
+	if ((cls.fteext2 & FTE_PEXT2_REPLACEMENTDELTAS) ? (s->dpflags & RENDER_STEP) : s->frame)
 	{	// stepping
 		Trail_Step (&l->origin, host.realtime, origin);
 		Trail_Step (&l->angles, host.realtime, angles);
@@ -657,7 +658,7 @@ rest of the data stream.
 void CL_ParsePacketEntities (bool delta)
 {
 	int			oldpacket, newpacket;
-	packet_entities_t	*oldp, *newp, dummy;
+	cl_entities_t	*oldp, *newp, dummy = {0};
 	int			oldindex, newindex;
 	int			word, newnum, oldnum, bits, ext;
 	bool	full;
@@ -721,9 +722,7 @@ void CL_ParsePacketEntities (bool delta)
 			while (oldindex < oldp->num_entities)
 			{	// copy all the rest of the entities from the old packet
 //Con_Printf ("copy %i\n", oldp->entities[oldindex].number);
-				if (newindex >= MAX_MVD_PACKET_ENTITIES)
-					Host_EndGame ("CL_ParsePacketEntities: too many entities");
-				newp->entities[newindex] = oldp->entities[oldindex];
+				*CL_FrameEntity (newp, newindex) = oldp->entities[oldindex];
 				newindex++;
 				oldindex++;
 			}
@@ -743,9 +742,7 @@ void CL_ParsePacketEntities (bool delta)
 
 //Con_Printf ("copy %i\n", oldnum);
 			// copy one of the old entities over to the new packet unchanged
-			if (newindex >= MAX_MVD_PACKET_ENTITIES)
-				Host_EndGame ("CL_ParsePacketEntities: too many entities");
-			newp->entities[newindex] = oldp->entities[oldindex];
+			*CL_FrameEntity (newp, newindex) = oldp->entities[oldindex];
 			newindex++;
 			oldindex++;
 			oldnum = oldindex >= oldp->num_entities ? 9999 : oldp->entities[oldindex].number;
@@ -765,9 +762,7 @@ void CL_ParsePacketEntities (bool delta)
 				}
 				continue;
 			}
-			if (newindex >= MAX_MVD_PACKET_ENTITIES)
-				Host_EndGame ("CL_ParsePacketEntities: too many entities");
-			MSG_ReadDeltaEntity (&cl.baselines[newnum], &newp->entities[newindex], newnum, bits, ext, cls.mvdext1);
+			MSG_ReadDeltaEntity (&cl.baselines[newnum], CL_FrameEntity (newp, newindex), newnum, bits, ext, cls.mvdext1);
 			newindex++;
 			continue;
 		}
@@ -785,7 +780,7 @@ void CL_ParsePacketEntities (bool delta)
 				continue;
 			}
 //Con_Printf ("delta %i\n",newnum);
-			MSG_ReadDeltaEntity (&oldp->entities[oldindex], &newp->entities[newindex], newnum, bits, ext,
+			MSG_ReadDeltaEntity (&oldp->entities[oldindex], CL_FrameEntity (newp, newindex), newnum, bits, ext,
 				cls.mvdext1);
 			newindex++;
 			oldindex++;
@@ -795,6 +790,214 @@ void CL_ParsePacketEntities (bool delta)
 
 	newp->num_entities = newindex;
 	CL_LerpSnapshot (newp);
+}
+
+/*
+==============================================================================
+
+FTE'S REPLACEMENT DELTAS
+
+svc_fte_updateentities: the changes of the entities the server says changed,
+over those of the last frame that had them, as FTE's client reads them
+(CLFTE_ParseEntities). The players come with the rest: they are kept as
+entities (the base of the next update) and made the frame's player states.
+
+==============================================================================
+*/
+
+// Quake's movetypes, as a player's update says its own
+#define	MOVETYPE_NONE		0
+#define	MOVETYPE_FLY		5
+#define	MOVETYPE_TOSS		6
+#define	MOVETYPE_NOCLIP		8
+#define	MOVETYPE_BOUNCE		10
+#define	MOVETYPE_LOCK		15		// mvdsv's
+
+entity_state_t *CL_FrameEntity (cl_entities_t *pack, int index)
+{
+	int		max = pack->max_entities;
+
+	if (index >= MAX_EDICTS)
+		Host_EndGame ("A frame has more than %i entities", MAX_EDICTS);
+	if (index >= max)
+	{
+		while (max <= index)
+			max = max ? max * 2 : 512;
+		pack->entities = Mem_Realloc (pack->entities, (size_t)max * sizeof(*pack->entities));
+		pack->max_entities = max;
+	}
+	return &pack->entities[index];
+}
+
+// a frame's entity in number order: its players, then the rest
+static const entity_state_t *CL_FrameEntityAt (const frame_t *frame, int index)
+{
+	if (index < frame->numplayerents)
+		return &frame->playerents[index];
+	return &frame->packet_entities.entities[index - frame->numplayerents];
+}
+
+// the next entity of a frame, a player or one of the rest
+static entity_state_t *CL_NextFrameEntity (frame_t *frame, int number)
+{
+	if (number <= MAX_CLIENTS)
+	{
+		if (frame->numplayerents == MAX_CLIENTS)
+			Host_EndGame ("svc_fte_updateentities: entity %i twice", number);
+		return &frame->playerents[frame->numplayerents++];
+	}
+	return CL_FrameEntity (&frame->packet_entities, frame->packet_entities.num_entities++);
+}
+
+/*
+===============
+CL_PlayerFromEntity
+
+A player of the replacement deltas as the client has players (FTE's
+CL_EntStateToPlayerState): how it moves from its movetype (none for one the
+server moves itself), its view from its angles (the model's pitch is a third
+of the view's)
+===============
+*/
+static void CL_PlayerFromEntity (player_state_t *ps, const entity_state_t *s, int num)
+{
+	int		i;
+
+	switch (s->pmovetype & 0x3f)
+	{
+	case MOVETYPE_NOCLIP:
+		ps->pm_type = (cl.z_ext & Z_EXT_PM_TYPE_NEW) ? PM_SPECTATOR : PM_OLD_SPECTATOR;
+		break;
+	case MOVETYPE_FLY:
+		ps->pm_type = PM_FLY;
+		break;
+	case MOVETYPE_NONE:
+		ps->pm_type = PM_NONE;
+		break;
+	case MOVETYPE_TOSS:
+	case MOVETYPE_BOUNCE:
+		ps->pm_type = PM_DEAD;
+		break;
+	case MOVETYPE_LOCK:
+		ps->pm_type = PM_LOCK;
+		break;
+	default:
+		ps->pm_type = PM_NORMAL;
+		break;
+	}
+	ps->messagenum = cl.parsecount;
+	ps->state_time = cl.parsecounttime - s->msec*0.001;
+	ps->onground = (s->pmovetype & 0x80) != 0;
+	ps->jump_held = (s->pmovetype & 0x40) != 0;
+	ps->flags = (ps->pm_type == PM_DEAD ? PF_DEAD : 0) | (ps->onground ? PF_ONGROUND : 0);
+	if (num != cl.playernum)
+		ps->waterjumptime = 0;
+	VectorCopy (s->origin, ps->origin);
+	for (i=0 ; i<3 ; i++)
+		ps->velocity[i] = s->velocity[i] * (1.0f/8);
+	ps->viewangles[0] = s->angles[0] * -3;
+	ps->viewangles[1] = s->angles[1];
+	ps->viewangles[2] = s->angles[2];
+	ps->command = (usercmd_t){.msec = s->msec, .forwardmove = s->movement[0], .sidemove = s->movement[1],
+		.upmove = s->movement[2]};
+	VectorCopy (ps->viewangles, ps->command.angles);
+	ps->weaponframe = s->weaponframe;
+	ps->modelindex = s->modelindex;
+	ps->frame = s->frame;
+	ps->skinnum = s->skinnum;
+	ps->effects = s->effects;
+	ps->alpha = s->alpha;
+	memcpy (ps->colormod, s->colormod, sizeof(ps->colormod));
+	ps->vw_index = 0;
+}
+
+void CL_ParseReplacementEntities (void)
+{
+	frame_t			*newf = &cl.frames[cls.netchan.incoming_sequence & UPDATE_MASK];
+	frame_t			*oldf = &cl.frames[cl.validsequence & UPDATE_MASK];
+	const entity_state_t	*olds;
+	entity_state_t	*news;
+	int				newnum, oldnum, oldindex, numold, i;
+	bool			remove, valid;
+	unsigned		bits;
+
+	// the frame it builds on is the last whole one (replacement deltas name no
+	// frame: what was lost the server sends again), unless this one is it
+	valid = cl.validsequence && oldf != newf;
+	numold = valid ? oldf->numplayerents + oldf->packet_entities.num_entities : 0;
+
+	MSG_ReadFloat ();		// the server's time
+
+	newf->packet_entities.num_entities = 0;
+	newf->numplayerents = 0;
+	oldindex = 0;
+	for (;;)
+	{
+		newnum = MSG_ReadEntityIndex (&remove);
+		if (msg_badread)
+			Host_EndGame ("msg_badread in svc_fte_updateentities");
+		if (!newnum && !remove)
+		{	// the rest as they were
+			while (oldindex < numold)
+				*CL_NextFrameEntity (newf, CL_FrameEntityAt (oldf, oldindex)->number) =
+					*CL_FrameEntityAt (oldf, oldindex), oldindex++;
+			break;
+		}
+
+		olds = oldindex < numold ? CL_FrameEntityAt (oldf, oldindex) : NULL;
+		oldnum = olds ? olds->number : MAX_EDICTS;
+		while (newnum > oldnum)
+		{	// unchanged
+			*CL_NextFrameEntity (newf, oldnum) = *olds;
+			oldindex++;
+			olds = oldindex < numold ? CL_FrameEntityAt (oldf, oldindex) : NULL;
+			oldnum = olds ? olds->number : MAX_EDICTS;
+		}
+
+		if (remove)
+		{
+			if (!newnum)
+			{	// the server starts over: there are none
+				newf->packet_entities.num_entities = 0;
+				newf->numplayerents = 0;
+				numold = oldindex = 0;
+				valid = true;
+			}
+			else if (oldnum == newnum)
+				oldindex++;
+			continue;
+		}
+
+		if (newnum >= MAX_EDICTS)
+			Host_EndGame ("svc_fte_updateentities: entity %i", newnum);
+		news = CL_NextFrameEntity (newf, newnum);
+		bits = MSG_ReadReplacementBits ();
+		if (bits & UF_RESET)
+			*news = cl.baselines[newnum];
+		else if (oldnum == newnum)
+			*news = *olds;
+		else
+			*news = (entity_state_t){0};	// its reset was lost; the server sends it again
+		news->number = newnum;
+		MSG_ReadReplacement (bits, news, cls.mvdext1);
+		if (oldnum == newnum)
+			oldindex++;
+	}
+
+	if (!valid)
+	{	// nothing to build on: the server notices and starts over
+		newf->packet_entities.num_entities = 0;
+		newf->numplayerents = 0;
+		newf->invalid = true;
+		cl.validsequence = 0;
+		return;
+	}
+	newf->invalid = false;
+	cl.validsequence = cls.netchan.incoming_sequence;
+	for (i=0 ; i<newf->numplayerents ; i++)
+		CL_PlayerFromEntity (&cl.frames[cl.parsecountmod].playerstate[newf->playerents[i].number - 1],
+			&newf->playerents[i], newf->playerents[i].number - 1);
+	CL_LerpSnapshot (&newf->packet_entities);
 }
 
 
@@ -830,7 +1033,7 @@ CL_LinkPacketEntities
 static void CL_LinkPacketEntities (void)
 {
 	entity_t			*ent;
-	packet_entities_t	*pack;
+	cl_entities_t	*pack;
 	entity_state_t		*s1;
 	model_t				*model;
 	vec3_t				old_origin, origin, angles;
@@ -1549,7 +1752,7 @@ void CL_SetSolidEntities (void)
 {
 	int		i;
 	frame_t	*frame;
-	packet_entities_t	*pak;
+	cl_entities_t	*pak;
 	entity_state_t		*state;
 
 	cl.pmove.physents[0].model = cl.clipmodels[1];

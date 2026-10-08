@@ -89,6 +89,7 @@ static const char *svc_strings[] =
 	[84] = "svc_fte_voicechat",
 	[90] = "svc_fte_cgamepacket_sized",
 	[92] = "svc_fte_csqcentities_sized",
+	[94] = "svc_fte_spawnstaticsound2",
 };
 
 static const char *CL_SvcName (int cmd)
@@ -581,7 +582,7 @@ static void CL_ParseServerData (void)
 
 // the protocol extensions in use, (magic, mask) pairs, then the protocol
 // version number
-	cls.fteext = cls.mvdext1 = 0;
+	cls.fteext = cls.fteext2 = cls.mvdext1 = 0;
 	fteext2 = 0;
 	for (;;)
 	{
@@ -609,10 +610,11 @@ static void CL_ParseServerData (void)
 		Host_EndGame ("The server uses protocol extensions this client lacks:\n"
 			"FTE 0x%x, FTE2 0x%x, MVD1 0x%x\n", cls.fteext & ~CL_FTE_READABLE, fteext2 & ~CL_FTE2_READABLE,
 			cls.mvdext1 & ~CL_MVD1_READABLE);
+	cls.fteext2 = fteext2;
 	// the rest of this message is already in the new encoding
 	cls.net_message.floatcoords = (cls.fteext & FTE_PEXT_FLOATCOORDS) != 0;
 	cls.netchan.message.floatcoords = cls.net_message.floatcoords;
-	Con_DPrintf ("Protocol extensions: FTE 0x%x, MVD1 0x%x\n", cls.fteext, cls.mvdext1);
+	Con_DPrintf ("Protocol extensions: FTE 0x%x, FTE2 0x%x, MVD1 0x%x\n", cls.fteext, cls.fteext2, cls.mvdext1);
 
 // allow 2.2 and 2.29 demos to play
 	if (protover != PROTOCOL_VERSION && 
@@ -848,6 +850,15 @@ static void CL_ParseBaseline2 (void)
 	static const entity_state_t	nullstate = {0};
 	int		num, bits, ext;
 
+	if (cls.fteext2 & FTE_PEXT2_REPLACEMENTDELTAS)
+	{	// a replacement delta, from nothing
+		num = MSG_ReadBigEntity ();
+		if (num < 0 || num >= MAX_EDICTS)
+			Host_EndGame ("svc_fte_spawnbaseline2: entity %i", num);
+		cl.baselines[num] = (entity_state_t){.number = num};
+		MSG_ReadReplacement (MSG_ReadReplacementBits (), &cl.baselines[num], cls.mvdext1);
+		return;
+	}
 	num = MSG_ReadEntityHeader (MSG_ReadShort () & 0xffff, &bits, &ext, cls.fteext);
 	MSG_ReadDeltaEntity (&nullstate, &cl.baselines[num], num, bits, ext, cls.mvdext1);
 }
@@ -868,7 +879,12 @@ static void CL_ParseStatic (bool delta)
 	entity_state_t	es;
 	model_t	*model;
 
-	if (delta)
+	if (delta && (cls.fteext2 & FTE_PEXT2_REPLACEMENTDELTAS))
+	{	// a replacement delta, from nothing
+		es = nullstate;
+		MSG_ReadReplacement (MSG_ReadReplacementBits (), &es, cls.mvdext1);
+	}
+	else if (delta)
 	{
 		num = MSG_ReadEntityHeader (MSG_ReadShort () & 0xffff, &bits, &ext, cls.fteext);
 		MSG_ReadDeltaEntity (&nullstate, &es, num, bits, ext, cls.mvdext1);
@@ -905,9 +921,12 @@ static void CL_ParseStatic (bool delta)
 /*
 ===================
 CL_ParseStaticSound
+
+svc_spawnstaticsound, or with FTE's svc_fte_spawnstaticsound2 and its flag
+(large) a sound past 255
 ===================
 */
-static void CL_ParseStaticSound (void)
+static void CL_ParseStaticSound (bool large)
 {
 	vec3_t		org;
 	int			sound_num, vol, atten;
@@ -915,7 +934,9 @@ static void CL_ParseStaticSound (void)
 	
 	for (i=0 ; i<3 ; i++)
 		org[i] = MSG_ReadCoord ();
-	sound_num = MSG_ReadByte ();
+	sound_num = large ? MSG_ReadShort () & 0xffff : MSG_ReadByte ();
+	if (sound_num >= MAX_SOUNDS)
+		Host_EndGame ("CL_ParseStaticSound: sound %i", sound_num);
 	vol = MSG_ReadByte ();
 	atten = MSG_ReadByte ();
 	
@@ -959,6 +980,63 @@ double CL_ScoreClock (void)
 double CL_LevelTime (void)
 {
 	return cl.stats[STAT_TIME] ? cl.stats[STAT_TIME] * 0.001 : cl.time;
+}
+
+/*
+==================
+CL_ParseExtendedSound
+
+FTE's svc_fte_soundextended, for a sound past 255 or an entity past 1023:
+which fields follow, in their order, then the entity and channel, the sound
+and the place (FTE's CLQW_ParseStartSound). The pitch, the time into the
+sound and its velocity aren't played.
+==================
+*/
+static void CL_ParseExtendedSound (void)
+{
+	vec3_t		pos;
+	uint64_t	fields;
+	int			channel, ent, sound_num, packetvolume, i;
+	float		attenuation;
+
+	fields = (uint64_t)MSG_ReadByte () & 255;
+	if (fields & FTESND_MOREFLAGS)
+		fields |= MSG_ReadUInt64 () << 8;
+	packetvolume = (fields & NQSND_VOLUME) ? MSG_ReadByte () & 255 : DEFAULT_SOUND_PACKET_VOLUME;
+	attenuation = (fields & NQSND_ATTENUATION) ? (MSG_ReadByte () & 255) / 64.0f : (float)DEFAULT_SOUND_PACKET_ATTENUATION;
+	if (fields & FTESND_PITCHADJ)
+		MSG_ReadByte ();
+	if (fields & FTESND_TIMEOFS)
+		MSG_ReadShort ();
+	if (fields & FTESND_VELOCITY)
+	{
+		for (i=0 ; i<3 ; i++)
+			MSG_ReadShort ();
+	}
+	if (fields & DPSND_SPEEDUSHORT4000)
+		MSG_ReadShort ();
+	if (fields & NQSND_LARGEENTITY)
+	{
+		ent = MSG_ReadBigEntity ();
+		channel = MSG_ReadByte () & 255;
+	}
+	else
+	{
+		channel = MSG_ReadShort () & 0xffff;
+		ent = channel >> 3;
+		channel &= 7;
+	}
+	sound_num = (fields & NQSND_LARGESOUND) ? MSG_ReadShort () & 0xffff : MSG_ReadByte () & 255;
+	for (i=0 ; i<3 ; i++)
+		pos[i] = MSG_ReadCoord ();
+
+	if (ent < 0 || ent >= MAX_EDICTS || sound_num >= MAX_SOUNDS)
+		Host_EndGame ("svc_fte_soundextended: entity %i, sound %i", ent, sound_num);
+	if (CL_Unseen ())
+		return;
+	if (CSQC_EventSound (ent, channel, cl.sound_name[sound_num], packetvolume/255.0f, attenuation, pos))
+		return;
+	S_StartSound (ent, channel, cl.sound_precache[sound_num], pos, packetvolume/255.0f, attenuation);
 }
 
 /*
@@ -1243,7 +1321,7 @@ static void CL_MuzzleFlash (void)
 	dlight_t	*dl;
 	int			i, j;
 	player_state_t	*pl;
-	const packet_entities_t	*pack;
+	const cl_entities_t	*pack;
 
 	i = MSG_ReadShort ();
 
@@ -1645,7 +1723,7 @@ void CL_ParseServerMessage (void)
 			break;
 			
 		case svc_spawnstaticsound:
-			CL_ParseStaticSound ();
+			CL_ParseStaticSound (false);
 			break;
 
 		case svc_cdtrack:
@@ -1765,6 +1843,21 @@ void CL_ParseServerMessage (void)
 
 		case svc_deltapacketentities:
 			CL_ParsePacketEntities (true);
+			break;
+
+		case svc_fte_updateentities:
+			CL_ParseReplacementEntities ();
+			break;
+
+		case svc_fte_soundextended:
+			CL_ParseExtendedSound ();
+			break;
+
+		case svc_fte_spawnstaticsound2:
+			i = MSG_ReadByte ();
+			if (i & ~1)
+				Host_EndGame ("svc_fte_spawnstaticsound2: flags 0x%x", i);
+			CL_ParseStaticSound (i & 1);
 			break;
 
 		case svc_maxspeed :

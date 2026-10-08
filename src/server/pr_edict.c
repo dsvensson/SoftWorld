@@ -370,9 +370,10 @@ ENTITIES
 ==============================================================================
 */
 
+// an entity the VM has a slot for (its memory is committed as slots are)
 edict_t *EDICT_NUM (int n)
 {
-	if (n < 0 || n >= MAX_EDICTS)
+	if (n < 0 || n >= MAX_EDICTS || (pr.vm && (uint32_t)n >= QC_NumEdicts (pr.vm)))
 		SV_Error ("EDICT_NUM: bad number %i", n);
 	return (edict_t *)((byte *)sv.edicts + (size_t)n * (size_t)pr.edict_size);
 }
@@ -1225,9 +1226,6 @@ void PR_LoadProgs (void)
 		QC_FreeError (&err);
 		SV_Error ("%s: %s", pr.name, text);
 	}
-	// the server reaches any entity below MAX_EDICTS
-	if (!QC_CommitEdicts (pr.vm, MAX_EDICTS))
-		SV_Error ("PR_LoadProgs: no memory for %i entities", MAX_EDICTS);
 	if (pr_profiling)
 		QC_SetProfiling (pr.vm, true);
 	if (!QC_SyncAutocvars (pr.vm))

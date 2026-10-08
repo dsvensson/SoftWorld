@@ -86,6 +86,12 @@ cvar_t sv_bigcoords = {.name = "sv_bigcoords", .string = "0",
 	.description = "Uses float coordinates on every map, not only those past +-4096; clients without them can't join. "
 		"Read as a map loads.",
 	.values = (const cvar_value_t[]){{"0", "Only on maps past +-4096"}, {"1", "On every map"}, {0}}};
+// FTE's replacement deltas (FTE_PEXT2_REPLACEMENTDELTAS) for every level, not
+// just those that need them
+cvar_t sv_replacementdeltas = {.name = "sv_replacementdeltas", .string = "0",
+	.description = "Sends FTE's replacement deltas on every level to the clients that read them, not only on "
+		"NetQuake's progs and levels with more entities or sounds than QuakeWorld's deltas hold. Read as a map loads.",
+	.values = (const cvar_value_t[]){{"0", "Only where they are needed"}, {"1", "On every level"}, {0}}};
 // browsers' clients, which can't send UDP: WebSocket on TCP at the port's
 // number, a packet a binary message, as FTE's (net_ws.c)
 cvar_t	sv_websocket = {.name = "sv_websocket", .string = "1",
@@ -355,6 +361,7 @@ void SV_DropClient (client_t *drop)
 {
 	// add the disconnect
 	MSG_WriteByte (&drop->netchan.message, svc_disconnect);
+	SV_FreeDeltas (drop);
 
 	if (drop->state == cs_spawned)
 	{
@@ -669,6 +676,8 @@ static void SVC_GetChallenge (void)
 	MSG_WriteString (&msg, va("%i", svs.challenges[i].challenge));
 	MSG_WriteLong (&msg, PROTOCOL_VERSION_FTE);
 	MSG_WriteLong (&msg, SV_FTE_EXTENSIONS);
+	MSG_WriteLong (&msg, PROTOCOL_VERSION_FTE2);
+	MSG_WriteLong (&msg, SV_FTE2_EXTENSIONS);
 	MSG_WriteLong (&msg, PROTOCOL_VERSION_MVD1);
 	MSG_WriteLong (&msg, SV_MVD1_EXTENSIONS);
 	Netchan_OutOfBand (NS_SERVER, svs.net_from, msg.cursize, msg.data);
@@ -697,7 +706,7 @@ static void SVC_DirectConnect (void)
 	int			qport;
 	int			version;
 	int			challenge;
-	unsigned	magic, fteext, mvdext1;
+	unsigned	magic, fteext, fteext2, mvdext1;
 
 	version = atoi(Cmd_Argv(1));
 	if (version != PROTOCOL_VERSION)
@@ -717,19 +726,21 @@ static void SVC_DirectConnect (void)
 
 	// the protocol extensions the client asks for, a "0x<magic> 0x<mask>"
 	// line per family after the userinfo; the ones this server knows are kept
-	fteext = mvdext1 = 0;
+	fteext = fteext2 = mvdext1 = 0;
 	while (!msg_badread)
 	{
 		Cmd_TokenizeString (MSG_ReadStringLine ());
 		magic = (unsigned)strtoul (Cmd_Argv(0), NULL, 0);
 		if (magic == PROTOCOL_VERSION_FTE)
 			fteext = (unsigned)strtoul (Cmd_Argv(1), NULL, 0) & SV_FTE_EXTENSIONS;
+		else if (magic == PROTOCOL_VERSION_FTE2)
+			fteext2 = (unsigned)strtoul (Cmd_Argv(1), NULL, 0) & SV_FTE2_EXTENSIONS;
 		else if (magic == PROTOCOL_VERSION_MVD1)
 			mvdext1 = (unsigned)strtoul (Cmd_Argv(1), NULL, 0) & SV_MVD1_EXTENSIONS;
 	}
 	msg_badread = false;
-	Con_DPrintf ("%s asks for protocol extensions FTE 0x%x, MVD1 0x%x\n", NET_AdrToString (svs.net_from),
-		fteext, mvdext1);
+	Con_DPrintf ("%s asks for protocol extensions FTE 0x%x, FTE2 0x%x, MVD1 0x%x\n",
+		NET_AdrToString (svs.net_from), fteext, fteext2, mvdext1);
 
 	// see if the challenge is valid
 	for (i=0 ; i<MAX_CHALLENGES ; i++)
@@ -870,9 +881,11 @@ static void SVC_DirectConnect (void)
 	// build a new connection
 	// accept the new client
 	// this is the only place a client_t is ever initialized
+	SV_FreeDeltas (newcl);
 	memset (newcl, 0, sizeof(*newcl));
 	newcl->userid = userid;
 	newcl->fteext = fteext;
+	newcl->fteext2 = fteext2;
 	newcl->mvdext1 = mvdext1;
 	memcpy (newcl->userinfo, info, sizeof(newcl->userinfo));
 	newcl->z_ext = atoi (Info_ValueForKey (newcl->userinfo, "*z_ext")) & SV_Z_EXTENSIONS;
@@ -1634,6 +1647,7 @@ static void SV_InitLocal (void)
 	Cvar_RegisterVariable (&sv_mintic);
 	Cvar_RegisterVariable (&sv_maxtic);
 	Cvar_RegisterVariable (&sv_bigcoords);
+	Cvar_RegisterVariable (&sv_replacementdeltas);
 	Cvar_RegisterVariable (&sv_websocket);
 	Cvar_RegisterVariable (&sv_public);
 	Cvar_RegisterVariable (&sv_webrtc_room);

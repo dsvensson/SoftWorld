@@ -338,6 +338,7 @@ static bool PF_ambientsound (qcvm_t *vm)
 	vec3_t		pos;
 	float 		vol, attenuation;
 	int			i, soundnum;
+	staticsound_t	*s;
 
 	QC_ArgVector (vm, 0, pos);
 	samp = QC_ArgString(vm, 1);
@@ -352,6 +353,15 @@ static bool PF_ambientsound (qcvm_t *vm)
 	if (!*check)
 	{
 		Con_Printf ("no precache: %s\n", samp);
+		return true;
+	}
+	if (soundnum >= MAX_QW_SOUNDS)
+	{	// past svc_spawnstaticsound's byte: kept for the clients that read more
+		s = SV_NewStaticSound ();
+		VectorCopy (pos, s->origin);
+		s->sound = soundnum;
+		s->volume = QC_FloatToInt (vol*255);
+		s->attenuation = QC_FloatToInt (attenuation*64);
 		return true;
 	}
 

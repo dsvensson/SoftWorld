@@ -488,8 +488,9 @@ static void CL_RecordNameList (sizebuf_t *buf, int *seq, int svc, int shortsvc, 
 CL_RecordEntity
 
 A static entity or a baseline, in the form the recording's protocol
-extensions allow: FTE's deltas from nothing with SPAWNSTATIC2, else the
-original form, which has no room for model numbers past 255
+extensions allow: replacement deltas from nothing with FTE's replacement
+deltas, FTE's deltas from nothing with SPAWNSTATIC2, else the original form,
+which has no room for model numbers past 255
 ====================
 */
 static void CL_RecordEntity (sizebuf_t *buf, bool isstatic, int number, const entity_state_t *es)
@@ -498,6 +499,14 @@ static void CL_RecordEntity (sizebuf_t *buf, bool isstatic, int number, const en
 	entity_state_t	s;
 	int		i;
 
+	if (cls.fteext2 & FTE_PEXT2_REPLACEMENTDELTAS)
+	{
+		MSG_WriteByte (buf, isstatic ? svc_fte_spawnstatic2 : svc_fte_spawnbaseline2);
+		if (!isstatic)
+			MSG_WriteBigEntity (buf, number);
+		MSG_WriteReplacement (buf, UF_RESET | MSG_ReplacementBits (&nullstate, es), es, cls.mvdext1);
+		return;
+	}
 	if (cls.fteext & FTE_PEXT_SPAWNSTATIC2)
 	{
 		s = *es;
@@ -524,6 +533,48 @@ static void CL_RecordEntity (sizebuf_t *buf, bool isstatic, int number, const en
 		MSG_WriteCoord (buf, es->origin[i]);
 		MSG_WriteAngle (buf, es->angles[i]);
 	}
+}
+
+/*
+====================
+CL_RecordEntities
+
+With FTE's replacement deltas the server goes on sending only what changes,
+so a recording starts from what the client has: no entities, then each anew
+from its baseline. The last message is a frame apart from the next the
+recording gets, which builds on it (CL_ParseReplacementEntities).
+====================
+*/
+static void CL_RecordEntities (sizebuf_t *buf, int *seq)
+{
+	const frame_t			*frame = &cl.frames[cl.validsequence & UPDATE_MASK];
+	const entity_state_t	*s;
+	int		i, n = cl.validsequence ? frame->numplayerents + frame->packet_entities.num_entities : 0;
+
+	MSG_WriteByte (buf, svc_fte_updateentities);
+	MSG_WriteFloat (buf, 0);
+	MSG_WriteEntityIndex (buf, 0, true);
+	for (i=0 ; i<n ; i++)
+	{
+		if (buf->cursize > MAX_MSGLEN/2)
+		{	// the rest in the next, over this one
+			MSG_WriteShort (buf, 0);
+			CL_WriteRecordDemoMessage (buf, (*seq)++);
+			SZ_Clear (buf);
+			MSG_WriteByte (buf, svc_fte_updateentities);
+			MSG_WriteFloat (buf, 0);
+		}
+		s = i < frame->numplayerents ? &frame->playerents[i]
+			: &frame->packet_entities.entities[i - frame->numplayerents];
+		MSG_WriteEntityIndex (buf, s->number, false);
+		MSG_WriteReplacement (buf, UF_RESET | MSG_ReplacementBits (&cl.baselines[s->number], s), s, cls.mvdext1);
+	}
+	MSG_WriteShort (buf, 0);
+	// in the frame of the client's last packet: the recording goes on from that
+	// sequence (CL_WriteSetDemoMessage)
+	*seq += (cls.netchan.incoming_sequence - *seq) & UPDATE_MASK;
+	CL_WriteRecordDemoMessage (buf, (*seq)++);
+	SZ_Clear (buf);
 }
 
 /*
@@ -598,6 +649,11 @@ void CL_Record_f (void)
 	{
 		MSG_WriteLong (&buf, PROTOCOL_VERSION_FTE);
 		MSG_WriteLong (&buf, (int)cls.fteext);
+	}
+	if (cls.fteext2)
+	{
+		MSG_WriteLong (&buf, PROTOCOL_VERSION_FTE2);
+		MSG_WriteLong (&buf, (int)cls.fteext2);
 	}
 	if (cls.mvdext1)
 	{
@@ -752,6 +808,10 @@ void CL_Record_f (void)
 	MSG_WriteString (&buf, va("skins\n") );
 
 	CL_WriteRecordDemoMessage (&buf, seq++);
+	SZ_Clear (&buf);
+
+	if (cls.fteext2 & FTE_PEXT2_REPLACEMENTDELTAS)
+		CL_RecordEntities (&buf, &seq);
 
 	CL_WriteSetDemoMessage();
 

@@ -104,6 +104,10 @@ Whether the client's protocol has room for the entity's number and model
 */
 bool SV_EntityFits (const client_t *client, int number, int modelindex)
 {
+	if (SV_ReplacementDeltas (client))
+		return true;
+	if (number >= MAX_QW_EDICTS)
+		return false;
 	if ((number & 512) && !(client->fteext & FTE_PEXT_ENTITYDBL))
 		return false;
 	if ((number & 1024) && !(client->fteext & FTE_PEXT_ENTITYDBL2))
@@ -155,6 +159,8 @@ protocol extensions have no room for; new entities are sent as deltas from it
 void SV_ClientBaseline (const client_t *client, const edict_t *ent, entity_state_t *base)
 {
 	*base = ent->baseline;
+	if (SV_ReplacementDeltas (client))
+		return;
 	if (base->modelindex > 255 && !(client->fteext & FTE_PEXT_MODELDBL))
 		base->modelindex = 0;
 	if (!(client->fteext & FTE_PEXT_SPAWNSTATIC2))
@@ -173,8 +179,11 @@ An entity as the clients see it
 */
 void SV_EntityState (const edict_t *ent, int number, entity_state_t *state)
 {
-	state->number = number;
-	state->flags = 0;
+	*state = (entity_state_t){.number = number};
+	// FTE's: what steps, or doesn't move by itself, is drawn from step to step
+	// (with replacement deltas)
+	if (!ent->v.movetype || ent->v.movetype == MOVETYPE_STEP)
+		state->dpflags = RENDER_STEP;
 	VectorCopy (ent->v.origin, state->origin);
 	VectorCopy (ent->v.angles, state->angles);
 	state->modelindex = (int)ent->v.modelindex;
@@ -450,6 +459,346 @@ static void SV_WritePlayersToClient (client_t *client, edict_t *clent, byte *pvs
 
 
 /*
+==============================================================================
+
+FTE'S REPLACEMENT DELTAS
+
+A client with FTE_PEXT2_REPLACEMENTDELTAS, on a level that has them, gets
+what changed of each entity it sees, the players among them, as FTE's server
+sends it (SVFTE_EmitPacketEntities): the server keeps what it has sent the
+client and what is still to send, by entity. What doesn't fit in a packet
+goes in the next, which goes on from there; what a lost packet carried is
+sent again.
+
+==============================================================================
+*/
+
+#define	UF_SV_REMOVE	UF_16BIT		// pending: it is gone (the writer works UF_16BIT out itself)
+
+typedef struct
+{
+	int			number;
+	unsigned	bits;
+} svresend_t;
+
+// what a packet carried, to send again if it is lost
+typedef struct
+{
+	int			sequence;		// the packet's
+	int			num, max;
+	svresend_t	*resend;
+} svsentpacket_t;
+
+typedef struct svdeltas_s
+{
+	entity_state_t	*sent;			// by number: what the client has, or will once it gets what went; 0 none
+	unsigned		*pending;		// by number: what is still to send of it (pending[0]: forget them all)
+	int				max;			// the numbers both have room for
+	int				num;			// past the highest number in use
+	int				next;			// where the last packet that didn't hold everything stopped
+	int				acked;			// the last packet the client acknowledged
+	svsentpacket_t	packets[UPDATE_BACKUP];
+} svdeltas_t;
+
+static entity_state_t	sv_seen[MAX_EDICTS];		// a client's view, built each packet
+
+bool SV_ReplacementDeltas (const client_t *client)
+{
+	return sv.replacementdeltas && (client->fteext2 & FTE_PEXT2_REPLACEMENTDELTAS);
+}
+
+void SV_FreeDeltas (client_t *client)
+{
+	svdeltas_t	*d = client->deltas;
+	int			i;
+
+	if (!d)
+		return;
+	for (i=0 ; i<UPDATE_BACKUP ; i++)
+		Mem_Free (d->packets[i].resend);
+	Mem_Free (d->sent);
+	Mem_Free (d->pending);
+	Mem_Free (d);
+	client->deltas = NULL;
+}
+
+// room for entity numbers below n
+static void SV_GrowDeltas (svdeltas_t *d, int n)
+{
+	int		max = d->max;
+
+	if (n > d->num)
+		d->num = n;
+	if (n <= d->max)
+		return;
+	while (max < n)
+		max = max ? max * 2 : 512;
+	d->sent = Mem_Realloc (d->sent, (size_t)max * sizeof(*d->sent));
+	d->pending = Mem_Realloc (d->pending, (size_t)max * sizeof(*d->pending));
+	memset (d->sent + d->max, 0, (size_t)(max - d->max) * sizeof(*d->sent));
+	memset (d->pending + d->max, 0, (size_t)(max - d->max) * sizeof(*d->pending));
+	d->max = max;
+}
+
+// what a packet carried of an entity
+static void SV_NoteSent (svdeltas_t *d, int packet, int number, unsigned bits)
+{
+	svsentpacket_t	*p = &d->packets[packet];
+
+	if (p->num == p->max)
+	{
+		p->max = p->max ? p->max * 2 : 64;
+		p->resend = Mem_Realloc (p->resend, (size_t)p->max * sizeof(*p->resend));
+	}
+	p->resend[p->num++] = (svresend_t){number, bits};
+}
+
+// what a packet the client won't have carried, to be sent again as it is now:
+// one gone since, gone (the world, all of them: forget them all again); one
+// gone and back, whole
+static void SV_Resend (svdeltas_t *d, int packet)
+{
+	svsentpacket_t	*p = &d->packets[packet];
+	int		i, e;
+
+	for (i=0 ; i<p->num ; i++)
+	{
+		e = p->resend[i].number;
+		if (!d->sent[e].number)
+			d->pending[e] = UF_SV_REMOVE;
+		else if (p->resend[i].bits & UF_SV_REMOVE)
+			d->pending[e] = UF_RESET;
+		else
+			d->pending[e] |= p->resend[i].bits;
+	}
+	p->num = 0;
+}
+
+void SV_DeltasUnsent (client_t *client)
+{
+	if (client->deltas)
+		SV_Resend (client->deltas, (client->netchan.outgoing_sequence + 1) & UPDATE_MASK);
+}
+
+void SV_DeltasAcked (client_t *client)
+{
+	svdeltas_t	*d = client->deltas;
+	int			acked = client->netchan.incoming_acknowledged, seq;
+
+	if (!d || acked <= d->acked)
+		return;
+	// the client acknowledges the newest it got: those before it were lost
+	seq = d->acked + 1 > acked - UPDATE_BACKUP + 1 ? d->acked + 1 : acked - UPDATE_BACKUP + 1;
+	for ( ; seq < acked ; seq++)
+		if (d->packets[seq & UPDATE_MASK].sequence == seq)
+			SV_Resend (d, seq & UPDATE_MASK);
+	d->packets[acked & UPDATE_MASK].num = 0;
+	d->acked = acked;
+}
+
+// whether the entity touches a leaf the visibility set has
+static bool SV_EdictVisible (const edict_t *ent, const byte *pvs)
+{
+	int		i;
+
+	for (i=0 ; i < ent->num_leafs ; i++)
+		if (pvs[ent->leafnums[i] >> 3] & (1 << (ent->leafnums[i]&7)))
+			return true;
+	return false;
+}
+
+// A player as the client sees it, with what predicting it takes (FTE's): how
+// it moves (its movetype, 0x80 on the ground, 0x40 jump held), its velocity,
+// and the others' moves; 0 for one the server moves itself, NetQuake's
+static void SV_PlayerState (const client_t *client, const client_t *cl, int j, entity_state_t *s)
+{
+	const edict_t	*ent = cl->edict;
+	int				i, v;
+
+	SV_EntityState (ent, j + 1, s);
+	s->dpflags = 0;
+	if (!SV_NQPhysics (cl))
+	{
+		// the movetype the client takes for the server's pm_type (FTE's
+		// client: a dead player tosses)
+		switch (SV_PMTypeForClient (cl))
+		{
+		case PM_OLD_SPECTATOR:
+		case PM_SPECTATOR:	s->pmovetype = MOVETYPE_NOCLIP; break;
+		case PM_FLY:		s->pmovetype = MOVETYPE_FLY; break;
+		case PM_NONE:		s->pmovetype = MOVETYPE_NONE; break;
+		case PM_LOCK:		s->pmovetype = MOVETYPE_LOCK; break;
+		case PM_DEAD:		s->pmovetype = MOVETYPE_TOSS; break;
+		default:			s->pmovetype = MOVETYPE_WALK; break;
+		}
+		if ((int)ent->v.flags & FL_ONGROUND)
+			s->pmovetype |= 0x80;
+		if (cl->jump_held)
+			s->pmovetype |= 0x40;
+	}
+	if (s->pmovetype || cl == client)
+	{	// the client's own for its view's bob too
+		for (i=0 ; i<3 ; i++)
+		{
+			v = (int)(ent->v.velocity[i] * 8);
+			s->velocity[i] = (short)(v < -32767 ? -32767 : v > 32767 ? 32767 : v);
+		}
+	}
+	if (cl != client && s->pmovetype)
+	{
+		s->movement[0] = cl->lastcmd.forwardmove;
+		s->movement[1] = cl->lastcmd.sidemove;
+		s->movement[2] = cl->lastcmd.upmove;
+		v = (int)(1000*(sv.time - cl->localtime));
+		s->msec = (byte)(v < 0 ? 0 : v > 255 ? 255 : v);
+	}
+	if (cl == client || (client->spec_track && client->spec_track - 1 == j))
+		s->weaponframe = (int)ent->v.weaponframe;
+}
+
+// what the client sees, by number: the players, then the other entities,
+// nails among them (svc_nails' coordinates are short of big levels; FTE's)
+static int SV_SeenStates (client_t *client, edict_t *clent, const byte *pvs)
+{
+	client_t	*cl;
+	edict_t		*ent;
+	int			e, j, n = 0;
+
+	for (j=0,cl=svs.clients ; j<MAX_CLIENTS ; j++,cl++)
+	{
+		if (cl->state != cs_spawned)
+			continue;
+		ent = cl->edict;
+		if (ent != clent && !(client->spec_track && client->spec_track - 1 == j)
+			&& (cl->spectator || !SV_EdictVisible (ent, pvs)))
+			continue;
+		SV_PlayerState (client, cl, j, &sv_seen[n++]);
+	}
+
+	for (e=MAX_CLIENTS+1, ent=EDICT_NUM(e) ; e<sv.num_edicts ; e++, ent = NEXT_EDICT(ent))
+	{
+		if (!ent->v.modelindex || !*PR_GetString(ent->v.model) || !SV_EdictVisible (ent, pvs))
+			continue;
+		SV_EntityState (ent, e, &sv_seen[n++]);
+	}
+	return n;
+}
+
+/*
+=============
+SV_EmitDeltas
+
+The client's view into what it is to be sent, and what fits of that into the
+message, short of the room the rest of the packet takes (reserve)
+=============
+*/
+static void SV_EmitDeltas (client_t *client, const entity_state_t *seen, int count, sizebuf_t *msg,
+	int reserve)
+{
+	svdeltas_t			*d = client->deltas;
+	const entity_state_t	*n;
+	entity_state_t		*o, base;
+	unsigned			bits, sentbits;
+	int					i, j, packet, sequence;
+
+	if (!d)
+		d = client->deltas = Mem_Calloc (1, sizeof(*d));
+	SV_GrowDeltas (d, count ? seen[count-1].number + 1 : 1);
+
+	// this packet's record; one that is still unacknowledged is taken as lost
+	sequence = client->netchan.outgoing_sequence + 1;
+	packet = sequence & UPDATE_MASK;
+	if (d->packets[packet].sequence > d->acked)
+		SV_Resend (d, packet);
+	d->packets[packet].sequence = sequence;
+	d->packets[packet].num = 0;
+
+	// a client without the frames it was sent (a new level, a lost reset)
+	// starts over from nothing
+	if (client->delta_sequence == -1)
+		d->pending[0] = UF_SV_REMOVE;
+	if (d->pending[0] & UF_SV_REMOVE)
+	{
+		for (j=0 ; j<d->num ; j++)
+		{
+			d->sent[j].number = 0;
+			d->pending[j] = 0;
+		}
+		d->pending[0] = UF_SV_REMOVE;
+	}
+
+	// what changed: new ones whole, gone ones removed
+	for (i=0, j=1 ; i<count ; i++, j++)
+	{
+		n = &seen[i];
+		for ( ; j < n->number ; j++)
+			if (d->sent[j].number)
+			{
+				d->pending[j] = UF_SV_REMOVE;
+				d->sent[j].number = 0;
+			}
+		o = &d->sent[j];
+		if (!o->number || (d->pending[j] & UF_SV_REMOVE))
+			d->pending[j] = UF_RESET;	// new, or gone and back before the client was told
+		else
+			d->pending[j] |= MSG_ReplacementBits (o, n);
+		*o = *n;
+	}
+	for ( ; j < d->num ; j++)
+		if (d->sent[j].number)
+		{
+			d->pending[j] = UF_SV_REMOVE;
+			d->sent[j].number = 0;
+		}
+
+	// an update is at most 59 bytes, the end 2
+	if (msg->cursize + 64 + reserve > msg->maxsize)
+		return;
+	MSG_WriteByte (msg, svc_fte_updateentities);
+	MSG_WriteFloat (msg, (float)sv.physicstime);
+	if (d->pending[0] & UF_SV_REMOVE)
+	{	// forget them all
+		MSG_WriteEntityIndex (msg, 0, true);
+		SV_NoteSent (d, packet, 0, UF_SV_REMOVE);
+		d->pending[0] = 0;
+	}
+	for (j=1 ; j<d->num ; j++)
+	{
+		bits = d->pending[j];
+		if (!bits)
+			continue;
+		if (msg->cursize + 64 + reserve > msg->maxsize)
+			break;		// the rest next packet
+		if (bits & UF_SV_REMOVE)
+		{
+			MSG_WriteEntityIndex (msg, j, true);
+			sentbits = UF_SV_REMOVE;
+		}
+		else
+		{
+			// players in every packet, the rest on from where it stopped
+			if (j < d->next && j > MAX_CLIENTS)
+				continue;
+			sentbits = bits;
+			if (bits & UF_RESET)
+			{	// from the baseline the client got at prespawn
+				SV_ClientBaseline (client, EDICT_NUM (j), &base);
+				if (!base.modelindex)
+					base = (entity_state_t){0};
+				bits = UF_RESET | MSG_ReplacementBits (&base, &d->sent[j]);
+				sentbits = UF_RESET;
+			}
+			MSG_WriteEntityIndex (msg, j, false);
+			MSG_WriteReplacement (msg, bits, &d->sent[j], client->mvdext1);
+		}
+		SV_NoteSent (d, packet, j, sentbits);
+		d->pending[j] = 0;
+	}
+	MSG_WriteShort (msg, 0);
+	d->next = j < d->num ? j : 0;
+}
+
+/*
 =============
 SV_WriteEntitiesToClient
 
@@ -477,6 +826,13 @@ void SV_WriteEntitiesToClient (client_t *client, sizebuf_t *msg)
 	clent = client->edict;
 	VectorAdd (clent->v.origin, clent->v.view_ofs, org);
 	pvs = CM_FatPVS (sv.map, org);
+
+	if (SV_ReplacementDeltas (client))
+	{	// the players with the rest, before the datagram's multicasts
+		SV_EmitDeltas (client, sv_seen, SV_SeenStates (client, clent, pvs), msg,
+			client->datagram.overflowed ? 0 : client->datagram.cursize);
+		return;
+	}
 
 	// send over the players in the PVS
 	SV_WritePlayersToClient (client, clent, pvs, msg);

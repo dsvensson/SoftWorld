@@ -125,6 +125,25 @@ entity_state_t *SV_NewStatic (void)
 	return s;
 }
 
+staticsound_t *SV_NewStaticSound (void)
+{
+	staticsound_t	*s;
+	int		max;
+
+	if (sv.num_static_sounds == sv.max_static_sounds)
+	{
+		max = sv.max_static_sounds ? sv.max_static_sounds * 2 : 64;
+		s = Arena_Alloc (&sv_level_arena, (size_t)max * sizeof(*s));
+		if (sv.num_static_sounds)
+			memcpy (s, sv.static_sounds, (size_t)sv.num_static_sounds * sizeof(*s));
+		sv.static_sounds = s;
+		sv.max_static_sounds = max;
+	}
+	s = &sv.static_sounds[sv.num_static_sounds++];
+	memset (s, 0, sizeof(*s));
+	return s;
+}
+
 /*
 ================
 SV_FlushSignon
@@ -544,6 +563,12 @@ void SV_SpawnServer (char *server, spawnparms_t parms)
 
 	// look up some model indexes for specialized message compression
 	SV_FindModelNumbers ();
+
+	// FTE's replacement deltas where QuakeWorld's have no room: NetQuake's
+	// progs (their levels are the big ones), more entities than 2048 or
+	// sounds than 256; QuakeWorld's own levels stay QuakeWorld's
+	sv.replacementdeltas = sv_replacementdeltas.value || pr.nq || sv.num_edicts > MAX_QW_EDICTS
+		|| sv.sound_precache[MAX_QW_SOUNDS];
 
 	// all spawning is completed, any further precache statements
 	// or prog writes to the signon message are errors

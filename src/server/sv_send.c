@@ -235,6 +235,11 @@ MULTICAST_PHS	send to clients potentially hearable from org
 */
 void SV_Multicast (vec3_t origin, int to)
 {
+	SV_MulticastExt (origin, to, 0);
+}
+
+void SV_MulticastExt (vec3_t origin, int to, unsigned fteext2)
+{
 	client_t	*client;
 	byte		*mask;
 	int			leafnum;
@@ -273,7 +278,7 @@ void SV_Multicast (vec3_t origin, int to)
 	// send the data to all relevent clients
 	for (j = 0, client = svs.clients; j < MAX_CLIENTS; j++, client++)
 	{
-		if (client->state != cs_spawned)
+		if (client->state != cs_spawned || (client->fteext2 & fteext2) != fteext2)
 			continue;
 
 		if (to == MULTICAST_PHS_R || to == MULTICAST_PHS) {
@@ -296,11 +301,51 @@ inrange:
 			SZ_Write (&client->datagram, sv.multicast.data, sv.multicast.cursize);
 	}
 
-	// QTV hears and sees it all, as mvdsv's demos do
-	SV_MVDAll (sv.multicast.data, sv.multicast.cursize);
+	// QTV hears and sees it all, as mvdsv's demos do (but what needs FTE2
+	// extensions, which its viewers' protocol hasn't)
+	if (!fteext2)
+		SV_MVDAll (sv.multicast.data, sv.multicast.cursize);
 	SZ_Clear (&sv.multicast);
 }
 
+
+// FTE's svc_fte_soundextended: its fields, then the entity and channel, the
+// sound and the place
+static void SV_StartExtendedSound (int ent, int channel, int sound_num, int volume, float attenuation,
+	vec3_t origin, int to)
+{
+	int		fields = 0, i;
+
+	if (volume != DEFAULT_SOUND_PACKET_VOLUME)
+		fields |= NQSND_VOLUME;
+	if (attenuation != DEFAULT_SOUND_PACKET_ATTENUATION)
+		fields |= NQSND_ATTENUATION;
+	if (ent >= 8192)
+		fields |= NQSND_LARGEENTITY;
+	if (sound_num > 255)
+		fields |= NQSND_LARGESOUND;
+
+	MSG_WriteByte (&sv.multicast, svc_fte_soundextended);
+	MSG_WriteByte (&sv.multicast, fields);
+	if (fields & NQSND_VOLUME)
+		MSG_WriteByte (&sv.multicast, volume);
+	if (fields & NQSND_ATTENUATION)
+		MSG_WriteByte (&sv.multicast, (int)(attenuation*64));
+	if (fields & NQSND_LARGEENTITY)
+	{
+		MSG_WriteBigEntity (&sv.multicast, ent);
+		MSG_WriteByte (&sv.multicast, channel);
+	}
+	else
+		MSG_WriteShort (&sv.multicast, (ent<<3) | channel);
+	if (fields & NQSND_LARGESOUND)
+		MSG_WriteShort (&sv.multicast, sound_num);
+	else
+		MSG_WriteByte (&sv.multicast, sound_num);
+	for (i=0 ; i<3 ; i++)
+		MSG_WriteCoord (&sv.multicast, origin[i]);
+	SV_MulticastExt (origin, to, FTE_PEXT2_REPLACEMENTDELTAS);
+}
 
 /*  
 ==================
@@ -350,6 +395,17 @@ void SV_StartSound (edict_t *entity, int channel, const char *sample, int volume
     
 	ent = NUM_FOR_EDICT(entity);
 
+	// use the entity origin unless it is a bmodel
+	if (entity->v.solid == SOLID_BSP)
+	{
+		for (i=0 ; i<3 ; i++)
+			origin[i] = entity->v.origin[i]+0.5f*(entity->v.mins[i]+entity->v.maxs[i]);
+	}
+	else
+	{
+		VectorCopy (entity->v.origin, origin);
+	}
+
 	if ((channel & 8) || !sv_phs.value)	// no PHS flag
 	{
 		if (channel & 8)
@@ -363,23 +419,21 @@ void SV_StartSound (edict_t *entity, int channel, const char *sample, int volume
 //	if (channel == CHAN_BODY || channel == CHAN_VOICE)
 //		reliable = true;
 
+	// past what svc_sound holds (sound 255, entity 1023), FTE's extended sound,
+	// to the clients with replacement deltas, as FTE's server sends it
+	if (sound_num >= MAX_QW_SOUNDS || ent >= 1024)
+	{
+		SV_StartExtendedSound (ent, channel, sound_num, volume, attenuation, origin,
+			use_phs ? (reliable ? MULTICAST_PHS_R : MULTICAST_PHS) : (reliable ? MULTICAST_ALL_R : MULTICAST_ALL));
+		return;
+	}
+
 	channel = (ent<<3) | channel;
 
 	if (volume != DEFAULT_SOUND_PACKET_VOLUME)
 		channel |= SND_VOLUME;
 	if (attenuation != DEFAULT_SOUND_PACKET_ATTENUATION)
 		channel |= SND_ATTENUATION;
-
-	// use the entity origin unless it is a bmodel
-	if (entity->v.solid == SOLID_BSP)
-	{
-		for (i=0 ; i<3 ; i++)
-			origin[i] = entity->v.origin[i]+0.5f*(entity->v.mins[i]+entity->v.maxs[i]);
-	}
-	else
-	{
-		VectorCopy (entity->v.origin, origin);
-	}
 
 	MSG_WriteByte (&sv.multicast, svc_sound);
 	MSG_WriteShort (&sv.multicast, channel);
@@ -658,6 +712,7 @@ static bool SV_SendClientDatagram (client_t *client)
 	{
 		Con_Printf ("WARNING: msg overflowed for %s\n", client->name);
 		SZ_Clear (&msg);
+		SV_DeltasUnsent (client);
 	}
 
 	// send the datagram

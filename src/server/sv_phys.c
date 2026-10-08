@@ -425,8 +425,8 @@ static bool SV_Push (edict_t *pusher, vec3_t move)
 	vec3_t		mins, maxs;
 	vec3_t		pushorig;
 	int			num_moved;
-	edict_t		*moved_edict[MAX_EDICTS];
-	vec3_t		moved_from[MAX_EDICTS];
+	static edict_t	*moved_edict[MAX_EDICTS];	// static: too big for the stack
+	static vec3_t	moved_from[MAX_EDICTS];
 
 	for (i=0 ; i<3 ; i++)
 	{

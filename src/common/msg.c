@@ -235,7 +235,7 @@ void MSG_WriteDeltaEntity (sizebuf_t *sb, const entity_state_t *from, const enti
 	if (!bits && !ext && !force)
 		return;		// nothing to send
 
-	if (!to->number || to->number >= MAX_EDICTS)
+	if (!to->number || to->number >= MAX_QW_EDICTS)
 		Sys_Error ("MSG_WriteDeltaEntity: entity number %i", to->number);
 	if (to->number & 512)
 		ext |= U_FTE_ENTITYDBL;
@@ -566,6 +566,436 @@ void MSG_ReadDeltaEntity (const entity_state_t *from, entity_state_t *to, int nu
 	{
 		for (i=0 ; i<3 ; i++)
 			to->colormod[i] = (byte)MSG_ReadByte ();
+	}
+}
+
+/*
+==============================================================================
+
+FTE'S REPLACEMENT DELTAS
+
+An entity's update says what changed from what the client has, by UF_ bits,
+or (UF_RESET) from its baseline; a player's carries its movement
+(UF_PREDINFO). As FTE writes and reads them without PEXT2_PREDINFO,
+PEXT2_NEWSIZEENCODING and PEXT2_LERPTIME, which this program doesn't ask for;
+the fields it has no use for are read and dropped.
+
+==============================================================================
+*/
+
+// the writer's own flags among the bits, on bits it works out itself: the
+// movetype or the weapon frame changed
+#define	UF_SV_MOVETYPE		UF_EXTEND4
+#define	UF_SV_WEAPONFRAME	UF_EXTEND2
+
+void MSG_WriteEntityIndex (sizebuf_t *sb, int number, bool remove)
+{
+	int		rflag = remove ? 0x8000 : 0;
+
+	if (number >= 0x4000)
+	{
+		MSG_WriteShort (sb, (number & 0x3fff) | 0x4000 | rflag);
+		MSG_WriteByte (sb, number >> 14);
+	}
+	else
+		MSG_WriteShort (sb, number | rflag);
+}
+
+int MSG_ReadEntityIndex (bool *remove)
+{
+	int		number = MSG_ReadShort () & 0xffff;
+
+	*remove = (number & 0x8000) != 0;
+	if (number & 0x4000)
+		return (number & 0x3fff) | (MSG_ReadByte () << 14);
+	return number & 0x7fff;
+}
+
+void MSG_WriteBigEntity (sizebuf_t *sb, int number)
+{
+	if (number >= 0x8000)
+	{
+		MSG_WriteShort (sb, (number >> 8) | 0x8000);
+		MSG_WriteByte (sb, number & 255);
+	}
+	else
+		MSG_WriteShort (sb, number);
+}
+
+int MSG_ReadBigEntity (void)
+{
+	int		number = MSG_ReadShort () & 0xffff;
+
+	if (number & 0x8000)
+		return ((number & 0x7fff) << 8) | MSG_ReadByte ();
+	return number;
+}
+
+uint64_t MSG_ReadUInt64 (void)
+{
+	uint64_t	r;
+	int			b = 0, l = 0x80, v = MSG_ReadByte () & 255;
+
+	for ( ; v & l ; l >>= 1)
+	{
+		v -= l;
+		b++;
+	}
+	r = (uint64_t)v << (b*8);
+	while (b-- > 0)
+		r |= (uint64_t)(MSG_ReadByte () & 255) << (b*8);
+	return r;
+}
+
+// the movement a player's update carries whatever changed
+static unsigned MSG_PredictionBits (const entity_state_t *to)
+{
+	unsigned	bits = 0;
+
+	if (to->movement[0])
+		bits |= UFP_FORWARD;
+	if (to->movement[1])
+		bits |= UFP_SIDE;
+	if (to->movement[2])
+		bits |= UFP_UP;
+	if (to->velocity[0] || to->velocity[1])
+		bits |= UFP_VELOCITYXY;
+	if (to->velocity[2])
+		bits |= UFP_VELOCITYZ;
+	if (to->msec)
+		bits |= UFP_MSEC;
+	return bits;
+}
+
+unsigned MSG_ReplacementBits (const entity_state_t *from, const entity_state_t *to)
+{
+	unsigned	bits = 0;
+
+	if (from->pmovetype != to->pmovetype)
+		bits |= UF_PREDINFO | UF_SV_MOVETYPE;
+	if (from->weaponframe != to->weaponframe)
+		bits |= UF_PREDINFO | UF_SV_WEAPONFRAME;
+	// the client takes an update without movement as none: one that stops
+	// moving says so
+	if (MSG_PredictionBits (to) || MSG_PredictionBits (from))
+		bits |= UF_PREDINFO;
+	// a moving player's place goes with its movement, changed or not
+	if ((bits & UF_PREDINFO) && (from->velocity[0] || from->velocity[1] || from->velocity[2]))
+		bits |= UF_ORIGINXY | UF_ORIGINZ | UF_ANGLESXZ | UF_ANGLESY;
+
+	if (to->origin[0] != from->origin[0] || to->origin[1] != from->origin[1])
+		bits |= UF_ORIGINXY;
+	if (to->origin[2] != from->origin[2])
+		bits |= UF_ORIGINZ;
+	if (to->angles[0] != from->angles[0] || to->angles[2] != from->angles[2])
+		bits |= UF_ANGLESXZ;
+	if (to->angles[1] != from->angles[1])
+		bits |= UF_ANGLESY;
+	if (to->modelindex != from->modelindex)
+		bits |= UF_MODEL;
+	if (to->frame != from->frame)
+		bits |= UF_FRAME;
+	if (to->skinnum != from->skinnum)
+		bits |= UF_SKIN;
+	if (to->colormap != from->colormap)
+		bits |= UF_COLORMAP;
+	if (to->effects != from->effects)
+		bits |= UF_EFFECTS;
+	if (to->dpflags != from->dpflags)
+		bits |= UF_FLAGS;
+	if (to->alpha != from->alpha)
+		bits |= UF_ALPHA;
+	if (to->scale != from->scale)
+		bits |= UF_SCALE;
+	if (memcmp (to->colormod, from->colormod, sizeof(to->colormod)))
+		bits |= UF_COLORMOD;
+	return bits;
+}
+
+void MSG_WriteReplacement (sizebuf_t *sb, unsigned bits, const entity_state_t *to, unsigned mvdext1)
+{
+	unsigned	predbits = 0;
+	int			i;
+
+	if (bits & UF_SV_MOVETYPE)
+		predbits |= UFP_MOVETYPE;
+	if (bits & UF_SV_WEAPONFRAME)
+		predbits |= UFP_WEAPONFRAME;
+	bits &= ~(UF_SV_MOVETYPE | UF_SV_WEAPONFRAME | UF_EXTEND1 | UF_EXTEND3 | UF_16BIT | UF_EFFECTS2);
+
+	if (((bits & UF_MODEL) && to->modelindex > 255) || ((bits & UF_SKIN) && to->skinnum > 255)
+		|| ((bits & UF_FRAME) && to->frame > 255))
+		bits |= UF_16BIT;
+	if (bits & UF_EFFECTS)
+	{
+		if (to->effects & 0xffff0000)
+			bits |= UF_EFFECTS2;
+		else if (to->effects & 0x0000ff00)
+			bits = (bits & ~UF_EFFECTS) | UF_EFFECTS2;
+	}
+	if (bits & 0xff000000)
+		bits |= UF_EXTEND3;
+	if (bits & 0x00ff0000)
+		bits |= UF_EXTEND2;
+	if (bits & 0x0000ff00)
+		bits |= UF_EXTEND1;
+
+	MSG_WriteByte (sb, bits & 255);
+	if (bits & UF_EXTEND1)
+		MSG_WriteByte (sb, (bits >> 8) & 255);
+	if (bits & UF_EXTEND2)
+		MSG_WriteByte (sb, (bits >> 16) & 255);
+	if (bits & UF_EXTEND3)
+		MSG_WriteByte (sb, (bits >> 24) & 255);
+
+	if (bits & UF_FRAME)
+	{
+		if (bits & UF_16BIT)
+			MSG_WriteShort (sb, to->frame);
+		else
+			MSG_WriteByte (sb, to->frame);
+	}
+	// floats with MVD_PEXT1_FLOATCOORDS, as FTE's (its EZPEXT1_FLOATENTCOORDS)
+	if (bits & UF_ORIGINXY)
+	{
+		MSG_WriteOrigin (sb, to->origin[0], mvdext1);
+		MSG_WriteOrigin (sb, to->origin[1], mvdext1);
+	}
+	if (bits & UF_ORIGINZ)
+		MSG_WriteOrigin (sb, to->origin[2], mvdext1);
+	// a player's angles more precisely
+	if (bits & UF_ANGLESXZ)
+	{
+		if (bits & UF_PREDINFO)
+		{
+			MSG_WriteAngle16 (sb, to->angles[0]);
+			MSG_WriteAngle16 (sb, to->angles[2]);
+		}
+		else
+		{
+			MSG_WriteAngle (sb, to->angles[0]);
+			MSG_WriteAngle (sb, to->angles[2]);
+		}
+	}
+	if (bits & UF_ANGLESY)
+	{
+		if (bits & UF_PREDINFO)
+			MSG_WriteAngle16 (sb, to->angles[1]);
+		else
+			MSG_WriteAngle (sb, to->angles[1]);
+	}
+	if ((bits & (UF_EFFECTS | UF_EFFECTS2)) == (UF_EFFECTS | UF_EFFECTS2))
+		MSG_WriteLong (sb, to->effects);
+	else if (bits & UF_EFFECTS2)
+		MSG_WriteShort (sb, to->effects);
+	else if (bits & UF_EFFECTS)
+		MSG_WriteByte (sb, to->effects);
+
+	if (bits & UF_PREDINFO)
+	{
+		predbits |= MSG_PredictionBits (to);
+		MSG_WriteByte (sb, predbits);
+		for (i=0 ; i<3 ; i++)
+			if (predbits & (UFP_FORWARD << i))
+				MSG_WriteShort (sb, to->movement[i]);
+		if (predbits & UFP_MOVETYPE)
+			MSG_WriteByte (sb, to->pmovetype);
+		if (predbits & UFP_VELOCITYXY)
+		{
+			MSG_WriteShort (sb, to->velocity[0]);
+			MSG_WriteShort (sb, to->velocity[1]);
+		}
+		if (predbits & UFP_VELOCITYZ)
+			MSG_WriteShort (sb, to->velocity[2]);
+		if (predbits & UFP_MSEC)
+			MSG_WriteByte (sb, to->msec);
+		if (predbits & UFP_WEAPONFRAME)
+		{
+			if (to->weaponframe > 127)
+			{
+				MSG_WriteByte (sb, 128 | (to->weaponframe & 127));
+				MSG_WriteByte (sb, to->weaponframe >> 7);
+			}
+			else
+				MSG_WriteByte (sb, to->weaponframe);
+		}
+	}
+
+	if (bits & UF_MODEL)
+	{
+		if (bits & UF_16BIT)
+			MSG_WriteShort (sb, to->modelindex);
+		else
+			MSG_WriteByte (sb, to->modelindex);
+	}
+	if (bits & UF_SKIN)
+	{
+		if (bits & UF_16BIT)
+			MSG_WriteShort (sb, to->skinnum);
+		else
+			MSG_WriteByte (sb, to->skinnum);
+	}
+	if (bits & UF_COLORMAP)
+		MSG_WriteByte (sb, to->colormap & 255);
+	if (bits & UF_FLAGS)
+		MSG_WriteByte (sb, to->dpflags);
+	// FTE's alpha: 255 opaque (this program's 0)
+	if (bits & UF_ALPHA)
+		MSG_WriteByte (sb, to->alpha ? to->alpha : 255);
+	if (bits & UF_SCALE)
+		MSG_WriteByte (sb, to->scale);
+	if (bits & UF_COLORMOD)
+	{
+		for (i=0 ; i<3 ; i++)
+			MSG_WriteByte (sb, to->colormod[i]);
+	}
+}
+
+unsigned MSG_ReadReplacementBits (void)
+{
+	unsigned	bits = MSG_ReadByte () & 255;
+
+	if (bits & UF_EXTEND1)
+		bits |= (unsigned)(MSG_ReadByte () & 255) << 8;
+	if (bits & UF_EXTEND2)
+		bits |= (unsigned)(MSG_ReadByte () & 255) << 16;
+	if (bits & UF_EXTEND3)
+		bits |= (unsigned)(MSG_ReadByte () & 255) << 24;
+	return bits;
+}
+
+void MSG_ReadReplacement (unsigned bits, entity_state_t *to, unsigned mvdext1)
+{
+	unsigned	predbits;
+	int			i, n;
+
+	if (bits & UF_FRAME)
+		to->frame = (bits & UF_16BIT) ? MSG_ReadShort () & 0xffff : MSG_ReadByte ();
+	if (bits & UF_ORIGINXY)
+	{
+		to->origin[0] = MSG_ReadOrigin (mvdext1);
+		to->origin[1] = MSG_ReadOrigin (mvdext1);
+	}
+	if (bits & UF_ORIGINZ)
+		to->origin[2] = MSG_ReadOrigin (mvdext1);
+	if (bits & UF_ANGLESXZ)
+	{
+		to->angles[0] = (bits & UF_PREDINFO) ? MSG_ReadAngle16 () : MSG_ReadAngle ();
+		to->angles[2] = (bits & UF_PREDINFO) ? MSG_ReadAngle16 () : MSG_ReadAngle ();
+	}
+	if (bits & UF_ANGLESY)
+		to->angles[1] = (bits & UF_PREDINFO) ? MSG_ReadAngle16 () : MSG_ReadAngle ();
+	if ((bits & (UF_EFFECTS | UF_EFFECTS2)) == (UF_EFFECTS | UF_EFFECTS2))
+		to->effects = MSG_ReadLong ();
+	else if (bits & UF_EFFECTS2)
+		to->effects = MSG_ReadShort () & 0xffff;
+	else if (bits & UF_EFFECTS)
+		to->effects = MSG_ReadByte ();
+
+	// the movement is the update's, there or not
+	memset (to->movement, 0, sizeof(to->movement));
+	memset (to->velocity, 0, sizeof(to->velocity));
+	to->msec = 0;
+	if (bits & UF_PREDINFO)
+	{
+		predbits = MSG_ReadByte () & 255;
+		for (i=0 ; i<3 ; i++)
+			if (predbits & (UFP_FORWARD << i))
+				to->movement[i] = (short)MSG_ReadShort ();
+		if (predbits & UFP_MOVETYPE)
+			to->pmovetype = (byte)MSG_ReadByte ();
+		if (predbits & UFP_VELOCITYXY)
+		{
+			to->velocity[0] = (short)MSG_ReadShort ();
+			to->velocity[1] = (short)MSG_ReadShort ();
+		}
+		if (predbits & UFP_VELOCITYZ)
+			to->velocity[2] = (short)MSG_ReadShort ();
+		if (predbits & UFP_MSEC)
+			to->msec = (byte)MSG_ReadByte ();
+		if (predbits & UFP_WEAPONFRAME)
+		{
+			to->weaponframe = MSG_ReadByte () & 255;
+			if (to->weaponframe & 128)
+				to->weaponframe = (to->weaponframe & 127) | (MSG_ReadByte () << 7);
+		}
+	}
+
+	if (bits & UF_MODEL)
+		to->modelindex = (bits & UF_16BIT) ? MSG_ReadShort () & 0xffff : MSG_ReadByte ();
+	if (bits & UF_SKIN)
+		to->skinnum = (bits & UF_16BIT) ? (short)MSG_ReadShort () : MSG_ReadByte ();
+	if (bits & UF_COLORMAP)
+		to->colormap = MSG_ReadByte ();
+	if (bits & UF_SOLID)
+		MSG_ReadShort ();
+	if (bits & UF_FLAGS)
+		to->dpflags = (byte)MSG_ReadByte ();
+	// FTE's alpha: 255 opaque, 0 unseen (this program's opaque, so nearly unseen)
+	if (bits & UF_ALPHA)
+	{
+		i = MSG_ReadByte ();
+		to->alpha = (byte)(i == 255 ? 0 : i ? i : 1);
+	}
+	if (bits & UF_SCALE)
+		to->scale = (byte)MSG_ReadByte ();
+	if (bits & UF_BONEDATA)
+	{
+		i = MSG_ReadByte ();
+		if (i & 0x80)
+			for (n = (MSG_ReadByte () & 255) * 7 ; n > 0 ; n--)
+				MSG_ReadShort ();
+		if (i & 0x40)
+		{
+			MSG_ReadByte ();
+			MSG_ReadShort ();
+		}
+	}
+	if (bits & UF_DRAWFLAGS)
+	{
+		if ((MSG_ReadByte () & 7) >= 6)		// Hexen 2's MLS_ADDLIGHT and up: a light
+			MSG_ReadByte ();
+	}
+	if (bits & UF_TAGINFO)
+	{
+		MSG_ReadBigEntity ();
+		MSG_ReadByte ();
+	}
+	if (bits & UF_LIGHT)
+	{
+		for (i=0 ; i<4 ; i++)
+			MSG_ReadShort ();
+		MSG_ReadByte ();
+		MSG_ReadByte ();
+	}
+	if (bits & UF_TRAILEFFECT)
+	{
+		if (MSG_ReadShort () & 0x8000)
+			MSG_ReadShort ();
+	}
+	if (bits & UF_COLORMOD)
+	{
+		for (i=0 ; i<3 ; i++)
+			to->colormod[i] = (byte)MSG_ReadByte ();
+	}
+	if (bits & UF_GLOW)
+	{
+		for (i=0 ; i<5 ; i++)
+			MSG_ReadByte ();
+	}
+	if (bits & UF_FATNESS)
+		MSG_ReadChar ();
+	if (bits & UF_MODELINDEX2)
+	{
+		if (bits & UF_16BIT)
+			MSG_ReadShort ();
+		else
+			MSG_ReadByte ();
+	}
+	if (bits & UF_GRAVITYDIR)
+	{
+		MSG_ReadByte ();
+		MSG_ReadByte ();
 	}
 }
 

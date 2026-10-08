@@ -69,6 +69,7 @@ typedef struct
 	cmap_t		*map;				// a reference the server holds
 	cmodel_t	*worldmodel;
 	bool		bigcoords;			// coordinates as floats: the map goes past +-4096
+	bool		replacementdeltas;	// FTE's, to the clients that asked (SV_ReplacementDeltas)
 	unsigned	map_checksum, map_checksum2;
 	movevars_t	movevars;			// player movement settings from the sv_ cvars
 	double		frametime;			// seconds the current physics step or move covers
@@ -128,6 +129,11 @@ typedef struct
 	entity_state_t	*static_entities;
 	int			num_static_entities, max_static_entities;
 	int			num_baselines;		// edicts 0 .. num_baselines - 1
+
+	// the static sounds past svc_spawnstaticsound's 255 (the rest are in the
+	// signon), sent at prespawn to the clients with replacement deltas
+	struct staticsound_s	*static_sounds;
+	int			num_static_sounds, max_static_sounds;
 
 	areanode_t	areanodes[AREA_NODES];	// entities sorted by position
 	int			numareanodes;
@@ -248,7 +254,9 @@ typedef struct client_s
 	// protocol extensions both ends know, from the connect packet; ZQuake's
 	// from the userinfo
 	unsigned		fteext;
+	unsigned		fteext2;
 	unsigned		mvdext1;
+	struct svdeltas_s	*deltas;		// FTE_PEXT2_REPLACEMENTDELTAS: what it has and is to be sent (sv_ents.c)
 	int				z_ext;
 	double			lastservertime;		// host.realtime STAT_TIME went out last
 
@@ -408,6 +416,7 @@ typedef struct
 extern	cvar_t	sv_mintic, sv_maxtic;
 extern	cvar_t	sv_csqc_progname;
 extern	cvar_t	sv_bigcoords;
+extern	cvar_t	sv_replacementdeltas;
 extern	cvar_t	sv_websocket;
 extern	cvar_t	sv_public, sv_webrtc_room;
 extern	cvar_t	sv_maxdrate;
@@ -497,6 +506,14 @@ void SV_NQWrite (int dest, client_t *one, nqwrite_t kind, float value, const cha
 void SV_NQEndFrame (void);
 void SV_NQNewLevel (void);
 entity_state_t *SV_NewStatic (void);
+
+typedef struct staticsound_s
+{
+	vec3_t	origin;
+	int		sound, volume, attenuation;	// attenuation 64 times it
+} staticsound_t;
+
+staticsound_t *SV_NewStaticSound (void);
 byte *SV_LeafPVS (int leafnum);
 byte *SV_LeafPHS (int leafnum);
 
@@ -516,6 +533,8 @@ void SV_SetMoveVars(void);
 void SV_SendClientMessages (void);
 
 void SV_Multicast (vec3_t origin, int to);
+// to the clients with the FTE2 extensions fteext2 alone (none: QTV too)
+void SV_MulticastExt (vec3_t origin, int to, unsigned fteext2);
 void SV_StartSound (edict_t *entity, int channel, const char *sample, int volume,
     float attenuation);
 void SV_ClientPrintf (client_t *cl, int level, char *fmt, ...);
@@ -550,6 +569,13 @@ void SV_EndRedirect (void);
 // sv_ents.c
 //
 void SV_WriteEntitiesToClient (client_t *client, sizebuf_t *msg);
+// FTE's replacement deltas: a client message has acknowledged packets (what
+// those before it carried, unacknowledged, is sent again); the client gone
+// whether the client gets FTE's replacement deltas this level
+bool SV_ReplacementDeltas (const client_t *client);
+void SV_DeltasAcked (client_t *client);
+void SV_DeltasUnsent (client_t *client);	// the packet with the deltas didn't go
+void SV_FreeDeltas (client_t *client);
 void SV_WriteDelta (const client_t *client, const entity_state_t *from, const entity_state_t *to, sizebuf_t *msg,
 	bool force);
 bool SV_EntityFits (const client_t *client, int number, int modelindex);

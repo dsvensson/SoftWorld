@@ -29,10 +29,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //
 // per-level limits
 //
-#define	MAX_EDICTS		2048		// entity numbers on the wire, with FTE_PEXT_ENTITYDBL2
+#define	MAX_EDICTS		32768		// entity numbers: FTE's replacement deltas' (its web build's most)
+#define	MAX_QW_EDICTS	2048		// the classic deltas', with FTE_PEXT_ENTITYDBL2
 #define	MAX_LIGHTSTYLES	64
 #define	MAX_MODELS		4096		// model numbers: bytes, with FTE_PEXT_MODELDBL shorts
-#define	MAX_SOUNDS		256			// sound numbers are sent as bytes
+#define	MAX_SOUNDS		2048		// sound numbers: bytes, past 255 in svc_fte_soundextended
+#define	MAX_QW_SOUNDS	256			// those svc_sound and svc_soundlist can name
 
 #define	MAX_STYLESTRING	64
 
@@ -138,6 +140,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	MVD_PEXT1_SIMPLE_PROJECTILE	0x00000100
 
 #define	FTE_PEXT2_VOICECHAT			0x00000002	// svc_fte_voicechat
+#define	FTE_PEXT2_REPLACEMENTDELTAS	0x00000008	// svc_fte_updateentities: each entity's changes, resent when lost
 
 // the extensions this program speaks: CL_ as a client, SV_ as a server
 // (the server's CSQC is the csprogs it offers and QuakeC's stats: no entities of CSQC's)
@@ -145,6 +148,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 	FTE_PEXT_ENTITYDBL2 | FTE_PEXT_FLOATCOORDS | FTE_PEXT_COLOURMOD | FTE_PEXT_SPAWNSTATIC2 | \
 	FTE_PEXT_256PACKETENTITIES | FTE_PEXT_CHUNKEDDOWNLOADS | FTE_PEXT_CSQC)
 #define	CL_FTE_EXTENSIONS	SV_FTE_EXTENSIONS
+#define	SV_FTE2_EXTENSIONS	FTE_PEXT2_REPLACEMENTDELTAS
+#define	CL_FTE2_EXTENSIONS	SV_FTE2_EXTENSIONS
 #define	SV_MVD1_EXTENSIONS	(MVD_PEXT1_FLOATCOORDS | MVD_PEXT1_HIGHLAGTELEPORT)
 #define	CL_MVD1_EXTENSIONS	SV_MVD1_EXTENSIONS
 
@@ -169,7 +174,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 // what the client reads in recordings as well: FTE's voice chat is skipped
 #define	CL_FTE_READABLE		CL_FTE_EXTENSIONS
-#define	CL_FTE2_READABLE	FTE_PEXT2_VOICECHAT
+#define	CL_FTE2_READABLE	(CL_FTE2_EXTENSIONS | FTE_PEXT2_VOICECHAT)
 #define	CL_MVD1_READABLE	(CL_MVD1_EXTENSIONS | MVD_PEXT1_HIDDEN_MESSAGES)	// hidden blocks are skipped
 
 #define QW_CHECK_HASH 0x5157
@@ -282,6 +287,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // protocol extensions
 #define	svc_fte_spawnstatic2	21	// an entity delta from nothing
 #define	svc_nails2			54		// [byte] num, each [byte] entity [48 bits] xyzpy (MVD)
+#define	svc_fte_soundextended	55	// NetQuake's sound header (FTE's): [byte] fields, a big sound or entity
 #define	svc_fte_soundlistshort	56	// svc_soundlist with a [short] start
 #define	svc_fte_modellistshort	60	// svc_modellist with a [short] start
 #define	svc_fte_spawnbaseline2	66	// an entity delta from nothing
@@ -290,8 +296,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	svc_fte_updatestatfloat	79	// [byte] stat [float]
 #define	svc_fte_cgamepacket	83		// CSQC's own message, all it reads (CSQC_Parse_Event)
 #define	svc_fte_voicechat	84		// [byte] [byte] [byte] [short] n [n bytes]
+#define	svc_fte_updateentities	86	// FTE_PEXT2_REPLACEMENTDELTAS: [float] time, then [entity index]
+									// (0x8000 removed) [UF_ bits] [fields] each, to [short] 0
 #define	svc_fte_cgamepacket_sized	90	// svc_fte_cgamepacket with a [short] size first
 #define	svc_fte_csqcentities_sized	92	// svc_fte_csqcentities with a [short] size after each number
+#define	svc_fte_spawnstaticsound2	94	// [byte] 1: svc_spawnstaticsound with a [short] sound
 
 
 //==============================================
@@ -409,12 +418,72 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	U_FTE_YETMORE		(1<<7)		// bits 8-15 follow
 #define	U_FTE_COLOURMOD		(1<<10)		// three bytes of color, after the alpha
 
+// FTE's replacement deltas: an entity index is a short, 0x8000 removing it,
+// 0x4000 a byte of bits 14-21 after; an update its UF_ bits (a byte, and one
+// for each UF_EXTEND), then its fields in the bits' order, as FTE writes them
+// without PEXT2_PREDINFO, PEXT2_NEWSIZEENCODING and PEXT2_LERPTIME
+#define	UF_FRAME			(1u<<0)		// a byte, a short with UF_16BIT
+#define	UF_ORIGINXY			(1u<<1)		// two coordinates
+#define	UF_ORIGINZ			(1u<<2)
+#define	UF_ANGLESXZ			(1u<<3)		// two angles, 16-bit ones with UF_PREDINFO
+#define	UF_ANGLESY			(1u<<4)
+#define	UF_EFFECTS			(1u<<5)		// a byte; a long with UF_EFFECTS2 too
+#define	UF_PREDINFO			(1u<<6)		// a player's: [byte] UFP_ bits and their fields
+#define	UF_EXTEND1			(1u<<7)
+#define	UF_RESET			(1u<<8)		// from the baseline, not the last state
+#define	UF_16BIT			(1u<<9)		// the frame, model, skin and second model are shorts
+#define	UF_MODEL			(1u<<10)
+#define	UF_SKIN				(1u<<11)
+#define	UF_COLORMAP			(1u<<12)
+#define	UF_SOLID			(1u<<13)	// a short: its box, packed
+#define	UF_FLAGS			(1u<<14)	// a byte of RENDER_ flags
+#define	UF_EXTEND2			(1u<<15)
+#define	UF_ALPHA			(1u<<16)	// a byte: 255 opaque
+#define	UF_SCALE			(1u<<17)	// a byte: 16 is 1.0
+#define	UF_BONEDATA			(1u<<18)
+#define	UF_DRAWFLAGS		(1u<<19)	// Hexen 2's: a byte, and its light for some
+#define	UF_TAGINFO			(1u<<20)	// an entity and a tag
+#define	UF_LIGHT			(1u<<21)	// four shorts, a style and flags
+#define	UF_TRAILEFFECT		(1u<<22)	// a short, and another with its top bit
+#define	UF_EXTEND3			(1u<<23)
+#define	UF_COLORMOD			(1u<<24)	// three bytes: 32 is 1.0
+#define	UF_GLOW				(1u<<25)	// five bytes
+#define	UF_FATNESS			(1u<<26)	// a char
+#define	UF_MODELINDEX2		(1u<<27)
+#define	UF_GRAVITYDIR		(1u<<28)	// two bytes
+#define	UF_EFFECTS2			(1u<<29)	// effects as a short, a long with UF_EFFECTS
+#define	UF_EXTEND4			(1u<<31)	// not in these deltas
+
+// UF_PREDINFO's bits
+#define	UFP_FORWARD			(1u<<0)		// the move: shorts
+#define	UFP_SIDE			(1u<<1)
+#define	UFP_UP				(1u<<2)
+#define	UFP_MOVETYPE		(1u<<3)		// a byte: the movetype, 0x80 on the ground, 0x40 jump held
+#define	UFP_VELOCITYXY		(1u<<4)		// shorts: eight times the velocity
+#define	UFP_VELOCITYZ		(1u<<5)
+#define	UFP_MSEC			(1u<<6)		// a byte: how old the move is
+#define	UFP_WEAPONFRAME		(1u<<7)		// a byte, and the frame's bits 7 up after with its top bit
+
+// UF_FLAGS' (DarkPlaces' RENDER_ flags)
+#define	RENDER_STEP			1			// it moves in steps (MOVETYPE_STEP): drawn from step to step
+
 //==============================================
 
 // a sound with no channel is a local only sound
 // the sound field has bits 0-2: channel, 3-12: entity
 #define	SND_VOLUME		(1<<15)		// a byte
 #define	SND_ATTENUATION	(1<<14)		// a byte
+
+// svc_fte_soundextended's fields, NetQuake's and FTE's, in their order after it
+#define	NQSND_VOLUME		(1<<0)		// a byte
+#define	NQSND_ATTENUATION	(1<<1)		// a byte: 64 times it
+#define	FTESND_MOREFLAGS	(1<<2)		// more of these, from bit 8, in a variable length
+#define	NQSND_LARGEENTITY	(1<<3)		// FTE's entity number and a channel byte, not (entity<<3)|channel
+#define	NQSND_LARGESOUND	(1<<4)		// the sound a short
+#define	DPSND_SPEEDUSHORT4000	(1<<5)	// a short: 4000 times the speed
+#define	FTESND_TIMEOFS		(1<<6)		// a short: milliseconds in
+#define	FTESND_PITCHADJ		(1<<7)		// a byte: the speed in percent
+#define	FTESND_VELOCITY		(1<<8)		// three shorts: eight times the velocity
 
 #define DEFAULT_SOUND_PACKET_VOLUME 255
 #define DEFAULT_SOUND_PACKET_ATTENUATION 1.0
@@ -474,6 +543,15 @@ typedef struct entity_state_s
 	int		effects;
 	byte	alpha;			// FTE_PEXT_TRANS: 0 and 255 are opaque, else alpha * 254
 	byte	colormod[3];	// FTE_PEXT_COLOURMOD: 32 is 1.0; 0 0 0 is unset
+	// FTE's replacement deltas
+	byte	dpflags;		// RENDER_ flags
+	byte	scale;			// 16 is 1.0; 0 is unset
+	// a player's (UF_PREDINFO)
+	byte	pmovetype;		// its movetype, 0x80 on the ground, 0x40 jump held; 0 not predicted
+	byte	msec;			// how old its move is
+	short	velocity[3];	// eight times its velocity
+	short	movement[3];	// its move: forward, side, up
+	int		weaponframe;
 } entity_state_t;
 
 
