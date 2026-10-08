@@ -140,6 +140,11 @@ bool SV_RunThink (edict_t *ent)
 
 		if (ent->free)
 			return false;
+		// a think that doesn't put the next past its own time would run here
+		// forever: it runs once a frame, as NetQuake's do (FTE's; Arcane
+		// Dimensions' lasers think on a local time that stands still)
+		if (ent->v.nextthink <= thinktime)
+			return true;
 	} while (1);
 
 	return true;
