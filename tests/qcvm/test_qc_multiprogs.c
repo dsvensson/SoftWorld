@@ -620,6 +620,39 @@ static void TestAddprogsBuiltin (void)
 	QC_BuiltinsFree (b);
 }
 
+// An added progs' pointers: those without bit 31 (C's char * at a literal,
+// as fteqcc writes them) are into its strings, as FTE relocates them; those
+// with it into its globals; a null one stays null.
+static void TestAddedProgsPointers (void)
+{
+	qc_asm_t	*a = QA_New ();
+	uint32_t	text, target;
+	qc_progs_t	*addon;
+	qcvm_t		*vm;
+	int64_t		pr = -1;
+	qc_word_t	*p;
+	float		v;
+
+	QA_String (a, "padding so offsets differ from the main progs");
+	text = QA_String (a, "a literal");
+	QA_Global1 (a, "text_ptr", QC_EV_POINTER, text);
+	QA_Global1 (a, "null_ptr", QC_EV_POINTER, 0);
+	target = QA_Global1 (a, "target", QC_EV_FLOAT, QC_FloatBits (7));
+	QA_Global1 (a, "target_ptr", QC_EV_POINTER, 0x80000000u | target * 4);
+	addon = Load (a);
+	vm = MakeVM (MainProgs (), NULL, NULL, &(host_t){0});
+	if (!QT_CHECK (vm && addon && (pr = Add (vm, addon)) > 0))
+	{
+		QC_Destroy (vm);
+		return;
+	}
+	QT_EQ_S (QC_String (vm, Global (vm, (uint32_t)pr, "text_ptr")->u), "a literal");
+	QT_EQ_U (Global (vm, (uint32_t)pr, "null_ptr")->u, 0);
+	p = Global (vm, (uint32_t)pr, "target_ptr");
+	QT_CHECK (QC_ReadMemory (vm, p->u, &v, 4) && v == 7);
+	QC_Destroy (vm);
+}
+
 int main (void)
 {
 	TestFunctionLookupReadsLiveFunctionGlobals ();
@@ -629,5 +662,6 @@ int main (void)
 	TestBuiltinsUseTheCallingProgsGlobals ();
 	TestExternBuiltinsReachOtherProgs ();
 	TestAddprogsBuiltin ();
+	TestAddedProgsPointers ();
 	return QT_Finish ("multiprogs", "progs are added, linked, share fields and globals, and are limited");
 }

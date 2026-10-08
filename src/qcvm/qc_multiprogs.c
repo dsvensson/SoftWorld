@@ -253,8 +253,8 @@ ADDING PROGS
 */
 
 // relocates the typed globals of a progs laid out at sbase and gbase: strings
-// by where its strings are, functions by its number, fields by the field map;
-// each word once, whatever definitions share it
+// (and pointers into them) by where its strings are, functions by its number,
+// fields by the field map; each word once, whatever definitions share it
 bool QC_RelocateGlobals (qcvm_t *vm, const qc_progs_t *p, uint32_t sbase, uint32_t gbase, uint32_t pr,
 	const qc_wordmap_t *map)
 {
@@ -275,6 +275,11 @@ bool QC_RelocateGlobals (qcvm_t *vm, const qc_progs_t *p, uint32_t sbase, uint32
 		switch (d->type)
 		{
 		case QC_EV_STRING:
+		case QC_EV_POINTER:
+			// a pointer with bit 31 is into the globals (QC_FixupGlobals'); one
+			// without, as FTE takes it, into the strings: C's char * at a literal
+			if (d->type == QC_EV_POINTER && (v & 0x80000000u))
+				continue;
 			if (v && v < p->numstrings)
 				QC_SetS (&vm->mem, at, v + sbase);
 			break;

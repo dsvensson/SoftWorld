@@ -483,7 +483,9 @@ Load-time rewriting:
    poisoned; qcvm treats it as the jump offset it is.
 3. **Global fixups**: function globals get the progs number in their top byte (0 for the main
    progs); initialised **pointer**-typed globals with bit 31 set are relocations (clear the bit,
-   add the byte address of the globals); field-typed globals become engine offsets (qcvm keeps the
+   add the byte address of the globals), and those without it point into the strings (C's
+   `char *` at a literal), moved with them as string globals are when the progs is added after
+   the main one; field-typed globals become engine offsets (qcvm keeps the
    progs' layout); the float global `thisprogs` is set to the progs number, and
    `__ext__fasttrackarrays` to 1 if present.
 
