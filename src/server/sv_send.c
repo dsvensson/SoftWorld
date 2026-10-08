@@ -485,6 +485,52 @@ void SV_FindModelNumbers (void)
 
 /*
 ==================
+SV_SendFixangle
+
+The view the progs turned the player to (fixangle): in msg, the datagram,
+which the high-lag teleport's turned moves count from; reliable with msg NULL,
+the spawn's, as FTE sends that. In a datagram it is lost with a dropped packet,
+or when the reliable message fills the packet, as a big level's spawn has it.
+==================
+*/
+void SV_SendFixangle (client_t *client, sizebuf_t *msg)
+{
+	edict_t		*ent = client->edict;
+	byte		data[16];
+	bool		reliable = !msg;
+	sizebuf_t	fix = {.data = data, .maxsize = sizeof(data),
+		.floatcoords = reliable ? client->netchan.message.floatcoords : msg->floatcoords};
+	sizebuf_t	*mvdmsg;
+	int			i;
+
+	if (client->mvdext1 & MVD_PEXT1_HIGHLAGTELEPORT)
+		MSG_WriteByte (&fix, SV_NoteFixangle (client));
+	for (i=0 ; i < 3 ; i++)
+		MSG_WriteAngle (&fix, ent->v.angles[i] );
+	if (reliable)
+	{
+		ClientReliableWrite_Begin (client, svc_setangle, 1 + fix.cursize);
+		ClientReliableWrite_SZ (client, fix.data, fix.cursize);
+	}
+	else
+	{
+		MSG_WriteByte (msg, svc_setangle);
+		SZ_Write (msg, fix.data, fix.cursize);
+	}
+	if (sv_mvd && !client->spectator)
+	{	// QTV's names the player
+		mvdmsg = SV_MVDMessage ();
+		MSG_WriteByte (mvdmsg, svc_setangle);
+		MSG_WriteByte (mvdmsg, (int)(client - svs.clients));
+		for (i=0 ; i < 3 ; i++)
+			MSG_WriteAngle (mvdmsg, ent->v.angles[i]);
+		SV_MVDAll (mvdmsg->data, mvdmsg->cursize);
+	}
+	ent->v.fixangle = 0;
+}
+
+/*
+==================
 SV_WriteClientdataToMessage
 
 ==================
@@ -494,7 +540,6 @@ static void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
 	int		i, start;
 	edict_t	*other;
 	edict_t	*ent;
-	sizebuf_t	*mvdmsg;
 
 	ent = client->edict;
 
@@ -522,25 +567,8 @@ static void SV_WriteClientdataToMessage (client_t *client, sizebuf_t *msg)
 		ent->v.dmg_save = 0;
 	}
 
-	// a fixangle might get lost in a dropped packet.  Oh well.
-	if ( ent->v.fixangle )
-	{
-		MSG_WriteByte (msg, svc_setangle);
-		if (client->mvdext1 & MVD_PEXT1_HIGHLAGTELEPORT)
-			MSG_WriteByte (msg, SV_NoteFixangle (client));
-		for (i=0 ; i < 3 ; i++)
-			MSG_WriteAngle (msg, ent->v.angles[i] );
-		if (sv_mvd && !client->spectator)
-		{	// QTV's names the player
-			mvdmsg = SV_MVDMessage ();
-			MSG_WriteByte (mvdmsg, svc_setangle);
-			MSG_WriteByte (mvdmsg, (int)(client - svs.clients));
-			for (i=0 ; i < 3 ; i++)
-				MSG_WriteAngle (mvdmsg, ent->v.angles[i]);
-			SV_MVDAll (mvdmsg->data, mvdmsg->cursize);
-		}
-		ent->v.fixangle = 0;
-	}
+	if (ent->v.fixangle)
+		SV_SendFixangle (client, msg);
 
 	// NetQuake's progs kick the view with punchangle, which QuakeWorld's
 	// clients take as kicks that they drop themselves, as FTE's server sends it

@@ -534,6 +534,8 @@ void SV_SetMoveVars(void);
 // sv_send.c
 //
 void SV_SendClientMessages (void);
+// the player's fixangle in msg, or reliable with msg NULL (the spawn's)
+void SV_SendFixangle (client_t *client, sizebuf_t *msg);
 
 void SV_Multicast (vec3_t origin, int to);
 // to the clients with the FTE2 extensions fteext2 alone (none: QTV too)
