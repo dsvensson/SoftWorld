@@ -1271,6 +1271,7 @@ void R_RenderView (void)
 
 	prof = R_ProfStart ();
 	R_DrawParticles ();
+	R_DrawPartScene ();
 	R_ProfEnd (PROF_PARTICLES, prof);
 
 	if (r_dspeeds.value)

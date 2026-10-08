@@ -114,10 +114,26 @@ void R_SetUnlitColors (bool floors);
 void R_BuildMips (texture_t *tx, bool fence);
 
 // r_image.c
+const float	*R_SrgbLightTable (void);	// an sRGB byte's linear light, a channel to the fourth
 byte	*R_LoadTGA (const char *path, int *width, int *height);
 pixel_t	R_RGBA8Pixel (const byte *rgba);
 void	R_ImagePixels (const byte *rgba, int w, int h, pixel_t *out, int outw, int outh, bool cutout);
 pixel_t	R_AveragePixels (const pixel_t *p, int n);
+
+// r_partimage.c and r_partdraw.c: scripted particles
+#define	PART_LEVELS	12
+#define	PART_WHITE	68719476736.0f		// 512^4: SDR white's light, as R_SrgbLightTable has it
+
+typedef struct
+{
+	char	name[MAX_QPATH];
+	int		numlevels;
+	byte	*levels[PART_LEVELS];		// sRGB texels and their alpha, top row first
+	int		lw[PART_LEVELS], lh[PART_LEVELS];
+} partimage_t;
+
+const partimage_t	*R_PartImage (int index);
+void	R_DrawPartScene (void);		// r_scene.particles, into the view
 
 // r_textures.c: TGA files in place of a map's textures
 extern cvar_t	r_externaltextures;

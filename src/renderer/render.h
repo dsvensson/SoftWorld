@@ -229,6 +229,78 @@ typedef struct
 	float	color[3];		// 1.0 is white; more is brighter
 } r_ring_t;
 
+// scripted particles (src/particles), as QuakeSpasm-Spiked's draw them: a
+// frame's, in batches each of one look, the batches in the order they blend
+// (darkening, then blending, then adding), drawn after id's particles in each
+// view, depth tested and not depth written
+typedef enum
+{
+	RPT_SPRITE,			// a square facing the view, turned by angle
+	RPT_SPARK,			// a line from org back along vel / 10, fading
+	RPT_TSPARK,			// a quad stretched along vel, facing the view
+	RPT_FAN,			// a triangle back along vel
+	RPT_UDECAL,			// a square lying flat
+	RPT_BEAM,			// pairs of parts: a quad between each pair
+	RPT_DECAL			// triangles of verts, lying on surfaces
+} r_parttype_t;
+
+typedef enum	// GL's blend factors, source and destination
+{
+	RPB_BLEND,			// alpha, 1 - alpha
+	RPB_BLENDCOLOR,		// color, 1 - color
+	RPB_ADDA,			// alpha, 1
+	RPB_ADDC,			// color, 1
+	RPB_SUBTRACT,		// alpha, 1 - color
+	RPB_INVMODA,		// 0, 1 - alpha
+	RPB_INVMODC,		// 0, 1 - color
+	RPB_PREMUL			// 1, 1 - alpha
+} r_partblend_t;
+
+typedef struct
+{
+	vec3_t	org;
+	vec3_t	vel;		// a beam end's: the beam's direction
+	float	scale;		// its size; a beam's half width
+	float	angle;		// radians
+	float	rgba[4];	// sRGB, 0 to 1; alpha past 1 is 1
+	float	st[4];		// s1 t1 s2 t2 of its image; a beam end's s, then t1 at 1, t2 at 3
+} r_part_t;
+
+typedef struct
+{
+	vec3_t	xyz;
+	float	st[2];
+	float	rgba[4];
+} r_partvert_t;
+
+typedef struct
+{
+	r_parttype_t	type;
+	r_partblend_t	blend;
+	int		premul;		// rgba as is (0), its color times its alpha (1), and that adding (2)
+	int		image;		// R_ParticleImage's
+	float	scalefactor, invscalefactor;	// sprites' and fans': their size with distance
+	float	stretch, minstretch;			// textured sparks': their length
+	int		first, count;	// parts, or verts of RPT_DECAL
+} r_partbatch_t;
+
+typedef struct r_partscene_s
+{
+	const r_partbatch_t	*batches;
+	int					numbatches;
+	const r_part_t		*parts;
+	const r_partvert_t	*verts;
+} r_partscene_t;
+
+// the images particles take when a script's file isn't there, as
+// QuakeSpasm-Spiked makes them
+enum {RPI_WHITE, RPI_BEAM, RPI_FAN, RPI_BALL, RPI_FUZZY, RPI_CLASSIC, RPI_NUMFALLBACKS};
+
+// a particle image: textures/<name> or <name>, a TGA file; else the
+// fallback, *found false
+int		R_ParticleImage (const char *name, int fallback, bool *found);
+void	R_FlushParticleImages (void);	// all forgotten: a new game directory
+
 //
 // what the client hands the renderer: set up once, updated as the game runs
 //
@@ -247,6 +319,7 @@ typedef struct
 	bool		drawviewmodel;	// false when the player is invisible, dead or observing
 	const r_ring_t	*rings;		// this frame's
 	int			numrings;
+	const r_partscene_t	*particles;	// scripted ones, this frame's; NULL none
 
 	int			viewcontents;	// output: contents at the view origin after R_RenderView
 } r_scene_t;

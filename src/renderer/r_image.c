@@ -40,6 +40,13 @@ static void R_InitImageTables (void)
 	r_imagetables = true;
 }
 
+const float *R_SrgbLightTable (void)
+{
+	if (!r_imagetables)
+		R_InitImageTables ();
+	return r_srgblight;
+}
+
 /*
 ===============
 R_LoadTGA
