@@ -103,6 +103,7 @@ typedef struct texture_s
 #define SURF_LAVA			0x100		// turbulent liquids other than water, for their
 #define SURF_SLIME			0x200		// r_*alpha
 #define SURF_TELE			0x400
+#define	SURF_NOTEXELS		0x800		// its texture spans nothing one way: no cache block, not drawn
 
 typedef struct
 {

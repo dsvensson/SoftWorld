@@ -1024,6 +1024,12 @@ static bool Mod_LoadFaces (void)
 			}
 			continue;
 		}
+
+		// a sliver whose texture coordinates span nothing one way (newer
+		// compilers make them: AD's ad_sepulcher has a cobweb's) has no texels
+		// for the surface cache to draw: at most a line of one, left out
+		if (!out->extents[0] || !out->extents[1])
+			out->flags |= SURF_NOTEXELS;
 	}
 	Mem_Free (in);
 	return true;

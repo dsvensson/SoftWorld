@@ -365,6 +365,9 @@ void R_RenderFace (rband_t *b, msurface_t *fa, int clipflags)
 	medge_t		*pedges;
 	clipplane_t	*pclip;
 
+	if (fa->flags & SURF_NOTEXELS)
+		return;
+
 // a translucent surface is blended in after the models; a fence mustn't
 // hide what's behind its holes: drawn after the world
 	alpha = R_SurfaceAlpha (b->entity, fa);
@@ -528,6 +531,8 @@ void R_RenderBmodelFace (rband_t *b, bedge_t *pedges, msurface_t *psurf)
 	vec3_t		p_normal;
 	clipplane_t	*pclip;
 
+	if (psurf->flags & SURF_NOTEXELS)
+		return;
 	alpha = R_SurfaceAlpha (b->entity, psurf);
 	if (alpha < 256 || (psurf->flags & SURF_DRAWFENCE))
 	{
