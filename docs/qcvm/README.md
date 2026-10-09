@@ -125,11 +125,25 @@ behaviour.
   lightning's blood as QuakeWorld's temp entities, as FTE sends them), and `setmodel`'s box for
   every model. FTE's `clientstat` and `globalstat` (#232, #233) add stats from 32 up, sent to
   clients with `FTE_PEXT_CSQC`; `pr_checkextension` says `checkextension` answers.
+- **Particles:** FTE's and DarkPlaces' particle builtins, as FTE's server sends them to its
+  clients with `FTE_PEXT_CSQC` (`sv_part.c`): `particleeffectnum` (#335) numbers an effect by
+  name (the first, effectinfo.<anything>, numbers `effectinfo.txt`'s effects first, as
+  QuakeSpasm-Spiked does), the names going out at prespawn and at once for one named later;
+  `trailparticles` (#336, the effect first or DarkPlaces' entity first), `pointparticles`
+  (#337), `te_particlerain` and `te_particlesnow` (#409, #410), `te_explosion2` (#427, FTE's
+  `TE_EXPLOSION2` to clients with `FTE_PEXT_TE_BULLET`, a plain explosion to the rest); and the
+  `traileffectnum` and `emiteffectnum` fields, in replacement deltas. MVDs and QTV get none of
+  them.
+- **checkextension** answers the standard library's extensions and the server's
+  `FTE_SV_POINTPARTICLES`, `FTE_PART_SCRIPT`, `FTE_PART_NAMESPACES`,
+  `FTE_PART_NAMESPACE_EFFECTINFO`, `DP_ENT_TRAILEFFECTNUM`, `DP_TE_PARTICLERAIN` and
+  `DP_TE_PARTICLESNOW` (the `FTE_PART_` ones for the client's scripts, `src/particles`).
 - **NetQuake's messages:** what NetQuake's progs write with the `Write` builtins is held until
   a message is whole and written again in QuakeWorld's words (`sv_nqmsg.c`, as FTE's
   `net_preparse.c`): the gunshot gets its count, the intermission each client's view, the cd
   track loses its loop track, the stats are longs; temp entities are multicast where they
-  happen. A message it doesn't know is dropped with a warning. `EF_MUZZLEFLASH` becomes
+  happen, NetQuake's `TE_EXPLOSION2` and `TE_BEAM` as FTE's to the clients with
+  `FTE_PEXT_TE_BULLET` (a plain explosion, and nothing, to the rest). A message it doesn't know is dropped with a warning. `EF_MUZZLEFLASH` becomes
   `svc_muzzleflash`, and `punchangle` the client's kicks.
 - **NetQuake's players** move as NetQuake moves them (id's `SV_ClientThink` and
   `SV_Physics_Client`), in the world's frame (at least every 0.013 s, FTE's) by the newest

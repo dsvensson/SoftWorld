@@ -12,6 +12,10 @@ server runs NetQuake's single player too.
   from: the CPU copies nothing (in a browser, a copy a frame).
   Colored lighting (`.lit`, BSPX), BSP2 maps, translucency, skyboxes, fog and TGA textures
   from the map's worldspawn and files, and AVX-512, AVX2 and NEON kernels.
+- **Particles:** id's, and FTE's scripted particles as QuakeSpasm-Spiked has them: FTE's
+  particle scripts and DarkPlaces' `effectinfo.txt`, with their trails, emitters, decals,
+  beams, rain from the sky and DarkPlaces' weather, drawn in linear light like the rest. A mod's
+  own (Arcane Dimensions') load when its QuakeC or its maps name them; without, id's particles.
 - **Network:** the FTE, MVD1 and ZQuake extensions (float coordinates, 4096 models, FTE's
   replacement deltas for levels of up to 32768 entities and 2048 sounds, chunked downloads, …),
   mvdsv's player movement and its `pm_` keys. WebSocket next to UDP: servers take browsers'
@@ -248,6 +252,8 @@ Worth knowing:
 | `r_externaltextures` | TGA files in `textures/<map>/` or `textures/` in place of the map's textures, truecolor (1, the default); walls take them in `r_lightmode 1` |
 | `r_skybox` | a skybox in place of the sky's texture: `<name>rt.tga` and the other five faces in `env/` or `gfx/env/`; empty (the default) for the one the map's worldspawn names |
 | `r_fog`, `r_fog_usemap`, `r_skyfog` | fog: the map's, from its worldspawn's `fog` key (`r_fog_usemap 0` leaves it out), with `r_fog`'s over it, as FTE's `fog` command takes it (`"density red green blue"`; 0 is no fog); how far the sky takes the fog's color |
+| `r_particledesc` | the particle scripts loaded, by name: `particles/<name>.cfg` or `<name>.cfg` (FTE's), or `effectinfo` (DarkPlaces' `effectinfo.txt`); `classic`, the default, loads none, and id's particles show where no script has an effect. A game's QuakeC and maps load the scripts they name |
+| `r_part_density`, `r_part_rain`, `r_partinfo` | how many particles scripted effects make, as a multiple; rain and the like from the surfaces scripts give effects (1, the default); the scripted effects running |
 | `r_threads` | threads drawing the view, each walking the world in a band of it; 0 (the default) one a core, at most 8 |
 | `r_lerpframes`, `r_lerpmuzzlehack` | models' animation frames blend into each other (1, the default), as in ezQuake; the view model's muzzle flash appears at once rather than blending in from behind the view |
 | `gamma`, `vid_contrast` | the view's gamma and contrast; the HUD keeps its own |
@@ -433,6 +439,13 @@ client does:
 - or, without CSQC_UpdateView, the status bar and the scores over the client's view
   (QuakeSpasm-Spiked's simple CSQC: CSQC_DrawHud and CSQC_DrawScores, as FTE runs it), with
   FTE's 2D builtins and the game directory's own gfx.wad over the base's, as QBJ3's does.
+
+The server's QuakeC numbers particle effects and sends them to the clients that take them, as
+FTE's server does: `particleeffectnum`, `pointparticles`, `trailparticles`, the
+`traileffectnum` and `emiteffectnum` fields, `te_particlerain`, `te_particlesnow` and
+`te_explosion2`; `checkextension` answers `FTE_SV_POINTPARTICLES` and the rest, so Arcane
+Dimensions plays with its own effects and weather. CSQC has `particleeffectnum`,
+`pointparticles`, `trailparticles` and DarkPlaces' `te_` builtins.
 
 This is enough for KTX's weapon prediction on mvdsv: the gun, its sounds, projectiles and the
 lightning beam show at once, and the server's echo of each sound is dropped. The csprogs'
