@@ -97,6 +97,26 @@ void SV_EndRedirect (void)
 	SV_AttractRedirectEnded ();
 }
 
+/*
+==================
+SV_AbandonRedirect
+
+The server going down in the middle of a redirect (an error in a client's
+command, or in rcon's): what was collected for it, the error's text among
+it, is the console's, as what follows is
+==================
+*/
+void SV_AbandonRedirect (void)
+{
+	if (svs.redirected == RD_NONE)
+		return;
+	Con_SetPrintRedirect (NULL);
+	svs.redirected = RD_NONE;
+	SV_AttractRedirectEnded ();
+	Con_Printf ("%s", outputbuf);
+	outputbuf[0] = 0;
+}
+
 
 /*
 ================

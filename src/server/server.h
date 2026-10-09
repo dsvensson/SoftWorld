@@ -609,6 +609,7 @@ void SV_WriteBaseline (const client_t *client, sizebuf_t *msg, int entnum);
 //
 void SV_BeginRedirect (redirect_t rd);
 void SV_EndRedirect (void);
+void SV_AbandonRedirect (void);	// the server going down: what it collected goes to the console
 
 //
 // sv_ents.c
