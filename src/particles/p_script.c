@@ -1790,6 +1790,20 @@ static bool P_LoadParticleSet (const char *name, bool weak, bool warn)
 	return false;
 }
 
+void P_LoadScriptText (const char *name, const char *text)
+{
+	p_config_t	*cfg;
+
+	for (cfg = p_configs ; cfg ; cfg = cfg->next)
+		if (!strcmp (cfg->name, name))
+			return;
+	cfg = Mem_Calloc (1, sizeof(*cfg));
+	Q_strncpyz (cfg->name, name, sizeof(cfg->name));
+	cfg->next = p_configs;
+	p_configs = cfg;
+	P_ParseScript (cfg->name, true, text, strlen (text));
+}
+
 // every type unloaded and every script forgotten, to be loaded again
 static void P_UnloadAll (void)
 {
@@ -1851,6 +1865,7 @@ finds its effects again
 void P_UpdateLooks (void)
 {
 	p_looksdirty = false;
+	p_skydirty = true;
 	pe_default = P_FindParticleType ("PE_DEFAULT");
 	pe_size2 = P_FindParticleType ("PE_SIZE2");
 	pe_size3 = P_FindParticleType ("PE_SIZE3");

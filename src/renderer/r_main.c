@@ -1286,6 +1286,7 @@ void R_RenderView (void)
 
 	r_scene.viewcontents = r_viewleaf->contents;
 	r_scene.framecount = r_framecount;
+	r_scene.visframe = r_visframecount;
 
 	if (r_timegraph.value)
 		R_TimeGraph ();

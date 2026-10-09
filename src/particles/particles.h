@@ -61,12 +61,15 @@ typedef struct
 	void	(*changed) (void);
 } p_host_t;
 
-// a frame's particles: the time they run to
+// a frame's particles: the time they run to, and where surfaces make them
 typedef struct
 {
 	double	time;			// the client's, which effects are timed by
 	double	realtime;		// lights' flicker
 	float	frametime;		// the frame's, for effects made each frame ("perframe")
+	struct model_s	*worldmodel;	// whose faces make effects
+	vec3_t	vieworg;		// they make them near the view
+	int		visframe;		// in the leafs of the view's PVS (r_scene.visframe)
 } p_frame_t;
 
 void	P_Init (const p_host_t *host);		// cvars and commands, then r_particledesc's scripts

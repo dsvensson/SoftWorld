@@ -497,6 +497,7 @@ const r_partscene_t *P_RunFrame (const p_frame_t *frame)
 		return NULL;
 	if (p_looksdirty)
 		P_UpdateLooks ();
+	P_RunSurfaceEffects (frame, ft);
 
 	traces = r_particle_tracelimit.value >= (float)INT_MAX ? INT_MAX : (int)r_particle_tracelimit.value;
 	flurrytime -= ft;

@@ -225,7 +225,9 @@ void CL_ReloadParticles (void)
 // the frame's particles, into the scene
 void CL_RunParticles (void)
 {
-	p_frame_t	frame = {.time = cl.time, .realtime = host.realtime, .frametime = (float)cls.frametime};
+	p_frame_t	frame = {.time = cl.time, .realtime = host.realtime, .frametime = (float)cls.frametime,
+		.worldmodel = cl.worldmodel, .visframe = r_scene.visframe};
 
+	VectorCopy (r_refdef.vieworg, frame.vieworg);
 	r_scene.particles = P_RunFrame (&frame);
 }

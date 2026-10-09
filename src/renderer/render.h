@@ -332,6 +332,7 @@ typedef struct
 
 	int			viewcontents;	// output: contents at the view origin after R_RenderView
 	int			framecount;		// output: the view's frame, the visframe of the static entities it drew
+	int			visframe;		// output: the visframe of the leafs in the view's PVS
 } r_scene_t;
 
 extern r_scene_t	r_scene;

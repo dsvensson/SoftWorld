@@ -273,6 +273,7 @@ extern cvar_t	r_part_rain, r_part_rain_quantity, r_part_density, r_part_maxparti
 				r_bouncysparks, r_particle_tracelimit, r_decal_noperpendicular, r_lightflicker;
 
 int		P_AllocateParticleType (const char *config, const char *name);	// found or made
+void	P_LoadScriptText (const char *name, const char *text);	// the engine's own script, once
 void	P_UpdateLooks (void);
 unsigned	P_PointContents (const vec3_t p);	// P_CONT_
 void	P_PaletteColor (int index, float *rgb);	// 0 to 1
@@ -293,6 +294,12 @@ void	P_FreeParticles (void);
 void	P_ClearTrailStates (void);
 void	P_AddToRunList (p_type_t *type);
 void	P_SplatDecal (p_type_t *type, const vec3_t org, const vec3_t normal, int entnum, float size);
+
+// p_rain.c
+extern bool		p_skydirty;		// the types changed: the faces' effects found again
+
+int		P_WeatherType (const char *name, int colour, bool *colored);
+void	P_RunSurfaceEffects (const p_frame_t *frame, float ft);
 
 // random numbers: 0 to 1, -1 to 1, -0.5 to 0.5
 static inline float P_Random (void)

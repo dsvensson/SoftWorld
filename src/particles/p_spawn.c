@@ -805,25 +805,27 @@ bool P_RunPaletteEffect (const vec3_t org, const vec3_t dir, int color, int coun
 =================
 P_RunWeather
 
-count particles of te_<name>_<colour>, else te_<name> (in the colour) or
-PE_DEFAULT, each somewhere in the box
+count particles of te_<name>_<colour>, else te_<name> in the colour (the
+built-in one for rain and snow without a script of it), else PE_DEFAULT's,
+each somewhere in the box
 =================
 */
 void P_RunWeather (const vec3_t mins, const vec3_t maxs, const vec3_t dir, float count, int colour, const char *name)
 {
 	vec3_t	org;
 	float	each;
+	bool	colored;
 	int		type, i, k;
 
-	type = P_FindParticleType (va ("te_%s_%i", name, colour));
-	if (type < 0)
+	if ((type = P_WeatherType (name, colour, &colored)) < 0)
 	{
-		if ((type = P_FindParticleType (va ("te_%s", name))) < 0)
-			type = pe_default;
-		if (type < 0)
-			return;
-		p_types[type].colorindex = colour;
+		type = pe_default;
+		colored = false;
 	}
+	if (type < 0)
+		return;
+	if (!colored)
+		p_types[type].colorindex = colour;
 	if (!p_types[type].count)
 		return;
 	each = 1 / p_types[type].count;		// a particle each

@@ -20,8 +20,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // test_part.c -- the scripted particles (src/particles) on scripts the test
 // writes: FTE's r_part blocks, namespaces loaded when named, weak scripts,
 // chains of +<name> and assoc, model effects, aliases, id's TE_EXPLOSION2
-// colors, DarkPlaces' effectinfo stages; and an effect's particles run into
-// the batches the renderer draws, in the order they blend
+// colors, DarkPlaces' effectinfo stages; an effect's particles run into the
+// batches the renderer draws, in the order they blend; the built-in weather
 
 #include "p_local.h"
 #include "sys.h"
@@ -366,6 +366,22 @@ static void TestRun (void)
 	Check (P_RunFrame (&frame) == NULL && !p_runlist, "the dead gone");
 }
 
+// DarkPlaces' weather with no script of it: the built-in te_rain, in the
+// palette colour asked for
+static void TestWeather (void)
+{
+	vec3_t	mins = {-64, -64, 0}, maxs = {64, 64, 64}, dir = {0, 0, -400};
+	int		rain;
+
+	P_ClearParticles ();
+	Check (P_FindParticleType ("te_rain") == P_INVALID, "no te_rain in the scripts");
+	P_RunWeather (mins, maxs, dir, 20, 15, "rain");
+	rain = P_FindParticleType ("builtin.te_rain");
+	Check (rain >= 0 && p_types[rain].colorindex == 15, "the built-in te_rain, in colour 15");
+	Check (rain >= 0 && p_types[rain].particles != NULL, "it rained");
+	Check (rain >= 0 && p_types[rain].cliptype == P_FindParticleType ("builtin.rainsplash"), "it splashes");
+}
+
 int main (void)
 {
 	static byte	palette[768];
@@ -391,6 +407,7 @@ int main (void)
 	P_Init (&host);
 	TestScripts ();
 	TestRun ();
+	TestWeather ();
 	P_Shutdown ();
 
 	if (failures)
