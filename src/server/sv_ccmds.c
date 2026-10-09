@@ -383,8 +383,9 @@ static void SV_Changelevel_f (void)
 		return;
 	}
 	SV_AttractStop ();
-	// the level again, as some progs restart it: its last save (sv_autoload)
-	if (!strcmp (Cmd_Argv(1), sv.name) && SV_AutoLoad ())
+	// the level again, as some progs restart it: its last save (sv_autoload),
+	// or nothing for the level a save just replaced (SV_Restart_f)
+	if (!strcmp (Cmd_Argv(1), sv.name) && (sv.loadgame || SV_AutoLoad ()))
 		return;
 	SV_GotoLevel (Cmd_Argv(1), sv.state == ss_dead ? SPAWNPARMS_NEW : SPAWNPARMS_CHANGE, NULL, NULL);
 }
@@ -394,13 +395,16 @@ static void SV_Changelevel_f (void)
 SV_Restart_f
 
 restart: the level again, the players with the parms they began it with, as
-NetQuake's; id1's progs restart a single player's game so when the player dies
+NetQuake's; id1's progs restart a single player's game so when the player dies,
+or its last save (sv_autoload). A save's level waiting for its player takes
+none: those are the replaced level's, the progs asking once a frame while
+the dead player held the button to respawn.
 ======================
 */
 static void SV_Restart_f (void)
 {
 	SV_AttractStop ();		// a showcase's level is no game to restart
-	if (sv.state == ss_dead || SV_AutoLoad ())	// the level's last save (sv_autoload)
+	if (sv.state == ss_dead || sv.loadgame || SV_AutoLoad ())
 		return;
 	SV_GotoLevel (sv.name, SPAWNPARMS_KEEP, NULL, NULL);
 }
