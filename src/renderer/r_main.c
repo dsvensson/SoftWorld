@@ -578,6 +578,8 @@ void R_NewMap (void)
 	r_viewleaf = NULL;
 	R_ClearParticles ();
 	R_CheckLiquidVis ();
+	if (r_scene.worldmodel->skytexture)
+		R_InitSky (r_scene.worldmodel->skytexture);
 	R_ParseWorldspawn (r_scene.worldmodel->entities);
 	R_CheckSkybox (true);
 

@@ -24,6 +24,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "r_local.h"
 
+#include <stdatomic.h>
+
 pixel_t	d_pal30[256];
 pixel_t	d_cm30[VID_GRADES * 256];
 byte	r_identityremap[256];
@@ -37,6 +39,10 @@ pixel_t	d_pal30_unlit[256];		// what light doesn't reach (particles, sprites, li
 								// sky): the palette, fullbrights at their floors in r_lightmode 1
 pixel_t	d_pal30_particle[256];	// particles': the fire ramp glows too
 bool	d_unlitfloors;			// d_pal30_unlit has the floors
+
+// R_NearestColor's: [4][64*64*64], 0xffff until found
+#define	NEAREST_ENTRIES		(4 * 64 * 64 * 64)
+static atomic_ushort	*r_nearest;
 
 // the palette's fire ramp, yellow to dark brown, which explosions and rocket
 // trails fade through: not fullbright in the colormap, but fire, so a
@@ -93,6 +99,13 @@ void R_InitPalette (const byte *palette, const byte *colormap)
 		d_fullbright[i] = colormap[i] == i && colormap[(VID_GRADES - 1) * 256 + i] == i && i;
 	}
 	R_SetFullbrightScale (1);
+
+	// what loaders read, made before any loader's thread starts
+	if (!r_nearest)
+		r_nearest = Mem_Alloc (NEAREST_ENTRIES * sizeof(*r_nearest));
+	for (i = 0 ; i < NEAREST_ENTRIES ; i++)
+		atomic_init (&r_nearest[i], 0xffff);
+	R_InitImageTables ();
 }
 
 /*
@@ -146,24 +159,20 @@ R_NearestColor
 
 The palette color nearest to r, g, b among the fullbright colors or the
 others, optionally leaving out 255 (a fence's cut out). Cached at 6 bits a
-channel; the palette is set once.
+channel; the palette is set once. A loader's thread finds colors too: an
+entry found twice is the same either way.
 ===============
 */
-static unsigned short	*r_nearest;		// [4][64*64*64], 0xffff until found
-
 static byte R_NearestColor (int r, int g, int b, bool fullbright, bool no255)
 {
 	int		set = (fullbright ? 1 : 0) | (no255 ? 2 : 0);
 	int		key = ((set * 64 + (r >> 2)) * 64 + (g >> 2)) * 64 + (b >> 2);
 	int		i, d, dr, dg, db, best, bestdist;
+	unsigned short	found;
 
-	if (!r_nearest)
-	{
-		r_nearest = Mem_Alloc (4 * 64 * 64 * 64 * sizeof(*r_nearest));
-		memset (r_nearest, 0xff, 4 * 64 * 64 * 64 * sizeof(*r_nearest));
-	}
-	if (r_nearest[key] != 0xffff)
-		return (byte)r_nearest[key];
+	found = atomic_load_explicit (&r_nearest[key], memory_order_relaxed);
+	if (found != 0xffff)
+		return (byte)found;
 
 	best = -1;
 	bestdist = 0x7fffffff;
@@ -183,7 +192,7 @@ static byte R_NearestColor (int r, int g, int b, bool fullbright, bool no255)
 	}
 	if (best < 0)
 		best = 0;	// no color of that kind
-	r_nearest[key] = (unsigned short)best;
+	atomic_store_explicit (&r_nearest[key], (unsigned short)best, memory_order_relaxed);
 	return (byte)best;
 }
 

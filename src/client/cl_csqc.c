@@ -32,7 +32,6 @@ cvar_t	cl_download_csprogs = {.name = "cl_download_csprogs", .string = "1", .arc
 	.description = "Downloads the client-side QuakeC (csprogs.dat) a server offers, into csprogsvers in the game "
 		"directory, named by its checksum."};
 
-extern int	file_from_pak;
 
 #define	CSQC_API_VERSION	1.0f
 #define	SOLID_BSP			4

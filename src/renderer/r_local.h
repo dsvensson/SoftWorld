@@ -114,6 +114,7 @@ void R_SetUnlitColors (bool floors);
 void R_BuildMips (texture_t *tx, bool fence);
 
 // r_image.c
+void	R_InitImageTables (void);	// R_InitPalette's, before a loader's thread starts
 const float	*R_SrgbLightTable (void);	// an sRGB byte's linear light, a channel to the fourth
 byte	*R_LoadTGA (const char *path, int *width, int *height);
 pixel_t	R_RGBA8Pixel (const byte *rgba);

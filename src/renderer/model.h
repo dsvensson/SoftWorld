@@ -382,6 +382,7 @@ typedef struct model_s
 
 	int			numtextures;
 	texture_t	**textures;
+	texture_t	*skytexture;	// the last named sky*, made the sky at R_NewMap
 
 	byte		*visdata;
 	int			vissize;

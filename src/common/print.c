@@ -1,11 +1,13 @@
 // print.c -- console output shared by the client and the server
 
 #include "cvar.h"
+#include "mem.h"
 #include "print.h"
 #include "sys.h"
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 #define	MAXPRINTMSG		4096
 #define	MAX_PRINT_SINKS	8
@@ -17,6 +19,7 @@ cvar_t	developer = {.name = "developer", .string = "0",	// show extra messages
 static print_sink_t	print_sinks[MAX_PRINT_SINKS];
 static int			num_print_sinks;
 static print_sink_t	print_redirect;
+static thread_local print_capture_t	*print_capture;	// Con_CaptureThread's
 
 void Con_PrintInit (void)
 {
@@ -35,9 +38,41 @@ void Con_SetPrintRedirect (print_sink_t redirect)
 	print_redirect = redirect;
 }
 
+void Con_CaptureThread (print_capture_t *capture)
+{
+	print_capture = capture;
+}
+
+static void Con_Output (const char *msg);
+
+void Con_FlushCapture (print_capture_t *capture)
+{
+	char	*text = capture->text;
+
+	*capture = (print_capture_t){0};
+	if (!text)
+		return;
+	Con_Output (text);
+	Mem_Free (text);
+}
+
 static void Con_Output (const char *msg)
 {
 	int		i;
+	size_t	len;
+
+	if (print_capture)
+	{	// a loader's: the sinks are the main thread's
+		len = strlen (msg);
+		if (print_capture->len + len + 1 > print_capture->size)
+		{
+			print_capture->size = (print_capture->len + len + 1) * 2;
+			print_capture->text = Mem_Realloc (print_capture->text, print_capture->size);
+		}
+		memcpy (print_capture->text + print_capture->len, msg, len + 1);
+		print_capture->len += len;
+		return;
+	}
 
 	if (print_redirect)
 	{

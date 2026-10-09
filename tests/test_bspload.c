@@ -280,12 +280,14 @@ static void TestDirectory (const char *dir)
 int main (int argc, char **argv)
 {
 	const char	*root = argc > 1 ? argv[1] : getenv ("SW_BASEDIR");
+	static byte	palette[768], colormap[VID_GRADES * 256];
 
 	if (!root || !*root)
 	{
 		printf ("no maps: give a directory, or set SW_BASEDIR\n");
 		return SKIPPED;
 	}
+	R_InitPalette (palette, colormap);	// the tables textures are made with (all black)
 	R_InitTextures ();	// the checkerboard for textures a map lacks
 	TestDirectory (root);
 	printf ("%d maps loaded, %d other files refused, %d failures\n", loaded, refused, failures);

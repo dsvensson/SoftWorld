@@ -4,7 +4,9 @@
 #include "arena.h"
 #include "mem.h"
 #include "print.h"
+#include "q_string.h"
 
+#include <stdatomic.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -21,7 +23,19 @@ struct arena_chunk_s
 // the chunk header is padded so the first block is ARENA_ALIGN aligned
 #define CHUNK_HEADER	((sizeof (arena_chunk_t) + ARENA_ALIGN - 1) & ~(size_t)(ARENA_ALIGN - 1))
 
-static arena_t	*arena_list;
+static arena_t		*arena_list;		// every arena, for memstats: loaders make theirs on
+static atomic_flag	arena_lock = ATOMIC_FLAG_INIT;	// their own threads
+
+static void Arena_Lock (void)
+{
+	while (atomic_flag_test_and_set_explicit (&arena_lock, memory_order_acquire))
+		;
+}
+
+static void Arena_Unlock (void)
+{
+	atomic_flag_clear_explicit (&arena_lock, memory_order_release);
+}
 
 static unsigned char *ChunkData (arena_chunk_t *chunk)
 {
@@ -45,8 +59,10 @@ void Arena_Init (arena_t *arena, const char *name)
 	memset (arena, 0, sizeof (*arena));
 	arena->name = name;
 	arena->next_size = ARENA_FIRST_CHUNK;
+	Arena_Lock ();
 	arena->next_arena = arena_list;
 	arena_list = arena;
+	Arena_Unlock ();
 }
 
 void *Arena_Alloc (arena_t *arena, size_t size)
@@ -130,6 +146,7 @@ void Arena_Free (arena_t *arena)
 		Mem_FreeAligned (chunk);
 	}
 
+	Arena_Lock ();
 	for (link = &arena_list ; *link ; link = &(*link)->next_arena)
 	{
 		if (*link == arena)
@@ -138,20 +155,43 @@ void Arena_Free (arena_t *arena)
 			break;
 		}
 	}
+	Arena_Unlock ();
 
 	memset (arena, 0, sizeof (*arena));
 }
 
 void Arena_PrintStats (void)
 {
-	arena_t	*arena;
-	size_t	used = 0, held = 0;
+	typedef struct {char name[MAX_QPATH]; size_t used, held;} arenastat_t;
+	arena_t		*arena;
+	arenastat_t	*stats;
+	size_t		used = 0, held = 0;
+	int			i, count, max;
 
-	for (arena = arena_list ; arena ; arena = arena->next_arena)
+	// copied out under the lock, which printing (a redraw) mustn't hold; a
+	// loader's arena changes as it is counted, so its sizes are a glimpse
+	for (max = 64 ; ; max *= 2)
 	{
-		Con_Printf ("%-20s %9zu KB used %9zu KB held\n", arena->name, arena->used / 1024, arena->held / 1024);
-		used += arena->used;
-		held += arena->held;
+		stats = Mem_Alloc ((size_t)max * sizeof(*stats));
+		Arena_Lock ();
+		for (count = 0, arena = arena_list ; arena && count < max ; arena = arena->next_arena, count++)
+		{
+			Q_strncpyz (stats[count].name, arena->name ? arena->name : "", sizeof(stats[count].name));
+			stats[count].used = arena->used;
+			stats[count].held = arena->held;
+		}
+		Arena_Unlock ();
+		if (!arena)
+			break;
+		Mem_Free (stats);
 	}
+
+	for (i = 0 ; i < count ; i++)
+	{
+		Con_Printf ("%-20s %9zu KB used %9zu KB held\n", stats[i].name, stats[i].used / 1024, stats[i].held / 1024);
+		used += stats[i].used;
+		held += stats[i].held;
+	}
+	Mem_Free (stats);
 	Con_Printf ("%-20s %9zu KB used %9zu KB held\n", "total", used / 1024, held / 1024);
 }

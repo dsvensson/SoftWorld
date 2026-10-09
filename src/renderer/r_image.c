@@ -27,7 +27,8 @@ static bool		r_imagetables;
 static unsigned	r_srgbcode[256];	// an sRGB byte as a pixel's channel
 static float	r_srgblight[256];	// that channel to the fourth: linear light
 
-static void R_InitImageTables (void)
+// before any loader's thread starts (R_InitPalette); until then on first use
+void R_InitImageTables (void)
 {
 	int		i;
 

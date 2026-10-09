@@ -52,7 +52,7 @@ float	Q_atof (char *str);
 char	*va (char *format, ...);
 
 // parses the next token into com_token; returns the text after it, or NULL at the end
-extern	char	com_token[1024];
+extern	thread_local char	com_token[1024];
 char	*COM_Parse (char *data);
 
 void	COM_StripExtension (char *in, char *out);

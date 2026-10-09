@@ -183,7 +183,6 @@ search path finds them, packs too; written in the game directory
 ==============================================================================
 */
 
-extern int	file_from_pak;
 
 typedef struct
 {

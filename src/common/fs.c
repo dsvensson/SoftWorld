@@ -191,7 +191,7 @@ QUAKE FILESYSTEM
 =============================================================================
 */
 
-int	com_filesize;
+thread_local int	com_filesize;
 
 
 //
@@ -251,6 +251,17 @@ typedef struct searchpath_s
 
 static searchpath_t	*com_searchpaths;
 static searchpath_t	*com_base_searchpaths;	// without gamedirs
+
+// a game directory's paks and directory over the base's: the search path's
+// (fs_live), or one a loader reads through while the search path changes
+struct fs_chain_s
+{
+	searchpath_t	*paths;		// ends in com_base_searchpaths
+	int				refs;		// changed on the main thread only
+};
+
+static fs_chain_t	*fs_live;					// com_searchpaths is its paths
+static thread_local fs_chain_t	*fs_thread_chain;	// FS_UseChain's, NULL: the search path
 
 /*
 ================
@@ -369,9 +380,9 @@ Finds the file in the search path.
 Sets com_filesize and one of handle or file
 ===========
 */
-int file_from_pak; // global indicating file came from pack file ZOID
+thread_local int file_from_pak; // global indicating file came from pack file ZOID
 
-static char	com_filesource[MAX_OSPATH];	// the pak or directory the last file was found in
+static thread_local char	com_filesource[MAX_OSPATH];	// the pak or directory the last file was found in
 
 const char *FS_FileSource (void)
 {
@@ -410,11 +421,12 @@ int COM_FOpenFile (const char *filename, FILE **file)
 
 	file_from_pak = 0;
 	com_filesource[0] = 0;
-		
+
 //
-// search through the path, one element at a time
+// search through the path, one element at a time: a loader's own chain
+// (FS_UseChain), or the search path's
 //
-	for (search = com_searchpaths ; search ; search = search->next)
+	for (search = fs_thread_chain ? fs_thread_chain->paths : com_searchpaths ; search ; search = search->next)
 	{
 	// is the element a pak file?
 		if (search->pack)
@@ -425,10 +437,13 @@ int COM_FOpenFile (const char *filename, FILE **file)
 				if (!strcmp (pak->files[i].name, filename))
 				{	// found it!
 					Sys_Printf ("PackFile: %s : %s\n",pak->filename, filename);
-				// open a new file on the pakfile
+				// open a new file on the pakfile; one gone since is passed by
 					*file = fopen (pak->filename, "rb");
 					if (!*file)
-						Sys_Error ("Couldn't reopen %s", pak->filename);	
+					{
+						Sys_Printf ("FindFile: can't reopen %s\n", pak->filename);
+						break;
+					}
 					fseek (*file, pak->files[i].filepos, SEEK_SET);
 					com_filesize = pak->files[i].filelen;
 					file_from_pak = 1;
@@ -652,10 +667,16 @@ byte *FS_LoadFile (const char *path, int *length)
 	buf = Mem_Alloc ((size_t)len + 1);
 	buf[len] = 0;
 	if (fread (buf, 1, (size_t)len, h) != (size_t)len)
-		Sys_Error ("FS_LoadFile: error reading %s", path);
+	{
+		fclose (h);
+		Mem_Free (buf);
+		Con_Printf ("FS_LoadFile: error reading %s\n", path);
+		return NULL;
+	}
 	fclose (h);
 
-	if (fs_loadhook)
+	// the hook is the main thread's: a loader reads through a chain of its own
+	if (fs_loadhook && !fs_thread_chain)
 		fs_loadhook (path, buf, len);
 	if (length)
 		*length = len;
@@ -730,11 +751,11 @@ COM_LoadPackFile
 
 Takes an explicit (not game tree related) path to a pak file.
 
-Loads the header and directory, adding the files at the beginning
-of the list so they override previous pack files.
+Loads the header and directory; NULL, said on the console when loud, if it
+isn't a pak that can be read
 =================
 */
-static pack_t *COM_LoadPackFile (char *packfile)
+static pack_t *COM_LoadPackFile (const char *packfile, bool loud)
 {
 	dpackheader_t	header;
 	int				i;
@@ -743,29 +764,40 @@ static pack_t *COM_LoadPackFile (char *packfile)
 	pack_t			*pack;
 	FILE			*packhandle;
 	dpackfile_t		*info;
+	const char		*error = NULL;
 
-	if (COM_FileOpenRead (packfile, &packhandle) == -1)
+	if (COM_FileOpenRead ((char *)packfile, &packhandle) == -1)
 		return NULL;
 
-	fread (&header, 1, sizeof(header), packhandle);
-	if (header.id[0] != 'P' || header.id[1] != 'A'
-	|| header.id[2] != 'C' || header.id[3] != 'K')
-		Sys_Error ("%s is not a packfile", packfile);
+	if (fread (&header, 1, sizeof(header), packhandle) != sizeof(header)
+		|| header.id[0] != 'P' || header.id[1] != 'A' || header.id[2] != 'C' || header.id[3] != 'K')
+		error = "is not a packfile";
 	header.dirofs = LittleLong (header.dirofs);
 	header.dirlen = LittleLong (header.dirlen);
-
-	if (header.dirlen < 0 || header.dirofs < 0)
-		Sys_Error ("%s has a bad directory", packfile);
+	if (!error && (header.dirlen < 0 || header.dirofs < 0))
+		error = "has a bad directory";
+	if (error)
+	{
+		fclose (packhandle);
+		if (loud)
+			Con_Printf ("%s %s\n", packfile, error);
+		return NULL;
+	}
 	numpackfiles = header.dirlen / (int)sizeof(dpackfile_t);
 
-	newfiles = Mem_Calloc ((size_t)numpackfiles, sizeof(packfile_t));
 	info = Mem_Alloc ((size_t)header.dirlen + 1);
-
 	fseek (packhandle, header.dirofs, SEEK_SET);
 	if (fread (info, 1, (size_t)header.dirlen, packhandle) != (size_t)header.dirlen)
-		Sys_Error ("%s: couldn't read the directory", packfile);
+	{
+		Mem_Free (info);
+		fclose (packhandle);
+		if (loud)
+			Con_Printf ("%s: couldn't read the directory\n", packfile);
+		return NULL;
+	}
 
 // parse the directory
+	newfiles = Mem_Calloc ((size_t)numpackfiles, sizeof(packfile_t));
 	for (i=0 ; i<numpackfiles ; i++)
 	{
 		Q_strncpyz (newfiles[i].name, info[i].name, sizeof(newfiles[i].name));
@@ -781,10 +813,48 @@ static pack_t *COM_LoadPackFile (char *packfile)
 	pack->numfiles = numpackfiles;
 	pack->files = newfiles;
 	
-	Con_Printf ("Added packfile %s (%i files)\n", packfile, numpackfiles);
+	if (loud)
+		Con_Printf ("Added packfile %s (%i files)\n", packfile, numpackfiles);
 	return pack;
 }
 
+/*
+================
+COM_PushDirectory
+
+The directory dir (a full path), then its pak0.pak, pak1.pak ... over paths:
+the head of a search path, the paks before the directory
+================
+*/
+static searchpath_t *COM_PushDirectory (const char *dir, searchpath_t *paths, bool loud)
+{
+	int				i;
+	searchpath_t	*search;
+	pack_t			*pak;
+	char			pakfile[MAX_OSPATH];
+
+	search = Mem_Calloc (1, sizeof(searchpath_t));
+	Q_strncpyz (search->filename, dir, sizeof(search->filename));
+	search->next = paths;
+	paths = search;
+
+	// the paks numbered from 0 on, to the first missing; one that can't be
+	// read is passed by
+	for (i=0 ; ; i++)
+	{
+		snprintf (pakfile, sizeof(pakfile), "%s/pak%i.pak", dir, i);
+		if (Sys_FileTime (pakfile) == -1)
+			break;
+		pak = COM_LoadPackFile (pakfile, loud);
+		if (!pak)
+			continue;
+		search = Mem_Calloc (1, sizeof(searchpath_t));
+		search->pack = pak;
+		search->next = paths;
+		paths = search;
+	}
+	return paths;
+}
 
 /*
 ================
@@ -796,10 +866,6 @@ then loads and adds pak1.pak pak2.pak ...
 */
 static void COM_AddGameDirectory (char *dir)
 {
-	int				i;
-	searchpath_t	*search;
-	pack_t			*pak;
-	char			pakfile[MAX_OSPATH];
 	char			*p;
 
 	if ((p = strrchr(dir, '/')) != NULL)
@@ -808,29 +874,87 @@ static void COM_AddGameDirectory (char *dir)
 		Q_strncpyz(gamedirfile, dir, sizeof(gamedirfile));
 	Q_strncpyz (com_gamedir, dir, sizeof(com_gamedir));
 
-//
-// add the directory to the search path
-//
-	search = Mem_Calloc (1, sizeof(searchpath_t));
-	Q_strncpyz (search->filename, dir, sizeof(search->filename));
-	search->next = com_searchpaths;
-	com_searchpaths = search;
+	com_searchpaths = COM_PushDirectory (dir, com_searchpaths, true);
+}
 
-//
-// add any pak files in the format pak0.pak pak1.pak, ...
-//
-	for (i=0 ; ; i++)
+/*
+================
+FS_IsBaseDir
+
+id1 and qw, which the base search path always has
+================
+*/
+static bool FS_IsBaseDir (const char *dir)
+{
+	return !strcmp (dir, "id1") || !strcmp (dir, "qw");
+}
+
+/*
+================
+FS_NewChain
+
+A game directory's chain over the base's: nothing above it for id1 and qw
+================
+*/
+static fs_chain_t *FS_NewChain (const char *dir, bool loud)
+{
+	fs_chain_t	*chain = Mem_Calloc (1, sizeof(*chain));
+	char		path[MAX_OSPATH];
+
+	chain->refs = 1;
+	chain->paths = com_base_searchpaths;
+	if (!FS_IsBaseDir (dir))
 	{
-		snprintf (pakfile, sizeof(pakfile), "%s/pak%i.pak", dir, i);
-		pak = COM_LoadPackFile (pakfile);
-		if (!pak)
-			break;
-		search = Mem_Calloc (1, sizeof(searchpath_t));
-		search->pack = pak;
-		search->next = com_searchpaths;
-		com_searchpaths = search;		
+		snprintf (path, sizeof(path), "%s/%s", com_basedir, dir);
+		chain->paths = COM_PushDirectory (path, com_base_searchpaths, loud);
 	}
+	return chain;
+}
 
+/*
+================
+FS_OpenDirChain / FS_RetainChain / FS_ReleaseChain / FS_UseChain
+
+Chains a loader reads through on its thread while the search path changes:
+a game directory's (opened quietly), or the search path's as it is. They are
+held and let go on the main thread; the last let go closes its paks.
+================
+*/
+fs_chain_t *FS_OpenDirChain (const char *dir)
+{
+	return FS_NewChain (dir, false);
+}
+
+fs_chain_t *FS_RetainChain (void)
+{
+	fs_live->refs++;
+	return fs_live;
+}
+
+void FS_ReleaseChain (fs_chain_t *chain)
+{
+	searchpath_t	*next;
+
+	if (--chain->refs > 0)
+		return;
+	while (chain->paths != com_base_searchpaths)
+	{
+		if (chain->paths->pack)
+		{
+			fclose (chain->paths->pack->handle);
+			Mem_Free (chain->paths->pack->files);
+			Mem_Free (chain->paths->pack);
+		}
+		next = chain->paths->next;
+		Mem_Free (chain->paths);
+		chain->paths = next;
+	}
+	Mem_Free (chain);
+}
+
+void FS_UseChain (fs_chain_t *chain)
+{
+	fs_thread_chain = chain;
 }
 
 /*
@@ -843,11 +967,6 @@ Sets the gamedir and path to a different directory, the hooks around it
 */
 void COM_Gamedir (char *dir)
 {
-	searchpath_t	*search, *next;
-	int				i;
-	pack_t			*pak;
-	char			pakfile[MAX_OSPATH];
-
 	if (strstr(dir, "..") || strstr(dir, "/")
 		|| strstr(dir, "\\") || strstr(dir, ":") )
 	{
@@ -861,57 +980,18 @@ void COM_Gamedir (char *dir)
 		gamedir_leaving ();
 	Q_strncpyz (gamedirfile, dir, sizeof(gamedirfile));
 
-	//
-	// free up any current game dir info
-	//
-	while (com_searchpaths != com_base_searchpaths)
-	{
-		if (com_searchpaths->pack)
-		{
-			fclose (com_searchpaths->pack->handle);
-			Mem_Free (com_searchpaths->pack->files);
-			Mem_Free (com_searchpaths->pack);
-		}
-		next = com_searchpaths->next;
-		Mem_Free (com_searchpaths);
-		com_searchpaths = next;
-	}
-
-	// the data loaded from the old one dropped once nothing uses it
+	// the old directory's paths go once no loader reads through them, and
+	// the data loaded from it once nothing uses it
+	FS_ReleaseChain (fs_live);
+	fs_live = FS_NewChain (dir, true);
+	com_searchpaths = fs_live->paths;
 	gamedir_changed = true;
 
-	if (!strcmp(dir,"id1") || !strcmp(dir, "qw"))
-	{	// the base's (id1 and qw) is qw's directory
+	// the base's (id1 and qw) is qw's directory
+	if (FS_IsBaseDir (dir))
 		snprintf (com_gamedir, sizeof(com_gamedir), "%s/qw", com_basedir);
-		if (gamedir_entered)
-			gamedir_entered ();
-		return;
-	}
-
-	snprintf (com_gamedir, sizeof(com_gamedir), "%s/%s", com_basedir, dir);
-
-	//
-	// add the directory to the search path
-	//
-	search = Mem_Calloc (1, sizeof(searchpath_t));
-	Q_strncpyz (search->filename, com_gamedir, sizeof(search->filename));
-	search->next = com_searchpaths;
-	com_searchpaths = search;
-
-	//
-	// add any pak files in the format pak0.pak pak1.pak, ...
-	//
-	for (i=0 ; ; i++)
-	{
-		snprintf (pakfile, sizeof(pakfile), "%s/pak%i.pak", com_gamedir, i);
-		pak = COM_LoadPackFile (pakfile);
-		if (!pak)
-			break;
-		search = Mem_Calloc (1, sizeof(searchpath_t));
-		search->pack = pak;
-		search->next = com_searchpaths;
-		com_searchpaths = search;		
-	}
+	else
+		snprintf (com_gamedir, sizeof(com_gamedir), "%s/%s", com_basedir, dir);
 
 	if (gamedir_entered)
 		gamedir_entered ();
@@ -944,4 +1024,7 @@ static void COM_InitFilesystem (const char *basedir)
 
 	// any set gamedirs will be freed up to here
 	com_base_searchpaths = com_searchpaths;
+	fs_live = Mem_Calloc (1, sizeof(*fs_live));
+	fs_live->refs = 1;
+	fs_live->paths = com_searchpaths;
 }

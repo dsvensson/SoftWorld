@@ -486,7 +486,7 @@ static bool Mod_LoadTextures (void)
 		R_LoadTextureOverride (tx, loadmodel->name, loadmodel->arena);
 
 		if (!Q_strncmp (tx->name, "sky", 3))
-			R_InitSky (tx);
+			loadmodel->skytexture = tx;	// the sky once it is the world (R_NewMap)
 	}
 
 //

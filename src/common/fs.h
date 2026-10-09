@@ -25,7 +25,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <stdio.h>
 
-extern	int		com_filesize;
+extern	thread_local int	com_filesize;
+extern	thread_local int	file_from_pak;	// the last file opened came from a pak (ZOID)
 extern	char	com_gamedir[MAX_OSPATH];
 extern	char	gamedirfile[MAX_OSPATH];
 
@@ -62,6 +63,16 @@ void	FS_SetGamedirHooks (void (*leaving)(void), void (*entered)(void));
 // is given twice
 void	FS_ListPaths (const char *partial, const char *const *extensions, void (*add) (void *ctx, const char *path),
 			void *ctx);
+
+// a game directory's paks and directory over the base's (id1, qw), for a
+// loader to read through on its own thread while the search path changes:
+// opened, retained (the search path's as it is) and released on the main
+// thread; FS_UseChain sets the calling thread's (NULL: the search path)
+typedef struct fs_chain_s fs_chain_t;
+fs_chain_t	*FS_OpenDirChain (const char *dir);	// quiet: no "Added packfile"
+fs_chain_t	*FS_RetainChain (void);
+void	FS_ReleaseChain (fs_chain_t *chain);
+void	FS_UseChain (fs_chain_t *chain);
 
 void	COM_WriteFile (char *filename, void *data, int len);
 int		COM_FOpenFile (const char *filename, FILE **file);

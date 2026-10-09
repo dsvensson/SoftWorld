@@ -5,3 +5,5 @@ sw_add_module(sw_render
 	r_decal.c r_lightdata.c r_part.c r_partdraw.c r_partimage.c r_ring.c r_sky.c r_skybox.c r_sprite.c r_surf.c r_textures.c r_worldspawn.c wad.c)
 target_link_libraries(sw_render PUBLIC sw_simd sw_common)
 target_include_directories(sw_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# C11's atomics, which MSVC has behind a switch (colors a loader's thread finds, r_palette.c)
+target_compile_options(sw_render PRIVATE $<$<C_COMPILER_ID:MSVC>:/experimental:c11atomics>)
