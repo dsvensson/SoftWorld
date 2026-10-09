@@ -78,6 +78,7 @@ SV_KillServer_f
 */
 static void SV_KillServer_f (void)
 {
+	SV_AttractStop ();
 	if (!SV_Active ())
 		Con_Printf ("No map is running\n");
 	SV_Kill ();
@@ -311,7 +312,7 @@ The server on a level, taking the connected clients along with their spawn
 parms as parms says: map's, changelevel's and restart's
 ======================
 */
-static void SV_GotoLevel (const char *name, spawnparms_t parms)
+void SV_GotoLevel (const char *name, spawnparms_t parms, cmap_t *built)
 {
 	char	level[MAX_QPATH];
 	char	expanded[MAX_QPATH];
@@ -325,6 +326,8 @@ static void SV_GotoLevel (const char *name, spawnparms_t parms)
 	if (!f)
 	{
 		Con_Printf ("Can't find %s\n", expanded);
+		if (built)
+			CM_DiscardMap (built);
 		return;
 	}
 	fclose (f);
@@ -332,7 +335,7 @@ static void SV_GotoLevel (const char *name, spawnparms_t parms)
 	SV_BroadcastCommand ("changing\n");
 	SV_SendMessagesToAll ();
 
-	SV_SpawnServer (level, parms);
+	SV_SpawnServer (level, parms, built);
 
 	SV_BroadcastCommand ("reconnect\n");
 
@@ -357,7 +360,8 @@ static void SV_Map_f (void)
 		Con_Printf ("map <levelname> : start a game on a level\n");
 		return;
 	}
-	SV_GotoLevel (Cmd_Argv(1), sv.state == ss_dead || pr.nq ? SPAWNPARMS_NEW : SPAWNPARMS_CHANGE);
+	SV_AttractStop ();
+	SV_GotoLevel (Cmd_Argv(1), sv.state == ss_dead || pr.nq ? SPAWNPARMS_NEW : SPAWNPARMS_CHANGE, NULL);
 }
 
 /*
@@ -375,7 +379,8 @@ static void SV_Changelevel_f (void)
 		Con_Printf ("changelevel <levelname> : continue the game on a new level\n");
 		return;
 	}
-	SV_GotoLevel (Cmd_Argv(1), SPAWNPARMS_CHANGE);
+	SV_AttractStop ();
+	SV_GotoLevel (Cmd_Argv(1), sv.state == ss_dead ? SPAWNPARMS_NEW : SPAWNPARMS_CHANGE, NULL);
 }
 
 /*
@@ -388,9 +393,10 @@ NetQuake's; id1's progs restart a single player's game so when the player dies
 */
 static void SV_Restart_f (void)
 {
+	SV_AttractStop ();		// a showcase's level is no game to restart
 	if (sv.state == ss_dead)
 		return;
-	SV_GotoLevel (sv.name, SPAWNPARMS_KEEP);
+	SV_GotoLevel (sv.name, SPAWNPARMS_KEEP, NULL);
 }
 
 

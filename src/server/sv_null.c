@@ -56,3 +56,30 @@ double SV_NextFrameWait (void)
 {
 	return 1;
 }
+
+bool SV_AttractLevel (const sv_attract_t *level)
+{
+	(void)level;
+	return false;
+}
+
+void SV_AttractEnd (void)
+{
+}
+
+bool SV_Attracting (void)
+{
+	return false;
+}
+
+struct cmap_s *SV_ShareMap (const char *name, unsigned *checksum2)
+{
+	(void)name;
+	(void)checksum2;
+	return NULL;
+}
+
+void SV_SetAttractStop (void (*stop) (void))
+{
+	(void)stop;
+}

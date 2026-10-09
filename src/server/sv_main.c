@@ -263,6 +263,7 @@ void SV_Kill (void)
 	if (!host.dedicated)
 		NET_CloseSocket (NS_SERVER);
 	Con_Printf ("Server stopped.\n");
+	SV_AttractQuiet (false);	// an error's said
 }
 
 /*
@@ -772,9 +773,16 @@ static void SVC_DirectConnect (void)
 		return;
 	}
 
-	// check for password or spectator_password
+	// check for password or spectator_password; a showcase's client watches,
+	// whatever it asked (sv_attract.c)
 	s = Info_ValueForKey (userinfo, "spectator");
-	if (s[0] && strcmp(s, "0"))
+	if (svs.attract && svs.net_from.type == NA_LOOPBACK)
+	{
+		Info_RemoveKey (userinfo, "spectator");
+		Info_SetValueForStarKey (userinfo, "*spectator", "1", MAX_INFO_STRING, SV_InfoCharset ());
+		spectator = true;
+	}
+	else if (s[0] && strcmp(s, "0"))
 	{
 		if (spectator_password.string[0] && 
 			Q_strcasecmp (spectator_password.string, "none") &&
@@ -859,8 +867,8 @@ static void SVC_DirectConnect (void)
 		Cvar_SetValue ("maxspectators", MAX_CLIENTS);
 	if (maxspectators.value + maxclients.value > MAX_CLIENTS)
 		Cvar_SetValue ("maxspectators", MAX_CLIENTS - maxspectators.value + maxclients.value);
-	if ( (spectator && spectators >= (int)maxspectators.value)
-		|| (!spectator && clients >= (int)maxclients.value) )
+	if (!svs.attract && ((spectator && spectators >= (int)maxspectators.value)
+		|| (!spectator && clients >= (int)maxclients.value)))
 	{
 		Con_Printf ("%s:full connect\n", NET_AdrToString (adr));
 		Netchan_OutOfBandPrint (NS_SERVER, adr, "%c\nserver is full\n\n", A2C_PRINT);
@@ -1516,8 +1524,8 @@ static bool SV_HeldStill (bool away)
 	client_t	*cl;
 	int			i, players = 0;
 
-	if (!away || host.dedicated || maxclients.value != 1)
-		return false;
+	if (!away || host.dedicated || maxclients.value != 1 || svs.attract)
+		return false;	// a showcase plays on under the menu
 	for (i = 0, cl = svs.clients ; i < MAX_CLIENTS ; i++, cl++)
 	{
 		if (cl->state == cs_free)
@@ -1542,6 +1550,7 @@ void SV_Frame (double time, bool away)
 
 	start = Sys_DoubleTime ();
 	svs.stats.idle += start - end;
+	SV_AttractQuiet (true);
 
 // keep the random time dependent
 	rand ();
@@ -1575,9 +1584,13 @@ void SV_Frame (double time, bool away)
 // send messages back to the clients that had packets read this frame
 	SV_SendClientMessages ();
 
-// send a heartbeat to the master if needed
-	Master_Heartbeat ();
-	SV_WebRTCInfo ();
+// send a heartbeat to the master if needed; a showcase is no one's to join
+	if (!svs.attract)
+	{
+		Master_Heartbeat ();
+		SV_WebRTCInfo ();
+	}
+	SV_AttractQuiet (false);
 
 // collect timing statistics
 	end = Sys_DoubleTime ();

@@ -94,6 +94,7 @@ void SV_EndRedirect (void)
 	Con_SetPrintRedirect (NULL);
 	SV_FlushRedirect ();
 	svs.redirected = RD_NONE;
+	SV_AttractRedirectEnded ();
 }
 
 

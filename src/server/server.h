@@ -336,6 +336,8 @@ typedef struct
 	FILE		*fraglogfile;
 	redirect_t	redirected;					// where console output goes
 
+	bool		attract;					// a showcase's level (sv_attract.c): closed to the
+											// network, its rules its own
 	int			port;						// UDP port, opened with the first map
 	sizebuf_t	net_message;				// the packet being read
 	netadr_t	net_from;					// and who sent it
@@ -490,7 +492,19 @@ typedef enum
 	SPAWNPARMS_KEEP		// those the level began with, again: restart
 } spawnparms_t;
 
-void SV_SpawnServer (char *server, spawnparms_t parms);
+void SV_SpawnServer (char *server, spawnparms_t parms, struct cmap_s *built);	// built: adopted, or NULL
+void SV_GotoLevel (const char *name, spawnparms_t parms, struct cmap_s *built);
+
+//
+// sv_attract.c: a showcase's levels
+//
+void SV_AttractStop (void);			// before the user's own level: the showcase goes
+void SV_AttractQuiet (bool quiet);	// what the server says to the debug output only, in a showcase
+void SV_AttractRedirectEnded (void);	// a redirect of the server's own ended (SV_EndRedirect)
+bool SV_AttractProgs (char *name, size_t size, fs_chain_t **dir);
+const char *SV_AttractCvar (const char *name);	// the showcase's rules, NULL for the cvar's own
+void SV_AttractCvarSet (const char *name, const char *value);
+void SV_AttractPlace (client_t *cl);	// the spectator held where the showcase looks from
 bool SV_NQPhysics (const client_t *cl);	// it moves as NetQuake's players do (sv_phys.c)
 void SV_FlushSignon (void);
 void SV_LoadBrushModel (int index);	// a precached .bsp's hulls, as sv.models[index]

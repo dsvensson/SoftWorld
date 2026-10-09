@@ -138,30 +138,42 @@ static void PR_Dump (void *ctx, qc_dumpkind_t kind, const char *text)
 	PR_Print (ctx, text);
 }
 
+// a showcase's progs (sv_attract.c) run nothing of the user's: their
+// localcmds are passed by, their rules are the showcase's, and the cvars they
+// set are set back
 static void PR_Localcmd (void *ctx, const char *text)
 {
 	(void)ctx;
-	Cbuf_AddText ((char *)text);
+	if (svs.attract)
+		Con_DPrintf ("localcmd passed by in a showcase: %s", text);
+	else
+		Cbuf_AddText ((char *)text);
 }
 
 static float PR_CvarFloat (void *ctx, const char *name)
 {
+	const char	*rule = SV_AttractCvar (name);
+
 	(void)ctx;
-	return Cvar_VariableValue ((char *)name);
+	return rule ? (float)atof (rule) : Cvar_VariableValue ((char *)name);
 }
 
 static const char *PR_CvarString (void *ctx, const char *name)
 {
-	cvar_t	*var = Cvar_FindVar ((char *)name);
+	cvar_t		*var = Cvar_FindVar ((char *)name);
+	const char	*rule = SV_AttractCvar (name);
 
 	(void)ctx;
-	return var ? var->string : NULL;
+	return rule ? rule : var ? var->string : NULL;
 }
 
 static void PR_CvarSet (void *ctx, const char *name, const char *value)
 {
 	(void)ctx;
-	Cvar_Set ((char *)name, (char *)value);
+	if (svs.attract)
+		SV_AttractCvarSet (name, value);
+	else
+		Cvar_Set ((char *)name, (char *)value);
 }
 
 // checkcommand: 1 a command, 2 an alias, 3 a cvar
@@ -1179,11 +1191,15 @@ and the qwprogs.dat built in); else NetQuake's progs.dat for single player
 and coop (deathmatch 0), QuakeWorld's qwprogs.dat for the rest
 ===============
 */
-static void PR_ChooseProgs (void)
+static void PR_ChooseProgs (fs_chain_t **dir)
 {
 	bool		nq, qw;
 	const char	*base;
 
+	// a showcase's, from its map's game directory alone
+	*dir = NULL;
+	if (SV_AttractProgs (pr.name, sizeof(pr.name), dir))
+		return;
 	if (sv_progs.string[0])
 	{
 		Q_strncpyz (pr.name, sv_progs.string, sizeof(pr.name));
@@ -1228,6 +1244,7 @@ void PR_LoadProgs (void)
 	byte				*data, *lno;
 	int					size, lnosize;
 	char				num[32], text[1024], lnoname[MAX_QPATH];
+	fs_chain_t			*dir;
 	qc_loaderror_t		lerr;
 	qc_error_t			err;
 	qc_config_t			config;
@@ -1237,7 +1254,8 @@ void PR_LoadProgs (void)
 	PR_FreeProgs ();
 	PR_ClearLightstyles ();
 
-	PR_ChooseProgs ();
+	PR_ChooseProgs (&dir);
+	FS_UseChain (dir);
 	data = PR_LoadProgsFile (&size);
 	if (!data)
 	{	// as FTE: QuakeWorld's then
@@ -1263,6 +1281,7 @@ void PR_LoadProgs (void)
 	COM_StripExtension (pr.name, lnoname);
 	Q_strncatz (lnoname, ".lno", sizeof(lnoname));
 	lno = FS_LoadFile (lnoname, &lnosize);
+	FS_UseChain (NULL);
 	if (lno)
 	{
 		if (!QC_AttachLineNumbers (pr.progs, lno, (size_t)lnosize, &lerr))

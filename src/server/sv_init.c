@@ -433,7 +433,7 @@ when it isn't csprogs.dat; none of them without the file
 */
 static void SV_PublishCsprogs (void)
 {
-	const char	*name = sv_csqc_progname.string;
+	const char	*name = svs.attract ? "" : sv_csqc_progname.string;	// a showcase's view is its own
 	byte		*data = *name ? FS_LoadFile (name, NULL) : NULL;
 	int			size = com_filesize;
 	char		checksum[32], length[32];
@@ -451,7 +451,7 @@ static void SV_PublishCsprogs (void)
 		MAX_SERVERINFO_STRING, SV_InfoCharset ());
 }
 
-void SV_SpawnServer (char *server, spawnparms_t parms)
+void SV_SpawnServer (char *server, spawnparms_t parms, cmap_t *built)
 {
 	edict_t		*ent;
 	int			i;
@@ -462,19 +462,25 @@ void SV_SpawnServer (char *server, spawnparms_t parms)
 	// the old level's last events out to QTV's viewers
 	SV_MVDEndLevel ();
 
-	// the first map opens the server's port; a listen server can do without
-	if (NET_SocketAddress (NS_SERVER).type == NA_INVALID && !NET_OpenSocket (NS_SERVER, svs.port))
+	// the first map opens the server's port; a listen server can do without,
+	// and a showcase's (sv_attract.c) is for this client alone
+	if (svs.attract)
+		;
+	else if (NET_SocketAddress (NS_SERVER).type == NA_INVALID && !NET_OpenSocket (NS_SERVER, svs.port))
 	{
 		if (host.dedicated)
 			Sys_Error ("Couldn't open UDP port %i", svs.port);
 		Con_Printf ("Couldn't open UDP port %i: only this client can join\n", svs.port);
 	}
-	// and at its number on TCP, browsers' clients over WebSocket and, a
-	// public server's, QTV's viewers; without them if it can't
-	NET_ListenTCP (svs.port, sv_websocket.value != 0, sv_public.value != 0);
-	// and clients over WebRTC, through a broker's room: its name, or the
-	// invitation code
-	NET_HostRTC (sv_public.value ? sv_webrtc_room.string : NULL);
+	if (!svs.attract)
+	{
+		// and at its number on TCP, browsers' clients over WebSocket and, a
+		// public server's, QTV's viewers; without them if it can't
+		NET_ListenTCP (svs.port, sv_websocket.value != 0, sv_public.value != 0);
+		// and clients over WebRTC, through a broker's room: its name, or the
+		// invitation code
+		NET_HostRTC (sv_public.value ? sv_webrtc_room.string : NULL);
+	}
 	
 	SV_SaveSpawnparms (parms);
 
@@ -510,11 +516,15 @@ void SV_SpawnServer (char *server, spawnparms_t parms)
 
 	Q_strncpyz (sv.name, server, sizeof(sv.name));
 
-	// NetQuake's rules: coop has no deathmatch, and a skill of 0 to 3
-	if (coop.value && deathmatch.value)
-		Cvar_Set ("deathmatch", "0");
-	i = (int)(skill.value + 0.5f);
-	Cvar_SetValue ("skill", (float)(i < 0 ? 0 : i > 3 ? 3 : i));
+	// NetQuake's rules: coop has no deathmatch, and a skill of 0 to 3; a
+	// showcase's rules are its own (SV_AttractCvar), the user's left alone
+	if (!svs.attract)
+	{
+		if (coop.value && deathmatch.value)
+			Cvar_Set ("deathmatch", "0");
+		i = (int)(skill.value + 0.5f);
+		Cvar_SetValue ("skill", (float)(i < 0 ? 0 : i > 3 ? 3 : i));
+	}
 
 	// load progs to get entity field count
 	// which determines how big each edict is
@@ -537,7 +547,11 @@ void SV_SpawnServer (char *server, spawnparms_t parms)
 	
 	Q_strncpyz (sv.name, server, sizeof(sv.name));
 	snprintf (sv.modelname, sizeof(sv.modelname), "maps/%s.bsp", server);
-	sv.map = CM_LoadMap (sv.modelname, &sv.map_checksum, &sv.map_checksum2);
+	// one built already (a showcase's, loaded as the last was shown) is taken
+	if (built)
+		sv.map = CM_AdoptMap (built, &sv.map_checksum, &sv.map_checksum2);
+	else
+		sv.map = CM_LoadMap (sv.modelname, &sv.map_checksum, &sv.map_checksum2);
 	if (oldmap)
 		CM_FreeMap (oldmap);
 	SV_FreeBrushModels ();		// the old level's
@@ -591,8 +605,9 @@ void SV_SpawnServer (char *server, spawnparms_t parms)
 	// serverflags are for cross level information (sigils)
 	PR_GLOBAL(serverflags) = (float)svs.serverflags;
 	// the rules, which NetQuake's progs read as globals
-	PR_GLOBAL(deathmatch) = deathmatch.value;
-	PR_GLOBAL(coop) = coop.value;
+	PR_GLOBAL(deathmatch) = SV_AttractCvar ("deathmatch") ? (float)atof (SV_AttractCvar ("deathmatch"))
+		: deathmatch.value;
+	PR_GLOBAL(coop) = SV_AttractCvar ("coop") ? 0 : coop.value;
 	PR_GLOBAL(teamplay) = teamplay.value;
 	
 	// run the frame start qc function to let progs check cvars; QuakeWorld's

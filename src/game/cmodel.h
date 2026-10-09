@@ -85,6 +85,7 @@ typedef struct cmap_s cmap_t;
 cmap_t		*CM_LoadMap (const char *name, unsigned *checksum, unsigned *checksum2);
 cmap_t		*CM_LoadMapBuffer (const char *name, const byte *buf, int size, unsigned *checksum, unsigned *checksum2);
 void		CM_FreeMap (cmap_t *map);
+cmap_t		*CM_ShareMap (cmap_t *map, unsigned *checksum, unsigned *checksum2);	// another reference
 
 // a map from its file's contents apart from the maps loaded, on any thread (a
 // loader's), NULL if it can't be used; CM_AdoptMap makes it one of them on the

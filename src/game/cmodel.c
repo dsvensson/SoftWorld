@@ -456,7 +456,7 @@ static cmap_t *CM_FindMap (const char *name, unsigned filesum)
 }
 
 // another reference to a loaded map, and its checksums
-static cmap_t *CM_Reference (cmap_t *map, unsigned *checksum, unsigned *checksum2)
+cmap_t *CM_ShareMap (cmap_t *map, unsigned *checksum, unsigned *checksum2)
 {
 	map->refs++;
 	if (checksum)
@@ -486,7 +486,7 @@ cmap_t *CM_AdoptMap (cmap_t *built, unsigned *checksum, unsigned *checksum2)
 		map->next = cm_maps;
 		cm_maps = map;
 	}
-	return CM_Reference (map, checksum, checksum2);
+	return CM_ShareMap (map, checksum, checksum2);
 }
 
 /*
@@ -505,7 +505,7 @@ cmap_t *CM_LoadMapBuffer (const char *name, const byte *buf, int filesize, unsig
 	filesum = Com_BlockChecksum (buf, filesize);
 	map = CM_FindMap (name, filesum);
 	if (map)
-		return CM_Reference (map, checksum, checksum2);
+		return CM_ShareMap (map, checksum, checksum2);
 	map = CM_Build (name, buf, filesize, filesum);
 	if (!map)
 		return NULL;

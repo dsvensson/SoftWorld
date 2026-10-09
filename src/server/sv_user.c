@@ -89,6 +89,8 @@ static void SV_New_f (void)
 	gamedir = Info_ValueForKey (svs.info, "*gamedir");
 	if (!gamedir[0])
 		gamedir = "qw";
+	if (svs.attract)
+		gamedir = gamedirfile;	// the client's, whose search path the showcase changed
 
 //NOTE:  This doesn't go through ClientReliableWrite since it's before the user
 //spawns.  These functions are written to not overflow
@@ -761,6 +763,8 @@ static void SV_Begin_f (void)
 	}
 
 	SV_PutClientInGame ();
+	if (svs.attract && host_client->spectator)
+		SV_AttractPlace (host_client);
 	// the view the spawn turned it to, reliable: the first frames' datagrams
 	// can't be counted on, as FTE's begin has it
 	if (sv_player->v.fixangle)
@@ -1722,6 +1726,14 @@ static void SV_ExecuteUserCommand (const char *s, bool fromqc)
 	for (u=ucmds ; u->name ; u++)
 		if (!strcmp (Cmd_Argv(0), u->name) )
 			break;
+	// a showcase's client signs on (asking for what it lacks: a skin) and
+	// watches: nothing else it sends is run
+	if (svs.attract && (!u->name || (u->qc != UCMD_NOQC && strcmp (u->name, "drop") && strcmp (u->name, "setinfo")
+		&& strcmp (u->name, "rate") && strcmp (u->name, "download") && strcmp (u->name, "stopdownload"))))
+	{
+		Con_DPrintf ("Passed by in a showcase: %s\n", s);
+		return;
+	}
 	if (qc && (!u->name || u->qc == UCMD_QC))
 	{
 		SV_ParseClientCommand (s);

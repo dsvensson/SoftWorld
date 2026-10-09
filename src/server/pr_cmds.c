@@ -600,8 +600,10 @@ static bool PF_stuffcmd (qcvm_t *vm)
 	entnum = PF_ArgEdictNum(vm, 0);
 	if (entnum < 1 || entnum > MAX_CLIENTS)
 		return QC_Error (vm, "Parm 0 not a client");
-	str = QC_ArgString(vm, 1);	
-	
+	str = QC_ArgString(vm, 1);
+	if (svs.attract)
+		return true;	// nothing goes to a showcase's client's console
+
 	cl = &svs.clients[entnum-1];
 
 	if (strcmp(str, "disconnect\n") == 0) {
@@ -1287,6 +1289,9 @@ PF_changelevel
 static bool PF_changelevel (qcvm_t *vm)
 {
 	static	int	last_spawncount;
+
+	if (svs.attract)
+		return true;	// a showcase stays on its level
 
 // make sure we don't issue two changelevels
 	if (svs.spawncount == last_spawncount)

@@ -34,3 +34,26 @@ void	SV_Kill (void);			// ends the game, telling the clients
 // the game (its menu or console has the keys), which holds a game of one still
 void	SV_Frame (double time, bool away);
 double	SV_NextFrameWait (void);	// seconds until the server needs a frame
+
+// a showcase's level (the client's attract mode, sv_attract.c): a map run
+// with its game directory's progs for no one but this program's client, which
+// watches as a spectator from origin; closed to the network
+struct cmap_s;
+struct fs_chain_s;
+typedef struct
+{
+	const char			*map;		// its name, without maps/ and .bsp
+	const char			*progs;		// progs.dat or qwprogs.dat (the one built in if missing)
+	struct fs_chain_s	*progsdir;	// the game directory alone they are read from; the server keeps it
+	float				deathmatch;	// the rules: 0 single player (NetQuake's progs), 1 deathmatch
+	struct cmap_s		*built;		// its collision map (CM_BuildMap), which the server adopts; or NULL
+	float				origin[3], angles[3];	// where the client watches from
+} sv_attract_t;
+
+bool	SV_AttractLevel (const sv_attract_t *level);	// false if it couldn't be spawned
+void	SV_AttractEnd (void);		// the showcase's server goes
+bool	SV_Attracting (void);		// the server runs a showcase
+// another reference to the level's collision map, if it is name's (the
+// client's, from the server's), and its checksum2; NULL if not
+struct cmap_s	*SV_ShareMap (const char *name, unsigned *checksum2);
+void	SV_SetAttractStop (void (*stop) (void));	// called before the user's own level
