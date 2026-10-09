@@ -433,6 +433,10 @@ void Simd_M3_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac,
 			vst1q_s32 (at, texel);
 			vst1q_s32 (lights, l);
 			vst1q_f32 (zs, z);
+			if (map->holey)
+				for (k = 0 ; k < n ; k++)
+					if (tex[at[k]] == 255)
+						vis[k] = 0;
 
 			if (map->colormap)
 			{

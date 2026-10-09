@@ -285,7 +285,7 @@ void Simd_Scalar_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sf
 	for (i = 0 ; i < count ; i++)
 	{
 		z = (float)zi * (1.0f / 2147483648.0f);
-		if (z >= zbuf[i])
+		if (z >= zbuf[i] && !(map->holey && *tex == 255))
 		{
 			index = map->remap[*tex];
 			dest[i] = map->colormap ? map->colormap[index + (light & 0xFF00)] : Simd_Scalar_AliasLit (map, index, light);

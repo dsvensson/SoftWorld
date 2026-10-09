@@ -352,6 +352,15 @@ void Simd_V3_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac,
 			t = _mm256_add_epi32 (_mm256_set1_epi32 (tfrac), tstep);
 			_mm256_storeu_si256 ((__m256i *)at, _mm256_add_epi32 (whole, _mm256_add_epi32 (_mm256_srai_epi32 (s, 16),
 				_mm256_mullo_epi32 (_mm256_srai_epi32 (t, 16), skinwidth))));
+			if (map->holey)
+			{
+				const __m256i	bit = _mm256_setr_epi32 (1, 2, 4, 8, 16, 32, 64, 128);
+
+				for (k = 0 ; k < n ; k++)
+					if (tex[at[k]] == 255)
+						shown &= ~(1 << k);
+				visible = _mm256_cmpeq_epi32 (_mm256_and_si256 (_mm256_set1_epi32 (shown), bit), bit);
+			}
 			l = _mm256_add_epi32 (_mm256_set1_epi32 (light), lightstep);
 
 			if (map->colormap)

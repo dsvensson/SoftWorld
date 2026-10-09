@@ -384,7 +384,7 @@ static void TestAliasSpan (void)
 	int				r, i, width, height, count, s0, s1, t0, t1, sstep, tstep, light0, light1, zi;
 
 	for (i = 0 ; i < (int)sizeof(skin) ; i++)
-		skin[i] = (byte)Rand ();
+		skin[i] = (Rand () & 3) ? (byte)Rand () : 255;	// holes, for map.holey
 	for (i = 0 ; i < (int)sizeof(remap) ; i++)
 		remap[i] = (byte)Rand ();
 	for (i = 0 ; i < 64 * 256 ; i++)
@@ -417,6 +417,7 @@ static void TestAliasSpan (void)
 		map.floor = floor;
 		for (i = 0 ; i < 3 ; i++)
 			map.tint[i] = (unsigned)RandRange (0, 256);
+		map.holey = (r & 2) != 0;
 		// classic light must stay on the colormap
 		light0 = RandRange (0, 0x3FFF);
 		light1 = RandRange (0, 0x3FFF);

@@ -77,6 +77,7 @@ typedef struct
 	const pixel_t		*palette;		// RGB lighting: the player's colors, or d_pal30
 	bool				rgblight;		// r_lightmode 1
 	unsigned			tint[3];		// the light's color, 8.8 with the brightest 1.0
+	bool				holey;			// skin index 255 is a hole (MF_HOLEY)
 } affinetridesc_t;
 
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!

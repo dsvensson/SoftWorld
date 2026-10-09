@@ -322,6 +322,7 @@ typedef enum {mod_brush, mod_sprite, mod_alias} modtype_t;
 #define	EF_ZOMGIB	32			// small blood trail
 #define	EF_TRACER2	64			// orange split trail + rotate
 #define	EF_TRACER3	128			// purple trail
+#define	MF_HOLEY	(1 << 14)	// index 255 of its skins is a hole (QuakeSpasm's)
 
 typedef struct model_s
 {

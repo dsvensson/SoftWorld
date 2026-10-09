@@ -338,7 +338,10 @@ void Simd_V4_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac,
 			t = _mm512_add_epi32 (_mm512_set1_epi32 (tfrac), tstep);
 			index = _mm512_add_epi32 (whole, _mm512_add_epi32 (_mm512_srai_epi32 (s, 16),
 				_mm512_mullo_epi32 (_mm512_srai_epi32 (t, 16), skinwidth)));
-			index = Simd_V4_GatherBytes (map->remap, Simd_V4_GatherBytes (tex, index, visible), visible);
+			index = Simd_V4_GatherBytes (tex, index, visible);
+			if (map->holey)
+				visible = _mm512_mask_cmpneq_epi32_mask (visible, index, _mm512_set1_epi32 (255));
+			index = Simd_V4_GatherBytes (map->remap, index, visible);
 			l = _mm512_add_epi32 (_mm512_set1_epi32 (light), lightstep);
 
 			if (map->colormap)

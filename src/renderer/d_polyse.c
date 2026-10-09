@@ -110,6 +110,12 @@ static inline int D_SkinTexel (int s, int t)
 	return ((const byte *)r_affinetridesc.pskin)[(t >> 16) * r_affinetridesc.skinwidth + (s >> 16)];
 }
 
+// a texel nothing is drawn at, nor its depth (MF_HOLEY)
+static inline bool D_SkinHole (int texel)
+{
+	return r_affinetridesc.holey && texel == 255;
+}
+
 /*
 ================
 D_PolysetBlendSpan
@@ -237,11 +243,13 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int nverts)
 			zbuf = zspantable[fv->v[1]] + fv->v[0];
 			if (z >= *zbuf)
 			{
-				int		pix;
+				int		pix = D_SkinTexel (fv->v[2], fv->v[3]);
 
+				if (D_SkinHole (pix))
+					continue;
 				*zbuf = z;
-				pix = r_affinetridesc.skinremap[D_SkinTexel (fv->v[2], fv->v[3])];
-				D_AliasPut (&d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]], D_AliasPixel (pix, fv->v[4]), z);
+				D_AliasPut (&d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]],
+					D_AliasPixel (r_affinetridesc.skinremap[pix], fv->v[4]), z);
 			}
 		}
 	}
@@ -385,7 +393,7 @@ D_PolysetRecursiveTriangle
 static void D_PolysetRecursiveTriangle (int *lp1, int *lp2, int *lp3)
 {
 	int		*temp;
-	int		d;
+	int		d, pix;
 	int		new[6];
 	float	zf, *zbuf;
 
@@ -443,11 +451,12 @@ split:
 
 	zf = new[5] * ALIAS_ZI_TO_FLOAT;
 	zbuf = zspantable[new[1]] + new[0];
-	if (zf >= *zbuf)
+	pix = D_SkinTexel (new[2], new[3]);
+	if (zf >= *zbuf && !D_SkinHole (pix))
 	{
 		*zbuf = zf;
 		D_AliasPut (&d_viewbuffer[d_scantable[new[1]] + new[0]],
-			D_AliasPixel (r_affinetridesc.skinremap[D_SkinTexel (new[2], new[3])], d_tlight), zf);
+			D_AliasPixel (r_affinetridesc.skinremap[pix], d_tlight), zf);
 	}
 
 nodraw:
@@ -688,6 +697,7 @@ static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 		.colormap = r_affinetridesc.rgblight ? NULL : d_cm30,
 		.palette = r_affinetridesc.palette, .floor = d_pal30_floor,
 		.tint = {r_affinetridesc.tint[0], r_affinetridesc.tint[1], r_affinetridesc.tint[2]},
+		.holey = r_affinetridesc.holey,
 	};
 
 	do

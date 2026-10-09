@@ -721,6 +721,7 @@ static void R_AliasSetupSkin (void)
 	r_affinetridesc.skinwidth = a_skinwidth;
 	r_affinetridesc.seamfixupX16 = a_skinwidth << 15;	// half the skin, an odd one too
 	r_affinetridesc.skinheight = pmdl->skinheight;
+	r_affinetridesc.holey = (currententity->model->flags & MF_HOLEY) != 0;
 
 	if (currententity->skin)
 	{
