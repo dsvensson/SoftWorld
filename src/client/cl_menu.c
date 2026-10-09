@@ -281,7 +281,7 @@ void M_ToggleMenu_f (void)
 {
 	qc_value_t	arg = QC_ValFloat (1);
 
-	if (cls.key_dest == key_console && cls.state == ca_active)
+	if (cls.key_dest == key_console && !CL_ConsoleForced ())
 	{
 		Con_ToggleConsole_f ();
 		return;

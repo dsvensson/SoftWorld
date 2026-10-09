@@ -1728,6 +1728,18 @@ bool CL_KeysInGame (void)
 
 /*
 ==================
+CL_ConsoleForced
+
+The console fills the screen and takes the keys, out of a game
+==================
+*/
+bool CL_ConsoleForced (void)
+{
+	return cls.state != ca_active;
+}
+
+/*
+==================
 CL_Frame
 
 Reads the server's packets, sends a command when one is due, and draws; not

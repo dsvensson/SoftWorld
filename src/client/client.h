@@ -445,6 +445,7 @@ void	CL_DecayLights (void);
 void CL_NextDemo (void);
 
 void CL_BeginServerConnect(void);
+bool CL_ConsoleForced (void);	// the console fills the screen and takes the keys: out of a game
 
 
 extern char emodel_name[], pmodel_name[], prespawn_name[], modellist_name[], soundlist_name[];

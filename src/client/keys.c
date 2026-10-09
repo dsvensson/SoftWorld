@@ -1355,7 +1355,7 @@ void Key_Event (int key, bool down)
 //
 	if ( (cls.key_dest == key_menu && menubound[key])
 	|| (cls.key_dest == key_console && !consolekeys[key])
-	|| (cls.key_dest == key_game && ( cls.state == ca_active || !consolekeys[key] ) ) )
+	|| (cls.key_dest == key_game && ( !CL_ConsoleForced () || !consolekeys[key] ) ) )
 	{
 		kb = keybindings[key];
 		if (kb)
@@ -1465,7 +1465,7 @@ void Key_CharEvent (int ch)
 		Key_ConsoleText (ch);
 		break;
 	case key_game:
-		if (cls.state != ca_active)
+		if (CL_ConsoleForced ())
 			Key_ConsoleText (ch);		// the console fills the screen
 		break;
 	case key_menu:

@@ -50,7 +50,7 @@ void Con_ToggleConsole_f (void)
 
 	if (cls.key_dest == key_console)
 	{
-		if (cls.state == ca_active)
+		if (!CL_ConsoleForced ())
 			cls.key_dest = key_game;
 	}
 	else
@@ -70,7 +70,7 @@ static void Con_ToggleChat_f (void)
 
 	if (cls.key_dest == key_console)
 	{
-		if (cls.state == ca_active)
+		if (!CL_ConsoleForced ())
 			cls.key_dest = key_game;
 	}
 	else
@@ -368,7 +368,7 @@ static void Con_PrintSink (const char *msg)
 // update the screen if the console is displayed, at most 20 times a second:
 // a map whose entities print hundreds of warnings while loading drew a frame
 // for each line
-	if (cls.state != ca_active && Sys_DoubleTime () - lastupdate >= 0.05)
+	if (CL_ConsoleForced () && Sys_DoubleTime () - lastupdate >= 0.05)
 	{
 	// protect against infinite loop if something in SCR_UpdateScreen calls
 	// Con_Printd
@@ -405,7 +405,7 @@ static void Con_DrawInput (void)
 	const char	*text, *suggestion;
 	int			i, at, len, suggestlen, start, y;
 
-	if (cls.key_dest != key_console && cls.state == ca_active)
+	if (cls.key_dest != key_console && !CL_ConsoleForced ())
 		return;		// don't draw anything (allways draw if not active)
 
 	text = key_input.lines[key_input.edit_line];

@@ -639,7 +639,7 @@ static void SCR_SetUpToDrawConsole (void)
 	Con_CheckResize ();
 	
 // decide on the height of the console
-	if (cls.state != ca_active)
+	if (CL_ConsoleForced ())
 	{
 		scr_conlines = (float)vid.conheight;		// full screen
 		scr.con_current = scr_conlines;
