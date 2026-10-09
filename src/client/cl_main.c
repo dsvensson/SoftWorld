@@ -322,7 +322,8 @@ static void CL_CheckForResend (void)
 
 	connect_time = host.realtime+t2-t1;	// for retransmit requests
 
-	Con_Printf ("Connecting to %s...\n", cls.servername);
+	if (!CL_Attracting ())
+		Con_Printf ("Connecting to %s...\n", cls.servername);
 	snprintf (data, sizeof(data), "%c%c%c%cgetchallenge\n", 255, 255, 255, 255);
 	NET_SendPacket (NS_CLIENT, (int)strlen(data), data, adr);
 }
@@ -351,6 +352,9 @@ static void CL_Connect_f (void)
 	
 	server = Cmd_Argv (1);
 
+	// a game of the user's; attract mode's own joins its level
+	if (!(SV_Attracting () && !strcmp (server, "local")))
+		CL_AttractStop ();
 	CL_Disconnect ();
 	if (strcmp (server, "local"))
 		SV_Kill ();			// playing elsewhere ends the local game
@@ -514,6 +518,7 @@ void CL_Disconnect (void)
 
 static void CL_Disconnect_f (void)
 {
+	CL_AttractStop ();
 	CL_Disconnect ();
 	SV_Kill ();
 }
@@ -906,7 +911,8 @@ static void CL_Changing_f (void)
 	S_StopAllSounds (true);
 	cl.intermission = 0;
 	cls.state = ca_connected;	// not active anymore, but not disconnected
-	Con_Printf ("\nChanging map...\n");
+	if (!CL_Attracting ())
+		Con_Printf ("\nChanging map...\n");
 }
 
 
@@ -927,7 +933,8 @@ static void CL_Reconnect_f (void)
 	S_StopAllSounds (true);
 
 	if (cls.state == ca_connected) {
-		Con_Printf ("reconnecting...\n");
+		if (!CL_Attracting ())
+			Con_Printf ("reconnecting...\n");
 		MSG_WriteChar (&cls.netchan.message, clc_stringcmd);
 		MSG_WriteString (&cls.netchan.message, "new");
 		return;
@@ -973,12 +980,14 @@ static void CL_ConnectionlessPacket (void)
 	c = MSG_ReadByte ();
 	if (c == A2C_PRINT && CL_ParseChunkPacket ())
 		return;		// a download's chunk, dressed as a print
-	if (!cls.demoplayback)
+	// attract mode's connections to its levels aren't the user's to read
+	if (!cls.demoplayback && !(CL_Attracting () && (c == S2C_CONNECTION || c == S2C_CHALLENGE)))
 		Con_Printf ("%s: ", NET_AdrToString (cls.net_from));
 //	Con_DPrintf ("%s", net_message.data + 5);
 	if (c == S2C_CONNECTION)
 	{
-		Con_Printf ("connection\n");
+		if (!CL_Attracting ())
+			Con_Printf ("connection\n");
 		if (cls.state >= ca_connected)
 		{
 			if (!cls.demoplayback)
@@ -990,7 +999,8 @@ static void CL_ConnectionlessPacket (void)
 		MSG_WriteChar (&cls.netchan.message, clc_stringcmd);
 		MSG_WriteString (&cls.netchan.message, "new");	
 		cls.state = ca_connected;
-		Con_Printf ("Connected.\n");
+		if (!CL_Attracting ())
+			Con_Printf ("Connected.\n");
 		allowremotecmd = false; // localid required now for remote cmds
 		return;
 	}
@@ -1071,7 +1081,8 @@ static void CL_ConnectionlessPacket (void)
 	}
 
 	if (c == S2C_CHALLENGE) {
-		Con_Printf ("challenge\n");
+		if (!CL_Attracting ())
+			Con_Printf ("challenge\n");
 
 		s = MSG_ReadString ();
 		cls.challenge = atoi(s);
@@ -1143,6 +1154,11 @@ static void CL_ReadPackets (void)
 		//
 		if (cls.demoplayback)
 			cls.net_from = cls.netchan.remote_address;	// demo packets come from the recorded server
+		if (cls.state == ca_disconnected)
+		{	// the last server's, after the client left it (its "server shutdown")
+			Con_DPrintf ("%s:sequenced packet without connection\n", NET_AdrToString(cls.net_from));
+			continue;
+		}
 		if (!NET_CompareAdr (cls.net_from, cls.netchan.remote_address))
 		{
 			Con_DPrintf ("%s:sequenced packet without connection\n"
@@ -1730,12 +1746,19 @@ bool CL_KeysInGame (void)
 ==================
 CL_ConsoleForced
 
-The console fills the screen and takes the keys, out of a game
+The console fills the screen and takes the keys, out of a game; not while
+attract mode shows maps (cl_attract.c), nor at startup until it is known
+whether it will
 ==================
 */
 bool CL_ConsoleForced (void)
 {
-	return cls.state != ca_active;
+	return cls.state != ca_active && !CL_Attracting () && !CL_AttractPending ();
+}
+
+bool CL_Connecting (void)
+{
+	return connect_time != -1;
 }
 
 /*
@@ -1789,6 +1812,7 @@ void CL_Frame (void)
 	oldincoming = cls.netchan.incoming_sequence;
 	CL_DownloadFrame ();
 	Load_Poll ();		// what the loader's thread loaded since, put in place
+	CL_AttractFrame ();
 	CL_QTVFrame ();
 	if (cls.mvdplayback)
 		CL_MVDAdvance ();
@@ -1944,6 +1968,7 @@ void CL_Init (void)
 	cls.state = ca_disconnected;
 	Sbar_Init ();
 	CL_InitLocal ();
+	CL_InitAttract ();
 	IN_Init ();
 	FS_AddGamedirCallback (CL_GameWad);
 	FS_SetGamedirHooks (CL_LeaveGamedir, CL_EnterGamedir);
@@ -1969,6 +1994,7 @@ CL_Shutdown
 */
 void CL_Shutdown (void)
 {
+	CL_AttractStop ();	// the game directory's search path back, before its config is written
 	Load_Shutdown ();	// its jobs put what they loaded in place
 	M_Shutdown ();
 	SB_Shutdown ();		// before the network goes

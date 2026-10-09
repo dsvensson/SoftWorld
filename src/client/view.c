@@ -815,7 +815,7 @@ void V_DrawView (bool drawcrosshair)
 	R_RenderView ();
 	V_SetContentsColor (r_scene.viewcontents);
 
-	if (drawcrosshair && crosshair.value)
+	if (drawcrosshair && crosshair.value && !CL_Attracting ())
 		V_DrawCrosshair ();
 }
 

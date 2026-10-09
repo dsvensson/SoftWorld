@@ -210,7 +210,8 @@ void Skin_NextDownload (void)
 	int			i;
 
 	if (cls.downloadnumber == 0)
-		Con_Printf ("Checking skins...\n");
+		if (!CL_Attracting ())
+			Con_Printf ("Checking skins...\n");
 	cls.downloadtype = dl_skin;
 
 	for ( 

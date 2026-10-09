@@ -148,6 +148,7 @@ extern	cvar_t bgmvolume;
 extern	cvar_t volume;
 
 void S_LocalSound (char *s);
+void S_SetGain (float gain);		// 0 to 1, over volume: a fade's (attract mode's)
 
 // QuakeC's own sound (FTE's queueaudio): frames at hz of 16 bit samples, mono or
 // stereo (channels), played after those queued, as loud as a sound at full

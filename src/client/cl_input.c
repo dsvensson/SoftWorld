@@ -585,6 +585,8 @@ void CL_SendCmd (void)
 	Cam_FinishMove(cmd);
 
 	CSQC_InputFrame (cmd);
+	if (CL_Attracting ())
+		CL_AttractCmd (cmd);
 
 // send this and the previous cmds in the message, so
 // if the last packet was dropped, it can be recovered
@@ -726,7 +728,7 @@ static bool IN_OwnView (void)
 // the mouse is let go
 bool IN_WantsMouse (void)
 {
-	return (cls.key_dest == key_game && IN_OwnView ()) || M_GrabsMouse ();
+	return (cls.key_dest == key_game && IN_OwnView () && !CL_Attracting ()) || M_GrabsMouse ();
 }
 
 void IN_TakeMouseMotion (int *dx, int *dy)

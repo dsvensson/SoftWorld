@@ -66,6 +66,7 @@ void Host_EndGame (char *message, ...)
 	Con_Printf ("===========================\n\n");
 
 	CL_Disconnect ();
+	CL_AttractError ();
 
 	if (!host_abort_set)
 		Sys_Error ("Host_EndGame: %s", string);
@@ -99,6 +100,7 @@ void Host_Error (char *error, ...)
 		Sys_Error ("Host_Error: %s", string);
 
 	CL_Drop ();
+	CL_AttractError ();
 
 	inerror = false;
 	longjmp (host_abort, 1);
@@ -130,6 +132,7 @@ void Host_Init (quakeparms_t *parms)
 	Cbuf_InsertText ("exec quake.rc\n");
 	Cbuf_AddText ("echo Type connect <internet address> or map <name> to play.\n");
 	Cbuf_AddText ("cl_warncmd 1\n");
+	Cbuf_AddText ("attract\n");	// after quake.rc and the command line: maps shown if they started nothing
 
 	host.initialized = true;
 

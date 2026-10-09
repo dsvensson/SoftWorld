@@ -26,6 +26,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 static portable_samplepair_t paintbuffer[PAINTBUFFER_SIZE];
 static int		snd_scaletable[32][256];
 static int 	*snd_p, snd_linear_count, snd_vol;
+static float	snd_gain = 1;		// S_SetGain's
+
+void S_SetGain (float gain)
+{
+	snd_gain = gain < 0 ? 0 : gain > 1 ? 1 : gain;
+}
 static short	*snd_out;
 
 static void Snd_WriteLinearBlastStereo16 (void);
@@ -61,7 +67,7 @@ static void S_TransferStereo16 (int endtime)
 	int		lpaintedtime;
 	unsigned	*pbuf;
 
-	snd_vol = (int)(volume.value*256);
+	snd_vol = (int)(volume.value*snd_gain*256);
 
 	snd_p = (int *) paintbuffer;
 	lpaintedtime = snd.paintedtime;
@@ -118,7 +124,7 @@ static void S_TransferPaintBuffer(int endtime)
 	out_mask = snd.dma.samples - 1; 
 	out_idx = snd.paintedtime * snd.dma.channels & out_mask;
 	step = 3 - snd.dma.channels;
-	vol = (int)(volume.value*256);
+	vol = (int)(volume.value*snd_gain*256);
 
 	pbuf = SNDDMA_LockBuffer ();
 	if (!pbuf)

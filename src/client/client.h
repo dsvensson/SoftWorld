@@ -446,6 +446,23 @@ void CL_NextDemo (void);
 
 void CL_BeginServerConnect(void);
 bool CL_ConsoleForced (void);	// the console fills the screen and takes the keys: out of a game
+bool CL_Connecting (void);		// a connection is being made (connect's, before the challenge's answer)
+
+//
+// cl_attract.c: attract mode, maps shown while no game is on
+//
+void CL_InitAttract (void);
+void CL_AttractFrame (void);		// each frame, after the loader's (Load_Poll)
+bool CL_Attracting (void);			// attract mode is on: no game, no status bar, the console not down
+bool CL_AttractPending (void);		// at startup, before it is known whether attract mode starts
+bool CL_AttractIdle (void);			// no game on: no connection, demo, QTV or server
+void CL_AttractStart (void);
+void CL_AttractStop (void);			// before a game of the user's
+void CL_AttractDraw (void);			// over the view: the map's name and the fade's black
+float CL_AttractBlack (void);		// how black the fade is, 0 to 1
+void CL_AttractCmd (usercmd_t *cmd);	// a command of no moves
+void CL_AttractKey (void);			// a key pressed
+struct model_s *CL_AttractWorld (const char *name);	// the world loaded for the level coming up, NULL if another
 
 
 extern char emodel_name[], pmodel_name[], prespawn_name[], modellist_name[], soundlist_name[];
@@ -548,6 +565,7 @@ void CL_LinkItems (void);			// rings and ghosts where items are missing
 void CL_InitQTV (void);
 void CL_QTVFrame (void);			// once a frame, before the MVD is read
 void CL_QTVStop (void);
+bool CL_QTVBusy (void);				// a stream is asked for or playing
 void CL_DumpTimedemoFrame (void);	// when timedemo_dump asks for it
 
 //

@@ -303,7 +303,8 @@ static void Model_NextDownload (void)
 
 	if (cls.downloadnumber == 0)
 	{
-		Con_Printf ("Checking models...\n");
+		if (!CL_Attracting ())
+			Con_Printf ("Checking models...\n");
 		cls.downloadnumber = 1;
 	}
 
@@ -319,21 +320,28 @@ static void Model_NextDownload (void)
 			return;		// started a download
 	}
 
-	CL_StartCSQC ();
+	if (!CL_Attracting ())		// attract mode's view is its own
+		CL_StartCSQC ();
 
 	for (i=1 ; i<MAX_MODELS ; i++)
 	{
 		if (!cl.model_name[i][0])
 			break;
 
-		cl.model_precache[i] = Mod_ForName (cl.model_name[i], false);
+		// attract mode's world was loaded as the last level showed
+		cl.model_precache[i] = i == 1 ? CL_AttractWorld (cl.model_name[i]) : NULL;
+		if (!cl.model_precache[i])
+			cl.model_precache[i] = Mod_ForName (cl.model_name[i], false);
 		if (i == 1)
 		{
 			if (cl.model_precache[1])
 				Mod_SetWorld (cl.model_precache[1]);	// its inline models, next in the list
 			if (cl.map)
 				CM_FreeMap (cl.map);
-			cl.map = CM_LoadMap (cl.model_name[i], NULL, &cl.map_checksum2);
+			// the local server's, when it runs attract mode's level: read once
+			cl.map = SV_Attracting () ? SV_ShareMap (cl.model_name[i], &cl.map_checksum2) : NULL;
+			if (!cl.map)
+				cl.map = CM_LoadMap (cl.model_name[i], NULL, &cl.map_checksum2);
 			cl.clipmodels[i] = cl.map ? CM_WorldModel (cl.map) : NULL;
 		}
 		else if (cl.model_name[i][0] == '*')
@@ -416,7 +424,8 @@ static void Sound_NextDownload (void)
 
 	if (cls.downloadnumber == 0)
 	{
-		Con_Printf ("Checking sounds...\n");
+		if (!CL_Attracting ())
+			Con_Printf ("Checking sounds...\n");
 		cls.downloadnumber = 1;
 	}
 
@@ -666,8 +675,11 @@ static void CL_ParseServerData (void)
 	cl.movevars.entgravity         = MSG_ReadFloat();
 
 	// seperate the printfs so the server message can have a color
-	Con_Printf("\n\n\35\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\37\n\n");
-	Con_Printf ("%c%s\n", 2, str);
+	if (!CL_Attracting ())
+	{
+		Con_Printf("\n\n\35\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\36\37\n\n");
+		Con_Printf ("%c%s\n", 2, str);
+	}
 
 	// ask for the sound list next
 	memset(cl.sound_name, 0, sizeof(cl.sound_name));
@@ -1129,6 +1141,19 @@ for another player than the one followed, or any a scan or a seek reads
 static bool CL_Unseen (void)
 {
 	return CL_MVDSkipMessage () || CL_MVDQuiet ();
+}
+
+// what a server stuffs for the signon and the protocol, all attract mode's
+// level may stuff: the console is the user's
+static bool CL_SignonStuff (const char *s)
+{
+	static const char *const	words[] = {"changing", "reconnect", "skins", "fullserverinfo", "cmd ", NULL};
+	int		i;
+
+	for (i = 0 ; words[i] ; i++)
+		if (!strncmp (s, words[i], strlen (words[i])))
+			return true;
+	return false;
 }
 
 /*
@@ -1712,6 +1737,11 @@ void CL_ParseServerMessage (void)
 			s = MSG_ReadString ();
 			if (CL_Unseen ())
 				break;
+			if (CL_Attracting ())
+			{	// attract mode's level speaks to no one
+				Con_DPrintf ("%s", s);
+				break;
+			}
 			if (i == PRINT_CHAT)
 			{
 				CL_FCheckRequest (s);
@@ -1724,7 +1754,7 @@ void CL_ParseServerMessage (void)
 
 		case svc_centerprint:
 			s = MSG_ReadString ();
-			if (!CL_Unseen ())
+			if (!CL_Unseen () && !CL_Attracting ())
 				SCR_CenterPrint (s);
 			break;
 			
@@ -1737,6 +1767,8 @@ void CL_ParseServerMessage (void)
 				CL_ParseVWepPrecache (s);
 			else if (cls.mvdplayback && !strncmp (s, "//at ", 5))
 				CL_MVDHint (s);
+			else if (CL_Attracting () && !CL_SignonStuff (s))
+				Con_DPrintf ("stufftext passed by in attract mode\n");
 			else if (cls.state < ca_active || !CL_Unseen ())
 				Cbuf_AddText (s);
 			break;

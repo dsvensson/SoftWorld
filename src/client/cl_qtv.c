@@ -249,6 +249,11 @@ qtvplay [source@]host[:port], also as qw://[source@]host[:port]/qtvplay; in a
 browser [source@]ws(s)://host[:port][/path] too
 ==================
 */
+bool CL_QTVBusy (void)
+{
+	return qtv.state != QTV_IDLE;
+}
+
 static void CL_QTVPlay_f (void)
 {
 	char		address[256], *at, *slash;
@@ -260,6 +265,7 @@ static void CL_QTVPlay_f (void)
 		Con_Printf ("qtvplay [stream@]host[:port]\n");
 		return;
 	}
+	CL_AttractStop ();
 
 	arg = Cmd_Argv (1);
 	if (!Q_strncasecmp (arg, "qw://", 5))

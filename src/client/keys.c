@@ -1264,6 +1264,8 @@ void Key_Event (int key, bool down)
 
 	if (!down)
 		key_repeats[key] = 0;
+	else
+		CL_AttractKey ();
 
 	key_count++;
 	if (key_count <= 0)

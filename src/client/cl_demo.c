@@ -933,6 +933,7 @@ void CL_PlayDemo_f (void)
 //
 // disconnect from server
 //
+	CL_AttractStop ();
 	CL_Disconnect ();
 
 //

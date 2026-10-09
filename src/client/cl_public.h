@@ -33,4 +33,5 @@ bool	CL_KeysInGame (void);	// the keys are the game's, not the menu's or the con
 double	CL_FrameWait (void);	// seconds until CL_Frame has a frame to draw
 
 void	CL_Drop (void);			// leaves the game after an error, stopping the demo loop
+void	CL_AttractError (void);	// after it: attract mode passes its map by, or waits for a key
 void	CL_Disconnect (void);

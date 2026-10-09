@@ -112,6 +112,8 @@ Con_MessageMode_f
 */
 static void Con_MessageMode_f (void)
 {
+	if (CL_Attracting ())
+		return;		// no one to talk to; its line is the notify lines'
 	key_input.chat_team = false;
 	cls.key_dest = key_message;
 }
@@ -123,6 +125,8 @@ Con_MessageMode2_f
 */
 static void Con_MessageMode2_f (void)
 {
+	if (CL_Attracting ())
+		return;
 	key_input.chat_team = true;
 	cls.key_dest = key_message;
 }

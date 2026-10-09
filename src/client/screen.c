@@ -678,7 +678,7 @@ static void SCR_DrawConsole (void)
 	}
 	else
 	{
-		if (cls.key_dest == key_game || cls.key_dest == key_message)
+		if ((cls.key_dest == key_game || cls.key_dest == key_message) && !CL_Attracting ())
 			Con_DrawNotify ();	// only draw notify in game
 	}
 }
@@ -1192,11 +1192,19 @@ void SCR_UpdateScreen (void)
 	if (!CSQC_DrawView (&sbar))
 		V_RenderView ();
 	prof = R_ProfStart ();
-	if (r_netgraph.value)
+	if (r_netgraph.value && !CL_Attracting ())
 		SCR_DrawNetGraph ();
 
 
-	if (cl.intermission == 1 && cls.key_dest == key_game)
+	if (CL_Attracting ())
+	{	// attract mode: the view, the map's name and the fade, then the
+		// console and the menu over them
+		CL_AttractDraw ();
+		SCR_DrawFPS ();
+		SCR_DrawConsole ();
+		M_Draw ();
+	}
+	else if (cl.intermission == 1 && cls.key_dest == key_game)
 	{
 		if (sbar && !CSQC_DrawScores ())
 			Sbar_IntermissionOverlay ();

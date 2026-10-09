@@ -673,6 +673,8 @@ bool	CL_CheckOrDownloadFileAs (const char *remote, const char *local)
 		fclose (f);
 		return true;
 	}
+	if (CL_Attracting ())
+		return true;	// attract mode shows what is here
 
 	//ZOID - can't download when recording
 	if (cls.demorecording) {

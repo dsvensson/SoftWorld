@@ -1,5 +1,5 @@
 sw_add_module(sw_client
-	cl_cam.c cl_csqc.c cl_demo.c cl_download.c cl_ents.c cl_fchecks.c cl_fmod.c cl_input.c cl_items.c cl_main.c cl_menu.c
+	cl_attract.c cl_cam.c cl_csqc.c cl_demo.c cl_download.c cl_ents.c cl_fchecks.c cl_fmod.c cl_input.c cl_items.c cl_main.c cl_menu.c
 	cl_mvd.c cl_parse.c cl_part.c cl_qc.c cl_qtv.c cl_pred.c cl_slist.c cl_tent.c
 	console.c keys.c sbar.c screen.c skin.c view.c)
 target_link_libraries(sw_client PUBLIC sw_particles sw_render sw_sound sw_game sw_slist sw_net sw_qcvm sw_common)

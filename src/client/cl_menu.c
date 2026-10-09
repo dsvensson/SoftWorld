@@ -568,10 +568,26 @@ static bool M_SetKeyBind (qcvm_t *vm)
 }
 
 // float clientstate(): 2 in a game, 1 out of one (connecting too, while the
-// console is down over it; FTE's says 2 by then)
+// console is down over it; FTE's says 2 by then); 2 in attract mode, a view
+// behind the menu all along
+// isdemo () and isserver () to the menu: attract mode is a demo playing, no
+// game the menu would end (New Game asks only to end one)
+static float	(*menu_isdemo) (void *ctx);
+static bool		(*menu_isserver) (void *ctx);
+
+static float M_IsDemo (void *ctx)
+{
+	return CL_Attracting () ? 1.0f : menu_isdemo (ctx);
+}
+
+static bool M_IsServer (void *ctx)
+{
+	return !CL_Attracting () && menu_isserver (ctx);
+}
+
 static bool M_ClientState (qcvm_t *vm)
 {
-	QC_ReturnFloat (vm, cls.state == ca_active ? 2.0f : 1.0f);
+	QC_ReturnFloat (vm, cls.state == ca_active || CL_Attracting () ? 2.0f : 1.0f);
 	return true;
 }
 
@@ -851,6 +867,10 @@ void M_Init (void)
 	menu.qc.command = M_Command;
 	CLQC_InitHost (&menu.host);
 	CLQC_FileHost (&menu.host);
+	menu_isdemo = menu.host.is_demo;
+	menu_isserver = menu.host.is_server;
+	menu.host.is_demo = M_IsDemo;
+	menu.host.is_server = M_IsServer;
 
 	menu.builtins = QC_BuiltinsStandard (QC_NUMBERING_MENU);
 	if (!menu.builtins)
