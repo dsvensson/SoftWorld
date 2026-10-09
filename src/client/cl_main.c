@@ -106,6 +106,10 @@ cvar_t	r_drawvweps = {.name = "r_drawvweps", .string = "1", .archive = true,
 cvar_t	r_rocketlight = {.name = "r_rocketlight", .string = "1", .archive = true,
 	.description = "Rockets light up what they fly past.",
 	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "On"}, {0}}};
+cvar_t	r_rocketlight_color = {.name = "r_rocketlight_color", .string = "0.703 0.469 0.055", .archive = true,
+	.description = "The light of rockets and lavaballs (r_rocketlight): red, green and blue, 1 1 1 being white and "
+		"more brighter, up to 4. By default ezQuake's (90 60 7 where its white is 128). Its color in r_lightmode 1 "
+		"with r_dlight_color 1, its brightness with r_dlight_color 0."};
 
 // FTE's names and values: what isn't drawn, and rockets drawn as grenades
 cvar_t	cl_deadbodyfilter = {.name = "cl_deadbodyfilter", .string = "0", .archive = true,
@@ -1406,6 +1410,7 @@ static void CL_InitLocal (void)
 	Cvar_RegisterVariable (&cl_predict_players2);
 	Cvar_RegisterVariable (&r_drawvweps);
 	Cvar_RegisterVariable (&r_rocketlight);
+	Cvar_RegisterVariable (&r_rocketlight_color);
 	Cvar_RegisterVariable (&cl_deadbodyfilter);
 	Cvar_RegisterVariable (&cl_gibfilter);
 	Cvar_RegisterVariable (&cl_r2g);

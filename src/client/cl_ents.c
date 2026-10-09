@@ -24,7 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 extern	cvar_t	cl_predict_players;
 extern	cvar_t	cl_predict_players2;
 extern	cvar_t	r_drawvweps;
-extern	cvar_t	r_rocketlight;
+extern	cvar_t	r_rocketlight, r_rocketlight_color;
 extern	cvar_t	cl_deadbodyfilter, cl_gibfilter, cl_r2g;
 extern	cvar_t	cl_solid_players;
 
@@ -78,6 +78,27 @@ dlight_t *CL_AllocDlight (int key)
 	memset (dl, 0, sizeof(*dl));
 	dl->key = key;
 	return dl;
+}
+
+/*
+===============
+CL_RocketLightColor
+
+r_rocketlight_color as a light's level: three numbers, 1 white (one is
+grey), more brighter, at most 4; white if it isn't numbers
+===============
+*/
+static void CL_RocketLightColor (float color[3])
+{
+	int		i, n;
+
+	n = sscanf (r_rocketlight_color.string, "%f %f %f", &color[0], &color[1], &color[2]);
+	if (n == 1)
+		color[1] = color[2] = color[0];
+	else if (n != 3)
+		color[0] = color[1] = color[2] = 1;
+	for (i = 0 ; i < 3 ; i++)
+		color[i] = color[i] > 0 ? color[i] < 4 ? color[i] : 4 : 0;
 }
 
 /*
@@ -1215,6 +1236,8 @@ static void CL_LinkPacketEntities (void)
 				VectorCopy (ent->origin, dl->origin);
 				dl->radius = 200;
 				dl->die = (float)(cl.time + 0.1f);
+				CL_RocketLightColor (dl->color);
+				dl->level = true;
 			}
 		}
 		else if (model->flags & EF_GRENADE)

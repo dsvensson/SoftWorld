@@ -438,7 +438,9 @@ static void R_Profile_f (void)
 ===============
 R_DlightColor
 
-A dynamic light's color with its brightest channel 1; white without color
+A dynamic light's color with its brightest channel 1; white without color.
+One that gives its level too has its color as it is, 1.0 white and more
+brighter: as bright as its brightest channel without r_dlight_color.
 ===============
 */
 void R_DlightColor (const dlight_t *dl, float color[3])
@@ -447,7 +449,12 @@ void R_DlightColor (const dlight_t *dl, float color[3])
 	int		i;
 
 	for (i=0 ; i<3 ; i++)
-		color[i] = r_dlight_color.value && m > 0 ? dl->color[i] / m : 1;
+	{
+		if (dl->level)
+			color[i] = r_dlight_color.value ? dl->color[i] : m;
+		else
+			color[i] = r_dlight_color.value && m > 0 ? dl->color[i] / m : 1;
+	}
 }
 
 /*

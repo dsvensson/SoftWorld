@@ -41,6 +41,8 @@ typedef struct
 	float	decay;				// drop this each second
 	float	minlight;			// don't add when contributing less
 	float   color[4];
+	bool	level;				// color is its brightness too, 1.0 white (r_rocketlight_color's),
+								// not only its hue
 } dlight_t;
 
 typedef struct
