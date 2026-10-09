@@ -762,13 +762,18 @@ static void SV_Begin_f (void)
 		return;
 	}
 
-	SV_PutClientInGame ();
-	if (svs.attract && host_client->spectator)
-		SV_AttractPlace (host_client);
-	// the view the spawn turned it to, reliable: the first frames' datagrams
-	// can't be counted on, as FTE's begin has it
-	if (sv_player->v.fixangle)
-		SV_SendFixangle (host_client, NULL);
+	if (sv.loadgame && host_client == svs.clients && !host_client->spectator)
+		SV_LoadedPlayerBegins (host_client);	// a savegame's, in the body it left
+	else
+	{
+		SV_PutClientInGame ();
+		if (svs.attract && host_client->spectator)
+			SV_AttractPlace (host_client);
+		// the view the spawn turned it to, reliable: the first frames'
+		// datagrams can't be counted on, as FTE's begin has it
+		if (sv_player->v.fixangle)
+			SV_SendFixangle (host_client, NULL);
+	}
 
 	// clear the net statistics, because connecting gives a bogus picture
 	host_client->netchan.frame_latency = 0;

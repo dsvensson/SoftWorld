@@ -291,6 +291,15 @@ other players' slots empty, which ironwail and FTE load as they are; a comment a
 they skip, says so and keeps the precaches, those QuakeC made during the level too. FTE's date
 follows NetQuake's 39 characters of comment.
 
+`load <name>` reads `<name>.sav` from the game directory, else the base's, so that ironwail's
+saves in id1/ load too, as QuakeSpasm's and FTE's do. As ironwail and FTE load, the map spawns as
+`map` spawns it, and then the save's globals and edicts replace what it made; a save numbered as
+NetQuake numbers its edicts (the map's from 2) has them and the entities they refer to moved past
+this server's player slots. The level holds still until the player is back in their body, which
+neither ClientConnect nor PutClientInServer touches; FTE's `RestoreGame` runs if the progs have
+it. A load is a single player game as New Game starts one, with the save's skill, and ends
+attract mode or the game there is.
+
 ### IPv6
 
 The native programs take IPv6 with IPv4: a server listens on both at its port (UDP, and TCP for

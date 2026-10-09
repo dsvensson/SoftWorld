@@ -812,6 +812,17 @@ void PR_ClearLightstyles (void)
 	}
 }
 
+// the server's style, told to no one (a savegame's, before its clients come)
+void PR_SetLightstyle (int style, const char *val)
+{
+	size_t	len = strlen (val) + 1;
+
+	Mem_Free (pr_lightstyles[style]);
+	pr_lightstyles[style] = Mem_Alloc (len);
+	memcpy (pr_lightstyles[style], val, len);
+	sv.lightstyles[style] = pr_lightstyles[style];
+}
+
 static bool PF_lightstyle (qcvm_t *vm)
 {
 	int			style;
@@ -819,7 +830,7 @@ static bool PF_lightstyle (qcvm_t *vm)
 	client_t	*client;
 	int			j;
 	size_t		len;
-	
+
 	style = PF_ArgTrunc(vm, 0);
 	val = QC_ArgString(vm, 1);
 	if (style < 0 || style >= MAX_LIGHTSTYLES)
@@ -829,12 +840,9 @@ static bool PF_lightstyle (qcvm_t *vm)
 	}
 
 // change the string in sv
+	PR_SetLightstyle (style, val);
 	len = strlen (val) + 1;
-	Mem_Free (pr_lightstyles[style]);
-	pr_lightstyles[style] = Mem_Alloc (len);
-	memcpy (pr_lightstyles[style], val, len);
-	sv.lightstyles[style] = pr_lightstyles[style];
-	
+
 // send message to all clients on this server
 	if (sv.state != ss_active)
 		return true;

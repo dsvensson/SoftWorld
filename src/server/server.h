@@ -61,6 +61,8 @@ typedef struct
 	bool	paused;				// are we paused?
 	bool		intermission;		// NetQuake's progs began an intermission, finale or cutscene
 	int			skill;				// the level's, as it spawned (a savegame's)
+	bool		loadgame;			// a savegame's level, held still until its player is back
+	float		loadparms[NUM_SPAWN_PARMS];	// that player's spawn parms, from the save
 
 	//check player/eyes models for hacks
 	unsigned	model_player_checksum;
@@ -499,11 +501,27 @@ float SV_Deathmatch (void);		// the level's deathmatch rules, a showcase's or th
 //
 // sv_save.c: savegames
 //
+// a savegame read, its level for SV_GotoLevel to restore
+typedef struct sv_loadgame_s
+{
+	char		name[MAX_OSPATH];
+	char		map[MAX_QPATH];
+	float		parms[NUM_SPAWN_PARMS];		// its player's
+	int			skill;
+	double		time;
+	int			slots;					// the client slots its edicts are numbered with (NetQuake's 1)
+	char		lightstyles[MAX_LIGHTSTYLES][MAX_STYLESTRING];
+	char		*data;					// its text from the globals on
+	char		*extensions;			// its comment block after the edicts, or NULL
+} sv_loadgame_t;
+
 const char *SV_CanSave (void);		// why the game can't be saved now, NULL if it can
+void SV_ApplySave (const sv_loadgame_t *load);	// on the level just spawned
+void SV_LoadedPlayerBegins (client_t *cl);		// a savegame's player back in their body
 void SV_InitSave (void);
 
 void SV_SpawnServer (char *server, spawnparms_t parms, struct cmap_s *built);	// built: adopted, or NULL
-void SV_GotoLevel (const char *name, spawnparms_t parms, struct cmap_s *built);
+void SV_GotoLevel (const char *name, spawnparms_t parms, struct cmap_s *built, const struct sv_loadgame_s *load);
 
 //
 // sv_attract.c: a showcase's levels

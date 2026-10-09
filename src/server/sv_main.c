@@ -938,10 +938,13 @@ static void SVC_DirectConnect (void)
 	newcl->whensaidhead = 0;
 	newcl->lockedtill = 0;
 
-	// call the progs to get default spawn parms for the new client
+	// call the progs to get default spawn parms for the new client; a
+	// savegame's player has its own
 	PR_ExecuteProgram (PR_GLOBAL(SetNewParms));
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
 		newcl->spawn_parms[i] = PR_PARM(i);
+	if (sv.loadgame && newcl == svs.clients && adr.type == NA_LOOPBACK)
+		memcpy (newcl->spawn_parms, sv.loadparms, sizeof(newcl->spawn_parms));
 
 	if (newcl->spectator)
 		Con_Printf ("Spectator %s connected\n", newcl->name);
@@ -1562,7 +1565,7 @@ void SV_Frame (double time, bool away)
 	rand ();
 
 // decide the simulation time
-	still = sv.paused || SV_HeldStill (away);
+	still = sv.paused || sv.loadgame || SV_HeldStill (away);
 	if (!still)
 		sv.time += time;
 

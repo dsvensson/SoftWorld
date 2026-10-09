@@ -957,27 +957,28 @@ static string_t ED_NewString (const char *string)
 }
 
 
+// the client slots the edicts of a savegame being read were numbered with
+// (NetQuake's 1); 0 for a map's own entities
+static int	ed_saveslots;
+
 /*
 =============
-ED_ParseEpair
+ED_ParseValue
 
-A field's value from the map's text; false if it can't be parsed
+A value of the type from the map's or a savegame's text; false if it can't
+be parsed. A savegame's entities are numbered as this server has them, its
+edicts past its client slots after this server's.
 =============
 */
-static bool ED_ParseEpair (edict_t *ent, const qc_definfo_t *key, char *s)
+static bool ED_ParseValue (int *d, uint32_t type, char *s)
 {
 	int				i, n;
 	char			string[128];
 	qc_definfo_t	field;
 	char			*v, *w;
 	qc_func_t		func;
-	int				*d;
 
-	if (!ED_FieldValue (ent, key))
-		return false;
-	d = (int *)((char *)&ent->v + (size_t)key->ofs * 4);
-
-	switch (key->type)
+	switch (type)
 	{
 	case ev_string:
 		*d = ED_NewString (s);
@@ -1003,6 +1004,8 @@ static bool ED_ParseEpair (edict_t *ent, const qc_definfo_t *key, char *s)
 		
 	case ev_entity:
 		n = atoi (s);
+		if (ed_saveslots && n > ed_saveslots)
+			n += MAX_CLIENTS - ed_saveslots;
 		if (n < 0 || n >= MAX_EDICTS)
 			SV_Error ("EDICT_NUM: bad number %i", n);
 		*d = n;
@@ -1027,11 +1030,19 @@ static bool ED_ParseEpair (edict_t *ent, const qc_definfo_t *key, char *s)
 		}
 		*d = (int)func;
 		break;
-		
+
 	default:
 		break;
 	}
 	return true;
+}
+
+// a field's value from the text; false if it can't be parsed
+static bool ED_ParseEpair (edict_t *ent, const qc_definfo_t *key, char *s)
+{
+	if (!ED_FieldValue (ent, key))
+		return false;
+	return ED_ParseValue ((int *)((char *)&ent->v + (size_t)key->ofs * 4), key->type, s);
 }
 
 /*
@@ -1118,6 +1129,63 @@ snprintf (com_token, sizeof(com_token), "0 %s 0", temp);
 			SV_Error ("ED_ParseEdict: parse error");
 	}
 
+	return data;
+}
+
+/*
+=============
+ED_ParseGlobals
+
+A savegame's globals, after the opening brace, by name; slots is the client
+slots its edicts were numbered with
+=============
+*/
+char *ED_ParseGlobals (char *data, int slots)
+{
+	qc_definfo_t	d;
+	char			keyname[64];
+
+	ed_saveslots = slots;
+	while (1)
+	{
+		data = COM_Parse (data);
+		if (com_token[0] == '}')
+			break;
+		if (!data)
+			SV_Error ("ED_ParseGlobals: EOF without closing brace");
+		Q_strncpyz (keyname, com_token, sizeof(keyname));
+
+		data = COM_Parse (data);
+		if (!data)
+			SV_Error ("ED_ParseGlobals: EOF without closing brace");
+		if (com_token[0] == '}')
+			SV_Error ("ED_ParseGlobals: closing brace without data");
+
+		if (!QC_ProgsGlobalDef (pr.progs, keyname, &d)
+			|| (uint64_t)d.ofs + PR_TypeWords (d.type) > QC_ProgsNumGlobals (pr.progs))
+		{
+			Con_DPrintf ("'%s' is not a global\n", keyname);
+			continue;
+		}
+		if (!ED_ParseValue ((int *)&pr.globals[d.ofs], d.type, com_token))
+			SV_Error ("ED_ParseGlobals: parse error");
+	}
+	ed_saveslots = 0;
+	return data;
+}
+
+/*
+=============
+ED_ParseSavedEdict
+
+A savegame's edict, after the opening brace, into ent, which is in use
+=============
+*/
+char *ED_ParseSavedEdict (char *data, edict_t *ent, int slots)
+{
+	ed_saveslots = slots;
+	data = ED_ParseEdict (data, ent);
+	ed_saveslots = 0;
 	return data;
 }
 

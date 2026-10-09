@@ -309,10 +309,11 @@ static void SV_Give_f (void)
 SV_GotoLevel
 
 The server on a level, taking the connected clients along with their spawn
-parms as parms says: map's, changelevel's and restart's
+parms as parms says: map's, changelevel's and restart's; a savegame's level
+restored (load) before the clients come
 ======================
 */
-void SV_GotoLevel (const char *name, spawnparms_t parms, cmap_t *built)
+void SV_GotoLevel (const char *name, spawnparms_t parms, cmap_t *built, const sv_loadgame_t *load)
 {
 	char	level[MAX_QPATH];
 	char	expanded[MAX_QPATH];
@@ -336,6 +337,8 @@ void SV_GotoLevel (const char *name, spawnparms_t parms, cmap_t *built)
 	SV_SendMessagesToAll ();
 
 	SV_SpawnServer (level, parms, built);
+	if (load)
+		SV_ApplySave (load);
 
 	SV_BroadcastCommand ("reconnect\n");
 
@@ -361,7 +364,7 @@ static void SV_Map_f (void)
 		return;
 	}
 	SV_AttractStop ();
-	SV_GotoLevel (Cmd_Argv(1), sv.state == ss_dead || pr.nq ? SPAWNPARMS_NEW : SPAWNPARMS_CHANGE, NULL);
+	SV_GotoLevel (Cmd_Argv(1), sv.state == ss_dead || pr.nq ? SPAWNPARMS_NEW : SPAWNPARMS_CHANGE, NULL, NULL);
 }
 
 /*
@@ -380,7 +383,7 @@ static void SV_Changelevel_f (void)
 		return;
 	}
 	SV_AttractStop ();
-	SV_GotoLevel (Cmd_Argv(1), sv.state == ss_dead ? SPAWNPARMS_NEW : SPAWNPARMS_CHANGE, NULL);
+	SV_GotoLevel (Cmd_Argv(1), sv.state == ss_dead ? SPAWNPARMS_NEW : SPAWNPARMS_CHANGE, NULL, NULL);
 }
 
 /*
@@ -396,7 +399,7 @@ static void SV_Restart_f (void)
 	SV_AttractStop ();		// a showcase's level is no game to restart
 	if (sv.state == ss_dead)
 		return;
-	SV_GotoLevel (sv.name, SPAWNPARMS_KEEP, NULL);
+	SV_GotoLevel (sv.name, SPAWNPARMS_KEEP, NULL, NULL);
 }
 
 

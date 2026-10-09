@@ -98,6 +98,7 @@ void PR_RunThreads (void);
 void PR_LoadProgs (void);
 void PR_FreeProgs (void);			// the VM gone, until the next map
 void PR_ClearLightstyles (void);	// PF_lightstyle's copies
+void PR_SetLightstyle (int style, const char *val);	// told to no one
 
 // qw-qc's qwprogs.dat as the program was built with it (qwprogs_data.c, which
 // cmake/qcprogs.cmake makes): the game when the game directory has none
@@ -112,9 +113,13 @@ void ED_Free (edict_t *ed);
 
 void ED_Print (edict_t *ed);
 
-// savegames: the globals and an edict as NetQuake's version 5 writes them
+// savegames: the globals and an edict as NetQuake's version 5 writes them,
+// and read back after their opening braces (slots: the client slots the
+// save's edicts are numbered with, NetQuake's 1)
 void ED_WriteGlobals (FILE *f);
 void ED_Write (FILE *f, edict_t *ed, int num);
+char *ED_ParseGlobals (char *data, int slots);
+char *ED_ParseSavedEdict (char *data, edict_t *ent, int slots);
 
 void ED_LoadFromFile (char *data);
 

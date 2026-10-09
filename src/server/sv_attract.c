@@ -131,7 +131,7 @@ bool SV_AttractLevel (const sv_attract_t *level)
 	svs.attract = true;
 
 	SV_AttractQuiet (true);
-	SV_GotoLevel (attract.map, SPAWNPARMS_NEW, level->built);
+	SV_GotoLevel (attract.map, SPAWNPARMS_NEW, level->built, NULL);
 	SV_AttractQuiet (false);
 	return sv.state == ss_active && !strcmp (sv.name, attract.map);
 }
