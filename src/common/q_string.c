@@ -79,7 +79,7 @@ void Q_strncatz (char *dest, const char *src, size_t size)
 		Q_strncpyz (dest + len, src, size - len);
 }
 
-int Q_atoi (char *str)
+int Q_atoi (const char *str)
 {
 	int		val;
 	int		sign;
@@ -137,7 +137,7 @@ int Q_atoi (char *str)
 	return 0;
 }
 
-float Q_atof (char *str)
+float Q_atof (const char *str)
 {
 	double	val;
 	int		sign;

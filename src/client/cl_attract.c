@@ -6,7 +6,8 @@
 // to black and the next, loaded meanwhile on the loader's thread (loader.h),
 // fades in. There is no status bar: the map's file name and message are in
 // the lower left. Escape opens the menu over it, the console key the
-// console; the world plays on under both.
+// console; the world plays on under both. It is drawn and heard with its
+// own settings (attract_look), whatever the player's are.
 
 #include "cl_local.h"
 
@@ -19,11 +20,37 @@ static cvar_t	cl_attract_gamedirs = {.name = "cl_attract_gamedirs", .string = "i
 		"each map runs with its own directory's progs."};
 static cvar_t	cl_attract_time = {.name = "cl_attract_time", .string = "12", .archive = true,
 	.description = "Seconds attract mode (cl_attract) shows each map."};
+static cvar_t	cl_attract_fov = {.name = "cl_attract_fov", .string = "110", .archive = true,
+	.description = "Attract mode's (cl_attract) field of view, in place of fov's, 10 to 170."};
+static cvar_t	cl_attract_wateralpha = {.name = "cl_attract_wateralpha", .string = "0.4", .archive = true,
+	.description = "How opaque attract mode (cl_attract) draws water, 0 to 1, in place of r_wateralpha."};
+static cvar_t	cl_attract_slimealpha = {.name = "cl_attract_slimealpha", .string = "0.6", .archive = true,
+	.description = "How opaque attract mode (cl_attract) draws slime, 0 to 1, in place of r_slimealpha."};
+static cvar_t	cl_attract_volume = {.name = "cl_attract_volume", .string = "0.05", .archive = true,
+	.description = "Attract mode's (cl_attract) sound volume, 0 to 1, in place of volume's."};
+
+// What attract mode draws and plays with, whatever the player's settings
+// are: its own, or else the variable's default. A setting that changes how
+// it looks or sounds belongs here.
+static const struct
+{
+	const char	*name;
+	cvar_t		*own;			// NULL: the default
+	float		min, max;		// own's bounds
+} attract_look[] = {
+	{.name = "fov", .own = &cl_attract_fov, .min = 10, .max = 170},
+	{.name = "r_wateralpha", .own = &cl_attract_wateralpha, .min = 0, .max = 1},
+	{.name = "r_slimealpha", .own = &cl_attract_slimealpha, .min = 0, .max = 1},
+	{.name = "r_lavaalpha"},
+	{.name = "r_telealpha"},
+	{.name = "d_mipcap"},
+	{.name = "d_mipscale"},
+	{.name = "volume", .own = &cl_attract_volume, .min = 0, .max = 1},
+};
 
 #define	ATTRACT_FADE		0.5		// seconds to black, and from it
 #define	ATTRACT_SIGNON		15		// seconds a level may take to come up
 #define	ATTRACT_FAILURES	5		// in a row, and attract mode stops
-#define	ATTRACT_WATERALPHA	0.7f	// its water's opacity, whatever r_wateralpha says
 #define	MAX_ATTRACT_SPOTS	64
 
 typedef enum
@@ -443,6 +470,39 @@ SHOWING
 ===============================================================================
 */
 
+/*
+=================
+CL_AttractLook
+
+Its own settings (attract_look) in use while it is on, the player's kept
+for after (Cvar_Override)
+=================
+*/
+static void CL_AttractLook (bool on)
+{
+	cvar_t	*var;
+	char	value[32];
+	float	v;
+	int		i;
+
+	for (i = 0 ; i < (int)(sizeof(attract_look) / sizeof(attract_look[0])) ; i++)
+	{
+		if (!(var = Cvar_FindVar ((char *)attract_look[i].name)))
+			continue;
+		if (!on)
+			Cvar_Override (var, NULL);
+		else if (!attract_look[i].own)
+			Cvar_Override (var, var->defaultstring);
+		else
+		{
+			v = attract_look[i].own->value;
+			v = v < attract_look[i].min ? attract_look[i].min : v > attract_look[i].max ? attract_look[i].max : v;
+			snprintf (value, sizeof(value), "%g", (double)v);
+			Cvar_Override (var, value);
+		}
+	}
+}
+
 static void CL_AttractSetState (attractstate_t state)
 {
 	attract.state = state;
@@ -552,8 +612,6 @@ void CL_AttractFrame (void)
 	double	t = host.realtime - attract.statetime;
 	float	black;
 
-	// its water seen through, its maps' vis widened for it (CL_AttractLoad)
-	r_scene.wateralpha = attract.state != AT_OFF ? ATTRACT_WATERALPHA : 0;
 	if (attract.state == AT_OFF)
 	{
 		if (attract.ready && !attract.hold && cl_attract.value && CL_AttractIdle ())
@@ -727,6 +785,7 @@ void CL_AttractStart (void)
 	}
 	attract.failures = 0;
 	BSP_WantVisPatch (VP_ATTRACT, true);	// its maps stay widened here, whatever r_novis says
+	CL_AttractLook (true);
 	CL_AttractSetState (AT_BLACK);
 	CL_AttractLoadNext ();
 
@@ -762,6 +821,7 @@ void CL_AttractStop (void)
 	SV_AttractEnd ();
 	FS_SetSearchChain (NULL);
 	BSP_WantVisPatch (VP_ATTRACT, false);
+	CL_AttractLook (false);
 }
 
 /*
@@ -821,6 +881,9 @@ static void CL_AttractChanged (cvar_t *var)
 {
 	if (var == &cl_attract && !var->value)
 		CL_AttractStop ();
+	if ((var == &cl_attract_fov || var == &cl_attract_wateralpha || var == &cl_attract_slimealpha
+		|| var == &cl_attract_volume) && attract.state != AT_OFF)
+		CL_AttractLook (true);
 }
 
 void CL_InitAttract (void)
@@ -828,6 +891,10 @@ void CL_InitAttract (void)
 	Cvar_RegisterVariable (&cl_attract);
 	Cvar_RegisterVariable (&cl_attract_gamedirs);
 	Cvar_RegisterVariable (&cl_attract_time);
+	Cvar_RegisterVariable (&cl_attract_fov);
+	Cvar_RegisterVariable (&cl_attract_wateralpha);
+	Cvar_RegisterVariable (&cl_attract_slimealpha);
+	Cvar_RegisterVariable (&cl_attract_volume);
 	Cvar_AddChangeHook (CL_AttractChanged);
 	Cmd_AddCommand ("attract", CL_Attract_f,
 		"Starts attract mode (cl_attract) if no game is on: maps of cl_attract_gamedirs shown from their intermission "

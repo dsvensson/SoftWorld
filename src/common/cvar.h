@@ -83,6 +83,7 @@ typedef struct cvar_s
 	const char	*description;		// what it does, for the console
 	const cvar_value_t	*values;	// what each value does, ended by {0}; or NULL
 	char	*defaultstring;			// the string it was registered with
+	char	*userstring;			// the player's own while C code reads another (Cvar_Override), else NULL
 	float	value;
 	struct cvar_s *next;
 } cvar_t;
@@ -108,7 +109,16 @@ void	Cvar_SetValue (char *var_name, float value);
 // expands value to a string and calls Cvar_Set
 
 float	Cvar_VariableValue (char *var_name);
-// returns 0 if not defined or non numeric
+// returns 0 if not defined or non numeric; the player's own value, as QC
+// and the console see it (Cvar_Override)
+
+// For a while C code reads the variable as value, the player's own kept (as
+// attract mode draws with its own settings): the console shows and sets
+// theirs, the configuration saves it and QC reads it. NULL puts theirs back.
+// The change hooks follow what C code reads.
+void	Cvar_Override (cvar_t *var, const char *value);
+// the player's own value, overridden or not
+const char	*Cvar_UserString (const cvar_t *var);
 
 char 	*Cvar_CompleteVariable (char *partial);
 // attempts to match a partial variable name for command line completion

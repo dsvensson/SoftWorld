@@ -57,7 +57,12 @@ float	Cvar_VariableValue (char *var_name)
 	var = Cvar_FindVar (var_name);
 	if (!var)
 		return 0;
-	return Q_atof (var->string);
+	return Q_atof (Cvar_UserString (var));
+}
+
+const char *Cvar_UserString (const cvar_t *var)
+{
+	return var->userstring ? var->userstring : var->string;
 }
 
 
@@ -152,15 +157,25 @@ void Cvar_AddChangeHook (cvar_change_hook_t hook)
 	Sys_Error ("Cvar_AddChangeHook: too many hooks");
 }
 
+static void Cvar_Changed (cvar_t *var)
+{
+	int		i;
+
+	for (i = 0 ; i < MAX_CHANGE_HOOKS && cvar_change_hooks[i] ; i++)
+		cvar_change_hooks[i] (var);
+}
+
 /*
 ============
 Cvar_Set
+
+The player's value; one overridden (Cvar_Override) keeps what C code reads
 ============
 */
 void Cvar_Set (char *var_name, char *value)
 {
 	cvar_t	*var;
-	int		i;
+	char	**set;
 	
 	var = Cvar_FindVar (var_name);
 	if (!var)
@@ -174,14 +189,50 @@ void Cvar_Set (char *var_name, char *value)
 	if (var->serverinfo && cvar_serverinfo_hook)
 		cvar_serverinfo_hook (var_name, value);
 	
-	Mem_Free (var->string);	// free the old value string
+	set = var->userstring ? &var->userstring : &var->string;
+	Mem_Free (*set);	// free the old value string
 	
-	var->string = Mem_Alloc (strlen(value)+1);
-	Q_strcpy (var->string, value);
+	*set = Mem_Alloc (strlen(value)+1);
+	Q_strcpy (*set, value);
 	var->value = Q_atof (var->string);
 
-	for (i = 0 ; i < MAX_CHANGE_HOOKS && cvar_change_hooks[i] ; i++)
-		cvar_change_hooks[i] (var);
+	Cvar_Changed (var);
+}
+
+/*
+============
+Cvar_Override
+============
+*/
+void Cvar_Override (cvar_t *var, const char *value)
+{
+	const char	*now = value ? value : var->userstring;
+	char		*old = var->string;
+	bool		changed;
+
+	if (!now)
+		return;		// not overridden, nor to be
+	if (value && var->userstring && !strcmp (value, var->string))
+		return;		// overridden so already
+	changed = strcmp (now, var->string) != 0;
+	if (value)
+	{
+		var->string = Mem_Alloc (strlen (value) + 1);
+		strcpy (var->string, value);
+		if (var->userstring)
+			Mem_Free (old);
+		else
+			var->userstring = old;	// theirs, kept
+	}
+	else
+	{
+		var->string = var->userstring;
+		var->userstring = NULL;
+		Mem_Free (old);
+	}
+	var->value = Q_atof (var->string);
+	if (changed)
+		Cvar_Changed (var);
 }
 
 /*
@@ -260,7 +311,9 @@ static void Cvar_Describe (cvar_t *v)
 	if (v->description || v->values)
 		Con_Printf ("\n");
 	Con_Printf ("%s : default value is \"%s\"\n", v->name, v->defaultstring);
-	Con_Printf ("%*s current value is \"%s\"\n", (int)strlen (v->name) + 2, "", v->string);
+	Con_Printf ("%*s current value is \"%s\"\n", (int)strlen (v->name) + 2, "", Cvar_UserString (v));
+	if (v->userstring)
+		Con_Printf ("%*s in use for now is \"%s\"\n", (int)strlen (v->name) + 2, "", v->string);
 }
 
 /*
@@ -306,7 +359,7 @@ void Cvar_ResetAll_f (void)
 
 	for (var = cvar_vars ; var ; var = var->next)
 	{
-		if (var->serverinfo || var->noreset || !strcmp (var->string, var->defaultstring))
+		if (var->serverinfo || var->noreset || !strcmp (Cvar_UserString (var), var->defaultstring))
 			continue;
 		Cvar_Set (var->name, var->defaultstring);
 		n++;
@@ -329,6 +382,6 @@ void Cvar_WriteVariables (FILE *f)
 	
 	for (var = cvar_vars ; var ; var = var->next)
 		if (var->archive)
-			fprintf (f, "%s \"%s\"\n", var->name, var->string);
+			fprintf (f, "%s \"%s\"\n", var->name, Cvar_UserString (var));
 }
 

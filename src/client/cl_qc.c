@@ -69,7 +69,7 @@ static const char *CLQC_CvarString (void *ctx, const char *varname)
 	cvar_t	*var = Cvar_FindVar ((char *)varname);
 
 	(void)ctx;
-	return var ? var->string : NULL;
+	return var ? Cvar_UserString (var) : NULL;
 }
 
 static void CLQC_CvarSet (void *ctx, const char *varname, const char *value)

@@ -829,7 +829,7 @@ int R_SurfaceAlpha (const entity_t *ent, const msurface_t *surf)
 		else if (surf->flags & SURF_TELE)
 			alpha *= r_telealpha.value;
 		else
-			alpha *= r_scene.wateralpha > 0 ? r_scene.wateralpha : r_wateralpha.value;
+			alpha *= r_wateralpha.value;
 	}
 	a = (int)(alpha * 256 + 0.5f);
 	return a < 0 ? 0 : a > 256 ? 256 : a;

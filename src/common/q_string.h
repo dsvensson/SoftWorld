@@ -45,8 +45,8 @@ void	Q_strncpyz (char *dest, const char *src, size_t size);
 // appends src to dest (a buffer of size bytes), truncating and always terminating
 void	Q_strncatz (char *dest, const char *src, size_t size);
 
-int		Q_atoi (char *str);
-float	Q_atof (char *str);
+int		Q_atoi (const char *str);
+float	Q_atof (const char *str);
 
 // does a varargs printf into a temp buffer
 char	*va (char *format, ...);

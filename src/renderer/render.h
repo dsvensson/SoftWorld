@@ -331,7 +331,6 @@ typedef struct
 	const r_ring_t	*rings;		// this frame's
 	int			numrings;
 	const r_partscene_t	*particles;	// scripted ones, this frame's; NULL none
-	float		wateralpha;		// water's opacity in place of r_wateralpha's (attract mode's), 0 none
 
 	int			viewcontents;	// output: contents at the view origin after R_RenderView
 	int			framecount;		// output: the view's frame, the visframe of the static entities it drew
