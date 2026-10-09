@@ -700,6 +700,19 @@ void CL_Record_f (void)
 	CL_RecordNameList (&buf, &seq, svc_soundlist, svc_fte_soundlistshort, cl.sound_name, MAX_SOUNDS);
 	CL_RecordNameList (&buf, &seq, svc_modellist, svc_fte_modellistshort, cl.model_name, MAX_MODELS);
 
+// the particle effects of the server's list, as it sent them (FTE's)
+	for (i = 1; i < MAX_PARTICLE_PRECACHE; i++) {
+		if (!cl.particle_name[i][0])
+			continue;
+		MSG_WriteByte (&buf, svc_fte_precache);
+		MSG_WriteShort (&buf, PC_PARTICLE | i);
+		MSG_WriteString (&buf, cl.particle_name[i]);
+		if (buf.cursize > MAX_MSGLEN/2) {
+			CL_WriteRecordDemoMessage (&buf, seq++);
+			SZ_Clear (&buf);
+		}
+	}
+
 // spawnstatic
 
 	for (i = 0; i < cl.num_statics; i++) {

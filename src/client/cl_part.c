@@ -19,12 +19,82 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // cl_part.c -- the scripted particles' client (src/particles): what they hit,
 // the client's brush entities as prediction has them (cl.pmove.physents),
-// their lights and sounds, and their run once a frame into the scene
+// their lights and sounds, the effects the client and the server name, found
+// again whenever the scripts change, and their run once a frame into the scene
 
 #include "cl_local.h"
 
+static const char	*cl_effectnames[PT_NUM] =
+{
+	"TE_GUNSHOT", "TE_GUNSHOTQUAD", "TE_QWGUNSHOT", "TE_SPIKE", "TE_SPIKEQUAD", "TE_SUPERSPIKE", "TE_SUPERSPIKEQUAD",
+	"TE_BULLET", "TE_SUPERBULLET", "TE_WIZSPIKE", "TE_KNIGHTSPIKE",
+	"TE_EXPLOSION", "TE_EXPLOSIONQUAD", "TE_TEI_BIGEXPLOSION", "TE_TAREXPLOSION", "TE_LAVASPLASH", "TE_TELEPORT",
+	"TE_BLOOD", "TE_QWBLOOD", "TE_LIGHTNINGBLOOD", "TE_SPARK", "TE_FLAMEJET", "TE_PLASMABURN", "TE_SMALLFLASH",
+	"TE_TEI_SMOKE", "TE_TEI_PLASMAHIT", "TE_TEI_G3", "te_nexbeam", "TE_RAILTRAIL",
+	"TE_LIGHTNING1", "TE_LIGHTNING1_END", "TE_LIGHTNING2", "TE_LIGHTNING2_END", "TE_LIGHTNING3", "TE_LIGHTNING3_END",
+	"TE_BEAM", "TE_BEAM_END",
+	"TR_ROCKET", "TR_GRENADE", "TR_BLOOD", "TR_WIZSPIKE", "TR_SLIGHTBLOOD", "TR_KNIGHTSPIKE", "TR_VORESPIKE",
+};
+
+static int		cl_effects[PT_NUM];
+static int		cl_particles[MAX_PARTICLE_PRECACHE];	// the server's list's
+static int		cl_modeltrails[MAX_MODELS], cl_modelemits[MAX_MODELS];
+static unsigned	cl_modelemitflags[MAX_MODELS];
+
+int CL_Effect (cl_effect_t effect)
+{
+	return cl_effects[effect];
+}
+
+const char *CL_EffectName (cl_effect_t effect)
+{
+	return cl_effectnames[effect];
+}
+
+int CL_ParticleEffect (int index)
+{
+	return index > 0 && index < MAX_PARTICLE_PRECACHE && cl.particle_name[index][0] ? cl_particles[index] : P_INVALID;
+}
+
+void CL_PrecacheParticle (int index)
+{
+	cl_particles[index] = P_FindParticleType (cl.particle_name[index]);
+}
+
+void CL_PrecacheModelEffects (int index)
+{
+	cl_modeltrails[index] = cl.model_name[index][0] ? P_ModelTrail (cl.model_name[index]) : P_INVALID;
+	cl_modelemits[index] = cl.model_name[index][0] ? P_ModelEmit (cl.model_name[index], &cl_modelemitflags[index])
+		: P_INVALID;
+}
+
+int CL_ModelTrail (int modelindex)
+{
+	return modelindex > 0 && modelindex < MAX_MODELS ? cl_modeltrails[modelindex] : P_INVALID;
+}
+
+int CL_ModelEmit (int modelindex, unsigned *emitflags)
+{
+	*emitflags = modelindex > 0 && modelindex < MAX_MODELS ? cl_modelemitflags[modelindex] : 0;
+	return modelindex > 0 && modelindex < MAX_MODELS ? cl_modelemits[modelindex] : P_INVALID;
+}
+
+// the scripts changed: every name found again
+static void CL_PartChanged (void)
+{
+	int		i;
+
+	for (i = 0 ; i < PT_NUM ; i++)
+		cl_effects[i] = P_FindParticleType (cl_effectnames[i]);
+	for (i = 1 ; i < MAX_PARTICLE_PRECACHE ; i++)
+		cl_particles[i] = cl.particle_name[i][0] ? P_FindParticleType (cl.particle_name[i]) : P_INVALID;
+	for (i = 1 ; i < MAX_MODELS ; i++)
+		CL_PrecacheModelEffects (i);
+	CSQC_ParticlesChanged ();
+}
+
 // the first brush entity a line hits, as prediction has them: hull 0 of each
-static float CL_PartTrace (const vec3_t start, const vec3_t end, vec3_t impact, vec3_t normal, int *entnum)
+float CL_PartTrace (const vec3_t start, const vec3_t end, vec3_t impact, vec3_t normal, int *entnum)
 {
 	const physent_t	*pe;
 	trace_t			trace;
@@ -128,6 +198,7 @@ void CL_InitParticles (void)
 		.dlight = CL_PartDlight,
 		.precachesound = CL_PartPrecacheSound,
 		.sound = CL_PartSound,
+		.changed = CL_PartChanged,
 	};
 
 	P_Init (&ph);

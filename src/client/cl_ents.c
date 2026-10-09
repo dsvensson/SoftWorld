@@ -239,12 +239,14 @@ static double		lerp_lastat;		// when the last update arrived
 static double		lerp_interval;		// the mean gap between updates
 
 // where each entity's particle trail got to, and how far on its next particle
-// is due (R_RocketTrail), as the frame cl_trailframe counts last drew it
+// is due (R_RocketTrail), as the frame cl_trailframe counts last drew it; its
+// scripted trail's state, and its emitter's
 typedef struct
 {
 	vec3_t	end;
 	float	carry;
 	int		frame;
+	p_trailstate_t	*ts, *emit;
 } enttrail_t;
 
 static enttrail_t	cl_trails[MAX_EDICTS];
@@ -1026,6 +1028,55 @@ static bool CL_FilterModel (int modelindex, int frame)
 
 /*
 ===============
+CL_Emit
+
+An emitter's effect at the entity for the frame's time: toward its forward,
+or down, as QuakeSpasm-Spiked points them (an alias model's pitch is turned
+over, as id draws it); true if it is drawn in the model's place
+===============
+*/
+static bool CL_Emit (const entity_t *ent, int emit, unsigned flags, p_trailstate_t **ts)
+{
+	vec3_t	axis[3];
+
+	AngleVectors (ent->angles, axis[0], axis[1], axis[2]);
+	if (!(flags & P_EMITFORWARDS))
+		VectorScale (axis[2], -1, axis[0]);
+	else if (ent->model->type == mod_alias)
+		axis[0][2] = -axis[0][2];
+	P_RunEffect (ent->origin, axis[0], (float)cls.frametime, emit, ts);
+	return (flags & P_EMITREPLACE) != 0;
+}
+
+// an entity's trail state, as the server's trails of it go on (svc_fte_trailparticles)
+p_trailstate_t **CL_EntityTrailState (int entnum)
+{
+	return entnum > 0 && entnum < MAX_EDICTS ? &cl_trails[entnum].ts : NULL;
+}
+
+// the static entities' emitters (r_effect), where the last view drew them
+static void CL_EmitStatics (void)
+{
+	entity_t	*ent;
+	unsigned	flags;
+	int			i, m, emit;
+
+	if (cl.paused)
+		return;
+	for (i = 0 ; i < cl.num_statics ; i++)
+	{
+		ent = CL_StaticEntity (i);
+		if (!ent->model || ent->visframe != r_scene.framecount)
+			continue;
+		for (m = 1 ; m < MAX_MODELS && cl.model_precache[m] != ent->model ; m++)
+			;
+		if (m < MAX_MODELS && (emit = CL_ModelEmit (m, &flags)) != P_INVALID)
+			CL_Emit (ent, emit, flags, &ent->emitstate);
+	}
+}
+
+/*
+===============
 CL_LinkPacketEntities
 
 ===============
@@ -1044,6 +1095,9 @@ static void CL_LinkPacketEntities (void)
 	enttrail_t			*trail;
 	float				*carry;
 	bool				fresh;
+	vec3_t				axis[3];
+	unsigned			emitflags;
+	int					effect, emit, type;
 
 	cl_trailframe++;
 
@@ -1123,9 +1177,18 @@ static void CL_LinkPacketEntities (void)
 
 		VectorCopy (origin, ent->origin);
 
+		// the entity's own effects, else its model's (r_trail, r_effect)
+		effect = CL_ParticleEffect (s1->traileffect);
+		if (effect == P_INVALID)
+			effect = CL_ModelTrail (s1->modelindex);
+		emitflags = P_EMITFORWARDS;
+		emit = CL_ParticleEffect (s1->emiteffect);
+		if (emit == P_INVALID)
+			emit = CL_ModelEmit (s1->modelindex, &emitflags);
+
 		// add automatic particle trails: the stretch since the last frame drew
 		// the entity, which starts one if it didn't, or the entity teleported
-		if (!model->flags)
+		if (!model->flags && effect == P_INVALID && emit == P_INVALID)
 			continue;
 		trail = &cl_trails[s1->number];
 		fresh = trail->frame != cl_trailframe - 1;
@@ -1136,6 +1199,7 @@ static void CL_LinkPacketEntities (void)
 		{
 			VectorCopy (ent->origin, trail->end);
 			trail->carry = 0;
+			P_DelinkTrailstate (&trail->ts);
 		}
 		VectorCopy (trail->end, old_origin);
 		VectorCopy (ent->origin, trail->end);
@@ -1144,7 +1208,7 @@ static void CL_LinkPacketEntities (void)
 
 		if (model->flags & EF_ROCKET)
 		{
-			R_RocketTrail (old_origin, ent->origin, 0, carry);
+			type = 0;
 			if (r_rocketlight.value)
 			{
 				dl = CL_AllocDlight (s1->number);
@@ -1154,17 +1218,29 @@ static void CL_LinkPacketEntities (void)
 			}
 		}
 		else if (model->flags & EF_GRENADE)
-			R_RocketTrail (old_origin, ent->origin, 1, carry);
+			type = 1;
 		else if (model->flags & EF_GIB)
-			R_RocketTrail (old_origin, ent->origin, 2, carry);
+			type = 2;
 		else if (model->flags & EF_ZOMGIB)
-			R_RocketTrail (old_origin, ent->origin, 4, carry);
+			type = 4;
 		else if (model->flags & EF_TRACER)
-			R_RocketTrail (old_origin, ent->origin, 3, carry);
+			type = 3;
 		else if (model->flags & EF_TRACER2)
-			R_RocketTrail (old_origin, ent->origin, 5, carry);
+			type = 5;
 		else if (model->flags & EF_TRACER3)
-			R_RocketTrail (old_origin, ent->origin, 6, carry);
+			type = 6;
+		else
+			type = -1;
+		if (effect == P_INVALID && type >= 0)
+			effect = CL_Effect (PT_TR_ROCKET + type);	// FTE's names for id's
+		if (cl.paused)
+			continue;
+		AngleVectors (ent->angles, axis[0], axis[1], axis[2]);
+		if (!P_Trail (old_origin, ent->origin, effect, (float)cls.frametime, s1->number, (const vec3_t *)axis, &trail->ts)
+			&& type >= 0)
+			R_RocketTrail (old_origin, ent->origin, type, carry);
+		if (emit != P_INVALID && CL_Emit (ent, emit, emitflags, &trail->emit))
+			cl.numvisedicts--;		// the effect in its place
 	}
 }
 
@@ -1935,6 +2011,7 @@ void CL_EmitEntities (void)
 	// the beams it adds before show this frame
 	if (!CSQC_DrawsView ())
 		CL_UpdateTEnts ();
+	CL_EmitStatics ();
 	CL_RunParticles ();
 }
 

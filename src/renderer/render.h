@@ -85,6 +85,7 @@ typedef struct entity_s
 											
 	int						dlightframe;	// dynamic lighting
 	int						dlightbits;
+	struct p_trailstate_s	*emitstate;		// the client's: a static entity's emitter (src/particles)
 	
 // FIXME: could turn these into a union
 	int						trivial_accept;
@@ -330,6 +331,7 @@ typedef struct
 	const r_partscene_t	*particles;	// scripted ones, this frame's; NULL none
 
 	int			viewcontents;	// output: contents at the view origin after R_RenderView
+	int			framecount;		// output: the view's frame, the visframe of the static entities it drew
 } r_scene_t;
 
 extern r_scene_t	r_scene;

@@ -1285,6 +1285,7 @@ void R_RenderView (void)
 		r_profthrash++;
 
 	r_scene.viewcontents = r_viewleaf->contents;
+	r_scene.framecount = r_framecount;
 
 	if (r_timegraph.value)
 		R_TimeGraph ();

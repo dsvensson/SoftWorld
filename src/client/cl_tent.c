@@ -27,6 +27,8 @@ typedef struct
 {
 	int		entity;
 	struct model_s	*model;
+	cl_effect_t		effect;		// the scripted trail drawn in place of the model
+	p_trailstate_t	*ts;
 	float	endtime;
 	vec3_t	start, end;
 } beam_t;
@@ -117,80 +119,66 @@ static explosion_t *CL_AllocExplosion (void)
 
 /*
 =================
-CL_ParseBeam
-=================
-*/
-static void CL_ParseBeam (model_t *m)
-{
-	int		ent;
-	vec3_t	start, end;
-
-	ent = MSG_ReadShort ();
-
-	start[0] = MSG_ReadCoord ();
-	start[1] = MSG_ReadCoord ();
-	start[2] = MSG_ReadCoord ();
-
-	end[0] = MSG_ReadCoord ();
-	end[1] = MSG_ReadCoord ();
-	end[2] = MSG_ReadCoord ();
-
-	CL_AddBeam (m, ent, start, end);
-}
-
-/*
-=================
 CL_AddBeam
 
-A beam of model m from entity ent for 0.2 seconds, replacing the entity's
-last; CSQC's are keyed past the server's entity numbers
+A beam of a kind (TE_LIGHTNING1 to 3, TE_BEAM) from entity ent for 0.2
+seconds, replacing the entity's last; CSQC's are keyed past the server's
+entity numbers. A script's effect of the kind is drawn in place of its model,
+and the kind's _END where it hits.
 =================
 */
-void CL_AddBeam (model_t *m, int ent, const vec3_t start, const vec3_t end)
+void CL_AddBeam (int type, int ent, const vec3_t start, const vec3_t end)
 {
-	beam_t	*b;
-	int		i;
-
-// override any beam with the same entity
-	for (i=0, b=cl_beams ; i< MAX_BEAMS ; i++, b++)
-		if (b->entity == ent)
-		{
-			b->entity = ent;
-			b->model = m;
-			b->endtime = (float)(cl.time + 0.2f);
-			VectorCopy (start, b->start);
-			VectorCopy (end, b->end);
-			return;
-		}
-
-// find a free beam
-	for (i=0, b=cl_beams ; i< MAX_BEAMS ; i++, b++)
+	static const struct
 	{
-		if (!b->model || b->endtime < cl.time)
-		{
-			b->entity = ent;
-			b->model = m;
-			b->endtime = (float)(cl.time + 0.2f);
-			VectorCopy (start, b->start);
-			VectorCopy (end, b->end);
-			return;
-		}
-	}
-	Con_Printf ("beam list overflow!\n");	
-}
+		int			type;
+		const char	*model;
+		cl_effect_t	effect;
+	} kinds[] =
+	{
+		{TE_LIGHTNING1, "progs/bolt.mdl", PT_LIGHTNING1}, {TE_LIGHTNING2, "progs/bolt2.mdl", PT_LIGHTNING2},
+		{TE_LIGHTNING3, "progs/bolt3.mdl", PT_LIGHTNING3}, {TE_BEAM, "progs/beam.mdl", PT_BEAM},
+	};
+	beam_t	*b, *found = NULL;
+	model_t	*m;
+	vec3_t	dir, far, impact, normal;
+	int		i, k, hit;
 
-// a temporary entity as the server sent it
-typedef struct
-{
-	int		type;
-	int		ent;			// a beam's
-	vec3_t	pos;			// its origin, a box's min, a beam's start
-	vec3_t	pos2;			// a beam's end, a box's max, a color (0 to 1)
-	vec3_t	vel;			// a velocity or a direction
-	int		count;
-	int		color, colors;	// palette colors: the first and how many from it
-	float	time;			// TEDP_CUSTOMFLASH's
-} tent_t;
+	for (k = 0 ; k < (int)(sizeof(kinds) / sizeof(kinds[0])) && kinds[k].type != type ; k++)
+		;
+	if (k == (int)(sizeof(kinds) / sizeof(kinds[0])))
+		return;
+	// the mission packs' beam.mdl, where the game has one
+	if (!(m = Mod_ForName ((char *)kinds[k].model, type != TE_BEAM)))
+		return;
+
+	// where it hits: a little past its end
+	VectorSubtract (end, start, dir);
+	VectorNormalize (dir);
+	for (i = 0 ; i < 3 ; i++)
+		far[i] = end[i] + 4 * dir[i];
+	if (CL_PartTrace (start, far, impact, normal, &hit) < 1)
+		P_RunEffect (impact, normal, 1, CL_Effect (kinds[k].effect + 1), NULL);
+
+	// the entity's, else a free one
+	for (i=0, b=cl_beams ; i< MAX_BEAMS && !found ; i++, b++)
+		if (b->entity == ent)
+			found = b;
+	for (i=0, b=cl_beams ; i< MAX_BEAMS && !found ; i++, b++)
+		if (!b->model || b->endtime < cl.time)
+			found = b;
+	if (!found)
+	{
+		Con_Printf ("beam list overflow!\n");
+		return;
+	}
+	found->entity = ent;
+	found->model = m;
+	found->effect = kinds[k].effect;
+	found->endtime = (float)(cl.time + 0.2f);
+	VectorCopy (start, found->start);
+	VectorCopy (end, found->end);
+}
 
 static void CL_ReadVector (vec3_t v)
 {
@@ -356,15 +344,24 @@ static void CL_TEntLight (const vec3_t pos, float radius, float time, float deca
 	dl->color[3] = 0.7f;
 }
 
-// an explosion's particles, light and sound, and with sprite its sprite
-static void CL_Explosion (vec3_t pos, bool sprite, float r, float g, float b)
+// a scripted effect of a temporary entity, count times; false where no script
+// has it, for id's
+static bool CL_TEntEffect (cl_effect_t effect, const vec3_t pos, const vec3_t dir, float count)
+{
+	return P_RunEffect (pos, dir, count, CL_Effect (effect), NULL);
+}
+
+// an explosion's light and sound, and unless a script's effect is shown
+// (scripted), id's particles, with sprite its sprite
+static void CL_Explosion (vec3_t pos, bool scripted, bool sprite, float r, float g, float b)
 {
 	explosion_t	*ex;
 
-	R_ParticleExplosion (pos);
+	if (!scripted)
+		R_ParticleExplosion (pos);
 	CL_TEntLight (pos, 350, 0.5f, 300, r, g, b);
 	S_StartSound (-1, 0, cl_sfx_r_exp3, pos, 1, 1);
-	if (sprite)
+	if (sprite && !scripted)
 	{
 		ex = CL_AllocExplosion ();
 		VectorCopy (pos, ex->origin);
@@ -377,104 +374,120 @@ static void CL_Explosion (vec3_t pos, bool sprite, float r, float g, float b)
 =================
 CL_RunTEnt
 
-What a temporary entity shows: id's particles for each, as FTE's classic
-particles have them; those without stay unseen
+What a temporary entity shows: a script's effect for it, or one of those it
+falls back to, as FTE's do; else id's particles, as FTE's classic particles
+have them. Those with neither stay unseen.
 =================
 */
-static void CL_RunTEnt (const tent_t *te)
+void CL_RunTEnt (const tent_t *te)
 {
 	vec3_t		pos, vel, mid;
-	model_t		*m;
+	float		count = (float)te->count;
 
 	VectorCopy (te->pos, pos);
 	VectorCopy (te->vel, vel);
 	switch (te->type)
 	{
 	case TE_WIZSPIKE:			// spike hitting wall
-		R_RunParticleEffect (pos, vec3_origin, 20, 30);
+		if (!CL_TEntEffect (PT_WIZSPIKE, pos, NULL, 1))
+			R_RunParticleEffect (pos, vec3_origin, 20, 30);
 		S_StartSound (-1, 0, cl_sfx_wizhit, pos, 1, 1);
 		break;
 
 	case TE_KNIGHTSPIKE:			// spike hitting wall
-		R_RunParticleEffect (pos, vec3_origin, 226, 20);
+		if (!CL_TEntEffect (PT_KNIGHTSPIKE, pos, NULL, 1))
+			R_RunParticleEffect (pos, vec3_origin, 226, 20);
 		S_StartSound (-1, 0, cl_sfx_knighthit, pos, 1, 1);
 		break;
 
 	case TE_SPIKE:			// spike hitting wall
 	case TE_BULLET:
 	case TEDP_SPIKEQUAD:
-		R_RunParticleEffect (pos, vec3_origin, 0, 10);
+		if ((te->type != TEDP_SPIKEQUAD || !CL_TEntEffect (PT_SPIKEQUAD, pos, NULL, 1))
+			&& !CL_TEntEffect (te->type == TE_BULLET ? PT_BULLET : PT_SPIKE, pos, NULL, 1)
+			&& !CL_TEntEffect (PT_GUNSHOT, pos, NULL, 10))
+			R_RunParticleEffect (pos, vec3_origin, 0, 10);
 		CL_SpikeSound (pos);
 		break;
 
 	case TE_SUPERSPIKE:			// super spike hitting wall
 	case TE_SUPERBULLET:
 	case TEDP_SUPERSPIKEQUAD:
-		R_RunParticleEffect (pos, vec3_origin, 0, 20);
+		if ((te->type != TEDP_SUPERSPIKEQUAD || !CL_TEntEffect (PT_SUPERSPIKEQUAD, pos, NULL, 1))
+			&& !CL_TEntEffect (te->type == TE_SUPERBULLET ? PT_SUPERBULLET : PT_SUPERSPIKE, pos, NULL, 1)
+			&& !CL_TEntEffect (te->type == TE_SUPERBULLET ? PT_BULLET : PT_SPIKE, pos, NULL, 2)
+			&& !CL_TEntEffect (PT_GUNSHOT, pos, NULL, 20))
+			R_RunParticleEffect (pos, vec3_origin, 0, 20);
 		CL_SpikeSound (pos);
 		break;
 
 	case TE_EXPLOSION:			// rocket explosion
-		CL_Explosion (pos, true, 0.2f, 0.1f, 0.05f);
+		CL_Explosion (pos, CL_TEntEffect (PT_EXPLOSION, pos, NULL, 1), true, 0.2f, 0.1f, 0.05f);
 		break;
 	case TE_NQEXPLOSION:
-		CL_Explosion (pos, false, 0.2f, 0.1f, 0.05f);
+		CL_Explosion (pos, CL_TEntEffect (PT_EXPLOSION, pos, NULL, 1), false, 0.2f, 0.1f, 0.05f);
 		break;
 	case TEDP_EXPLOSIONQUAD:
-		CL_Explosion (pos, true, 0.25f, 0.25f, 1);
+		CL_Explosion (pos, CL_TEntEffect (PT_EXPLOSIONQUAD, pos, NULL, 1) || CL_TEntEffect (PT_EXPLOSION, pos, NULL, 1),
+			true, 0.25f, 0.25f, 1);
 		break;
 	case TE_EXPLOSION3_NEH:
 	case TEDP_EXPLOSIONRGB:
-		CL_Explosion (pos, false, te->pos2[0], te->pos2[1], te->pos2[2]);
+		CL_Explosion (pos, CL_TEntEffect (PT_EXPLOSION, pos, NULL, 1), false, te->pos2[0], te->pos2[1], te->pos2[2]);
 		break;
 	case TEDP_TEI_BIGEXPLOSION:
-		CL_Explosion (pos, false, 2, 1.5f, 0.75f);
+		CL_Explosion (pos, CL_TEntEffect (PT_TEI_BIGEXPLOSION, pos, NULL, 1) || CL_TEntEffect (PT_EXPLOSION, pos, NULL, 1),
+			false, 2, 1.5f, 0.75f);
 		break;
 
 	case TE_EXPLOSION2:			// NetQuake's, in a color range
-		R_ParticleExplosion2 (pos, te->color, te->colors);
+		if (!P_RunEffectName (pos, NULL, 1, va ("TE_EXPLOSION2_%i_%i", te->color, te->colors))
+			&& !CL_TEntEffect (PT_EXPLOSION, pos, NULL, 1))
+			R_ParticleExplosion2 (pos, te->color, te->colors);
 		CL_TEntLight (pos, 350, 0.5f, 300, 0, 0, 0);
 		S_StartSound (-1, 0, cl_sfx_r_exp3, pos, 1, 1);
 		break;
 
 	case TE_TAREXPLOSION:			// tarbaby explosion
-		R_BlobExplosion (pos);
+		if (!CL_TEntEffect (PT_TAREXPLOSION, pos, NULL, 1))
+			R_BlobExplosion (pos);
 		S_StartSound (-1, 0, cl_sfx_r_exp3, pos, 1, 1);
 		break;
 
 	case TE_LIGHTNING1:				// lightning bolts
-		CL_AddBeam (Mod_ForName ("progs/bolt.mdl", true), te->ent, te->pos, te->pos2);
-		break;
 	case TE_LIGHTNING2:
-		CL_AddBeam (Mod_ForName ("progs/bolt2.mdl", true), te->ent, te->pos, te->pos2);
-		break;
 	case TE_LIGHTNING3:
-		CL_AddBeam (Mod_ForName ("progs/bolt3.mdl", true), te->ent, te->pos, te->pos2);
-		break;
-	case TE_BEAM:					// the mission packs' beam.mdl, where the game has one
-		if ((m = Mod_ForName ("progs/beam.mdl", false)))
-			CL_AddBeam (m, te->ent, te->pos, te->pos2);
+	case TE_BEAM:
+		CL_AddBeam (te->type, te->ent, te->pos, te->pos2);
 		break;
 
 	case TE_LAVASPLASH:
-		R_LavaSplash (pos);
+		if (!CL_TEntEffect (PT_LAVASPLASH, pos, NULL, 1))
+			R_LavaSplash (pos);
 		break;
 
 	case TE_TELEPORT:
-		R_TeleportSplash (pos);
+		if (!CL_TEntEffect (PT_TELEPORT, pos, NULL, 1))
+			R_TeleportSplash (pos);
 		break;
 
 	case TE_GUNSHOT:			// bullet hitting wall
 	case TE_NQGUNSHOT:
+		if (!CL_TEntEffect (PT_GUNSHOT, pos, NULL, count) && !CL_TEntEffect (PT_QWGUNSHOT, pos, NULL, count))
+			R_RunParticleEffect (pos, vec3_origin, 0, 20*te->count);
+		break;
 	case TEDP_GUNSHOTQUAD:
-		R_RunParticleEffect (pos, vec3_origin, 0, 20*te->count);
+		if (!CL_TEntEffect (PT_GUNSHOTQUAD, pos, NULL, 1) && !CL_TEntEffect (PT_GUNSHOT, pos, NULL, 1))
+			R_RunParticleEffect (pos, vec3_origin, 0, 20);
 		break;
 
 	case TE_BLOOD:				// bullets hitting body
-		R_RunParticleEffect (pos, vec3_origin, 73, 20*te->count);
+		if (!CL_TEntEffect (PT_BLOOD, pos, NULL, count) && !CL_TEntEffect (PT_QWBLOOD, pos, NULL, count))
+			R_RunParticleEffect (pos, vec3_origin, 73, 20*te->count);
 		break;
 	case TEDP_BLOOD:
-		R_RunParticleEffect (pos, vel, 73, te->count);
+		if (!CL_TEntEffect (PT_BLOOD, pos, vel, count))
+			R_RunParticleEffect (pos, vel, 73, te->count);
 		break;
 	case TEDP_BLOODSHOWER:
 		VectorAdd (te->pos, te->pos2, mid);
@@ -483,27 +496,51 @@ static void CL_RunTEnt (const tent_t *te)
 		break;
 
 	case TE_LIGHTNINGBLOOD:		// lightning hitting body
-		R_RunParticleEffect (pos, vec3_origin, 225, 50);
+		if (!CL_TEntEffect (PT_LIGHTNINGBLOOD, pos, NULL, 1))
+			R_RunParticleEffect (pos, vec3_origin, 225, 50);
 		break;
 
 	case TEDP_SPARK:
-		R_RunParticleEffect (pos, vel, 224, te->count);
+		if (!CL_TEntEffect (PT_SPARK, pos, vel, count))
+			R_RunParticleEffect (pos, vel, 224, te->count);
 		break;
 	case TEDP_FLAMEJET:
-		R_RunParticleEffect (pos, vel, 232, te->count);
+		if (!CL_TEntEffect (PT_FLAMEJET, pos, vel, count))
+			R_RunParticleEffect (pos, vel, 232, te->count);
 		break;
 	case TEDP_PLASMABURN:
-		R_RunParticleEffect (pos, vec3_origin, 15, 50);
+		if (!CL_TEntEffect (PT_PLASMABURN, pos, NULL, 1))
+			R_RunParticleEffect (pos, vec3_origin, 15, 50);
+		break;
+	case TEDP_SMOKE:
+		CL_TEntEffect (PT_TEI_SMOKE, pos, vel, count);
+		break;
+	case TEDP_TEI_PLASMAHIT:
+		CL_TEntEffect (PT_TEI_PLASMAHIT, pos, vel, count);
+		break;
+
+	case TE_RAILTRAIL:
+		P_Trail (te->pos, te->pos2, CL_Effect (PT_RAILTRAIL), 1, 0, NULL, NULL);
+		break;
+	case TEDP_TEI_G3:			// Nexuiz's beam
+		if (!P_Trail (te->pos, te->pos2, CL_Effect (PT_TEI_G3), 1, 0, NULL, NULL))
+			P_Trail (te->pos, te->pos2, CL_Effect (PT_NEXBEAM), 1, 0, NULL, NULL);
 		break;
 
 	case TEDP_SMALLFLASH:
+		CL_TEntEffect (PT_SMALLFLASH, pos, NULL, 1);
 		CL_TEntLight (pos, 200, 0.2f, 1000, 0, 0, 0);
 		break;
 	case TEDP_CUSTOMFLASH:
 		CL_TEntLight (pos, (float)te->count, te->time, te->count / te->time, te->pos2[0], te->pos2[1], te->pos2[2]);
 		break;
 
-	default:	// rails, cubes, weather and smoke: none of id's
+	case TEDP_PARTICLERAIN:
+	case TEDP_PARTICLESNOW:
+		P_RunWeather (te->pos, te->pos2, vel, count, te->color, te->type == TEDP_PARTICLESNOW ? "snow" : "rain");
+		break;
+
+	default:	// cubes: none of id's
 		break;
 	}
 }
@@ -617,6 +654,10 @@ static void CL_UpdateBeams (void)
 			if (f > 0)
 				CL_TrueLightningEnd (b->start, f > 1 ? 1 : f, end);
 		}
+
+	// a script's trail in place of the model
+		if (P_Trail (b->start, end, CL_Effect (b->effect), (float)cls.frametime, b->entity, NULL, &b->ts))
+			continue;
 
 	// calculate pitch and yaw
 		VectorSubtract (end, b->start, dist);

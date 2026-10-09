@@ -589,6 +589,7 @@ bool	CSQC_DrawHud (void);		// simple CSQC's status bar in place of the client's
 bool	CSQC_DrawScores (void);		// and its scores
 bool	CSQC_DrawsHud (void);		// it has CSQC_DrawHud
 bool	CSQC_DrawsView (void);
+void	CSQC_ParticlesChanged (void);	// the scripts changed: its effects found again
 // a matching csprogs is here already (none needs downloading)
 bool	CSQC_CheckDownload (const char *csprogsname, unsigned checksum, size_t size);
 
@@ -627,17 +628,61 @@ void CL_NewMapParticles (void);		// a level's start
 void CL_ReloadParticles (void);		// a new game directory
 void CL_RunParticles (void);		// once a frame, into r_scene
 
+// the scripted effects the client starts by name, P_INVALID where no script
+// has one: temporary entities', beams' (and the ends where they hit), and
+// id's trails in R_RocketTrail's order
+typedef enum
+{
+	PT_GUNSHOT, PT_GUNSHOTQUAD, PT_QWGUNSHOT, PT_SPIKE, PT_SPIKEQUAD, PT_SUPERSPIKE, PT_SUPERSPIKEQUAD,
+	PT_BULLET, PT_SUPERBULLET, PT_WIZSPIKE, PT_KNIGHTSPIKE,
+	PT_EXPLOSION, PT_EXPLOSIONQUAD, PT_TEI_BIGEXPLOSION, PT_TAREXPLOSION, PT_LAVASPLASH, PT_TELEPORT,
+	PT_BLOOD, PT_QWBLOOD, PT_LIGHTNINGBLOOD, PT_SPARK, PT_FLAMEJET, PT_PLASMABURN, PT_SMALLFLASH,
+	PT_TEI_SMOKE, PT_TEI_PLASMAHIT, PT_TEI_G3, PT_NEXBEAM, PT_RAILTRAIL,
+	PT_LIGHTNING1, PT_LIGHTNING1_END, PT_LIGHTNING2, PT_LIGHTNING2_END, PT_LIGHTNING3, PT_LIGHTNING3_END,
+	PT_BEAM, PT_BEAM_END,
+	PT_TR_ROCKET, PT_TR_GRENADE, PT_TR_BLOOD, PT_TR_WIZSPIKE, PT_TR_SLIGHTBLOOD, PT_TR_KNIGHTSPIKE, PT_TR_VORESPIKE,
+	PT_NUM
+} cl_effect_t;
+
+int CL_Effect (cl_effect_t effect);
+const char *CL_EffectName (cl_effect_t effect);
+int CL_ParticleEffect (int index);		// the server's list's effect index (svc_fte_precache)
+void CL_PrecacheParticle (int index);	// it came
+void CL_PrecacheModelEffects (int index);	// a model came: its r_trail and r_effect
+// a model's scripted effects (r_trail, r_effect), P_INVALID none; emitflags P_EMIT*
+int CL_ModelTrail (int modelindex);
+int CL_ModelEmit (int modelindex, unsigned *emitflags);
+// the first brush entity a line hits (the fraction of the way), as particles hit them
+float CL_PartTrace (const vec3_t start, const vec3_t end, vec3_t impact, vec3_t normal, int *entnum);
+
 //
 // cl_tent
 //
+
+// a temporary entity as the server sent it
+typedef struct
+{
+	int		type;
+	int		ent;			// a beam's
+	vec3_t	pos;			// its origin, a box's min, a beam's start
+	vec3_t	pos2;			// a beam's end, a box's max, a color (0 to 1)
+	vec3_t	vel;			// a velocity or a direction
+	int		count;
+	int		color, colors;	// palette colors: the first and how many from it
+	float	time;			// TEDP_CUSTOMFLASH's
+} tent_t;
+
+void CL_RunTEnt (const tent_t *te);		// what it shows
 void CL_InitTEnts (void);
 void CL_ClearTEnts (void);
-void CL_AddBeam (struct model_s *m, int ent, const vec3_t start, const vec3_t end);
+// a beam of a kind (TE_LIGHTNING1 to 3, TE_BEAM) from ent, for 0.2 seconds
+void CL_AddBeam (int type, int ent, const vec3_t start, const vec3_t end);
 
 //
 // cl_ents.c
 //
 void CL_SetSolidPlayers (int playernum);
+p_trailstate_t **CL_EntityTrailState (int entnum);	// its trail's, NULL for none
 void CL_SetUpPlayerPrediction(bool dopred);
 void CL_EmitEntities (void);
 void CL_ClearProjectiles (void);

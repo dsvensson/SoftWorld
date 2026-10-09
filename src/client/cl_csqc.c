@@ -37,6 +37,7 @@ extern int	file_from_pak;
 #define	CSQC_API_VERSION	1.0f
 #define	SOLID_BSP			4
 #define	MAX_CSMODELS		1024	// FTE's: CSQC's own models, beside the server's
+#define	MAX_CSEFFECTS		256		// CSQC's own particle effects, beside the server's
 
 // FTE's: addentities' masks, renderflags, predraw's results
 #define	MASK_ENGINE			1		// the client's own entities
@@ -76,8 +77,22 @@ static struct
 	char			modelnames[MAX_CSMODELS][MAX_QPATH];
 	model_t			*models[MAX_CSMODELS];
 
+	// CSQC's own particle effects, as FTE has them: -i is effectnames[i], the
+	// script's effects[i] (found again when the scripts change), and id's
+	// trail of the name classic[i] (-1 none)
+	char			effectnames[MAX_CSEFFECTS][MAX_QPATH];
+	int				effects[MAX_CSEFFECTS];
+	int				classic[MAX_CSEFFECTS];
+	int				numeffects;
+
 	double			starttime;			// of the map: cltime counts from it
-	float			*trailcarry;		// each entity's trail: how far on its next particle is due
+	// each entity's trail: how far on its next particle is due (id's), and
+	// its scripted one's state
+	struct cs_trail_s
+	{
+		float			carry;
+		p_trailstate_t	*ts;
+	}				*trails;
 
 	// the fields the client reads each frame (NOFIELD if the progs lacks one)
 	struct
@@ -127,8 +142,11 @@ static bool CSQC_OnRemove (void *ctx, qcvm_t *vm, qc_ent_t e)
 	qc_word_t	n = {0};
 
 	(void)ctx;
-	if (csqc.trailcarry && e < QC_MaxEdicts (vm))
-		csqc.trailcarry[e] = 0;
+	if (csqc.trails && e < QC_MaxEdicts (vm))
+	{
+		csqc.trails[e].carry = 0;
+		P_DelinkTrailstate (&csqc.trails[e].ts);
+	}
 	if (QC_FindField (vm, "entnum", &ofs, &type) && type == QC_EV_FLOAT && QC_GetField (vm, e, ofs, 1, &n.u)
 		&& n.f > 0 && n.f < MAX_EDICTS && csqc.ents[(int)n.f] == e)
 		csqc.ents[(int)n.f] = 0;
@@ -691,37 +709,111 @@ EFFECTS
 ==============================================================================
 */
 
-// the particle trails, by R_RocketTrail's type, by FTE's names for them
-static const char *const cs_trails[] = {"TR_ROCKET", "TR_GRENADE", "TR_BLOOD", "TR_WIZSPIKE", "TR_SLIGHTBLOOD",
-	"TR_KNIGHTSPIKE", "TR_VORESPIKE"};
+// id's trail of a name, by FTE's names for them: R_RocketTrail's type, -1 none
+static int CS_ClassicTrail (const char *effect)
+{
+	int		i;
 
-// float particleeffectnum(string name): one of the trails, 0 for an effect
-// the client lacks
+	for (i = 0 ; i <= PT_TR_VORESPIKE - PT_TR_ROCKET ; i++)
+		if (!Q_strcasecmp (effect, CL_EffectName (PT_TR_ROCKET + i)))
+			return i;
+	return -1;
+}
+
+// the effect of particleeffectnum's number: the server's list's for one
+// above 0, CSQC's own for one below
+static int CS_Effect (int n, int *classic)
+{
+	*classic = -1;
+	if (n > 0 && n < MAX_PARTICLE_PRECACHE)
+	{
+		*classic = CS_ClassicTrail (cl.particle_name[n]);
+		return CL_ParticleEffect (n);
+	}
+	if (n < 0 && -n < csqc.numeffects)
+	{
+		*classic = csqc.classic[-n];
+		return csqc.effects[-n];
+	}
+	return P_INVALID;
+}
+
+void CSQC_ParticlesChanged (void)
+{
+	int		i;
+
+	for (i = 1 ; i < csqc.numeffects ; i++)
+		csqc.effects[i] = P_FindParticleType (csqc.effectnames[i]);
+}
+
+// float particleeffectnum(string name): the server's number for the effect,
+// else CSQC's own (below 0), as FTE numbers them; a name no script has keeps
+// its number, for the scripts loaded later, and for id's trails of FTE's names
 static bool CS_ParticleEffectNum (qcvm_t *vm)
 {
 	const char	*effect = QC_ArgString (vm, 0);
-	size_t		i;
+	int			i;
 
-	for (i = 0 ; i < sizeof(cs_trails) / sizeof(cs_trails[0]) ; i++)
-		if (!Q_strcasecmp ((char *)effect, (char *)cs_trails[i]))
-			break;
-	QC_ReturnFloat (vm, i < sizeof(cs_trails) / sizeof(cs_trails[0]) ? (float)(i + 1) : 0.0f);
+	QC_ReturnFloat (vm, 0);
+	for (i = 1 ; i < MAX_PARTICLE_PRECACHE ; i++)
+		if (cl.particle_name[i][0] && !strcmp (cl.particle_name[i], effect))
+		{
+			QC_ReturnFloat (vm, (float)i);
+			return true;
+		}
+	for (i = 1 ; i < csqc.numeffects && strcmp (csqc.effectnames[i], effect) ; i++)
+		;
+	if (i == csqc.numeffects)
+	{
+		if (i == MAX_CSEFFECTS || strlen (effect) >= MAX_QPATH)
+			return true;
+		Q_strncpyz (csqc.effectnames[i], effect, sizeof(csqc.effectnames[i]));
+		csqc.effects[i] = P_FindParticleType (effect);
+		csqc.classic[i] = CS_ClassicTrail (effect);
+		csqc.numeffects++;
+	}
+	QC_ReturnFloat (vm, (float)-i);
 	return true;
 }
 
-// void trailparticles(float effect, entity ent, vector start, vector end): the
-// entity's trail goes on, its particles evenly spaced across the stretches
-// QuakeC draws, as FTE keeps a trail per entity
+// void trailparticles(float effect, entity ent, vector start, vector end),
+// or DarkPlaces' entity first: the entity's trail goes on from where it left
+// off, as FTE keeps a trail per entity
 static bool CS_TrailParticles (qcvm_t *vm)
 {
-	int			effect = QC_FloatToInt (QC_ArgFloat (vm, 0)) - 1;
 	qc_ent_t	e = QC_ArgWord (vm, 1);
+	int			effect, classic;
 	vec3_t		start, end;
+	struct cs_trail_s	*trail;
 
+	if (e < QC_MaxEdicts (vm))
+		effect = CS_Effect (QC_FloatToInt (QC_ArgFloat (vm, 0)), &classic);
+	else
+	{
+		// not an entity: a float, the effect
+		e = QC_ArgWord (vm, 0);
+		effect = CS_Effect (QC_FloatToInt (QC_ArgFloat (vm, 1)), &classic);
+	}
 	QC_ArgVector (vm, 2, start);
 	QC_ArgVector (vm, 3, end);
-	if (effect >= 0 && effect < (int)(sizeof(cs_trails) / sizeof(cs_trails[0])))
-		R_RocketTrail (start, end, effect, e && e < QC_MaxEdicts (vm) ? &csqc.trailcarry[e] : NULL);
+	trail = e && e < QC_MaxEdicts (vm) && csqc.trails ? &csqc.trails[e] : NULL;
+	if (!P_Trail (start, end, effect, (float)cls.frametime, e ? -(int)e : 0, NULL, trail ? &trail->ts : NULL)
+		&& classic >= 0)
+		R_RocketTrail (start, end, classic, trail ? &trail->carry : NULL);
+	return true;
+}
+
+// void pointparticles(float effect, vector org, vector vel = '0 0 0', float
+// count = 1)
+static bool CS_PointParticles (qcvm_t *vm)
+{
+	vec3_t	org, vel = {0, 0, 0};
+	int		classic, effect = CS_Effect (QC_FloatToInt (QC_ArgFloat (vm, 0)), &classic);
+
+	QC_ArgVector (vm, 1, org);
+	if (QC_Argc (vm) > 2)
+		QC_ArgVector (vm, 2, vel);
+	P_RunEffect (org, vel, QC_Argc (vm) > 3 ? QC_ArgFloat (vm, 3) : 1, effect, NULL);
 	return true;
 }
 
@@ -744,35 +836,117 @@ static bool CS_DynamicLightAdd (qcvm_t *vm)
 	return true;
 }
 
-// te_lightning1/2/3(entity own, vector start, vector end): the beam of an
-// entity of CSQC's, kept apart from the server's as FTE keys it
-static bool CS_Lightning (qcvm_t *vm, const char *model)
-{
-	qc_ent_t	e = QC_ArgWord (vm, 0);
-	vec3_t		start, end;
-	model_t		*m = Mod_ForName ((char *)model, false);
+/*
+=================
+CS_TempEntity
 
-	QC_ArgVector (vm, 1, start);
-	QC_ArgVector (vm, 2, end);
-	if (m)
-		CL_AddBeam (m, e ? (int)e + MAX_EDICTS : 0, start, end);
+DarkPlaces' te_ builtins: the temporary entities the server sends, shown as
+the client shows those (CL_RunTEnt). A beam of an entity of CSQC's is kept
+apart from the server's, as FTE keys it.
+=================
+*/
+static bool CS_TempEntity (qcvm_t *vm, int type)
+{
+	tent_t		te;
+	qc_ent_t	e;
+
+	memset (&te, 0, sizeof(te));
+	te.type = type;
+	te.count = 1;
+	switch (type)
+	{
+	case TE_LIGHTNING1:			// (entity own, vector start, vector end)
+	case TE_LIGHTNING2:
+	case TE_LIGHTNING3:
+	case TE_BEAM:
+		e = QC_ArgWord (vm, 0);
+		te.ent = e ? (int)e + MAX_EDICTS : 0;
+		QC_ArgVector (vm, 1, te.pos);
+		QC_ArgVector (vm, 2, te.pos2);
+		break;
+	case TEDP_BLOOD:			// (vector org, vector vel, float count)
+	case TEDP_SPARK:
+		QC_ArgVector (vm, 0, te.pos);
+		QC_ArgVector (vm, 1, te.vel);
+		te.count = QC_FloatToInt (QC_ArgFloat (vm, 2));
+		break;
+	case TEDP_BLOODSHOWER:		// (vector mins, vector maxs, float speed, float count)
+		QC_ArgVector (vm, 0, te.pos);
+		QC_ArgVector (vm, 1, te.pos2);
+		te.vel[2] = -QC_ArgFloat (vm, 2);
+		te.count = QC_FloatToInt (QC_ArgFloat (vm, 3));
+		break;
+	case TEDP_EXPLOSIONRGB:		// (vector org, vector color)
+		QC_ArgVector (vm, 0, te.pos);
+		QC_ArgVector (vm, 1, te.pos2);
+		break;
+	case TEDP_PARTICLECUBE:		// (mins, maxs, vel, count, color, gravity, jitter)
+		QC_ArgVector (vm, 0, te.pos);
+		QC_ArgVector (vm, 1, te.pos2);
+		QC_ArgVector (vm, 2, te.vel);
+		te.count = QC_FloatToInt (QC_ArgFloat (vm, 3));
+		te.color = QC_FloatToInt (QC_ArgFloat (vm, 4));
+		te.colors = QC_FloatToInt (QC_ArgFloat (vm, 5));
+		te.time = QC_ArgFloat (vm, 6);
+		break;
+	case TEDP_PARTICLERAIN:		// (vector mins, vector maxs, vector vel, float count, float color)
+	case TEDP_PARTICLESNOW:
+		QC_ArgVector (vm, 0, te.pos);
+		QC_ArgVector (vm, 1, te.pos2);
+		QC_ArgVector (vm, 2, te.vel);
+		te.count = QC_FloatToInt (QC_ArgFloat (vm, 3));
+		te.color = QC_FloatToInt (QC_ArgFloat (vm, 4));
+		break;
+	case TEDP_CUSTOMFLASH:		// (vector org, float radius, float lifetime, vector color)
+		QC_ArgVector (vm, 0, te.pos);
+		te.count = QC_FloatToInt (QC_ArgFloat (vm, 1));
+		te.time = QC_ArgFloat (vm, 2);
+		QC_ArgVector (vm, 3, te.pos2);
+		if (te.time <= 0)
+			return true;
+		break;
+	case TE_EXPLOSION2:			// (vector org, float color, float colors)
+		QC_ArgVector (vm, 0, te.pos);
+		te.color = QC_FloatToInt (QC_ArgFloat (vm, 1));
+		te.colors = QC_FloatToInt (QC_ArgFloat (vm, 2));
+		break;
+	default:					// (vector org)
+		QC_ArgVector (vm, 0, te.pos);
+		break;
+	}
+	CL_RunTEnt (&te);
 	return true;
 }
 
-static bool CS_Lightning1 (qcvm_t *vm)
-{
-	return CS_Lightning (vm, "progs/bolt.mdl");
-}
-
-static bool CS_Lightning2 (qcvm_t *vm)
-{
-	return CS_Lightning (vm, "progs/bolt2.mdl");
-}
-
-static bool CS_Lightning3 (qcvm_t *vm)
-{
-	return CS_Lightning (vm, "progs/bolt3.mdl");
-}
+#define	CS_TEMPENTITY(name, type)	static bool CS_##name (qcvm_t *vm) { return CS_TempEntity (vm, type); }
+CS_TEMPENTITY (TeLightning1, TE_LIGHTNING1)
+CS_TEMPENTITY (TeLightning2, TE_LIGHTNING2)
+CS_TEMPENTITY (TeLightning3, TE_LIGHTNING3)
+CS_TEMPENTITY (TeBeam, TE_BEAM)
+CS_TEMPENTITY (TeGunshot, TE_GUNSHOT)
+CS_TEMPENTITY (TeSpike, TE_SPIKE)
+CS_TEMPENTITY (TeSuperspike, TE_SUPERSPIKE)
+CS_TEMPENTITY (TeExplosion, TE_NQEXPLOSION)
+CS_TEMPENTITY (TeTarexplosion, TE_TAREXPLOSION)
+CS_TEMPENTITY (TeWizspike, TE_WIZSPIKE)
+CS_TEMPENTITY (TeKnightspike, TE_KNIGHTSPIKE)
+CS_TEMPENTITY (TeLavasplash, TE_LAVASPLASH)
+CS_TEMPENTITY (TeTeleport, TE_TELEPORT)
+CS_TEMPENTITY (TeGunshotquad, TEDP_GUNSHOTQUAD)
+CS_TEMPENTITY (TeSpikequad, TEDP_SPIKEQUAD)
+CS_TEMPENTITY (TeSuperspikequad, TEDP_SUPERSPIKEQUAD)
+CS_TEMPENTITY (TeExplosionquad, TEDP_EXPLOSIONQUAD)
+CS_TEMPENTITY (TeSmallflash, TEDP_SMALLFLASH)
+CS_TEMPENTITY (TePlasmaburn, TEDP_PLASMABURN)
+CS_TEMPENTITY (TeBlood, TEDP_BLOOD)
+CS_TEMPENTITY (TeSpark, TEDP_SPARK)
+CS_TEMPENTITY (TeBloodshower, TEDP_BLOODSHOWER)
+CS_TEMPENTITY (TeExplosionrgb, TEDP_EXPLOSIONRGB)
+CS_TEMPENTITY (TeParticlecube, TEDP_PARTICLECUBE)
+CS_TEMPENTITY (TeParticlerain, TEDP_PARTICLERAIN)
+CS_TEMPENTITY (TeParticlesnow, TEDP_PARTICLESNOW)
+CS_TEMPENTITY (TeCustomflash, TEDP_CUSTOMFLASH)
+CS_TEMPENTITY (TeExplosion2, TE_EXPLOSION2)
 
 /*
 ==============================================================================
@@ -1376,10 +1550,36 @@ static const struct
 	{"traceline", CS_TraceLine},
 	{"particleeffectnum", CS_ParticleEffectNum},
 	{"trailparticles", CS_TrailParticles},
+	{"pointparticles", CS_PointParticles},
 	{"dynamiclight_add", CS_DynamicLightAdd},
-	{"te_lightning1", CS_Lightning1},
-	{"te_lightning2", CS_Lightning2},
-	{"te_lightning3", CS_Lightning3},
+	{"te_lightning1", CS_TeLightning1},
+	{"te_lightning2", CS_TeLightning2},
+	{"te_lightning3", CS_TeLightning3},
+	{"te_beam", CS_TeBeam},
+	{"te_gunshot", CS_TeGunshot},
+	{"te_spike", CS_TeSpike},
+	{"te_superspike", CS_TeSuperspike},
+	{"te_explosion", CS_TeExplosion},
+	{"te_tarexplosion", CS_TeTarexplosion},
+	{"te_wizspike", CS_TeWizspike},
+	{"te_knightspike", CS_TeKnightspike},
+	{"te_lavasplash", CS_TeLavasplash},
+	{"te_teleport", CS_TeTeleport},
+	{"te_gunshotquad", CS_TeGunshotquad},
+	{"te_spikequad", CS_TeSpikequad},
+	{"te_superspikequad", CS_TeSuperspikequad},
+	{"te_explosionquad", CS_TeExplosionquad},
+	{"te_smallflash", CS_TeSmallflash},
+	{"te_plasmaburn", CS_TePlasmaburn},
+	{"te_blood", CS_TeBlood},
+	{"te_spark", CS_TeSpark},
+	{"te_bloodshower", CS_TeBloodshower},
+	{"te_explosionrgb", CS_TeExplosionrgb},
+	{"te_particlecube", CS_TeParticlecube},
+	{"te_particlerain", CS_TeParticlerain},
+	{"te_particlesnow", CS_TeParticlesnow},
+	{"te_customflash", CS_TeCustomflash},
+	{"te_explosion2", CS_TeExplosion2},
 	{"clearscene", CS_ClearScene},
 	{"addentities", CS_AddEntities},
 	{"addentity", CS_AddEntityBuiltin},
@@ -1861,7 +2061,8 @@ bool CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t
 			QC_ReleaseProgs (addon);
 		return false;
 	}
-	csqc.trailcarry = Mem_Calloc (QC_MaxEdicts (csqc.qc.vm), sizeof(*csqc.trailcarry));
+	csqc.trails = Mem_Calloc (QC_MaxEdicts (csqc.qc.vm), sizeof(*csqc.trails));
+	csqc.numeffects = 1;		// 0 is none
 
 	// the add-on's init runs as it is added, after the csprogs' own
 	CSQC_RegisterAutocvars (0);
@@ -2366,9 +2567,10 @@ static void CSQC_Destroy (void)
 {
 	QC_Destroy (csqc.qc.vm);
 	csqc.qc.vm = NULL;
-	if (csqc.trailcarry)
-		Mem_Free (csqc.trailcarry);
-	csqc.trailcarry = NULL;
+	if (csqc.trails)
+		Mem_Free (csqc.trails);
+	csqc.trails = NULL;
+	csqc.numeffects = 0;
 	csqc.worldloaded = false;
 	csqc.mayread = false;
 	csqc.drawing = false;

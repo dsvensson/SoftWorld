@@ -819,6 +819,7 @@ static void CL_ParsePrecache (void)
 		cl.model_precache[i] = Mod_ForName (cl.model_name[i], false);
 		if (str[0] == '*' && cl.map)
 			cl.clipmodels[i] = CM_InlineModel (cl.map, cl.model_name[i]);
+		CL_PrecacheModelEffects (i);
 		break;
 	case PC_SOUND:
 		if (i < 1 || i >= MAX_SOUNDS)
@@ -830,6 +831,7 @@ static void CL_ParsePrecache (void)
 		if (i < 1 || i >= MAX_PARTICLE_PRECACHE)
 			Host_EndGame ("svc_fte_precache: particle effect %i", i);
 		Q_strncpyz (cl.particle_name[i], str, sizeof(cl.particle_name[i]));
+		CL_PrecacheParticle (i);
 		break;
 	default:
 		Host_EndGame ("svc_fte_precache: kind %i", code >> 14);
@@ -842,25 +844,39 @@ CL_ParseParticleEffect
 
 svc_fte_trailparticles, svc_fte_pointparticles and svc_fte_pointparticles1: a
 particle effect of the server's list; the entity a trail is of is big with
-replacement deltas, as FTE writes it
+replacement deltas, as FTE writes it. A trail of an effect the client lacks
+is TR_BLOOD's, as FTE draws it.
 ==================
 */
 static void CL_ParseParticleEffect (int cmd)
 {
-	int		i, coords = cmd == svc_fte_pointparticles1 ? 3 : 6;
+	vec3_t	org, vec = {0, 0, 0};
+	int		ent = 0, effect, count = 1;
+
+	if (cmd == svc_fte_trailparticles)
+		ent = cls.fteext2 & FTE_PEXT2_REPLACEMENTDELTAS ? MSG_ReadBigEntity () : MSG_ReadShort ();
+	effect = CL_ParticleEffect (MSG_ReadShort () & 0xffff);
+	org[0] = MSG_ReadCoord ();
+	org[1] = MSG_ReadCoord ();
+	org[2] = MSG_ReadCoord ();
+	if (cmd != svc_fte_pointparticles1)
+	{
+		vec[0] = MSG_ReadCoord ();
+		vec[1] = MSG_ReadCoord ();
+		vec[2] = MSG_ReadCoord ();
+	}
+	if (cmd == svc_fte_pointparticles)
+		count = MSG_ReadShort () & 0xffff;
+	if (CL_MVDQuiet ())
+		return;		// a scan's or a seek's, long over
 
 	if (cmd == svc_fte_trailparticles)
 	{
-		if (cls.fteext2 & FTE_PEXT2_REPLACEMENTDELTAS)
-			MSG_ReadBigEntity ();
-		else
-			MSG_ReadShort ();
+		if (!P_Trail (org, vec, effect, 1, ent, NULL, CL_EntityTrailState (ent)))
+			P_Trail (org, vec, CL_Effect (PT_TR_BLOOD), 1, ent, NULL, CL_EntityTrailState (ent));
 	}
-	MSG_ReadShort ();			// the effect
-	for (i=0 ; i<coords ; i++)
-		MSG_ReadCoord ();
-	if (cmd == svc_fte_pointparticles)
-		MSG_ReadShort ();		// the count
+	else
+		P_RunEffect (org, vec, (float)count, effect, NULL);
 }
 
 /*
