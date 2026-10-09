@@ -139,6 +139,10 @@ typedef struct
 	int			numareanodes;
 
 	int			nailmodel, supernailmodel, playermodel;	// model indices, for compression
+
+	// the particle effects QuakeC named (particleeffectnum), 1 the first
+	char		particle_precache[MAX_PARTICLE_PRECACHE][MAX_QPATH];
+	int			num_particles;
 } server_t;
 
 
@@ -540,6 +544,13 @@ void SV_SendFixangle (client_t *client, sizebuf_t *msg);
 void SV_Multicast (vec3_t origin, int to);
 // to the clients with the FTE2 extensions fteext2 alone (none: QTV too)
 void SV_MulticastExt (vec3_t origin, int to, unsigned fteext2);
+// the FTE extensions MVDs and QTV carry, mvdsv's; float coordinates on the maps that need them
+#define	MVD_FTE_EXTENSIONS	(FTE_PEXT_256PACKETENTITIES | FTE_PEXT_MODELDBL | FTE_PEXT_ENTITYDBL | \
+	FTE_PEXT_ENTITYDBL2 | FTE_PEXT_SPAWNSTATIC2 | FTE_PEXT_TRANS | FTE_PEXT_COLOURMOD)
+// to the clients with the FTE extensions with and the FTE2 extensions with2,
+// and without those of without; MVDs and QTV get it when their extensions
+// (MVD_FTE_EXTENSIONS) would
+void SV_MulticastProtExt (vec3_t origin, int to, unsigned with, unsigned without, unsigned with2);
 // the broadcasts (sv.reliable_datagram and sv.datagram) to the clients, now:
 // each frame, and when another message wouldn't fit (FTE's)
 void SV_FlushBroadcasts (void);
@@ -553,6 +564,12 @@ void SV_FindModelNumbers (void);
 void SV_PrintToClient (client_t *cl, int level, const char *string);	// whatever its messagelevel
 // the stats a client is shown: its player's, or the one's a spectator tracks
 void SV_ClientStats (const client_t *client, int stats[MAX_STATS]);
+
+//
+// sv_part.c
+//
+int SV_ParticleEffect (const char *name);	// particleeffectnum's
+void SV_WriteParticle (const client_t *client, sizebuf_t *msg, int i);	// prespawn's: its name
 
 //
 // sv_user.c

@@ -20,9 +20,6 @@
 #define	MVD_SNAPSHOTTIME	1.0
 #define	MVD_PINGTIME		2.0
 #define	MVD_MAXBLOCK		8092		// a block's messages, at most (MAX_MVD_SIZE, as relays take them)
-// mvdsv's; float coordinates on the maps that need them
-#define	MVD_FTE_EXTENSIONS	(FTE_PEXT_256PACKETENTITIES | FTE_PEXT_MODELDBL | FTE_PEXT_ENTITYDBL | \
-	FTE_PEXT_ENTITYDBL2 | FTE_PEXT_SPAWNSTATIC2 | FTE_PEXT_TRANS | FTE_PEXT_COLOURMOD)
 
 // blocks written, grown as needed
 typedef struct

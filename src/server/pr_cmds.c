@@ -1400,6 +1400,164 @@ static bool PF_particle (qcvm_t *vm)
 	return true;
 }
 
+static void PF_WriteVector (sizebuf_t *sb, const vec3_t v)
+{
+	MSG_WriteCoord (sb, v[0]);
+	MSG_WriteCoord (sb, v[1]);
+	MSG_WriteCoord (sb, v[2]);
+}
+
+/*
+==============
+PF_particleeffectnum
+
+float(string name) particleeffectnum: the number clients know a particle
+effect by (FTE_SV_POINTPARTICLES, sv_part.c)
+==============
+*/
+static bool PF_particleeffectnum (qcvm_t *vm)
+{
+	QC_ReturnFloat (vm, (float)SV_ParticleEffect (QC_ArgString (vm, 0)));
+	return true;
+}
+
+/*
+==============
+PF_trailparticles
+
+void(float effect, entity ent, vector start, vector end) trailparticles, or
+DarkPlaces' entity first, as FTE's server takes either: the entity's trail
+from start to end, to the clients that hear it and take particle messages
+==============
+*/
+static bool PF_trailparticles (qcvm_t *vm)
+{
+	vec3_t	start, end;
+	int		effect, ent;
+
+	if (QC_ArgWord (vm, 1) >= QC_MaxEdicts (vm))
+	{	// not an entity: a float, the effect
+		ent = PF_ArgEdictNum (vm, 0);
+		effect = PF_ArgTrunc (vm, 1);
+	}
+	else
+	{
+		effect = PF_ArgTrunc (vm, 0);
+		ent = PF_ArgEdictNum (vm, 1);
+	}
+	if (effect <= 0 || effect >= MAX_PARTICLE_PRECACHE)
+		return true;
+	QC_ArgVector (vm, 2, start);
+	QC_ArgVector (vm, 3, end);
+	MSG_WriteByte (&sv.multicast, svc_fte_trailparticles);
+	MSG_WriteShort (&sv.multicast, ent);		// a big entity's short, MAX_EDICTS being 32768
+	MSG_WriteShort (&sv.multicast, effect);
+	PF_WriteVector (&sv.multicast, start);
+	PF_WriteVector (&sv.multicast, end);
+	SV_MulticastProtExt (start, MULTICAST_PHS, FTE_PEXT_CSQC, 0, 0);
+	return true;
+}
+
+/*
+==============
+PF_pointparticles
+
+void(float effect, vector org, vector vel = '0 0 0', float count = 1)
+pointparticles: an effect, to the clients that see the place and take
+particle messages; FTE's short form for one without velocity
+==============
+*/
+static bool PF_pointparticles (qcvm_t *vm)
+{
+	vec3_t	org, vel = {0, 0, 0};
+	int		effect = PF_ArgTrunc (vm, 0), count = QC_Argc (vm) > 3 ? PF_ArgTrunc (vm, 3) : 1;
+
+	QC_ArgVector (vm, 1, org);
+	if (QC_Argc (vm) > 2)
+		QC_ArgVector (vm, 2, vel);
+	if (effect <= 0 || effect >= MAX_PARTICLE_PRECACHE || count < 1)
+		return true;
+	if (count == 1 && !vel[0] && !vel[1] && !vel[2])
+	{
+		MSG_WriteByte (&sv.multicast, svc_fte_pointparticles1);
+		MSG_WriteShort (&sv.multicast, effect);
+		PF_WriteVector (&sv.multicast, org);
+	}
+	else
+	{
+		MSG_WriteByte (&sv.multicast, svc_fte_pointparticles);
+		MSG_WriteShort (&sv.multicast, effect);
+		PF_WriteVector (&sv.multicast, org);
+		PF_WriteVector (&sv.multicast, vel);
+		MSG_WriteShort (&sv.multicast, count > 65535 ? 65535 : count);
+	}
+	SV_MulticastProtExt (org, MULTICAST_PVS, FTE_PEXT_CSQC, 0, 0);
+	return true;
+}
+
+// void(vector mins, vector maxs, vector vel, float count, float color)
+// te_particlerain and te_particlesnow: DarkPlaces' weather in a box, to all
+// that take it, as FTE's server sends it
+static bool PF_te_weather (qcvm_t *vm, int type)
+{
+	vec3_t	mins, maxs, vel, mid;
+	int		count = PF_ArgTrunc (vm, 3), i;
+
+	QC_ArgVector (vm, 0, mins);
+	QC_ArgVector (vm, 1, maxs);
+	QC_ArgVector (vm, 2, vel);
+	if (count < 1)
+		return true;
+	MSG_WriteByte (&sv.multicast, svc_temp_entity);
+	MSG_WriteByte (&sv.multicast, type);
+	PF_WriteVector (&sv.multicast, mins);
+	PF_WriteVector (&sv.multicast, maxs);
+	PF_WriteVector (&sv.multicast, vel);
+	MSG_WriteShort (&sv.multicast, count > 65535 ? 65535 : count);
+	MSG_WriteByte (&sv.multicast, PF_ArgTrunc (vm, 4));
+	for (i = 0 ; i < 3 ; i++)
+		mid[i] = (mins[i] + maxs[i]) / 2;
+	SV_MulticastProtExt (mid, MULTICAST_ALL, FTE_PEXT_CSQC, 0, 0);
+	return true;
+}
+
+static bool PF_te_particlerain (qcvm_t *vm)
+{
+	return PF_te_weather (vm, TEDP_PARTICLERAIN);
+}
+
+static bool PF_te_particlesnow (qcvm_t *vm)
+{
+	return PF_te_weather (vm, TEDP_PARTICLESNOW);
+}
+
+/*
+==============
+PF_te_explosion2
+
+void(vector org, float color, float colors) te_explosion2: NetQuake's
+explosion in a palette range, to the clients with FTE_PEXT_TE_BULLET; a
+plain explosion to the rest
+==============
+*/
+static bool PF_te_explosion2 (qcvm_t *vm)
+{
+	vec3_t	org;
+
+	QC_ArgVector (vm, 0, org);
+	MSG_WriteByte (&sv.multicast, svc_temp_entity);
+	MSG_WriteByte (&sv.multicast, TE_EXPLOSION2);
+	PF_WriteVector (&sv.multicast, org);
+	MSG_WriteByte (&sv.multicast, PF_ArgTrunc (vm, 1));
+	MSG_WriteByte (&sv.multicast, PF_ArgTrunc (vm, 2));
+	SV_MulticastProtExt (org, MULTICAST_PHS, FTE_PEXT_TE_BULLET, 0, 0);
+	MSG_WriteByte (&sv.multicast, svc_temp_entity);
+	MSG_WriteByte (&sv.multicast, TE_EXPLOSION);
+	PF_WriteVector (&sv.multicast, org);
+	SV_MulticastProtExt (org, MULTICAST_PHS, 0, FTE_PEXT_TE_BULLET, 0);
+	return true;
+}
+
 // stat num follows a word of each client's entity or of the globals, from
 // num up (three stats for a vector); false after QC_Error
 static bool PF_AddStat (qcvm_t *vm, const char *builtin, int num, int type, bool global, uint32_t ofs)
@@ -1543,6 +1701,12 @@ static const struct
 	{82, "multicast", PF_multicast},
 	{232, "clientstat", PF_clientstat},
 	{233, "globalstat", PF_globalstat},
+	{335, "particleeffectnum", PF_particleeffectnum},
+	{336, "trailparticles", PF_trailparticles},
+	{337, "pointparticles", PF_pointparticles},
+	{409, "te_particlerain", PF_te_particlerain},
+	{410, "te_particlesnow", PF_te_particlesnow},
+	{427, "te_explosion2", PF_te_explosion2},
 	{440, "clientcommand", PF_clientcommand},
 };
 

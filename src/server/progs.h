@@ -70,6 +70,8 @@ typedef struct
 	int				fofs_maxspeed;		// float
 	int				fofs_teleported;	// int
 	int				fofs_teleport_time;	// float
+	int				fofs_traileffectnum;	// float: DP_ENT_TRAILEFFECTNUM's
+	int				fofs_emiteffectnum;		// float
 
 	// optional QuakeC functions
 	func_t			SpectatorConnect;

@@ -155,10 +155,11 @@ static void NQ_PutValues (sizebuf_t *msg, const nqstream_t *s, int first, int co
 		NQ_PutValue (msg, s, &s->values[i]);
 }
 
-// The message in QuakeWorld's words; false when QuakeWorld's clients have none
-// such. FTE's server sends NetQuake's beam and second explosion only to its
-// clients with FTE_PEXT_TE_BULLET, and the explosion as a plain one to others.
-static bool NQ_Translate (const nqstream_t *s, int count, sizebuf_t *msg)
+// The message in QuakeWorld's words, for clients with FTE_PEXT_TE_BULLET or
+// without; false when such clients have none such. As FTE's server sends them,
+// NetQuake's beam and second explosion are FTE's TE_BEAM and TE_EXPLOSION2 to
+// clients with it; to others the explosion is a plain one, the beam nothing.
+static bool NQ_Translate (const nqstream_t *s, int count, sizebuf_t *msg, bool tebullet)
 {
 	const nqvalue_t	*v = s->values;
 
@@ -174,11 +175,16 @@ static bool NQ_Translate (const nqstream_t *s, int count, sizebuf_t *msg)
 			return true;
 		case NQTE_EXPLOSION2:
 			MSG_WriteByte (msg, svc_temp_entity);
-			MSG_WriteByte (msg, TE_EXPLOSION);
-			NQ_PutValues (msg, s, 2, 3);
+			MSG_WriteByte (msg, tebullet ? TE_EXPLOSION2 : TE_EXPLOSION);
+			NQ_PutValues (msg, s, 2, tebullet ? 5 : 3);		// the place, and the colors
 			return true;
 		case NQTE_BEAM:
-			return false;
+			if (!tebullet)
+				return false;
+			MSG_WriteByte (msg, svc_temp_entity);
+			MSG_WriteByte (msg, TE_BEAM);
+			NQ_PutValues (msg, s, 2, 7);
+			return true;
 		}
 		break;
 	case svc_print:					// with QuakeWorld's level
@@ -250,7 +256,7 @@ static void NQ_SendOne (client_t *cl, const nqstream_t *s, int count)
 	sizebuf_t	msg = {.data = data, .maxsize = sizeof(data), .allowoverflow = true,
 		.floatcoords = cl->netchan.message.floatcoords};
 
-	if (!NQ_Translate (s, count, &msg) || msg.overflowed)
+	if (!NQ_Translate (s, count, &msg, (cl->fteext & FTE_PEXT_TE_BULLET) != 0) || msg.overflowed)
 		return;
 	ClientReliableCheckBlock (cl, msg.cursize);
 	ClientReliableWrite_SZ (cl, msg.data, msg.cursize);
@@ -289,7 +295,7 @@ static void NQ_SendAll (const nqstream_t *s, int count, sizebuf_t *dest)
 	sizebuf_t	msg = {.data = data, .maxsize = sizeof(data), .allowoverflow = true,
 		.floatcoords = dest->floatcoords};
 
-	if (!NQ_Translate (s, count, &msg) || msg.overflowed)
+	if (!NQ_Translate (s, count, &msg, false) || msg.overflowed)
 		return;
 	if (dest == &sv.signon)
 		SV_SignonRoom (msg.cursize);
@@ -301,7 +307,7 @@ static void NQ_SendAll (const nqstream_t *s, int count, sizebuf_t *dest)
 // the whole message at the start of the stream for dest, to where it goes
 static void NQ_Send (int dest, const nqstream_t *s, int count)
 {
-	int			svc = NQ_Int (&s->values[0]), to, i;
+	int			svc = NQ_Int (&s->values[0]), to, te, i;
 	client_t	*cl;
 	vec3_t		origin;
 
@@ -334,8 +340,17 @@ static void NQ_Send (int dest, const nqstream_t *s, int count)
 			break;
 		}
 		to = NQ_TempEntityMulticast (s, origin);
-		if (NQ_Translate (s, count, &sv.multicast))
-			SV_Multicast (origin, to);
+		te = NQ_Int (&s->values[1]);
+		if (te != NQTE_EXPLOSION2 && te != NQTE_BEAM)
+		{
+			if (NQ_Translate (s, count, &sv.multicast, false))
+				SV_Multicast (origin, to);
+			break;
+		}
+		if (NQ_Translate (s, count, &sv.multicast, true))
+			SV_MulticastProtExt (origin, to, FTE_PEXT_TE_BULLET, 0, 0);
+		if (NQ_Translate (s, count, &sv.multicast, false))
+			SV_MulticastProtExt (origin, to, 0, FTE_PEXT_TE_BULLET, 0);
 		break;
 	}
 }

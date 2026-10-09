@@ -120,7 +120,8 @@ bool SV_EntityFits (const client_t *client, int number, int modelindex)
 SV_EntityLook
 
 FTE's alpha and color of an entity: from the progs' fields when they have
-them, else from the map's keys
+them, else from the map's keys; and its trail and emitted particle effects
+(traileffectnum, emiteffectnum)
 ==================
 */
 void SV_EntityLook (const edict_t *ent, entity_state_t *s)
@@ -129,6 +130,11 @@ void SV_EntityLook (const edict_t *ent, entity_state_t *s)
 	const float	*colormod;
 	float		alpha;
 	int			i, c;
+
+	c = pr.fofs_traileffectnum ? (int)fields[pr.fofs_traileffectnum] : 0;
+	s->traileffect = (unsigned short)(c > 0 && c < MAX_PARTICLE_PRECACHE ? c : 0);
+	c = pr.fofs_emiteffectnum ? (int)fields[pr.fofs_emiteffectnum] : 0;
+	s->emiteffect = (unsigned short)(c > 0 && c < MAX_PARTICLE_PRECACHE ? c : 0);
 
 	alpha = pr.fofs_alpha ? fields[pr.fofs_alpha] : ent->alpha;
 	s->alpha = 0;

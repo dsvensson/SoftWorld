@@ -206,6 +206,24 @@ static qc_progs_t *PR_LoadAddon (void *ctx, const char *name)
 	return p;
 }
 
+// what checkextension answers: the standard builtins' extensions, and the
+// particle effects the server sends (sv_part.c) and FTE's client scripts
+static bool PR_CheckExtension (void *ctx, const char *name)
+{
+	static const char *const	own[] =
+	{
+		"FTE_SV_POINTPARTICLES", "FTE_PART_SCRIPT", "FTE_PART_NAMESPACES", "FTE_PART_NAMESPACE_EFFECTINFO",
+		"DP_ENT_TRAILEFFECTNUM", "DP_TE_PARTICLERAIN", "DP_TE_PARTICLESNOW",
+	};
+	size_t	i;
+
+	(void)ctx;
+	for (i = 0 ; i < sizeof(own) / sizeof(own[0]) ; i++)
+		if (!Q_strcasecmp (name, own[i]))
+			return true;
+	return QC_StandardExtension (name);
+}
+
 static const qc_host_t	pr_host = {
 	.warning = PR_Warning,
 	.print = PR_Print,
@@ -215,6 +233,7 @@ static const qc_host_t	pr_host = {
 	.cvar_float = PR_CvarFloat,
 	.cvar_string = PR_CvarString,
 	.cvar_set = PR_CvarSet,
+	.check_extension = PR_CheckExtension,
 	.check_command = PR_CheckCommand,
 	.is_server = PR_IsServer,
 	.load_progs = PR_LoadAddon,
@@ -1288,6 +1307,8 @@ void PR_LoadProgs (void)
 	if (!pr.fofs_teleported)
 		pr.fofs_teleported = PR_OptionalField ("teleported", QC_EV_INTEGER);
 	pr.fofs_teleport_time = PR_OptionalField ("teleport_time", ev_float);
+	pr.fofs_traileffectnum = PR_OptionalField ("traileffectnum", ev_float);
+	pr.fofs_emiteffectnum = PR_OptionalField ("emiteffectnum", ev_float);
 
 	// Zoid, find the spectator functions
 	pr.SpectatorConnect = (func_t)QC_FindFunction (pr.vm, "SpectatorConnect");

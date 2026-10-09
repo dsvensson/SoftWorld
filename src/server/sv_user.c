@@ -391,8 +391,9 @@ static void SV_WriteStaticSound (const client_t *client, sizebuf_t *msg, const s
 SV_PreSpawn_f
 
 The level's static entities, then its entity baselines, then its signon
-buffers, then its static sounds past 255, as many as fit in half a message
-at a time; the client asks for the rest from the number it gets back
+buffers, then its static sounds past 255, then the names of its particle
+effects, as many as fit in half a message at a time; the client asks for the
+rest from the number it gets back
 ==================
 */
 static void SV_PreSpawn_f (void)
@@ -415,7 +416,8 @@ static void SV_PreSpawn_f (void)
 		return;
 	}
 
-	total = (unsigned)(sv.num_static_entities + sv.num_baselines + sv.num_signon_buffers + sv.num_static_sounds);
+	total = (unsigned)(sv.num_static_entities + sv.num_baselines + sv.num_signon_buffers + sv.num_static_sounds
+		+ sv.num_particles);
 	buf = atoi(Cmd_Argv(2));
 	if (buf >= total)
 		buf = 0;
@@ -453,6 +455,10 @@ static void SV_PreSpawn_f (void)
 			SV_WriteStatic (host_client, msg, &sv.static_entities[buf]);
 		else if (buf < (unsigned)(sv.num_static_entities + sv.num_baselines))
 			SV_WriteBaseline (host_client, msg, (int)buf - sv.num_static_entities);
+		else if (buf >= (unsigned)(sv.num_static_entities + sv.num_baselines + sv.num_signon_buffers
+			+ sv.num_static_sounds))
+			SV_WriteParticle (host_client, msg,
+				(int)buf - sv.num_static_entities - sv.num_baselines - sv.num_signon_buffers - sv.num_static_sounds + 1);
 		else if (buf >= (unsigned)(sv.num_static_entities + sv.num_baselines + sv.num_signon_buffers))
 			SV_WriteStaticSound (host_client, msg,
 				&sv.static_sounds[buf - sv.num_static_entities - sv.num_baselines - sv.num_signon_buffers]);

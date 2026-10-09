@@ -235,10 +235,15 @@ MULTICAST_PHS	send to clients potentially hearable from org
 */
 void SV_Multicast (vec3_t origin, int to)
 {
-	SV_MulticastExt (origin, to, 0);
+	SV_MulticastProtExt (origin, to, 0, 0, 0);
 }
 
 void SV_MulticastExt (vec3_t origin, int to, unsigned fteext2)
+{
+	SV_MulticastProtExt (origin, to, 0, 0, fteext2);
+}
+
+void SV_MulticastProtExt (vec3_t origin, int to, unsigned with, unsigned without, unsigned with2)
 {
 	client_t	*client;
 	byte		*mask;
@@ -278,7 +283,8 @@ void SV_MulticastExt (vec3_t origin, int to, unsigned fteext2)
 	// send the data to all relevent clients
 	for (j = 0, client = svs.clients; j < MAX_CLIENTS; j++, client++)
 	{
-		if (client->state != cs_spawned || (client->fteext2 & fteext2) != fteext2)
+		if (client->state != cs_spawned || (client->fteext & with) != with || (client->fteext & without)
+			|| (client->fteext2 & with2) != with2)
 			continue;
 
 		if (to == MULTICAST_PHS_R || to == MULTICAST_PHS) {
@@ -301,9 +307,9 @@ inrange:
 			SZ_Write (&client->datagram, sv.multicast.data, sv.multicast.cursize);
 	}
 
-	// QTV hears and sees it all, as mvdsv's demos do (but what needs FTE2
-	// extensions, which its viewers' protocol hasn't)
-	if (!fteext2)
+	// QTV hears and sees it all, as mvdsv's demos do, in what its viewers'
+	// protocol has
+	if (!with2 && (MVD_FTE_EXTENSIONS & with) == with && !(MVD_FTE_EXTENSIONS & without))
 		SV_MVDAll (sv.multicast.data, sv.multicast.cursize);
 	SZ_Clear (&sv.multicast);
 }
