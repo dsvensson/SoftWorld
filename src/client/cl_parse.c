@@ -738,6 +738,37 @@ static void CL_ParseSoundlist (bool shortstart)
 
 /*
 ==================
+CL_NoteModelIndex
+
+The model numbers of the models the client treats specially
+==================
+*/
+static void CL_NoteModelIndex (int i)
+{
+	const char	*model = cl.model_name[i];
+
+	if (!strcmp(model,"progs/spike.mdl"))
+		cl.spikeindex = i;
+	if (!strcmp(model,"progs/player.mdl"))
+		cl.playerindex = i;
+	if (!strcmp(model,"progs/flag.mdl"))
+		cl.flagindex = i;
+	if (!strcmp(model,"progs/h_player.mdl"))
+		cl.h_playerindex = i;
+	if (!strcmp(model,"progs/gib1.mdl"))
+		cl.gib1index = i;
+	if (!strcmp(model,"progs/gib2.mdl"))
+		cl.gib2index = i;
+	if (!strcmp(model,"progs/gib3.mdl"))
+		cl.gib3index = i;
+	if (!strcmp(model,"progs/missile.mdl"))
+		cl.rocketindex = i;
+	if (!strcmp(model,"progs/grenade.mdl"))
+		cl.grenadeindex = i;
+}
+
+/*
+==================
 CL_ParseModellist
 
 As CL_ParseSoundlist, with svc_fte_modellistshort
@@ -761,25 +792,7 @@ static void CL_ParseModellist (bool shortstart)
 		if (nummodels >= MAX_MODELS)
 			Host_EndGame ("Server sent too many model_precache");
 		Q_strncpyz (cl.model_name[nummodels], str, sizeof(cl.model_name[nummodels]));
-
-		if (!strcmp(cl.model_name[nummodels],"progs/spike.mdl"))
-			cl.spikeindex = nummodels;
-		if (!strcmp(cl.model_name[nummodels],"progs/player.mdl"))
-			cl.playerindex = nummodels;
-		if (!strcmp(cl.model_name[nummodels],"progs/flag.mdl"))
-			cl.flagindex = nummodels;
-		if (!strcmp(cl.model_name[nummodels],"progs/h_player.mdl"))
-			cl.h_playerindex = nummodels;
-		if (!strcmp(cl.model_name[nummodels],"progs/gib1.mdl"))
-			cl.gib1index = nummodels;
-		if (!strcmp(cl.model_name[nummodels],"progs/gib2.mdl"))
-			cl.gib2index = nummodels;
-		if (!strcmp(cl.model_name[nummodels],"progs/gib3.mdl"))
-			cl.gib3index = nummodels;
-		if (!strcmp(cl.model_name[nummodels],"progs/missile.mdl"))
-			cl.rocketindex = nummodels;
-		if (!strcmp(cl.model_name[nummodels],"progs/grenade.mdl"))
-			cl.grenadeindex = nummodels;
+		CL_NoteModelIndex (nummodels);
 	}
 
 	n = MSG_ReadByte();
@@ -800,10 +813,100 @@ static void CL_ParseModellist (bool shortstart)
 
 /*
 ==================
+CL_LoadModelLate
+
+A model precached during a level, loaded on the loader's thread (loader.h):
+until it is in, its entities aren't drawn (a NULL model), as FTE has it. It
+is put in place at its finish if it is still that model of this level.
+==================
+*/
+typedef struct
+{
+	loadjob_t	job;
+	int			index, servercount;
+	char		name[MAX_QPATH];
+	model_t		*model;			// detached (Mod_LoadDetached), NULL if it couldn't be loaded
+} cl_modeljob_t;
+
+// the model in place
+static void CL_ModelLoaded (int i, model_t *model)
+{
+	cl.model_precache[i] = model;
+	CL_PrecacheModelEffects (i);
+	CL_NoteModelIndex (i);
+}
+
+static void CL_LoadModelJob (loadjob_t *job)
+{
+	cl_modeljob_t	*j = (cl_modeljob_t *)job;
+	byte			*buf;
+	int				size;
+
+	buf = FS_LoadFile (j->name, &size);
+	if (!buf)
+	{
+		Con_Printf ("Couldn't load %s\n", j->name);
+		return;
+	}
+	j->model = Mod_LoadDetached (j->name, buf, size);
+	Mem_Free (buf);
+}
+
+static void CL_LoadedModelJob (loadjob_t *job)
+{
+	cl_modeljob_t	*j = (cl_modeljob_t *)job;
+	model_t			*loaded;
+
+	if (j->servercount == cl.servercount && cls.state >= ca_onserver && !strcmp (cl.model_name[j->index], j->name)
+		&& j->model)
+	{
+		// one loaded since another way (CSQC's) stays
+		loaded = Mod_FindLoaded (j->name);
+		if (loaded)
+			Mod_FreeDetached (j->model);
+		CL_ModelLoaded (j->index, loaded ? loaded : Mod_Install (j->model));
+	}
+	else if (j->model)
+		Mod_FreeDetached (j->model);
+	Mem_Free (j);
+}
+
+static void CL_LoadModelLate (int i)
+{
+	cl_modeljob_t	*j;
+	model_t			*loaded;
+
+	cl.model_precache[i] = NULL;
+	if (cl.model_name[i][0] == '*')
+	{	// the world's own
+		CL_ModelLoaded (i, Mod_ForName (cl.model_name[i], false));
+		if (cl.map)
+			cl.clipmodels[i] = CM_InlineModel (cl.map, cl.model_name[i]);
+		return;
+	}
+	loaded = Mod_FindLoaded (cl.model_name[i]);
+	if (loaded)
+	{
+		CL_ModelLoaded (i, loaded);
+		return;
+	}
+
+	j = Mem_Calloc (1, sizeof(*j));
+	j->job.run = CL_LoadModelJob;
+	j->job.finish = CL_LoadedModelJob;
+	j->index = i;
+	j->servercount = cl.servercount;
+	Q_strncpyz (j->name, cl.model_name[i], sizeof(j->name));
+	Load_Submit (&j->job, true);
+}
+
+/*
+==================
 CL_ParsePrecache
 
 svc_fte_precache: a model or sound precached late, or a particle effect, which
-the server's list of them sends this way too (FTE's)
+the server's list of them sends this way too (FTE's); models and sounds load
+in the background. FTE's unused kind is passed by, as it does.
 ==================
 */
 static void CL_ParsePrecache (void)
@@ -818,16 +921,13 @@ static void CL_ParsePrecache (void)
 		if (i < 1 || i >= MAX_MODELS)
 			Host_EndGame ("svc_fte_precache: model %i", i);
 		Q_strncpyz (cl.model_name[i], str, sizeof(cl.model_name[i]));
-		cl.model_precache[i] = Mod_ForName (cl.model_name[i], false);
-		if (str[0] == '*' && cl.map)
-			cl.clipmodels[i] = CM_InlineModel (cl.map, cl.model_name[i]);
-		CL_PrecacheModelEffects (i);
+		CL_LoadModelLate (i);
 		break;
 	case PC_SOUND:
 		if (i < 1 || i >= MAX_SOUNDS)
 			Host_EndGame ("svc_fte_precache: sound %i", i);
 		Q_strncpyz (cl.sound_name[i], str, sizeof(cl.sound_name[i]));
-		cl.sound_precache[i] = S_PrecacheSound (cl.sound_name[i]);
+		cl.sound_precache[i] = S_PrecacheSoundLate (cl.sound_name[i]);
 		break;
 	case PC_PARTICLE:
 		if (i < 1 || i >= MAX_PARTICLE_PRECACHE)
@@ -836,7 +936,7 @@ static void CL_ParsePrecache (void)
 		CL_PrecacheParticle (i);
 		break;
 	default:
-		Host_EndGame ("svc_fte_precache: kind %i", code >> 14);
+		Con_DPrintf ("svc_fte_precache: kind %i passed by\n", code >> 14);
 	}
 }
 

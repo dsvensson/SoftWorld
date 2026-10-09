@@ -229,3 +229,13 @@ void Sys_DetachThread (systhread_t *t)
 	pthread_detach (t->thread);
 	free (t);
 }
+
+void Sys_WaitAddress (void *address, uint32_t value)
+{
+	Sys_WorkerWait (address, value);
+}
+
+void Sys_WakeAddress (void *address)
+{
+	Sys_WorkerWakeAll (address);
+}

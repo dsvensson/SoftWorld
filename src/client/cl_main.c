@@ -1788,6 +1788,7 @@ void CL_Frame (void)
 	// fetch results from server
 	oldincoming = cls.netchan.incoming_sequence;
 	CL_DownloadFrame ();
+	Load_Poll ();		// what the loader's thread loaded since, put in place
 	CL_QTVFrame ();
 	if (cls.mvdplayback)
 		CL_MVDAdvance ();
@@ -1968,6 +1969,7 @@ CL_Shutdown
 */
 void CL_Shutdown (void)
 {
+	Load_Shutdown ();	// its jobs put what they loaded in place
 	M_Shutdown ();
 	SB_Shutdown ();		// before the network goes
 	CSQC_Shutdown ();

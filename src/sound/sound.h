@@ -37,6 +37,8 @@ typedef struct sfx_s
 {
 	char 	name[MAX_QPATH];
 	struct sfxcache_s	*data;		// decoded samples once loaded
+	bool	loading;		// a loader decodes it (S_PrecacheSoundLate): its channels wait
+	bool	failed;			// it couldn't be loaded: not tried again until precached again
 } sfx_t;
 
 typedef struct sfxcache_s
@@ -77,6 +79,7 @@ typedef struct
 	vec3_t	origin;			// origin of sound effect
 	vec_t	dist_mult;		// distance multiplier (attenuation/clipK)
 	int		master_vol;		// 0-255 master volume
+	bool	waiting;		// started as its sound loaded: it plays from when it has
 } channel_t;
 
 typedef struct
@@ -111,6 +114,9 @@ void S_Update (const snd_listener_t *listener);
 void S_ExtraUpdate (void);
 
 sfx_t *S_PrecacheSound (char *sample);
+// a sound precached during a level, loaded on the loader's thread (loader.h):
+// sounds started before it is loaded play from then
+sfx_t *S_PrecacheSoundLate (char *sample);
 void S_PaintChannels(int endtime);
 
 // opens the output and describes its ring buffer in dma
@@ -151,6 +157,7 @@ bool	S_RawSamples (int hz, int channels, const short *data, int frames);
 float	S_RawQueued (void);		// seconds of them not yet mixed
 
 sfxcache_t *S_LoadSound (sfx_t *s);
+sfxcache_t *S_DecodeSound (const char *name, int speed, bool as8bit);	// on any thread
 
 void SND_InitScaletable (void);
 void SNDDMA_Submit(void);

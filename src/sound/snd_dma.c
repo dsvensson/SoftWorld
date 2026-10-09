@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // snd_dma.c -- main control for any streaming sound output device
 
 #include "snd_local.h"
+#include "loader.h"
 
 
 static void S_Play(void);
@@ -143,6 +144,8 @@ S_FlushSounds
 Drops decoded sounds so they are reloaded from the new game directory.
 ================
 */
+static int	snd_generation;		// bumped by each flush: what a loader decoded before is dropped
+
 static void S_FlushSounds (void)
 {
 	int		i;
@@ -151,7 +154,9 @@ static void S_FlushSounds (void)
 	{
 		Mem_Free (snd.known_sfx[i].data);
 		snd.known_sfx[i].data = NULL;
+		snd.known_sfx[i].loading = snd.known_sfx[i].failed = false;
 	}
+	snd_generation++;
 }
 
 void S_Init (void)
@@ -320,10 +325,78 @@ sfx_t *S_PrecacheSound (char *sndname)
 	if (!sfx)
 		return NULL;
 
-// cache it in
+// cache it in; one that couldn't be is tried again (it may have been
+// downloaded since)
+	sfx->failed = false;
 	if (precache.value)
 		S_LoadSound (sfx);
-	
+
+	return sfx;
+}
+
+/*
+==================
+S_PrecacheSoundLate
+
+A sound decoded on the loader's thread, put in place at its finish if it is
+still the one asked for: no flush between, nor a change of the output's rate
+==================
+*/
+typedef struct
+{
+	loadjob_t	job;
+	sfx_t		*sfx;
+	char		name[MAX_QPATH];
+	int			generation, speed;
+	bool		as8bit;
+	sfxcache_t	*data;
+} soundjob_t;
+
+static void S_DecodeJob (loadjob_t *job)
+{
+	soundjob_t	*j = (soundjob_t *)job;
+
+	j->data = S_DecodeSound (j->name, j->speed, j->as8bit);
+}
+
+static void S_DecodedJob (loadjob_t *job)
+{
+	soundjob_t	*j = (soundjob_t *)job;
+
+	if (j->generation == snd_generation && j->speed == snd.dma.speed && j->sfx->loading)
+	{
+		j->sfx->loading = false;
+		j->sfx->data = j->data;
+		j->sfx->failed = !j->data;
+	}
+	else
+		Mem_Free (j->data);
+	Mem_Free (j);
+}
+
+sfx_t *S_PrecacheSoundLate (char *sndname)
+{
+	sfx_t		*sfx;
+	soundjob_t	*j;
+
+	if (!snd.started || nosound.value)
+		return NULL;
+
+	sfx = S_FindName (sndname);
+	if (!sfx || sfx->data || sfx->loading || !precache.value)
+		return sfx;
+
+	j = Mem_Calloc (1, sizeof(*j));
+	j->job.run = S_DecodeJob;
+	j->job.finish = S_DecodedJob;
+	j->sfx = sfx;
+	Q_strncpyz (j->name, sfx->name, sizeof(j->name));
+	j->generation = snd_generation;
+	j->speed = snd.dma.speed;
+	j->as8bit = loadas8bit.value != 0;
+	sfx->loading = true;
+	sfx->failed = false;
+	Load_Submit (&j->job, true);
 	return sfx;
 }
 
@@ -468,7 +541,14 @@ void S_StartSound(int entnum, int entchannel, sfx_t *sfx, vec3_t origin, float f
 	if (!target_chan->leftvol && !target_chan->rightvol)
 		return;		// not audible at all
 
-// new channel
+// new channel; one whose sound a loader decodes plays once it is in
+// (S_PaintChannels), late rather than not at all
+	if (sfx->loading)
+	{
+		target_chan->sfx = sfx;
+		target_chan->waiting = true;
+		return;
+	}
 	sc = S_LoadSound (sfx);
 	if (!sc)
 	{
@@ -595,6 +675,16 @@ void S_StaticSound (sfx_t *sfx, vec3_t origin, float vol, float attenuation)
 	ss = &snd.channels[snd.total_channels];
 	snd.total_channels++;
 
+	if (sfx->loading)
+	{	// it starts once its sound is in (S_PaintChannels)
+		ss->sfx = sfx;
+		ss->waiting = true;
+		VectorCopy (origin, ss->origin);
+		ss->master_vol = (int)vol;
+		ss->dist_mult = (attenuation/64) / sound_nominal_clip_dist;
+		SND_Spatialize (ss);
+		return;
+	}
 	sc = S_LoadSound (sfx);
 	if (!sc)
 		return;

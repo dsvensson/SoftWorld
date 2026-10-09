@@ -28,9 +28,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // loader's (Mod_LoadDetached)
 static thread_local model_t	*loadmodel;
 
-static void Mod_LoadSpriteModel (model_t *mod, void *buffer);
+// the alias or sprite file being read, on the thread loading it: where it
+// ends, and why it can't be used
+static thread_local const byte	*mod_end;
+static thread_local char		mod_error[128];
+
+static bool Mod_LoadSpriteModel (model_t *mod, const void *buffer, int filesize);
 static bool Mod_LoadBrushModel (model_t *mod, byte *buffer, int size);
-static void Mod_LoadAliasModel (model_t *mod, void *buffer);
+static bool Mod_LoadAliasModel (model_t *mod, const void *buffer, int filesize);
 static model_t *Mod_LoadModel (model_t *mod, bool crash);
 static void Mod_SetSubmodel (model_t *mod, const dmodel_t *bm);
 
@@ -338,6 +343,7 @@ Mod_LoadFromBuffer
 bool Mod_LoadFromBuffer (model_t *mod, byte *buffer, int size)
 {
 	unsigned	ident = 0;
+	bool		ok;
 
 	Mod_FreeData (mod);
 	mod->arena = Mem_Alloc (sizeof(arena_t));
@@ -346,25 +352,29 @@ bool Mod_LoadFromBuffer (model_t *mod, byte *buffer, int size)
 
 	if (size >= 4)
 		memcpy (&ident, buffer, 4);
+	mod_error[0] = 0;
 	switch (LittleLong ((int)ident))
 	{
 	case IDPOLYHEADER:
-		Mod_LoadAliasModel (mod, buffer);
+		ok = Mod_LoadAliasModel (mod, buffer, size);
 		break;
 
 	case IDSPRITEHEADER:
-		Mod_LoadSpriteModel (mod, buffer);
+		ok = Mod_LoadSpriteModel (mod, buffer, size);
 		break;
 
 	default:
-		if (!Mod_LoadBrushModel (mod, buffer, size))
-		{
-			Mod_Unload (mod);
-			return false;
-		}
+		ok = Mod_LoadBrushModel (mod, buffer, size);	// which says why itself
 		break;
 	}
 	loadmodel = NULL;
+	if (!ok)
+	{
+		if (mod_error[0])
+			Con_Printf ("Couldn't load %s: %s\n", mod->name, mod_error);
+		Mod_Unload (mod);
+		return false;
+	}
 	mod->needload = false;
 	return true;
 }
@@ -429,6 +439,23 @@ void Mod_Unload (model_t *mod)
 {
 	Mod_FreeData (mod);
 	mod->needload = true;
+}
+
+/*
+==================
+Mod_FindLoaded
+
+The model of that name if it is loaded, NULL if it isn't
+==================
+*/
+model_t *Mod_FindLoaded (const char *modname)
+{
+	int		i;
+
+	for (i = 0 ; i < mod_numknown ; i++)
+		if (!strcmp (mod_known[i]->name, modname))
+			return mod_known[i]->needload ? NULL : mod_known[i];
+	return NULL;
 }
 
 /*
@@ -1402,24 +1429,47 @@ ALIAS MODELS
 ==============================================================================
 */
 
+// the reason the file can't be used; returns false
+static bool Mod_FileError (const char *fmt, ...)
+{
+	va_list	args;
+
+	va_start (args, fmt);
+	vsnprintf (mod_error, sizeof(mod_error), fmt, args);
+	va_end (args);
+	return false;
+}
+
+// whether the file holds count things of size bytes at p
+static bool Mod_InFile (const void *p, size_t size, size_t count)
+{
+	if ((const byte *)p > mod_end || (size && count > (size_t)(mod_end - (const byte *)p) / size))
+		return Mod_FileError ("it ends early");
+	return true;
+}
+
 /*
 =================
 Mod_LoadAliasFrame
+
+The frame at pin; returns what follows it, NULL if the file can't hold it
 =================
 */
-static void * Mod_LoadAliasFrame (void * pin, int *pframeindex, int numv,
+static const void *Mod_LoadAliasFrame (const void *pin, int *pframeindex, int numv,
 	trivertx_t *pbboxmin, trivertx_t *pbboxmax, aliashdr_t *pheader, char *framename)
 {
-	trivertx_t		*pframe, *pinframe;
-	int				i, j;
-	daliasframe_t	*pdaliasframe;
+	trivertx_t			*pframe;
+	const trivertx_t	*pinframe;
+	int					i, j;
+	const daliasframe_t	*pdaliasframe = pin;
 
-	pdaliasframe = (daliasframe_t *)pin;
+	pinframe = (const trivertx_t *)(pdaliasframe + 1);
+	if (!Mod_InFile (pdaliasframe, sizeof(*pdaliasframe), 1) || !Mod_InFile (pinframe, sizeof(*pinframe), (size_t)numv))
+		return NULL;
 
 // framename always points at a pheader->frames[].name buffer
 	Q_strncpyz (framename, pdaliasframe->name, sizeof(pheader->frames[0].name));
 
-	pinframe = (trivertx_t *)(pdaliasframe + 1);
 	pframe = Mod_ScratchAlloc (numv * sizeof(*pframe));
 
 	*pframeindex = (int)((byte *)pframe - (byte *)pheader);
@@ -1454,7 +1504,7 @@ static void * Mod_LoadAliasFrame (void * pin, int *pframeindex, int numv,
 
 	pinframe += numv;
 
-	return (void *)pinframe;
+	return pinframe;
 }
 
 
@@ -1463,21 +1513,27 @@ static void * Mod_LoadAliasFrame (void * pin, int *pframeindex, int numv,
 Mod_LoadAliasGroup
 =================
 */
-static void * Mod_LoadAliasGroup (void * pin, int *pframeindex, int numv,
+static const void *Mod_LoadAliasGroup (const void *pin, int *pframeindex, int numv,
 	trivertx_t *pbboxmin, trivertx_t *pbboxmax, aliashdr_t *pheader, char *framename)
 {
-	daliasgroup_t		*pingroup;
-	maliasgroup_t		*paliasgroup;
-	int					i, j, numframes;
-	daliasinterval_t	*pin_intervals;
-	float				*poutintervals;
-	void				*ptemp;
-	
-	pingroup = (daliasgroup_t *)pin;
+	const daliasgroup_t		*pingroup = pin;
+	maliasgroup_t			*paliasgroup;
+	int						i, j, numframes;
+	const daliasinterval_t	*pin_intervals;
+	float					*poutintervals;
+	const void				*ptemp;
 
+	if (!Mod_InFile (pingroup, sizeof(*pingroup), 1))
+		return NULL;
 	numframes = LittleLong (pingroup->numframes);
 	if (numframes < 1)
-		Sys_Error ("Mod_LoadAliasGroup: no frames");
+	{
+		Mod_FileError ("a frame group has no frames");
+		return NULL;
+	}
+	pin_intervals = (const daliasinterval_t *)(pingroup + 1);
+	if (!Mod_InFile (pin_intervals, sizeof(*pin_intervals), (size_t)numframes))
+		return NULL;
 
 	paliasgroup = Mod_ScratchAlloc (sizeof (maliasgroup_t) +
 			(numframes - 1) * sizeof (paliasgroup->frames[0]));
@@ -1485,8 +1541,6 @@ static void * Mod_LoadAliasGroup (void * pin, int *pframeindex, int numv,
 	paliasgroup->numframes = numframes;
 
 	*pframeindex = (int)((byte *)paliasgroup - (byte *)pheader);
-
-	pin_intervals = (daliasinterval_t *)(pingroup + 1);
 
 	poutintervals = Mod_ScratchAlloc (numframes * sizeof (float));
 
@@ -1496,15 +1550,18 @@ static void * Mod_LoadAliasGroup (void * pin, int *pframeindex, int numv,
 	{
 		*poutintervals = LittleFloat (pin_intervals->interval);
 		if (*poutintervals <= 0.0)
-			Sys_Error ("Mod_LoadAliasGroup: interval<=0");
+		{
+			Mod_FileError ("a frame group's interval is %g", *poutintervals);
+			return NULL;
+		}
 
 		poutintervals++;
 		pin_intervals++;
 	}
 
-	ptemp = (void *)pin_intervals;
+	ptemp = pin_intervals;
 
-	for (i=0 ; i<numframes ; i++)
+	for (i=0 ; i<numframes && ptemp ; i++)
 	{
 		ptemp = Mod_LoadAliasFrame (ptemp,
 									&paliasgroup->frames[i].frame,
@@ -1513,6 +1570,8 @@ static void * Mod_LoadAliasGroup (void * pin, int *pframeindex, int numv,
 									&paliasgroup->frames[i].bboxmax,
 									pheader, framename);
 	}
+	if (!ptemp)
+		return NULL;
 
 	// the group's box holds its frames' (Mod_LoadAliasFrame), not the file's
 	*pbboxmin = paliasgroup->frames[0].bboxmin;
@@ -1537,20 +1596,22 @@ static void * Mod_LoadAliasGroup (void * pin, int *pframeindex, int numv,
 Mod_LoadAliasSkin
 =================
 */
-static void * Mod_LoadAliasSkin (void * pin, int *pskinindex, int skinsize,
+static const void *Mod_LoadAliasSkin (const void *pin, int *pskinindex, int skinsize,
 	aliashdr_t *pheader)
 {
-	byte	*pskin, *pinskin;
+	byte		*pskin;
+	const byte	*pinskin = pin;
 
+	if (!Mod_InFile (pinskin, 1, (size_t)skinsize))
+		return NULL;
 	pskin = Mod_ScratchAlloc (skinsize);
-	pinskin = (byte *)pin;
 	*pskinindex = (int)((byte *)pskin - (byte *)pheader);
 
 	Q_memcpy (pskin, pinskin, skinsize);
 
 	pinskin += skinsize;
 
-	return ((void *)pinskin);
+	return pinskin;
 }
 
 
@@ -1559,19 +1620,27 @@ static void * Mod_LoadAliasSkin (void * pin, int *pskinindex, int skinsize,
 Mod_LoadAliasSkinGroup
 =================
 */
-static void * Mod_LoadAliasSkinGroup (void * pin, int *pskinindex, int skinsize,
+static const void *Mod_LoadAliasSkinGroup (const void *pin, int *pskinindex, int skinsize,
 	aliashdr_t *pheader)
 {
-	daliasskingroup_t		*pinskingroup;
-	maliasskingroup_t		*paliasskingroup;
-	int						i, numskins;
-	daliasskininterval_t	*pinskinintervals;
-	float					*poutskinintervals;
-	void					*ptemp;
+	const daliasskingroup_t		*pinskingroup = pin;
+	maliasskingroup_t			*paliasskingroup;
+	int							i, numskins;
+	const daliasskininterval_t	*pinskinintervals;
+	float						*poutskinintervals;
+	const void					*ptemp;
 
-	pinskingroup = (daliasskingroup_t *)pin;
-
+	if (!Mod_InFile (pinskingroup, sizeof(*pinskingroup), 1))
+		return NULL;
 	numskins = LittleLong (pinskingroup->numskins);
+	if (numskins < 1)
+	{
+		Mod_FileError ("a skin group has no skins");
+		return NULL;
+	}
+	pinskinintervals = (const daliasskininterval_t *)(pinskingroup + 1);
+	if (!Mod_InFile (pinskinintervals, sizeof(*pinskinintervals), (size_t)numskins))
+		return NULL;
 
 	paliasskingroup = Mod_ScratchAlloc (sizeof (maliasskingroup_t) +
 			(numskins - 1) * sizeof (paliasskingroup->skindescs[0]));
@@ -1579,8 +1648,6 @@ static void * Mod_LoadAliasSkinGroup (void * pin, int *pskinindex, int skinsize,
 	paliasskingroup->numskins = numskins;
 
 	*pskinindex = (int)((byte *)paliasskingroup - (byte *)pheader);
-
-	pinskinintervals = (daliasskininterval_t *)(pinskingroup + 1);
 
 	poutskinintervals = Mod_ScratchAlloc (numskins * sizeof (float));
 
@@ -1590,15 +1657,18 @@ static void * Mod_LoadAliasSkinGroup (void * pin, int *pskinindex, int skinsize,
 	{
 		*poutskinintervals = LittleFloat (pinskinintervals->interval);
 		if (*poutskinintervals <= 0)
-			Sys_Error ("Mod_LoadAliasSkinGroup: interval<=0");
+		{
+			Mod_FileError ("a skin group's interval is %g", *poutskinintervals);
+			return NULL;
+		}
 
 		poutskinintervals++;
 		pinskinintervals++;
 	}
 
-	ptemp = (void *)pinskinintervals;
+	ptemp = pinskinintervals;
 
-	for (i=0 ; i<numskins ; i++)
+	for (i=0 ; i<numskins && ptemp ; i++)
 	{
 		ptemp = Mod_LoadAliasSkin (ptemp,
 				&paliasskingroup->skindescs[i].skin, skinsize, pheader);
@@ -1610,76 +1680,82 @@ static void * Mod_LoadAliasSkinGroup (void * pin, int *pskinindex, int skinsize,
 
 /*
 =================
-Mod_LoadAliasModel
+Mod_ReadAliasModel
+
+The model in the file (mod_end its end), built in the scratch; false, with
+mod_error, if it can't be used
 =================
 */
-static void Mod_LoadAliasModel (model_t *mod, void *buffer)
+static bool Mod_ReadAliasModel (model_t *mod, const void *buffer, aliashdr_t **header)
 {
 	int					i;
-	mdl_t				*pmodel, *pinmodel;
-	stvert_t			*pstverts, *pinstverts;
+	mdl_t				*pmodel;
+	const mdl_t			*pinmodel = buffer;
+	stvert_t			*pstverts;
+	const stvert_t		*pinstverts;
 	aliashdr_t			*pheader;
 	mtriangle_t			*ptri;
-	dtriangle_t			*pintriangles;
-	int					version, numframes, numskins;
-	int					size;
-	daliasframetype_t	*pframetype;
-	daliasskintype_t	*pskintype;
+	const dtriangle_t	*pintriangles;
+	int					version, numframes, numskins, nverts, ntris, skinwidth, skinheight;
+	size_t				size, filesize;
+	const daliasframetype_t	*pframetype;
+	const daliasskintype_t	*pskintype;
 	maliasskindesc_t	*pskindesc;
 	int					skinsize;
-	size_t				start, total;
-	
-	start = mod_scratch_used;
 
-	pinmodel = (mdl_t *)buffer;
-
+	if (!Mod_InFile (pinmodel, sizeof(*pinmodel), 1))
+		return false;
 	version = LittleLong (pinmodel->version);
 	if (version != ALIAS_VERSION)
-		Sys_Error ("%s has wrong version number (%i should be %i)",
-				 mod->name, version, ALIAS_VERSION);
+		return Mod_FileError ("it has version %i, not %i", version, ALIAS_VERSION);
+
+	// the counts, which the file must hold, before any space is made for them
+	filesize = (size_t)(mod_end - (const byte *)buffer);
+	numskins = LittleLong (pinmodel->numskins);
+	skinwidth = LittleLong (pinmodel->skinwidth);
+	skinheight = LittleLong (pinmodel->skinheight);
+	nverts = LittleLong (pinmodel->numverts);
+	ntris = LittleLong (pinmodel->numtris);
+	numframes = LittleLong (pinmodel->numframes);
+	if (skinwidth <= 0 || skinheight <= 0 || (size_t)skinwidth * (size_t)skinheight > filesize)
+		return Mod_FileError ("its skins are %i by %i", skinwidth, skinheight);
+	if (nverts <= 0)
+		return Mod_FileError ("it has no vertices");
+	if (nverts > MAXALIASVERTS)
+		return Mod_FileError ("it has %i vertices, more than %i", nverts, MAXALIASVERTS);
+	if (ntris <= 0 || (size_t)ntris > filesize / sizeof(dtriangle_t))
+		return Mod_FileError ("it has %i triangles", ntris);
+	if (numskins < 1 || (size_t)numskins > filesize / sizeof(daliasskintype_t))
+		return Mod_FileError ("it has %i skins", numskins);
+	if (numframes < 1 || (size_t)numframes > filesize / sizeof(daliasframetype_t))
+		return Mod_FileError ("it has %i frames", numframes);
 
 //
 // allocate space for a working header, plus all the data except the frames,
 // skin and group info
 //
-	size = 	sizeof (aliashdr_t) + (LittleLong (pinmodel->numframes) - 1) *
-			 sizeof (pheader->frames[0]) +
+	size = 	sizeof (aliashdr_t) + (size_t)(numframes - 1) * sizeof (pheader->frames[0]) +
 			sizeof (mdl_t) +
-			LittleLong (pinmodel->numverts) * sizeof (stvert_t) +
-			LittleLong (pinmodel->numtris) * sizeof (mtriangle_t);
+			(size_t)nverts * sizeof (stvert_t) +
+			(size_t)ntris * sizeof (mtriangle_t);
 
 	pheader = Mod_ScratchAlloc (size);
+	*header = pheader;
 	pmodel = (mdl_t *) ((byte *)&pheader[1] +
-			(LittleLong (pinmodel->numframes) - 1) *
-			 sizeof (pheader->frames[0]));
-	
+			(numframes - 1) * sizeof (pheader->frames[0]));
+
 	mod->flags = LittleLong (pinmodel->flags);
 
 //
 // endian-adjust and copy the data, starting with the alias model header
 //
 	pmodel->boundingradius = LittleFloat (pinmodel->boundingradius);
-	pmodel->numskins = LittleLong (pinmodel->numskins);
-	pmodel->skinwidth = LittleLong (pinmodel->skinwidth);
-	pmodel->skinheight = LittleLong (pinmodel->skinheight);
-
-	if (pmodel->skinwidth <= 0 || pmodel->skinheight <= 0)
-		Sys_Error ("model %s has no skin size", mod->name);
-
-	pmodel->numverts = LittleLong (pinmodel->numverts);
-
-	if (pmodel->numverts <= 0)
-		Sys_Error ("model %s has no vertices", mod->name);
-
-	if (pmodel->numverts > MAXALIASVERTS)
-		Sys_Error ("model %s has too many vertices", mod->name);
-
-	pmodel->numtris = LittleLong (pinmodel->numtris);
-
-	if (pmodel->numtris <= 0)
-		Sys_Error ("model %s has no triangles", mod->name);
-
-	pmodel->numframes = LittleLong (pinmodel->numframes);
+	pmodel->numskins = numskins;
+	pmodel->skinwidth = skinwidth;
+	pmodel->skinheight = skinheight;
+	pmodel->numverts = nverts;
+	pmodel->numtris = ntris;
+	pmodel->numframes = numframes;
 	pmodel->size = (float)(LittleFloat (pinmodel->size) * ALIAS_BASE_SIZE_RATIO);
 	mod->synctype = LittleLong (pinmodel->synctype);
 	mod->numframes = pmodel->numframes;
@@ -1693,9 +1769,6 @@ static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 
 	// any skin width: id's needed four for its assembly (QuakeSpasm has dropped
 	// the check too; Copper's null models are 2 by 1)
-	numskins = pmodel->numskins;
-	numframes = pmodel->numframes;
-
 	pheader->model = (int)((byte *)pmodel - (byte *)pheader);
 
 //
@@ -1703,10 +1776,7 @@ static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 //
 	skinsize = pmodel->skinheight * pmodel->skinwidth;
 
-	if (numskins < 1)
-		Sys_Error ("Mod_LoadAliasModel: Invalid # of skins: %d\n", numskins);
-
-	pskintype = (daliasskintype_t *)&pinmodel[1];
+	pskintype = (const daliasskintype_t *)&pinmodel[1];
 
 	pskindesc = Mod_ScratchAlloc (numskins * sizeof (maliasskindesc_t));
 
@@ -1716,30 +1786,34 @@ static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 	{
 		aliasskintype_t	skintype;
 
+		if (!Mod_InFile (pskintype, sizeof(*pskintype), 1))
+			return false;
 		skintype = LittleLong (pskintype->type);
 		pskindesc[i].type = skintype;
 
 		if (skintype == ALIAS_SKIN_SINGLE)
 		{
-			pskintype = (daliasskintype_t *)
-					Mod_LoadAliasSkin (pskintype + 1,
-									   &pskindesc[i].skin,
-									   skinsize, pheader);
+			pskintype = Mod_LoadAliasSkin (pskintype + 1,
+										   &pskindesc[i].skin,
+										   skinsize, pheader);
 		}
 		else
 		{
-			pskintype = (daliasskintype_t *)
-					Mod_LoadAliasSkinGroup (pskintype + 1,
-											&pskindesc[i].skin,
-											skinsize, pheader);
+			pskintype = Mod_LoadAliasSkinGroup (pskintype + 1,
+												&pskindesc[i].skin,
+												skinsize, pheader);
 		}
+		if (!pskintype)
+			return false;
 	}
 
 //
 // set base s and t vertices
 //
 	pstverts = (stvert_t *)&pmodel[1];
-	pinstverts = (stvert_t *)pskintype;
+	pinstverts = (const stvert_t *)pskintype;
+	if (!Mod_InFile (pinstverts, sizeof(*pinstverts), (size_t)nverts))
+		return false;
 
 	pheader->stverts = (int)((byte *)pstverts - (byte *)pheader);
 
@@ -1755,7 +1829,9 @@ static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 // set up the triangles
 //
 	ptri = (mtriangle_t *)&pstverts[pmodel->numverts];
-	pintriangles = (dtriangle_t *)&pinstverts[pmodel->numverts];
+	pintriangles = (const dtriangle_t *)&pinstverts[pmodel->numverts];
+	if (!Mod_InFile (pintriangles, sizeof(*pintriangles), (size_t)ntris))
+		return false;
 
 	pheader->triangles = (int)((byte *)ptri - (byte *)pheader);
 
@@ -1775,54 +1851,75 @@ static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 //
 // load the frames
 //
-	if (numframes < 1)
-		Sys_Error ("Mod_LoadAliasModel: Invalid # of frames: %d\n", numframes);
-
-	pframetype = (daliasframetype_t *)&pintriangles[pmodel->numtris];
+	pframetype = (const daliasframetype_t *)&pintriangles[pmodel->numtris];
 
 	for (i=0 ; i<numframes ; i++)
 	{
 		aliasframetype_t	frametype;
 
+		if (!Mod_InFile (pframetype, sizeof(*pframetype), 1))
+			return false;
 		frametype = LittleLong (pframetype->type);
 		pheader->frames[i].type = frametype;
 
 
 		if (frametype == ALIAS_SINGLE)
 		{
-			pframetype = (daliasframetype_t *)
-					Mod_LoadAliasFrame (pframetype + 1,
-										&pheader->frames[i].frame,
-										pmodel->numverts,
-										&pheader->frames[i].bboxmin,
-										&pheader->frames[i].bboxmax,
-										pheader, pheader->frames[i].name);
+			pframetype = Mod_LoadAliasFrame (pframetype + 1,
+											&pheader->frames[i].frame,
+											pmodel->numverts,
+											&pheader->frames[i].bboxmin,
+											&pheader->frames[i].bboxmax,
+											pheader, pheader->frames[i].name);
 		}
 		else
 		{
-			pframetype = (daliasframetype_t *)
-					Mod_LoadAliasGroup (pframetype + 1,
-										&pheader->frames[i].frame,
-										pmodel->numverts,
-										&pheader->frames[i].bboxmin,
-										&pheader->frames[i].bboxmax,
-										pheader, pheader->frames[i].name);
+			pframetype = Mod_LoadAliasGroup (pframetype + 1,
+											&pheader->frames[i].frame,
+											pmodel->numverts,
+											&pheader->frames[i].bboxmin,
+											&pheader->frames[i].bboxmax,
+											pheader, pheader->frames[i].name);
 		}
+		if (!pframetype)
+			return false;
 	}
+	return true;
+}
 
-	mod->type = mod_alias;
+/*
+=================
+Mod_LoadAliasModel
 
-// FIXME: do this right
-	mod->mins[0] = mod->mins[1] = mod->mins[2] = -16;
-	mod->maxs[0] = mod->maxs[1] = mod->maxs[2] = 16;
+False, with mod_error, if the file can't be used
+=================
+*/
+static bool Mod_LoadAliasModel (model_t *mod, const void *buffer, int filesize)
+{
+	aliashdr_t	*pheader = NULL;
+	size_t		start, total;
+	bool		ok;
 
-//
-// move the complete, relocatable alias model into the model's own memory
-//
-	total = mod_scratch_used - start;
-	mod->extradata = Mod_Alloc (total);
-	memcpy (mod->extradata, pheader, total);
+	start = mod_scratch_used;
+	mod_end = (const byte *)buffer + filesize;
+	ok = Mod_ReadAliasModel (mod, buffer, &pheader);
+	if (ok)
+	{
+		mod->type = mod_alias;
+
+	// FIXME: do this right
+		mod->mins[0] = mod->mins[1] = mod->mins[2] = -16;
+		mod->maxs[0] = mod->maxs[1] = mod->maxs[2] = 16;
+
+	//
+	// move the complete, relocatable alias model into the model's own memory
+	//
+		total = mod_scratch_used - start;
+		mod->extradata = Mod_Alloc (total);
+		memcpy (mod->extradata, pheader, total);
+	}
 	mod_scratch_used = start;
+	return ok;
 }
 
 //=============================================================================
@@ -1832,16 +1929,21 @@ static void Mod_LoadAliasModel (model_t *mod, void *buffer)
 Mod_LoadSpriteFrame
 =================
 */
-static void * Mod_LoadSpriteFrame (void * pin, mspriteframe_t **ppframe)
+static const void *Mod_LoadSpriteFrame (const void *pin, mspriteframe_t **ppframe)
 {
-	dspriteframe_t		*pinframe;
-	mspriteframe_t		*pspriteframe;
-	int					width, height, size, origin[2];
+	const dspriteframe_t	*pinframe = pin;
+	mspriteframe_t			*pspriteframe;
+	int						width, height, size, origin[2];
 
-	pinframe = (dspriteframe_t *)pin;
-
+	if (!Mod_InFile (pinframe, sizeof(*pinframe), 1))
+		return NULL;
 	width = LittleLong (pinframe->width);
 	height = LittleLong (pinframe->height);
+	if (width <= 0 || height <= 0 || !Mod_InFile (pinframe + 1, (size_t)width, (size_t)height))
+	{
+		Mod_FileError ("a frame is %i by %i", width, height);
+		return NULL;
+	}
 	size = width * height;
 
 	pspriteframe = Mod_Alloc (sizeof (mspriteframe_t) + size);
@@ -1859,9 +1961,9 @@ static void * Mod_LoadSpriteFrame (void * pin, mspriteframe_t **ppframe)
 	pspriteframe->left = (float)origin[0];
 	pspriteframe->right = (float)(width + origin[0]);
 
-	Q_memcpy (&pspriteframe->pixels[0], (byte *)(pinframe + 1), size);
+	Q_memcpy (&pspriteframe->pixels[0], (const byte *)(pinframe + 1), size);
 
-	return (void *)((byte *)pinframe + sizeof (dspriteframe_t) + size);
+	return (const byte *)pinframe + sizeof (dspriteframe_t) + size;
 }
 
 
@@ -1870,18 +1972,24 @@ static void * Mod_LoadSpriteFrame (void * pin, mspriteframe_t **ppframe)
 Mod_LoadSpriteGroup
 =================
 */
-static void * Mod_LoadSpriteGroup (void * pin, mspriteframe_t **ppframe)
+static const void *Mod_LoadSpriteGroup (const void *pin, mspriteframe_t **ppframe)
 {
-	dspritegroup_t		*pingroup;
-	mspritegroup_t		*pspritegroup;
-	int					i, numframes;
-	dspriteinterval_t	*pin_intervals;
-	float				*poutintervals;
-	void				*ptemp;
+	const dspritegroup_t	*pingroup = pin;
+	mspritegroup_t			*pspritegroup;
+	int						i, numframes;
+	const dspriteinterval_t	*pin_intervals;
+	float					*poutintervals;
+	const void				*ptemp;
 
-	pingroup = (dspritegroup_t *)pin;
-
+	if (!Mod_InFile (pingroup, sizeof(*pingroup), 1))
+		return NULL;
 	numframes = LittleLong (pingroup->numframes);
+	pin_intervals = (const dspriteinterval_t *)(pingroup + 1);
+	if (numframes < 1 || !Mod_InFile (pin_intervals, sizeof(*pin_intervals), (size_t)numframes))
+	{
+		Mod_FileError ("a frame group has %i frames", numframes);
+		return NULL;
+	}
 
 	pspritegroup = Mod_Alloc (sizeof (mspritegroup_t) +
 				(numframes - 1) * sizeof (pspritegroup->frames[0]));
@@ -1889,8 +1997,6 @@ static void * Mod_LoadSpriteGroup (void * pin, mspriteframe_t **ppframe)
 	pspritegroup->numframes = numframes;
 
 	*ppframe = (mspriteframe_t *)pspritegroup;
-
-	pin_intervals = (dspriteinterval_t *)(pingroup + 1);
 
 	poutintervals = Mod_Alloc (numframes * sizeof (float));
 
@@ -1900,15 +2006,18 @@ static void * Mod_LoadSpriteGroup (void * pin, mspriteframe_t **ppframe)
 	{
 		*poutintervals = LittleFloat (pin_intervals->interval);
 		if (*poutintervals <= 0.0)
-			Sys_Error ("Mod_LoadSpriteGroup: interval<=0");
+		{
+			Mod_FileError ("a frame group's interval is %g", *poutintervals);
+			return NULL;
+		}
 
 		poutintervals++;
 		pin_intervals++;
 	}
 
-	ptemp = (void *)pin_intervals;
+	ptemp = pin_intervals;
 
-	for (i=0 ; i<numframes ; i++)
+	for (i=0 ; i<numframes && ptemp ; i++)
 	{
 		ptemp = Mod_LoadSpriteFrame (ptemp, &pspritegroup->frames[i]);
 	}
@@ -1920,28 +2029,32 @@ static void * Mod_LoadSpriteGroup (void * pin, mspriteframe_t **ppframe)
 /*
 =================
 Mod_LoadSpriteModel
+
+False, with mod_error, if the file can't be used
 =================
 */
-static void Mod_LoadSpriteModel (model_t *mod, void *buffer)
+static bool Mod_LoadSpriteModel (model_t *mod, const void *buffer, int filesize)
 {
 	int					i;
 	int					version;
-	dsprite_t			*pin;
+	const dsprite_t		*pin = buffer;
 	msprite_t			*psprite;
 	int					numframes;
-	int					size;
-	dspriteframetype_t	*pframetype;
-	
-	pin = (dsprite_t *)buffer;
+	size_t				size;
+	const dspriteframetype_t	*pframetype;
 
+	mod_end = (const byte *)buffer + filesize;
+	if (!Mod_InFile (pin, sizeof(*pin), 1))
+		return false;
 	version = LittleLong (pin->version);
 	if (version != SPRITE_VERSION)
-		Sys_Error ("%s has wrong version number "
-				 "(%i should be %i)", mod->name, version, SPRITE_VERSION);
+		return Mod_FileError ("it has version %i, not %i", version, SPRITE_VERSION);
 
 	numframes = LittleLong (pin->numframes);
+	if (numframes < 1 || (size_t)numframes > (size_t)filesize / sizeof(dspriteframetype_t))
+		return Mod_FileError ("it has %i frames", numframes);
 
-	size = sizeof (msprite_t) +	(numframes - 1) * sizeof (psprite->frames);
+	size = sizeof (msprite_t) +	(size_t)(numframes - 1) * sizeof (psprite->frames);
 
 	psprite = Mod_Alloc (size);
 
@@ -1958,39 +2071,39 @@ static void Mod_LoadSpriteModel (model_t *mod, void *buffer)
 	mod->maxs[0] = mod->maxs[1] = (vec_t)(psprite->maxwidth/2);
 	mod->mins[2] = (vec_t)(-psprite->maxheight/2);
 	mod->maxs[2] = (vec_t)(psprite->maxheight/2);
-	
+
 //
 // load the frames
 //
-	if (numframes < 1)
-		Sys_Error ("Mod_LoadSpriteModel: Invalid # of frames: %d\n", numframes);
-
 	mod->numframes = numframes;
 
-	pframetype = (dspriteframetype_t *)(pin + 1);
+	pframetype = (const dspriteframetype_t *)(pin + 1);
 
 	for (i=0 ; i<numframes ; i++)
 	{
 		spriteframetype_t	frametype;
 
+		if (!Mod_InFile (pframetype, sizeof(*pframetype), 1))
+			return false;
 		frametype = LittleLong (pframetype->type);
 		psprite->frames[i].type = frametype;
 
 		if (frametype == SPR_SINGLE)
 		{
-			pframetype = (dspriteframetype_t *)
-					Mod_LoadSpriteFrame (pframetype + 1,
-										 &psprite->frames[i].frameptr);
+			pframetype = Mod_LoadSpriteFrame (pframetype + 1,
+											 &psprite->frames[i].frameptr);
 		}
 		else
 		{
-			pframetype = (dspriteframetype_t *)
-					Mod_LoadSpriteGroup (pframetype + 1,
-										 &psprite->frames[i].frameptr);
+			pframetype = Mod_LoadSpriteGroup (pframetype + 1,
+											 &psprite->frames[i].frameptr);
 		}
+		if (!pframetype)
+			return false;
 	}
 
 	mod->type = mod_sprite;
+	return true;
 }
 
 //=============================================================================

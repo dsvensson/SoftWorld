@@ -231,3 +231,13 @@ void Sys_DetachThread (systhread_t *t)
 	CloseHandle (t->handle);
 	free (t);
 }
+
+void Sys_WaitAddress (void *address, uint32_t value)
+{
+	WaitOnAddress (address, &value, sizeof(value), INFINITE);
+}
+
+void Sys_WakeAddress (void *address)
+{
+	WakeByAddressAll (address);
+}

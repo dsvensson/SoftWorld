@@ -144,3 +144,8 @@ systhread_t	*Sys_StartThread (const char *name, void (*func) (void *arg), void *
 void	Sys_JoinThread (systhread_t *t);
 // lets the thread run on alone: it goes when its func returns
 void	Sys_DetachThread (systhread_t *t);
+
+// sleeps while the 32 bits at address (an atomic) hold value, or until woken;
+// it may wake early. Sys_WakeAddress wakes every thread sleeping on address.
+void	Sys_WaitAddress (void *address, uint32_t value);
+void	Sys_WakeAddress (void *address);

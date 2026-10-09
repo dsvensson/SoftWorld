@@ -408,6 +408,7 @@ void	Mod_Init (void);
 void	Mod_ClearAll (void);
 void	Mod_ForEachTexture (void (*fn) (texture_t *tx));	// of the brush models loaded
 model_t *Mod_ForName (char *name, bool crash);
+model_t	*Mod_FindLoaded (const char *name);	// NULL if it isn't loaded
 // a model from its file's contents, e.g. for tests; false (the reason is
 // printed) if it can't be used. Mod_Unload frees what it loaded.
 bool	Mod_LoadFromBuffer (model_t *mod, byte *buffer, int size);

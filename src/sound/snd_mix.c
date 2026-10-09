@@ -317,9 +317,26 @@ void S_PaintChannels(int endtime)
 				continue;
 			if (!ch->leftvol && !ch->rightvol)
 				continue;
+			if (ch->sfx->loading)
+				continue;		// waits, unmixed, for its sound
 			sc = S_LoadSound (ch->sfx);
 			if (!sc)
+			{
+				if (ch->waiting)
+					ch->sfx = NULL;		// it couldn't be loaded after all
 				continue;
+			}
+			if (ch->waiting)
+			{	// its sound is in: it starts now
+				ch->waiting = false;
+				ch->end = snd.paintedtime + sc->length - ch->pos;
+				if (i >= NUM_AMBIENTS + MAX_DYNAMIC_CHANNELS && sc->loopstart == -1)
+				{
+					Con_Printf ("Sound %s not looped\n", ch->sfx->name);
+					ch->sfx = NULL;
+					continue;
+				}
+			}
 
 			ltime = snd.paintedtime;
 
