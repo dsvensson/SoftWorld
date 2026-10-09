@@ -198,6 +198,16 @@ void R_RotateBandBmodel (rband_t *b)
 /*
 ================
 R_RecursiveClipBPoly
+
+A brush entity's face, or a piece of it, cut by the world's node planes into
+the leaves it is in. A piece that doesn't reach past a plane on both sides
+(ON_EPSILON) goes whole to one side, the one it is on, or for a piece in the
+plane the back, where id's split puts one: that split took a vertex on the
+plane for the back, so a piece in front with an edge on the plane came apart
+into a piece with a clip edge running back over that edge and one of points,
+and the face's span was left open on the lines by that edge, on to the
+screen's edge (AD's ad_tfuma, a window rim of a func_breakable from the
+start).
 ================
 */
 static void R_RecursiveClipBPoly (rband_t *b, bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
@@ -208,6 +218,7 @@ static void R_RecursiveClipBPoly (rband_t *b, bedge_t *pedges, mnode_t *pnode, m
 	mplane_t	*splitplane, tplane;
 	mvertex_t	*pvert, *plastvert, *ptvert;
 	mnode_t		*pn;
+	bool		front, back;
 
 	psideedges[0] = psideedges[1] = NULL;
 
@@ -221,6 +232,21 @@ static void R_RecursiveClipBPoly (rband_t *b, bedge_t *pedges, mnode_t *pnode, m
 	tplane.normal[0] = DotProduct (b->entity_rotation[0], splitplane->normal);
 	tplane.normal[1] = DotProduct (b->entity_rotation[1], splitplane->normal);
 	tplane.normal[2] = DotProduct (b->entity_rotation[2], splitplane->normal);
+
+// whether the piece reaches past the plane on both sides (each vertex begins
+// an edge)
+	front = back = false;
+	for (ptedge = pedges ; ptedge ; ptedge = ptedge->pnext)
+	{
+		dist = DotProduct (ptedge->v[0]->position, tplane.normal) - tplane.dist;
+		front |= dist > ON_EPSILON;
+		back |= dist < -ON_EPSILON;
+	}
+	if (!front || !back)
+	{
+		psideedges[front ? 0 : 1] = pedges;
+		pedges = NULL;
+	}
 
 // clip edges to BSP plane
 	for ( ; pedges ; pedges = pnextedge)
