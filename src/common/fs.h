@@ -50,6 +50,9 @@ void	FS_SetLoadHook (void (*hook) (const char *path, const byte *data, int lengt
 // called after the game directory changes, from FS_FlushGamedir: by the
 // client at a level's start, or while it has none
 void	FS_AddGamedirCallback (void (*callback)(void));
+// the same, for data of the world (models, sounds): run when the search path
+// changes without the game directory too (FS_SetSearchChain)
+void	FS_AddWorldCallback (void (*callback)(void));
 void	FS_RemoveGamedirCallback (void (*callback)(void));
 void	FS_FlushGamedir (void);
 
@@ -63,16 +66,28 @@ void	FS_SetGamedirHooks (void (*leaving)(void), void (*entered)(void));
 // is given twice
 void	FS_ListPaths (const char *partial, const char *const *extensions, void (*add) (void *ctx, const char *path),
 			void *ctx);
+// the same for a game directory alone, mounted or not
+void	FS_ListDirFiles (const char *dir, const char *partial, const char *const *extensions,
+			void (*add) (void *ctx, const char *path), void *ctx);
 
-// a game directory's paks and directory over the base's (id1, qw), for a
-// loader to read through on its own thread while the search path changes:
-// opened, retained (the search path's as it is) and released on the main
-// thread; FS_UseChain sets the calling thread's (NULL: the search path)
+// a game directory's paks and directory over the base's (id1, qw), or alone,
+// for a loader to read through on its own thread while the search path
+// changes: opened, retained (the search path's as it is) and released on the
+// main thread; FS_UseChain sets the calling thread's (NULL: the search path),
+// for FS_LoadFile and FS_ListPaths
 typedef struct fs_chain_s fs_chain_t;
-fs_chain_t	*FS_OpenDirChain (const char *dir);	// quiet: no "Added packfile"
-fs_chain_t	*FS_RetainChain (void);
+fs_chain_t	*FS_OpenDirChain (const char *dir, bool alone);	// quiet: no "Added packfile"
+fs_chain_t	*FS_RetainChain (fs_chain_t *chain);		// NULL: the search path's
 void	FS_ReleaseChain (fs_chain_t *chain);
 void	FS_UseChain (fs_chain_t *chain);
+
+// a chain as the search path in place of the game directory's, which stays
+// the directory written to; NULL puts its own back. A gamedir change does
+// too. Only the world's data is dropped (FS_AddWorldCallback).
+void	FS_SetSearchChain (fs_chain_t *chain);
+// the game directory's own chain while another is the search path, else NULL
+// (the search path is): what reads the game's own files uses it (2D pictures)
+fs_chain_t	*FS_GameDirChain (void);
 
 void	COM_WriteFile (char *filename, void *data, int len);
 int		COM_FOpenFile (const char *filename, FILE **file);

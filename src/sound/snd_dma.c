@@ -201,7 +201,7 @@ void S_Init (void)
 
 	snd.known_sfx = Mem_Calloc (MAX_SFX, sizeof(sfx_t));
 	snd.num_sfx = 0;
-	FS_AddGamedirCallback (S_FlushSounds);
+	FS_AddWorldCallback (S_FlushSounds);
 
 //	Con_Printf ("Sound sampling rate: %i\n", shm->speed);
 

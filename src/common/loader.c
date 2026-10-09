@@ -98,7 +98,7 @@ void Load_Submit (loadjob_t *job, bool front)
 	job->next = NULL;
 	job->prints = (print_capture_t){0};
 	if (!job->chain)
-		job->chain = FS_RetainChain ();
+		job->chain = FS_RetainChain (NULL);
 	load.outstanding++;
 
 	if (!Load_Threaded ())

@@ -85,6 +85,25 @@ qpic_t	*Draw_PicFromWad (char *lumpname)
 
 /*
 ================
+Draw_LoadFile
+
+A 2D picture's file from the game directory's search path, also while another
+directory's is the search path (attract mode's, FS_SetSearchChain): the menu
+and the console are the game's
+================
+*/
+static byte *Draw_LoadFile (const char *path, int *length)
+{
+	byte	*data;
+
+	FS_UseChain (FS_GameDirChain ());
+	data = FS_LoadFile (path, length);
+	FS_UseChain (NULL);
+	return data;
+}
+
+/*
+================
 Draw_CachePic
 ================
 */
@@ -109,7 +128,7 @@ qpic_t	*Draw_CachePic (char *path)
 //
 // load the pic from disk
 //
-	pic->pic = (qpic_t *)FS_LoadFile (path, NULL);
+	pic->pic = (qpic_t *)Draw_LoadFile (path, NULL);
 
 	dat = pic->pic;
 	if (!dat)
@@ -164,13 +183,13 @@ qpic_t *Draw_TryCachePic (const char *path)
 	if (pic->pic || pic->missing)
 		return pic->pic;
 
-	dat = (qpic_t *)FS_LoadFile ((char *)path, &len);
+	dat = (qpic_t *)Draw_LoadFile (path, &len);
 	if (!dat && !strchr (strrchr (path, '/') ? strrchr (path, '/') : path, '.'))
 	{	// "gfx/inter" for gfx/inter.lmp, as FTE finds it
 		char	lmp[MAX_QPATH];
 
 		snprintf (lmp, sizeof(lmp), "%s.lmp", path);
-		dat = (qpic_t *)FS_LoadFile (lmp, &len);
+		dat = (qpic_t *)Draw_LoadFile (lmp, &len);
 	}
 	if (dat)
 	{
@@ -378,7 +397,7 @@ byte *Draw_ReadImage (const char *path, int *width, int *height)
 		*width = *height = 16;
 		return Draw_Expand (index, 16, 16, -1);
 	}
-	pic = (qpic_t *)FS_LoadFile ((char *)path, &len);
+	pic = (qpic_t *)Draw_LoadFile (path, &len);
 	if (pic)
 	{
 		SwapPic (pic);

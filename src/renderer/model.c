@@ -122,7 +122,7 @@ Mod_Init
 */
 void Mod_Init (void)
 {
-	FS_AddGamedirCallback (Mod_FlushAll);
+	FS_AddWorldCallback (Mod_FlushAll);
 }
 
 /*

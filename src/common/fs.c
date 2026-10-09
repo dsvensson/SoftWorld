@@ -256,11 +256,13 @@ static searchpath_t	*com_base_searchpaths;	// without gamedirs
 // (fs_live), or one a loader reads through while the search path changes
 struct fs_chain_s
 {
-	searchpath_t	*paths;		// ends in com_base_searchpaths
+	searchpath_t	*paths;		// its own, then those of base
+	searchpath_t	*base;		// com_base_searchpaths, or NULL for a directory alone
 	int				refs;		// changed on the main thread only
 };
 
 static fs_chain_t	*fs_live;					// com_searchpaths is its paths
+static fs_chain_t	*fs_home;					// the game directory's, while FS_SetSearchChain's is live
 static thread_local fs_chain_t	*fs_thread_chain;	// FS_UseChain's, NULL: the search path
 
 /*
@@ -609,7 +611,7 @@ void FS_ListPaths (const char *partial, const char *const *extensions, void (*ad
 	l.dir = dir;
 	l.name = partial + dirlen;
 
-	for (search = com_searchpaths ; search ; search = search->next)
+	for (search = fs_thread_chain ? fs_thread_chain->paths : com_searchpaths ; search ; search = search->next)
 	{
 		if (!search->pack)
 		{
@@ -635,6 +637,25 @@ void FS_ListPaths (const char *partial, const char *const *extensions, void (*ad
 				add (ctx, pak->files[i].name);
 		}
 	}
+}
+
+/*
+============
+FS_ListDirFiles
+
+FS_ListPaths for a game directory alone, mounted or not: its loose files
+and its paks'
+============
+*/
+void FS_ListDirFiles (const char *dir, const char *partial, const char *const *extensions,
+	void (*add) (void *ctx, const char *path), void *ctx)
+{
+	fs_chain_t	*chain = FS_OpenDirChain (dir, true), *was = fs_thread_chain;
+
+	FS_UseChain (chain);
+	FS_ListPaths (partial, extensions, add, ctx);
+	FS_UseChain (was);
+	FS_ReleaseChain (chain);
 }
 
 /*
@@ -693,14 +714,27 @@ old directory can be dropped: when nothing uses it (FS_FlushGamedir)
 */
 #define MAX_GAMEDIR_CALLBACKS	8
 static void	(*gamedir_callbacks[MAX_GAMEDIR_CALLBACKS])(void);
+static bool	gamedir_world[MAX_GAMEDIR_CALLBACKS];	// FS_AddWorldCallback's
 static int	num_gamedir_callbacks;
 static bool	gamedir_changed;		// the callbacks are owed a run
+static bool	search_changed;			// the world's are (FS_SetSearchChain)
 
-void FS_AddGamedirCallback (void (*callback)(void))
+static void FS_AddCallback (void (*callback)(void), bool world)
 {
 	if (num_gamedir_callbacks == MAX_GAMEDIR_CALLBACKS)
 		Sys_Error ("FS_AddGamedirCallback: too many callbacks");
+	gamedir_world[num_gamedir_callbacks] = world;
 	gamedir_callbacks[num_gamedir_callbacks++] = callback;
+}
+
+void FS_AddGamedirCallback (void (*callback)(void))
+{
+	FS_AddCallback (callback, false);
+}
+
+void FS_AddWorldCallback (void (*callback)(void))
+{
+	FS_AddCallback (callback, true);
 }
 
 void FS_RemoveGamedirCallback (void (*callback)(void))
@@ -711,7 +745,9 @@ void FS_RemoveGamedirCallback (void (*callback)(void))
 	{
 		if (gamedir_callbacks[i] == callback)
 		{
-			gamedir_callbacks[i] = gamedir_callbacks[--num_gamedir_callbacks];
+			num_gamedir_callbacks--;
+			gamedir_callbacks[i] = gamedir_callbacks[num_gamedir_callbacks];
+			gamedir_world[i] = gamedir_world[num_gamedir_callbacks];
 			return;
 		}
 	}
@@ -730,11 +766,43 @@ void FS_FlushGamedir (void)
 {
 	int		i;
 
-	if (!gamedir_changed)
+	if (!gamedir_changed && !search_changed)
 		return;
-	gamedir_changed = false;
 	for (i = 0 ; i < num_gamedir_callbacks ; i++)
-		gamedir_callbacks[i] ();
+		if (gamedir_changed || gamedir_world[i])
+			gamedir_callbacks[i] ();
+	gamedir_changed = search_changed = false;
+}
+
+/*
+============
+FS_SetSearchChain
+
+A chain (FS_OpenDirChain's, held as long as it is) as the search path, in
+place of the game directory's, or the game directory's back (NULL): the
+directory itself (gamedirfile, com_gamedir, where files are written) stays,
+and nothing runs as it would for a change of it (FS_SetGamedirHooks); the
+world's data loaded is dropped (FS_AddWorldCallback), the rest kept
+============
+*/
+void FS_SetSearchChain (fs_chain_t *chain)
+{
+	fs_chain_t	*to = chain ? chain : fs_home;
+
+	if (!to || to == fs_live)
+		return;
+	if (chain)
+		chain->refs++;
+	if (!fs_home)
+		fs_home = fs_live;
+	else
+		FS_ReleaseChain (fs_live);
+	if (!chain)
+		fs_home = NULL;
+	if (to->paths != com_searchpaths)
+		search_changed = true;
+	fs_live = to;
+	com_searchpaths = to->paths;
 }
 
 static void	(*gamedir_leaving)(void), (*gamedir_entered)(void);	// FS_SetGamedirHooks
@@ -896,17 +964,18 @@ FS_NewChain
 A game directory's chain over the base's: nothing above it for id1 and qw
 ================
 */
-static fs_chain_t *FS_NewChain (const char *dir, bool loud)
+static fs_chain_t *FS_NewChain (const char *dir, bool alone, bool loud)
 {
 	fs_chain_t	*chain = Mem_Calloc (1, sizeof(*chain));
 	char		path[MAX_OSPATH];
 
 	chain->refs = 1;
-	chain->paths = com_base_searchpaths;
-	if (!FS_IsBaseDir (dir))
+	chain->base = alone ? NULL : com_base_searchpaths;
+	chain->paths = chain->base;
+	if (alone || !FS_IsBaseDir (dir))
 	{
 		snprintf (path, sizeof(path), "%s/%s", com_basedir, dir);
-		chain->paths = COM_PushDirectory (path, com_base_searchpaths, loud);
+		chain->paths = COM_PushDirectory (path, chain->base, loud);
 	}
 	return chain;
 }
@@ -920,15 +989,17 @@ a game directory's (opened quietly), or the search path's as it is. They are
 held and let go on the main thread; the last let go closes its paks.
 ================
 */
-fs_chain_t *FS_OpenDirChain (const char *dir)
+fs_chain_t *FS_OpenDirChain (const char *dir, bool alone)
 {
-	return FS_NewChain (dir, false);
+	return FS_NewChain (dir, alone, false);
 }
 
-fs_chain_t *FS_RetainChain (void)
+fs_chain_t *FS_RetainChain (fs_chain_t *chain)
 {
-	fs_live->refs++;
-	return fs_live;
+	if (!chain)
+		chain = fs_live;
+	chain->refs++;
+	return chain;
 }
 
 void FS_ReleaseChain (fs_chain_t *chain)
@@ -937,7 +1008,7 @@ void FS_ReleaseChain (fs_chain_t *chain)
 
 	if (--chain->refs > 0)
 		return;
-	while (chain->paths != com_base_searchpaths)
+	while (chain->paths != chain->base)
 	{
 		if (chain->paths->pack)
 		{
@@ -950,6 +1021,11 @@ void FS_ReleaseChain (fs_chain_t *chain)
 		chain->paths = next;
 	}
 	Mem_Free (chain);
+}
+
+fs_chain_t *FS_GameDirChain (void)
+{
+	return fs_home;
 }
 
 void FS_UseChain (fs_chain_t *chain)
@@ -975,7 +1051,8 @@ void COM_Gamedir (char *dir)
 	}
 
 	if (!strcmp(gamedirfile, dir))
-		return;		// still the same
+		return;		// still the same (whatever FS_SetSearchChain set)
+	FS_SetSearchChain (NULL);	// the game directory's own search path back
 	if (gamedir_leaving)
 		gamedir_leaving ();
 	Q_strncpyz (gamedirfile, dir, sizeof(gamedirfile));
@@ -983,7 +1060,7 @@ void COM_Gamedir (char *dir)
 	// the old directory's paths go once no loader reads through them, and
 	// the data loaded from it once nothing uses it
 	FS_ReleaseChain (fs_live);
-	fs_live = FS_NewChain (dir, true);
+	fs_live = FS_NewChain (dir, false, true);
 	com_searchpaths = fs_live->paths;
 	gamedir_changed = true;
 
@@ -1026,5 +1103,5 @@ static void COM_InitFilesystem (const char *basedir)
 	com_base_searchpaths = com_searchpaths;
 	fs_live = Mem_Calloc (1, sizeof(*fs_live));
 	fs_live->refs = 1;
-	fs_live->paths = com_searchpaths;
+	fs_live->paths = fs_live->base = com_searchpaths;
 }
