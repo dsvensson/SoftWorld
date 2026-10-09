@@ -125,7 +125,8 @@ cvar_t	cl_gibfilter = {.name = "cl_gibfilter", .string = "0", .archive = true,
 	.description = "Hides gibs, and the heads of players blown to pieces.",
 	.values = (const cvar_value_t[]){{"0", "Shown"}, {"1", "Hidden"}, {0}}};
 cvar_t	cl_r2g = {.name = "cl_r2g", .string = "0", .archive = true,
-	.description = "Draws rockets with progs/grenade.mdl instead of progs/missile.mdl; their trail and light stay.",
+	.description = "Draws rockets as grenades: progs/grenade.mdl instead of progs/missile.mdl, with a grenade's "
+		"smoke trail. Their light stays a rocket's (r_rocketlight).",
 	.values = (const cvar_value_t[]){{"0", "Rockets"}, {"1", "Grenades"}, {0}}};
 
 static cvar_t  localid = {.name = "localid", .string = "",

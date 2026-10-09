@@ -1119,6 +1119,7 @@ static void CL_LinkPacketEntities (void)
 	vec3_t				axis[3];
 	unsigned			emitflags;
 	int					effect, emit, type;
+	int					look, flags;		// the model drawn, and its flags (cl_r2g's grenade)
 
 	cl_trailframe++;
 
@@ -1159,10 +1160,12 @@ static void CL_LinkPacketEntities (void)
 		cl.numvisedicts++;
 
 		ent->keynum = s1->number;
-		ent->model = model;
-		// a rocket drawn as a grenade, its trail and light still a rocket's
+		// a rocket drawn as a grenade (cl_r2g) has a grenade's trail too, its
+		// light still a rocket's
+		look = s1->modelindex;
 		if (cl_r2g.value && s1->modelindex == cl.rocketindex && CL_Model (cl.grenadeindex))
-			ent->model = CL_Model (cl.grenadeindex);
+			look = cl.grenadeindex;
+		ent->model = CL_Model (look);
 		ent->alpha = s1->alpha;
 	
 		// set colormap
@@ -1198,18 +1201,20 @@ static void CL_LinkPacketEntities (void)
 
 		VectorCopy (origin, ent->origin);
 
-		// the entity's own effects, else its model's (r_trail, r_effect)
+		// the entity's own effects, else those of the model drawn (r_trail,
+		// r_effect)
 		effect = CL_ParticleEffect (s1->traileffect);
 		if (effect == P_INVALID)
-			effect = CL_ModelTrail (s1->modelindex);
+			effect = CL_ModelTrail (look);
 		emitflags = P_EMITFORWARDS;
 		emit = CL_ParticleEffect (s1->emiteffect);
 		if (emit == P_INVALID)
-			emit = CL_ModelEmit (s1->modelindex, &emitflags);
+			emit = CL_ModelEmit (look, &emitflags);
 
 		// add automatic particle trails: the stretch since the last frame drew
 		// the entity, which starts one if it didn't, or the entity teleported
-		if (!model->flags && effect == P_INVALID && emit == P_INVALID)
+		flags = ent->model->flags;
+		if (!flags && !(model->flags & EF_ROCKET) && effect == P_INVALID && emit == P_INVALID)
 			continue;
 		trail = &cl_trails[s1->number];
 		fresh = trail->frame != cl_trailframe - 1;
@@ -1227,30 +1232,28 @@ static void CL_LinkPacketEntities (void)
 		trail->frame = cl_trailframe;
 		carry = &trail->carry;
 
-		if (model->flags & EF_ROCKET)
+		if ((model->flags & EF_ROCKET) && r_rocketlight.value)
 		{
-			type = 0;
-			if (r_rocketlight.value)
-			{
-				dl = CL_AllocDlight (s1->number);
-				VectorCopy (ent->origin, dl->origin);
-				dl->radius = 200;
-				dl->die = (float)(cl.time + 0.1f);
-				CL_RocketLightColor (dl->color);
-				dl->level = true;
-			}
+			dl = CL_AllocDlight (s1->number);
+			VectorCopy (ent->origin, dl->origin);
+			dl->radius = 200;
+			dl->die = (float)(cl.time + 0.1f);
+			CL_RocketLightColor (dl->color);
+			dl->level = true;
 		}
-		else if (model->flags & EF_GRENADE)
+		if (flags & EF_ROCKET)
+			type = 0;
+		else if (flags & EF_GRENADE)
 			type = 1;
-		else if (model->flags & EF_GIB)
+		else if (flags & EF_GIB)
 			type = 2;
-		else if (model->flags & EF_ZOMGIB)
+		else if (flags & EF_ZOMGIB)
 			type = 4;
-		else if (model->flags & EF_TRACER)
+		else if (flags & EF_TRACER)
 			type = 3;
-		else if (model->flags & EF_TRACER2)
+		else if (flags & EF_TRACER2)
 			type = 5;
-		else if (model->flags & EF_TRACER3)
+		else if (flags & EF_TRACER3)
 			type = 6;
 		else
 			type = -1;
