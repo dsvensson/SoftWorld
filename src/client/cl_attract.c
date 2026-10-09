@@ -23,6 +23,7 @@ static cvar_t	cl_attract_time = {.name = "cl_attract_time", .string = "12", .arc
 #define	ATTRACT_FADE		0.5		// seconds to black, and from it
 #define	ATTRACT_SIGNON		15		// seconds a level may take to come up
 #define	ATTRACT_FAILURES	5		// in a row, and attract mode stops
+#define	ATTRACT_WATERALPHA	0.7f	// its water's opacity, whatever r_wateralpha says
 #define	MAX_ATTRACT_SPOTS	64
 
 typedef enum
@@ -343,6 +344,7 @@ static void CL_AttractLoad (loadjob_t *job)
 	int				size;
 
 	j->failed = true;
+	BSP_WantVisPatch (VP_ATTRACT, true);	// its liquids seen through (r_novis 2), as its water is drawn
 	snprintf (path, sizeof(path), "maps/%s.bsp", j->name);
 	if (!CL_AttractSpots (j, path))
 	{
@@ -356,6 +358,7 @@ static void CL_AttractLoad (loadjob_t *job)
 	if (j->cmap)
 		j->world = Mod_LoadDetached (path, buf, size);
 	Mem_Free (buf);
+	BSP_WantVisPatch (VP_ATTRACT, false);
 	j->failed = !j->cmap || !j->world;
 }
 
@@ -549,6 +552,8 @@ void CL_AttractFrame (void)
 	double	t = host.realtime - attract.statetime;
 	float	black;
 
+	// its water seen through, its maps' vis widened for it (CL_AttractLoad)
+	r_scene.wateralpha = attract.state != AT_OFF ? ATTRACT_WATERALPHA : 0;
 	if (attract.state == AT_OFF)
 	{
 		if (attract.ready && !attract.hold && cl_attract.value && CL_AttractIdle ())
@@ -721,6 +726,7 @@ void CL_AttractStart (void)
 		return;
 	}
 	attract.failures = 0;
+	BSP_WantVisPatch (VP_ATTRACT, true);	// its maps stay widened here, whatever r_novis says
 	CL_AttractSetState (AT_BLACK);
 	CL_AttractLoadNext ();
 
@@ -755,6 +761,7 @@ void CL_AttractStop (void)
 	CL_Disconnect ();
 	SV_AttractEnd ();
 	FS_SetSearchChain (NULL);
+	BSP_WantVisPatch (VP_ATTRACT, false);
 }
 
 /*

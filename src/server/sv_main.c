@@ -1580,6 +1580,7 @@ void SV_Frame (double time, bool away)
 		SV_ReadPackets ();
 
 	SV_CheckVars ();
+	SV_CheckVisWiden ();
 
 // send messages back to the clients that had packets read this frame
 	SV_SendClientMessages ();

@@ -539,6 +539,7 @@ typedef struct staticsound_s
 staticsound_t *SV_NewStaticSound (void);
 byte *SV_LeafPVS (int leafnum);
 byte *SV_LeafPHS (int leafnum);
+void SV_CheckVisWiden (void);
 
 
 //

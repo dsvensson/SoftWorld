@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // on the same machine.
 
 #include "r_local.h"
+#include "vispatch.h"
 
 // the model being loaded, on the thread loading it: the main one, or a
 // loader's (Mod_LoadDetached)
@@ -213,9 +214,35 @@ static byte *Mod_DecompressVis (byte *in, model_t *model)
 
 byte *Mod_LeafPVS (mleaf_t *leaf, model_t *model)
 {
+	int		row;
+
 	if (leaf == model->leafs)
 		return model->novis;
+	if (model->viswidened && model->leafrow)
+	{	// widened across liquids: copied, as the decompressed row is the caller's
+		row = model->leafrow[leaf - model->leafs];
+		if (row < 0)
+			return model->novis;
+		memcpy (model->pvs, model->visrows + row, (size_t)model->visbytes);
+		return model->pvs;
+	}
 	return Mod_DecompressVis (leaf->compressed_vis, model);
+}
+
+/*
+===================
+Mod_WidenVis
+
+As it loads, and whenever r_novis 2 or attract mode change their minds
+(R_MarkLeaves): widened the first time it is asked to be, and kept
+===================
+*/
+void Mod_WidenVis (model_t *mod, bool widen)
+{
+	mod->viswidened = widen;
+	if (widen && mod->vissource && !mod->visrows)
+		BSP_PatchVis (mod->vissource, mod->visdata, mod->vissize, mod->arena, mod->visbytes, &mod->visrows,
+			&mod->leafrow);
 }
 
 /*
@@ -1367,6 +1394,10 @@ static bool Mod_LoadBrushModel (model_t *mod, byte *buffer, int size)
 	mod->novis = Mod_Alloc ((size_t)mod->visbytes);
 	memset (mod->novis, 0xff, (size_t)mod->visbytes);
 	mod->pvs = Mod_Alloc ((size_t)mod->visbytes);
+	// seen across liquids its vis treated as opaque, where the loading
+	// thread asks (r_novis 2, attract mode), and kept to be later
+	mod->vissource = BSP_VisPatchSource (&bsp, mod->arena);
+	Mod_WidenVis (mod, BSP_VisPatchWanted ());
 
 	mod->numframes = 2;		// regular and alternate animation
 

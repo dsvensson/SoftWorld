@@ -140,6 +140,12 @@ int			CM_NumVisLeafs (const cmap_t *map);
 // the leafs visible from leaf leafnum, valid until the next call
 byte		*CM_LeafPVS (cmap_t *map, int leafnum);
 
+// its visibility widened across liquids its vis treated as opaque, or as
+// built: as it loads, and whenever r_novis 2 or attract mode change their
+// minds (SV_CheckVisWiden)
+bool		CM_VisWidened (const cmap_t *map);
+void		CM_WidenVis (cmap_t *map, bool widen);
+
 // the leafs visible from anywhere within 8 units of org, valid until the next call
 byte		*CM_FatPVS (cmap_t *map, const vec3_t org);
 

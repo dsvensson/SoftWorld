@@ -109,7 +109,7 @@ void Cvar_ListMatches (const char *partial, void (*match) (void *ctx, const char
 static cvar_info_hook_t	cvar_userinfo_hook;		// the client's
 static cvar_info_hook_t	cvar_serverinfo_hook;	// the server's
 
-#define MAX_CHANGE_HOOKS	4
+#define MAX_CHANGE_HOOKS	8
 static cvar_change_hook_t	cvar_change_hooks[MAX_CHANGE_HOOKS];
 
 /*

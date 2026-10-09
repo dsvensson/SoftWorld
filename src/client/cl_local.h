@@ -52,6 +52,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "q_types.h"
 #include "sys.h"
 #include "version.h"
+#include "vispatch.h"
 #include "vmarray.h"
 #include "net.h"
 #include "cmodel.h"

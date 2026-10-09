@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // inside pak files, as a collision map and as a render model. BSP29 and BSP2
 // maps must load; anything else must be refused with a reason, never crash.
 
+#include "arena.h"
 #include "bspfile.h"
 #include "cmodel.h"
 #include "mem.h"
@@ -31,6 +32,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "render.h"
 #include "sys.h"
 #include "vid.h"
+#include "vispatch.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -44,7 +46,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <sys/stat.h>
 #endif
 
-static int	loaded, refused, failures;
+static int	loaded, refused, failures, vispatched;
 
 //
 // the platform, as far as the loaders need it
@@ -127,6 +129,28 @@ static void TestMap (const char *name, byte *buf, int size)
 	mod_ok = Mod_LoadFromBuffer (&mod, buf, size);
 	if (mod_ok)
 		Mod_Unload (&mod);
+
+	// its visibility widened across its liquids, where vis built them opaque
+	if (quake && cm_ok && mod_ok)
+	{
+		bspfile_t	bsp;
+		arena_t		arena;
+		bspleaf_t	*leafs;
+		vpsource_t	*src;
+		const byte	*vis;
+		byte		*rows;
+		int			*leafrow, numleafs, vissize;
+
+		Arena_Init (&arena, "vis patch");
+		if (BSP_Open (&bsp, name, buf, size) && (leafs = BSP_Leafs (&bsp, &numleafs)))
+		{
+			Mem_Free (leafs);
+			if ((src = BSP_VisPatchSource (&bsp, &arena)) && BSP_Lump (&bsp, LUMP_VISIBILITY, 1, &vis, &vissize)
+				&& BSP_PatchVis (src, vis, vissize, &arena, (((numleafs + 31) >> 3) + 3) & ~3, &rows, &leafrow))
+				vispatched++;
+		}
+		Arena_Free (&arena);
+	}
 
 	if (quake && cm_ok && mod_ok)
 		loaded++;
@@ -290,6 +314,7 @@ int main (int argc, char **argv)
 	R_InitPalette (palette, colormap);	// the tables textures are made with (all black)
 	R_InitTextures ();	// the checkerboard for textures a map lacks
 	TestDirectory (root);
-	printf ("%d maps loaded, %d other files refused, %d failures\n", loaded, refused, failures);
+	printf ("%d maps loaded (%d with their visibility widened across their liquids), %d other files refused, "
+		"%d failures\n", loaded, vispatched, refused, failures);
 	return failures || !loaded;
 }

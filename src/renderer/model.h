@@ -390,6 +390,10 @@ typedef struct model_s
 	int			visbytes;		// a row of visibility bits, for every leaf
 	byte		*novis;			// everything visible
 	byte		*pvs;			// the last decompressed row
+	struct vpsource_s	*vissource;	// to widen it across liquids with, NULL: nothing to widen
+	bool		viswidened;		// asked to be (Mod_WidenVis)
+	byte		*visrows;		// the rows widened across liquids (BSP_PatchVis), NULL: not yet
+	int			*leafrow;		// each leaf's offset in them, -1 none
 	byte		*lightdata;		// mono, 128 is 1.0
 	int			lightsamples;
 	unsigned short	*lightrgb;	// 3 per sample, 2048 is 1.0; NULL without colored light
@@ -426,3 +430,5 @@ void	*Mod_Extradata (model_t *mod);	// handles caching
 
 mleaf_t *Mod_PointInLeaf (vec3_t p, model_t *model);
 byte	*Mod_LeafPVS (mleaf_t *leaf, model_t *model);
+// its visibility widened across liquids its vis treated as opaque, or as built
+void	Mod_WidenVis (model_t *mod, bool widen);

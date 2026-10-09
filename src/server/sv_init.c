@@ -397,6 +397,26 @@ byte *SV_LeafPHS (int leafnum)
 	return sv.phs_rows[leafnum];
 }
 
+/*
+================
+SV_CheckVisWiden
+
+The map's visibility widened across its liquids or back, as r_novis 2 or
+attract mode change their minds: the rows decompressed so far are left to
+the level's memory
+================
+*/
+void SV_CheckVisWiden (void)
+{
+	bool	widen = BSP_VisPatchWanted ();
+
+	if (CM_VisWidened (sv.map) == widen)
+		return;
+	CM_WidenVis (sv.map, widen);
+	memset (sv.pvs_rows, 0, (size_t)sv.vis_rows * sizeof(*sv.pvs_rows));
+	memset (sv.phs_rows, 0, (size_t)sv.vis_rows * sizeof(*sv.phs_rows));
+}
+
 static unsigned SV_CheckModel(char *mdl)
 {
 	byte	*buf;

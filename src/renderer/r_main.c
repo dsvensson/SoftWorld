@@ -20,7 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // r_main.c
 
 #include "r_local.h"
-#include "r_local.h"
+#include "vispatch.h"
 static void	R_InitTurb (void);
 
 //define	PASSAGES
@@ -155,22 +155,26 @@ static cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1",
 // visibility was built for it
 static cvar_t	r_wateralpha = {.name = "r_wateralpha", .string = "1", .archive = true,
 	.description = "How opaque water is drawn, 0 to 1; seeing through it needs a map whose visibility "
-		"was built for it, or r_novis 1."};
+		"was built for it, or r_novis 1 or 2."};
 static cvar_t	r_lavaalpha = {.name = "r_lavaalpha", .string = "1", .archive = true,
 	.description = "How opaque lava is drawn, 0 to 1; seeing through it needs a map whose visibility "
-		"was built for it, or r_novis 1."};
+		"was built for it, or r_novis 1 or 2."};
 static cvar_t	r_slimealpha = {.name = "r_slimealpha", .string = "1", .archive = true,
 	.description = "How opaque slime is drawn, 0 to 1; seeing through it needs a map whose visibility "
-		"was built for it, or r_novis 1."};
+		"was built for it, or r_novis 1 or 2."};
 static cvar_t	r_telealpha = {.name = "r_telealpha", .string = "1", .archive = true,
 	.description = "How opaque teleporters are drawn, 0 to 1; seeing through them needs a map whose visibility "
-		"was built for it, or r_novis 1."};
-// every leaf is drawn, not just what the view's leaf sees; liquids can then be
-// seen through on any map
-static cvar_t	r_novis = {.name = "r_novis", .string = "0",
+		"was built for it, or r_novis 1 or 2."};
+// every leaf is drawn, not just what the view's leaf sees; or what it sees
+// across the liquids its map's vis treated as opaque (vispatch.c). Liquids
+// can then be seen through on any map.
+static cvar_t	r_novis = {.name = "r_novis", .string = "0", .archive = true,
 	.description = "Draws every leaf of the map, not just what the view's leaf sees, so liquids can be seen "
-		"through on any map.",
-	.values = (const cvar_value_t[]){{"0", "What the view's leaf sees"}, {"1", "Every leaf"}, {0}}};
+		"through on any map. 2 draws what the view's leaf sees across the liquids of maps built with them "
+		"opaque to vis instead: as cheap as their own visibility, and a local server sends what is seen "
+		"through them.",
+	.values = (const cvar_value_t[]){{"0", "What the view's leaf sees"}, {"1", "Every leaf"},
+		{"2", "What the view's leaf sees, across liquids"}, {0}}};
 static cvar_t	r_drawviewmodel = {.name = "r_drawviewmodel", .string = "1",
 	.description = "Draws the weapon in the view.",
 	.values = (const cvar_value_t[]){{"0", "Hidden"}, {"1", "Drawn"}, {0}}};
@@ -257,6 +261,14 @@ void	R_InitTextures (void)
 	}	
 }
 
+// r_novis 2, for the maps the main thread has (the renderer's and the local
+// server's), which follow it each frame
+static void R_CvarChanged (cvar_t *var)
+{
+	if (var == &r_novis)
+		BSP_WantVisPatch (VP_NOVIS, var->value == 2);
+}
+
 /*
 ===============
 R_Init
@@ -302,6 +314,7 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_slimealpha);
 	Cvar_RegisterVariable (&r_telealpha);
 	Cvar_RegisterVariable (&r_novis);
+	Cvar_AddChangeHook (R_CvarChanged);
 	Cvar_RegisterVariable (&r_drawviewmodel);
 	Cvar_RegisterVariable (&r_lerpframes);
 	Cvar_RegisterVariable (&r_lerpmuzzlehack);
@@ -738,13 +751,23 @@ static void R_MarkLeaves (void)
 	byte	*vis;
 	mnode_t	*node;
 	int		i;
+	bool	widen = BSP_VisPatchWanted ();
 
-	if (r_oldviewleaf == r_viewleaf && oldnovis == (r_novis.value != 0))
+	// r_novis 2 or attract mode changed their minds: the world's vis widened
+	// across its liquids or back, and what is seen through with it
+	if (r_scene.worldmodel->viswidened != widen)
+	{
+		Mod_WidenVis (r_scene.worldmodel, widen);
+		R_CheckLiquidVis ();
+		r_oldviewleaf = NULL;
+	}
+
+	if (r_oldviewleaf == r_viewleaf && oldnovis == (r_novis.value == 1))
 		return;
 	
 	r_visframecount++;
 	r_oldviewleaf = r_viewleaf;
-	oldnovis = r_novis.value != 0;
+	oldnovis = r_novis.value == 1;
 
 	vis = oldnovis ? r_scene.worldmodel->novis : Mod_LeafPVS (r_viewleaf, r_scene.worldmodel);
 		
@@ -797,7 +820,7 @@ int R_SurfaceAlpha (const entity_t *ent, const msurface_t *surf)
 		return 256;
 	alpha = R_EntityAlpha (ent) / 256.0f;
 	if ((surf->flags & SURF_DRAWTURB) &&
-		(ent != &r_worldentity || r_novis.value || (r_liquidvis & R_LiquidKind (surf->flags))))
+		(ent != &r_worldentity || r_novis.value == 1 || (r_liquidvis & R_LiquidKind (surf->flags))))
 	{
 		if (surf->flags & SURF_LAVA)
 			alpha *= r_lavaalpha.value;
@@ -806,7 +829,7 @@ int R_SurfaceAlpha (const entity_t *ent, const msurface_t *surf)
 		else if (surf->flags & SURF_TELE)
 			alpha *= r_telealpha.value;
 		else
-			alpha *= r_wateralpha.value;
+			alpha *= r_scene.wateralpha > 0 ? r_scene.wateralpha : r_wateralpha.value;
 	}
 	a = (int)(alpha * 256 + 0.5f);
 	return a < 0 ? 0 : a > 256 ? 256 : a;

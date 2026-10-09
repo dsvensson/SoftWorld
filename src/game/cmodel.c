@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "q_endian.h"
 #include "q_string.h"
 #include "sys.h"
+#include "vispatch.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -73,6 +74,10 @@ struct cmap_s
 	int			visbytes;			// size of each visibility buffer
 	byte		*novis;				// everything visible
 	byte		*pvs;
+	vpsource_t	*vissource;			// to widen it across liquids with, NULL: nothing to widen
+	bool		viswidened;			// asked to be (CM_WidenVis)
+	byte		*visrows;			// the rows widened across liquids (BSP_PatchVis), NULL: not yet
+	int			*leafrow;			// each leaf's offset in them, -1 none
 	byte		*fatpvs;
 
 	arena_t		arena;				// everything of the map
@@ -396,6 +401,11 @@ static bool CM_LoadBrushMap (void)
 	memset (lm->novis, 0xff, (size_t)lm->visbytes);
 	lm->pvs = Arena_Alloc (&lm->arena, (size_t)lm->visbytes);
 	lm->fatpvs = Arena_Alloc (&lm->arena, (size_t)lm->visbytes);
+	// seen across liquids its vis treated as opaque, where the loading thread
+	// asks (r_novis 2, attract mode), and kept to be later: what the server
+	// sends is what is seen
+	lm->vissource = BSP_VisPatchSource (cm_bsp, &lm->arena);
+	CM_WidenVis (lm, BSP_VisPatchWanted ());
 	return true;
 }
 
@@ -860,6 +870,20 @@ int CM_NumVisLeafs (const cmap_t *map)
 	return map->numvisleafs;
 }
 
+bool CM_VisWidened (const cmap_t *map)
+{
+	return map->viswidened;
+}
+
+// widened the first time it is asked to be, and kept
+void CM_WidenVis (cmap_t *map, bool widen)
+{
+	map->viswidened = widen;
+	if (widen && map->vissource && !map->visrows)
+		BSP_PatchVis (map->vissource, map->visdata, map->vissize, &map->arena, map->visbytes, &map->visrows,
+			&map->leafrow);
+}
+
 /*
 ===================
 CM_LeafPVS
@@ -874,6 +898,13 @@ byte *CM_LeafPVS (cmap_t *map, int leafnum)
 
 	if (leafnum <= 0 || leafnum >= map->numleafs || !map->leafs[leafnum].compressed_vis)
 		return map->novis;
+	if (map->viswidened && map->leafrow)
+	{	// widened across liquids: copied, as the decompressed row is the caller's
+		if (map->leafrow[leafnum] < 0)
+			return map->novis;
+		memcpy (map->pvs, map->visrows + map->leafrow[leafnum], (size_t)map->visbytes);
+		return map->pvs;
+	}
 
 	in = map->leafs[leafnum].compressed_vis;
 	inend = map->visdata + map->vissize;
