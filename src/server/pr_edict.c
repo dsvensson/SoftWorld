@@ -34,8 +34,8 @@ static bool		pr_profiling;		// the profile command started the counts
 
 static cvar_t	sv_progs = {.name = "sv_progs", .string = "",
 	.description = "The progs the server runs, from the game directory; empty chooses as FTE does: the game "
-		"directory's own progs.dat or qwprogs.dat, else NetQuake's progs.dat when deathmatch is 0 and "
-		"QuakeWorld's qwprogs.dat when it isn't. Takes effect at the next map."};
+		"directory's own progs.dat or qwprogs.dat, else NetQuake's progs.dat when deathmatch is 0 or blank "
+		"and QuakeWorld's qwprogs.dat when it isn't. Takes effect at the next map."};
 static cvar_t	pr_checkextension = {.name = "pr_checkextension", .string = "1",
 	.description = "Tells QuakeC that the server answers checkextension, as FTE's does: progs read this before "
 		"they ask."};
@@ -1041,7 +1041,7 @@ void ED_LoadFromFile (char *data)
 		data = ED_ParseEdict (data, ent);
 		
 // remove things from different skill levels or deathmatch
-		if (deathmatch.value ? (int)ent->v.spawnflags & SPAWNFLAG_NOT_DEATHMATCH
+		if (SV_Deathmatch () ? (int)ent->v.spawnflags & SPAWNFLAG_NOT_DEATHMATCH
 			: (int)ent->v.spawnflags & (skill.value == 0 ? SPAWNFLAG_NOT_EASY
 				: skill.value == 1 ? SPAWNFLAG_NOT_MEDIUM : SPAWNFLAG_NOT_HARD))
 		{
@@ -1188,7 +1188,7 @@ PR_ChooseProgs
 The progs to run, as FTE chooses (Q_InitProgs): sv_progs' if set; else the
 game directory's own progs.dat or qwprogs.dat over the base's (id1's and qw's,
 and the qwprogs.dat built in); else NetQuake's progs.dat for single player
-and coop (deathmatch 0), QuakeWorld's qwprogs.dat for the rest
+and coop (deathmatch 0 or blank), QuakeWorld's qwprogs.dat for the rest
 ===============
 */
 static void PR_ChooseProgs (fs_chain_t **dir)
@@ -1212,8 +1212,8 @@ static void PR_ChooseProgs (fs_chain_t **dir)
 	qw = FS_InGameDir ("qwprogs.dat");
 	if (nq != qw)
 		Q_strncpyz (pr.name, nq ? "progs.dat" : "qwprogs.dat", sizeof(pr.name));
-	else
-		Q_strncpyz (pr.name, deathmatch.value ? "qwprogs.dat" : "progs.dat", sizeof(pr.name));
+	else	// as asked for, not as the last level's progs chose (blank)
+		Q_strncpyz (pr.name, Q_atof (Cvar_UserString (&deathmatch)) ? "qwprogs.dat" : "progs.dat", sizeof(pr.name));
 }
 
 // the progs' file, else for qwprogs.dat the one built in; NULL without

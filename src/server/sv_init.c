@@ -434,16 +434,6 @@ static unsigned SV_CheckModel(char *mdl)
 
 /*
 ================
-SV_SpawnServer
-
-Change the server to a new map, taking all connected
-clients along with it, their spawn parms as parms says.
-
-Called by the map, changelevel and restart commands (SV_GotoLevel).
-================
-*/
-/*
-================
 SV_PublishCsprogs
 
 The client-side progs the server offers, as FTE's server does: the checksum
@@ -471,6 +461,30 @@ static void SV_PublishCsprogs (void)
 		MAX_SERVERINFO_STRING, SV_InfoCharset ());
 }
 
+/*
+================
+SV_Deathmatch
+
+The level's deathmatch rules: a showcase's own, else the cvar's in use
+================
+*/
+float SV_Deathmatch (void)
+{
+	const char	*rule = SV_AttractCvar ("deathmatch");
+
+	return rule ? (float)atof (rule) : deathmatch.value;
+}
+
+/*
+================
+SV_SpawnServer
+
+Change the server to a new map, taking all connected
+clients along with it, their spawn parms as parms says.
+
+Called by the map, changelevel and restart commands (SV_GotoLevel).
+================
+*/
 void SV_SpawnServer (char *server, spawnparms_t parms, cmap_t *built)
 {
 	edict_t		*ent;
@@ -540,7 +554,7 @@ void SV_SpawnServer (char *server, spawnparms_t parms, cmap_t *built)
 	// showcase's rules are its own (SV_AttractCvar), the user's left alone
 	if (!svs.attract)
 	{
-		if (coop.value && deathmatch.value)
+		if (coop.value && Q_atof (Cvar_UserString (&deathmatch)))
 			Cvar_Set ("deathmatch", "0");
 		i = (int)(skill.value + 0.5f);
 		Cvar_SetValue ("skill", (float)(i < 0 ? 0 : i > 3 ? 3 : i));
@@ -550,6 +564,11 @@ void SV_SpawnServer (char *server, spawnparms_t parms, cmap_t *built)
 	// which determines how big each edict is
 	PR_LoadProgs ();
 	SV_PublishCsprogs ();
+
+	// a blank deathmatch is the progs' rules: NetQuake's single player (or
+	// coop), QuakeWorld's deathmatch
+	if (!svs.attract)
+		Cvar_Override (&deathmatch, Cvar_UserString (&deathmatch)[0] ? NULL : (pr.nq || coop.value) ? "0" : "1");
 
 	// the VM's entities, of which the slots at the start are the clients'
 	sv.edicts = (edict_t *)QC_Edicts (pr.vm);
@@ -625,8 +644,7 @@ void SV_SpawnServer (char *server, spawnparms_t parms, cmap_t *built)
 	// serverflags are for cross level information (sigils)
 	PR_GLOBAL(serverflags) = (float)svs.serverflags;
 	// the rules, which NetQuake's progs read as globals
-	PR_GLOBAL(deathmatch) = SV_AttractCvar ("deathmatch") ? (float)atof (SV_AttractCvar ("deathmatch"))
-		: deathmatch.value;
+	PR_GLOBAL(deathmatch) = SV_Deathmatch ();
 	PR_GLOBAL(coop) = SV_AttractCvar ("coop") ? 0 : coop.value;
 	PR_GLOBAL(teamplay) = teamplay.value;
 	

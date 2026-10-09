@@ -175,10 +175,14 @@ static cvar_t	maxclients = {.name = "maxclients", .string = "8", .serverinfo = t
 	.description = "Most players the server takes at once, up to 32. Serverinfo."};
 static cvar_t	maxspectators = {.name = "maxspectators", .string = "8", .serverinfo = true,
 	.description = "Most spectators the server takes at once, up to 32. Serverinfo."};
-cvar_t	deathmatch = {.name = "deathmatch", .string = "1", .serverinfo = true,
+// blank, as FTE's client has it: the progs' rules, NetQuake's progs.dat
+// playing single player and QuakeWorld's qwprogs.dat deathmatch; a dedicated
+// server's is 1 (SV_InitLocal), as FTE's server has it
+cvar_t	deathmatch = {.name = "deathmatch", .string = "", .serverinfo = true,
 	.description = "Deathmatch rules, read by the game code (the meanings are the stock game's). 0 is single "
 		"player or coop, which runs NetQuake's progs.dat unless the game directory has only a qwprogs.dat. "
-		"Serverinfo.",
+		"Blank (the default, but 1 on a dedicated server) leaves it to the progs: a level of NetQuake's "
+		"progs.dat is played with 0, one of QuakeWorld's qwprogs.dat with 1. Serverinfo.",
 	.values = (const cvar_value_t[]){{"0", "Single player or coop (NetQuake's progs.dat)"},
 		{"1", "Weapons are picked up; items respawn"},
 		{"2", "Weapons stay; armor, ammo and health don't respawn"},
@@ -260,6 +264,7 @@ void SV_Kill (void)
 		CM_FreeMap (sv.map);
 	sv.map = NULL;
 	SV_FreeBrushModels ();
+	Cvar_Override (&deathmatch, NULL);	// the rules the progs chose went with the level
 	if (!host.dedicated)
 		NET_CloseSocket (NS_SERVER);
 	Con_Printf ("Server stopped.\n");
@@ -1691,6 +1696,8 @@ static void SV_InitLocal (void)
 	Cvar_RegisterVariable (&maxclients);
 	Cvar_RegisterVariable (&maxspectators);
 	Cvar_RegisterVariable (&hostname);
+	if (host.dedicated)
+		deathmatch.string = "1";
 	Cvar_RegisterVariable (&deathmatch);
 	Cvar_RegisterVariable (&coop);
 	Cvar_RegisterVariable (&skill);

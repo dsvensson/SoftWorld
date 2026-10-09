@@ -165,6 +165,15 @@ static void Cvar_Changed (cvar_t *var)
 		cvar_change_hooks[i] (var);
 }
 
+// the userinfo or serverinfo of one flagged so: the value in use
+static void Cvar_InfoChanged (cvar_t *var, char *value)
+{
+	if (var->userinfo && cvar_userinfo_hook)
+		cvar_userinfo_hook (var->name, value);
+	if (var->serverinfo && cvar_serverinfo_hook)
+		cvar_serverinfo_hook (var->name, value);
+}
+
 /*
 ============
 Cvar_Set
@@ -184,11 +193,9 @@ void Cvar_Set (char *var_name, char *value)
 		return;
 	}
 
-	if (var->userinfo && cvar_userinfo_hook)
-		cvar_userinfo_hook (var_name, value);
-	if (var->serverinfo && cvar_serverinfo_hook)
-		cvar_serverinfo_hook (var_name, value);
-	
+	if (!var->userstring)
+		Cvar_InfoChanged (var, value);
+
 	set = var->userstring ? &var->userstring : &var->string;
 	Mem_Free (*set);	// free the old value string
 	
@@ -232,7 +239,10 @@ void Cvar_Override (cvar_t *var, const char *value)
 	}
 	var->value = Q_atof (var->string);
 	if (changed)
+	{
+		Cvar_InfoChanged (var, var->string);
 		Cvar_Changed (var);
+	}
 }
 
 /*

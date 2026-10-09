@@ -113,9 +113,10 @@ float	Cvar_VariableValue (char *var_name);
 // and the console see it (Cvar_Override)
 
 // For a while C code reads the variable as value, the player's own kept (as
-// attract mode draws with its own settings): the console shows and sets
-// theirs, the configuration saves it and QC reads it. NULL puts theirs back.
-// The change hooks follow what C code reads.
+// attract mode draws with its own settings, or a level plays by its progs'
+// rules): the console shows and sets theirs, the configuration saves it and
+// the client's QC reads it. NULL puts theirs back. The change hooks, the
+// server's QC and the userinfo or serverinfo follow what C code reads.
 void	Cvar_Override (cvar_t *var, const char *value);
 // the player's own value, overridden or not
 const char	*Cvar_UserString (const cvar_t *var);

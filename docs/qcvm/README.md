@@ -108,8 +108,9 @@ behaviour.
 
 - **Which progs:** as FTE chooses: the game directory's own `progs.dat` or `qwprogs.dat` over
   the base's (id1's and qw's, and the `qwprogs.dat` built in); else `progs.dat` when
-  `deathmatch` is 0 (single player and coop) and `qwprogs.dat` when it isn't. `sv_progs` names
-  one outright. The header CRC tells them apart: 54730 is QuakeWorld's, anything else acts as
+  `deathmatch` is 0 or blank (single player and coop) and `qwprogs.dat` when it isn't. `sv_progs`
+  names one outright. A blank `deathmatch` (the default, but 1 on a dedicated server) is played
+  as the progs' own rules: 0 for `progs.dat`, 1 for `qwprogs.dat`. The header CRC tells them apart: 54730 is QuakeWorld's, anything else acts as
   NetQuake's (FTE's PROG_UNKNOWN).
 - **Fields and globals:** the server has its own layout of id's, QuakeWorld's fields in their
   order then NetQuake's `punchangle` and `idealpitch` (`progdefs.h`). A progs' fields move there

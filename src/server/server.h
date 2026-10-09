@@ -492,6 +492,7 @@ typedef enum
 	SPAWNPARMS_KEEP		// those the level began with, again: restart
 } spawnparms_t;
 
+float SV_Deathmatch (void);		// the level's deathmatch rules, a showcase's or the cvar's
 void SV_SpawnServer (char *server, spawnparms_t parms, struct cmap_s *built);	// built: adopted, or NULL
 void SV_GotoLevel (const char *name, spawnparms_t parms, struct cmap_s *built);
 

@@ -180,8 +180,8 @@ The programs need the game data: `id1/pak0.pak` and `pak1.pak` from Quake. Point
 the directory that holds `id1` (and `qw`, and mod directories):
 
 ```
-softworld -basedir C:\quake +map dm4
-softworld -basedir C:\quake +deathmatch 0 +maxclients 1 +map start
+softworld -basedir C:\quake +deathmatch 1 +map dm4
+softworld -basedir C:\quake +maxclients 1 +map start
 softworld -basedir C:\quake +connect qw.example.com
 softworld -basedir C:\quake +playdemo mydemo.mvd
 softworld -basedir C:\quake +qtvplay 1@qtv.example.com:27599
@@ -423,8 +423,10 @@ QuakeC threads (`sleep`, `fork`), autocvars, and hard limits, so that a QuakeC e
 with a backtrace, never a crash. [docs/qcvm](docs/qcvm) describes it.
 
 The server runs `qwprogs.dat` with FTE's server builtins, or NetQuake's `progs.dat` as FTE's
-server runs it: a game directory's own progs first, else `progs.dat` when `deathmatch` is 0
-(single player and coop) and `qwprogs.dat` when it isn't (`sv_progs` names one). A progs'
+server runs it: a game directory's own progs first, else `progs.dat` when `deathmatch` is 0 or
+blank (single player and coop) and `qwprogs.dat` when it isn't (`sv_progs` names one). A blank
+`deathmatch`, the default but on a dedicated server (1), leaves the rules to the progs as FTE's
+client does: a level of `progs.dat` is played with 0, one of `qwprogs.dat` with 1. A progs'
 `SV_ParseClientCommand` gets the clients' commands first, as FTE gives them, and hands back
 those it doesn't take with `clientcommand`. It offers a
 `csprogs.dat` (`sv_csqc_progname`) in the serverinfo as FTE does. The client runs a server's csprogs as FTE's
