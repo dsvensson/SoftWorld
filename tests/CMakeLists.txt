@@ -115,6 +115,12 @@ sw_add_program(test_tga test_tga.c)
 target_link_libraries(test_tga PRIVATE sw_common)
 add_test(NAME tga COMMAND test_tga)
 
+# test_part reads particle scripts it writes, FTE's and DarkPlaces', and runs
+# an effect into the batches the renderer draws (src/particles).
+sw_add_program(test_part test_part.c)
+target_link_libraries(test_part PRIVATE sw_particles sw_render sw_common)
+add_test(NAME part COMMAND test_part)
+
 # test_bspload loads every map under the directory SW_BASEDIR names as a
 # collision map and as a render model. It needs the maps, so only the -maps
 # test presets run it (CI's with the shareware's), and without SW_BASEDIR it is

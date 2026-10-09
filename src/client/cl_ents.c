@@ -1775,6 +1775,7 @@ void CL_SetSolidEntities (void)
 		{
 			cl.pmove.physents[cl.pmove.numphysent].model = cl.clipmodels[state->modelindex];
 			VectorCopy (state->origin, cl.pmove.physents[cl.pmove.numphysent].origin);
+			cl.pmove.physents[cl.pmove.numphysent].info = state->number;
 			cl.pmove.numphysent++;
 		}
 	}
@@ -1934,5 +1935,6 @@ void CL_EmitEntities (void)
 	// the beams it adds before show this frame
 	if (!CSQC_DrawsView ())
 		CL_UpdateTEnts ();
+	CL_RunParticles ();
 }
 

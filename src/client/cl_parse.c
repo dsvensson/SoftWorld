@@ -362,6 +362,7 @@ static void Model_NextDownload (void)
 	cl.worldmodel = cl.model_precache[1];
 	r_scene.worldmodel = cl.worldmodel;
 	R_NewMap ();
+	CL_NewMapParticles ();
 	CSQC_WorldLoaded ();
 	CSQC_Announce ();
 

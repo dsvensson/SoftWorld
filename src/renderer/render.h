@@ -301,6 +301,14 @@ enum {RPI_WHITE, RPI_BEAM, RPI_FAN, RPI_BALL, RPI_FUZZY, RPI_CLASSIC, RPI_NUMFAL
 int		R_ParticleImage (const char *name, int fallback, bool *found);
 void	R_FlushParticleImages (void);	// all forgotten: a new game directory
 
+// a decal's triangles on a brush model's faces (not skies or liquids): what of
+// them a box size across round center leaves, its sides along normal and the
+// tangents, to the callback a few at a time; facing, only faces facing mostly
+// against normal (r_decal.c)
+void	R_ClipDecal (struct model_s *mod, const vec3_t center, const vec3_t normal, const vec3_t tangent1,
+			const vec3_t tangent2, float size, bool facing,
+			void (*callback) (void *ctx, const vec3_t *points, int numtris), void *ctx);
+
 //
 // what the client hands the renderer: set up once, updated as the game runs
 //

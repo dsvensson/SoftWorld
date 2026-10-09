@@ -26,6 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mathlib.h"
 #include "msg.h"
 #include "net.h"
+#include "particles.h"
 #include "protocol.h"
 #include "q_types.h"
 #include "render.h"
@@ -617,6 +618,14 @@ void V_RenderView (void);
 void V_UpdateBlend (void);
 void V_ParseDamage (void);
 
+
+//
+// cl_part.c
+//
+void CL_InitParticles (void);
+void CL_NewMapParticles (void);		// a level's start
+void CL_ReloadParticles (void);		// a new game directory
+void CL_RunParticles (void);		// once a frame, into r_scene
 
 //
 // cl_tent

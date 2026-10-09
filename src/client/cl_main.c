@@ -459,6 +459,7 @@ void CL_ClearState (void)
 	CL_DisableLerpMove ();
 	r_scene.time = 0;
 	r_scene.worldmodel = NULL;
+	r_scene.particles = NULL;
 }
 
 /*
@@ -1557,6 +1558,7 @@ static void CL_EnterGamedir (void)
 {
 	FILE	*f;
 
+	CL_ReloadParticles ();
 	if (cl_gamerc || FS_InGameDir ("quake.rc"))
 		Cbuf_InsertText ("cl_warncmd 0\nexec quake.rc\ncl_warncmd 1\n");
 	else if ((f = fopen (va("%s/config.cfg", com_gamedir), "r")))
@@ -1924,6 +1926,7 @@ void CL_Init (void)
 	SCR_Init ();
 	R_Init ();
 	S_Init ();
+	CL_InitParticles ();
 
 	cls.state = ca_disconnected;
 	Sbar_Init ();
@@ -1957,6 +1960,7 @@ void CL_Shutdown (void)
 	SB_Shutdown ();		// before the network goes
 	CSQC_Shutdown ();
 	CL_WriteConfiguration ();
+	P_Shutdown ();
 	S_Shutdown ();
 	IN_Shutdown ();
 	if (cls.basepal)

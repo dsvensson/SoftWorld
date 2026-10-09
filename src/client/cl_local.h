@@ -58,6 +58,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "draw.h"
 #include "model.h"
 #include "render.h"
+#include "particles.h"
 #include "vid.h"
 #include "wad.h"
 #include "sound.h"

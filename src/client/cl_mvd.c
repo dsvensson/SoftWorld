@@ -983,6 +983,7 @@ static void MVD_ClearTransients (void)
 	CL_ClearProjectiles ();
 	memset (cl.dlights, 0, sizeof(cl.dlights));
 	R_ClearParticles ();
+	P_ClearParticles ();
 	S_StopDynamicSounds ();
 	SCR_CenterPrint ("");
 	cl.punchangle = 0;
