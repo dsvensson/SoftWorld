@@ -144,8 +144,16 @@ static void CL_PredictOrigin (void)
 
 	cl.pmove.numphysent = oldphysent;
 
-	if (i == UPDATE_BACKUP-1 || !to)
+	if (i == UPDATE_BACKUP-1)
 		return;		// net hasn't deliver packets in a long time...
+	if (!to)
+	{	// every command acknowledged, as at the start of a level until the
+		// next goes out: where the server put the player, not where the view
+		// was left (the origin at a new level)
+		VectorCopy (from->playerstate[cl.playernum].velocity, cl.simvel);
+		VectorCopy (from->playerstate[cl.playernum].origin, cl.simorg);
+		return;
+	}
 
 	// now interpolate some fraction of the final frame
 	if (to->senttime == from->senttime)
