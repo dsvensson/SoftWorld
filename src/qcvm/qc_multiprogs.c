@@ -98,14 +98,21 @@ FIELDS
 typedef struct
 {
 	uint32_t	ofs, words, def;
+	bool		known;		// the VM has the field, of its size (the host's, an earlier progs')
 } qc_fieldorder_t;
 
-// by offset, the bigger first at equal offsets (so a vector maps before its
-// components), then in file order
+// the fields the VM has already first, wherever they are, so that a word one
+// shares with another definition is theirs: the null field qcc and fteqcc
+// write at 0, where id's modelindex is too, would otherwise take it (and
+// QuakeC's modelindex with it) to new words of its own; then by offset, the
+// bigger first at equal offsets (so a vector maps before its components),
+// then in file order
 static int QC_CompareFieldOrder (const void *a, const void *b)
 {
 	const qc_fieldorder_t	*x = a, *y = b;
 
+	if (x->known != y->known)
+		return x->known ? -1 : 1;
 	if (x->ofs != y->ofs)
 		return x->ofs < y->ofs ? -1 : 1;
 	if (x->words != y->words)
@@ -143,7 +150,12 @@ bool QC_MapFields (qcvm_t *vm, const qc_progs_t *p, qc_wordmap_t *map)
 	if (!order)
 		return false;
 	for (i = 0 ; i < p->numfielddefs ; i++)
-		order[i] = (qc_fieldorder_t){p->fielddefs[i].ofs, QC_FieldWordsOf (p->fielddefs[i].type), i};
+	{
+		d = &p->fielddefs[i];
+		existing = QC_FieldEntry (vm, QC_Cstr (p, d->name));
+		order[i] = (qc_fieldorder_t){d->ofs, QC_FieldWordsOf (d->type), i,
+			existing && QC_TypeWords (existing->type) == QC_TypeWords (d->type)};
+	}
 	qsort (order, p->numfielddefs, sizeof(*order), QC_CompareFieldOrder);
 
 	for (i = 0 ; ok && i < p->numfielddefs ; i++)

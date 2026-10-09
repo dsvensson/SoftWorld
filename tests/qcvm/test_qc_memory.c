@@ -600,6 +600,49 @@ static void TestHostFields (void)
 	QA_Free (a);
 }
 
+// A progs as qcc and fteqcc write them: the null field first, at 0 with the
+// first real one (id's modelindex). That word is the host's field, for
+// QuakeC's reads and writes as for the host.
+static void TestHostFieldAtNull (void)
+{
+	static const uint8_t	one_parm[] = {1};
+	qc_hostfield_t	host[] = {{"modelindex", QC_EV_FLOAT, 2}};
+	qc_asm_t	*a = QA_New ();
+	qc_config_t	config;
+	qcvm_t		*vm;
+	qc_ent_t	e;
+	uint32_t	self_g, modelindex, ptr, self_word;
+	qa_func_t	f;
+
+	self_g = QA_Global (a, "self", QC_EV_ENTITY, NULL, 0);
+	QA_NullField (a);
+	QA_Field (a, "modelindex", QC_EV_FLOAT, &modelindex);
+	QA_Field (a, "mana", QC_EV_FLOAT, NULL);
+	f = QA_Function (a, "get_modelindex", NULL, 0, 0);
+	QA_Emit (a, QOP_LOAD_F, self_g, modelindex, QA_OFS_RETURN);
+	QA_Emit (a, QOP_RETURN, QA_OFS_RETURN, 0, 0);
+	f = QA_Function (a, "set_modelindex", one_parm, 1, 1);
+	ptr = QA_Local (f, 1);
+	QA_Emit (a, QOP_ADDRESS, self_g, modelindex, ptr);
+	QA_Emit (a, QOP_STOREP_F, QA_Local (f, 0), ptr, 0);
+	QA_Emit (a, QOP_DONE, 0, 0, 0);
+
+	QC_DefaultConfig (&config, QC_SSQC);
+	config.host_fields = host;
+	config.num_host_fields = 1;
+	vm = QA_CreateVM (a, &config, NULL, NULL, NULL);
+	QT_EQ_U (Field (vm, "modelindex"), 2);
+	QT_CHECK (QC_Spawn (vm, &e));
+	QT_CHECK (QC_FindGlobal (vm, "self", &self_word, NULL));
+	QC_Globals (vm)[self_word].u = e;
+	SetFloat (vm, e, 2, 538);
+	QT_EQ_F (CallFloat (vm, "get_modelindex", 0, 0), 538);
+	CallFloat (vm, "set_modelindex", 1, 0);
+	QT_EQ_F (GetFloat (vm, e, 2), 0);
+	QC_Destroy (vm);
+	QA_Free (a);
+}
+
 // spawn defaults, remove's cleared fields, and the hooks
 static void TestSpawnRemoveHooks (void)
 {
@@ -790,6 +833,7 @@ int main (void)
 	TestEnsureField ();
 	TestHostHeader ();
 	TestHostFields ();
+	TestHostFieldAtNull ();
 	TestSpawnRemoveHooks ();
 	TestVMStrings ();
 	TestHostAlloc ();

@@ -209,6 +209,11 @@ uint32_t QA_Temp (qc_asm_t *a, uint32_t words)
 	return QA_Alloc (a, words, NULL, 0);
 }
 
+void QA_NullField (qc_asm_t *a)
+{
+	QA_PUSH (a, fielddefs, ((qa_def_t){QC_EV_VOID, a->entityfields, 0}));
+}
+
 uint32_t QA_Field (qc_asm_t *a, const char *name, uint32_t type, uint32_t *global)
 {
 	static const char	*suffixes[3] = {"_x", "_y", "_z"};

@@ -65,6 +65,9 @@ uint32_t	QA_Temp (qc_asm_t *a, uint32_t words);		// unnamed scratch globals
 // get _x, _y and _z fields). Returns the field's word offset; *global (if not
 // NULL) gets the global's.
 uint32_t	QA_Field (qc_asm_t *a, const char *name, uint32_t type, uint32_t *global);
+// the null field definition qcc and fteqcc write first: void, unnamed, at the
+// offset the next field takes (0 before any)
+void		QA_NullField (qc_asm_t *a);
 
 // a builtin (number 0: bound by name) and a function global for it; returns
 // its function index
