@@ -203,6 +203,17 @@ void R_LightLiquids (void)
 	Mod_ForEachTexture (R_LightLiquid);
 }
 
+// a model's liquids, for the light as it is now (a model loaded on a loader's
+// thread, as the light changed: Mod_Install)
+void R_LightModelLiquids (model_t *mod)
+{
+	int		i;
+
+	for (i = 0 ; i < mod->numtextures ; i++)
+		if (mod->textures[i])
+			R_LightLiquid (mod->textures[i]);
+}
+
 /*
 ===============
 R_LoadLiquidOverride

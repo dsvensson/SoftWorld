@@ -329,6 +329,8 @@ static void Model_NextDownload (void)
 		cl.model_precache[i] = Mod_ForName (cl.model_name[i], false);
 		if (i == 1)
 		{
+			if (cl.model_precache[1])
+				Mod_SetWorld (cl.model_precache[1]);	// its inline models, next in the list
 			if (cl.map)
 				CM_FreeMap (cl.map);
 			cl.map = CM_LoadMap (cl.model_name[i], NULL, &cl.map_checksum2);

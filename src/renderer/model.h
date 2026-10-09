@@ -412,6 +412,14 @@ model_t *Mod_ForName (char *name, bool crash);
 // printed) if it can't be used. Mod_Unload frees what it loaded.
 bool	Mod_LoadFromBuffer (model_t *mod, byte *buffer, int size);
 void	Mod_Unload (model_t *mod);
+// the same, of no name the renderer knows, on any thread (a loader's); NULL if
+// it can't be used. Mod_Install makes it the model of its name on the main
+// thread, freeing it; Mod_FreeDetached frees it instead.
+model_t	*Mod_LoadDetached (const char *name, byte *buffer, int size);
+model_t	*Mod_Install (model_t *detached);
+void	Mod_FreeDetached (model_t *detached);
+// the world's inline models ("*1" ...), from the brush model that is the world
+void	Mod_SetWorld (model_t *world);
 void	*Mod_Extradata (model_t *mod);	// handles caching
 
 mleaf_t *Mod_PointInLeaf (vec3_t p, model_t *model);

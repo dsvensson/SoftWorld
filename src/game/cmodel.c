@@ -90,8 +90,10 @@ LOADING
 ===============================================================================
 */
 
-static cmap_t	*lm;				// the map being loaded
-static bspfile_t	*cm_bsp;		// its file
+// the map being loaded and its file, on the thread loading it: the main one,
+// or a loader's (CM_BuildMap)
+static thread_local cmap_t		*lm;
+static thread_local bspfile_t	*cm_bsp;
 
 static void CM_LoadPlanes (void)
 {
@@ -399,6 +401,96 @@ static bool CM_LoadBrushMap (void)
 
 /*
 =================
+CM_BuildMap / CM_DiscardMap
+
+A map from its file's contents, apart from the maps loaded, on any thread (a
+loader's): CM_AdoptMap makes it one of them, or CM_DiscardMap frees it. NULL,
+with the reason printed, if it can't be used.
+=================
+*/
+static cmap_t *CM_Build (const char *name, const byte *buf, int filesize, unsigned filesum)
+{
+	cmap_t		*map;
+	bspfile_t	bsp;
+	bool		ok;
+
+	map = Mem_Calloc (1, sizeof(*map));
+	Arena_Init (&map->arena, "collision map");
+	Q_strncpyz (map->name, name, sizeof(map->name));
+	map->filesum = filesum;
+
+	lm = map;
+	cm_bsp = &bsp;
+	ok = BSP_Open (&bsp, name, buf, filesize) && CM_LoadBrushMap ();
+	cm_bsp = NULL;
+	lm = NULL;
+	if (!ok)
+	{
+		Con_Printf ("Couldn't load %s: %s\n", name, bsp.error);
+		CM_DiscardMap (map);
+		return NULL;
+	}
+	return map;
+}
+
+cmap_t *CM_BuildMap (const char *name, const byte *buf, int filesize)
+{
+	return CM_Build (name, buf, filesize, Com_BlockChecksum (buf, filesize));
+}
+
+void CM_DiscardMap (cmap_t *map)
+{
+	Arena_Free (&map->arena);
+	Mem_Free (map);
+}
+
+// a listen server and its client share a map they both use
+static cmap_t *CM_FindMap (const char *name, unsigned filesum)
+{
+	cmap_t	*map;
+
+	for (map = cm_maps ; map ; map = map->next)
+		if (!strcmp (map->name, name) && map->filesum == filesum)
+			return map;
+	return NULL;
+}
+
+// another reference to a loaded map, and its checksums
+static cmap_t *CM_Reference (cmap_t *map, unsigned *checksum, unsigned *checksum2)
+{
+	map->refs++;
+	if (checksum)
+		*checksum = map->checksum;
+	if (checksum2)
+		*checksum2 = map->checksum2;
+	return map;
+}
+
+/*
+=================
+CM_AdoptMap
+
+A built map (CM_BuildMap) as one of the maps loaded, with a reference to it:
+the same map loaded already instead, the built one freed
+=================
+*/
+cmap_t *CM_AdoptMap (cmap_t *built, unsigned *checksum, unsigned *checksum2)
+{
+	cmap_t	*map = CM_FindMap (built->name, built->filesum);
+
+	if (map)
+		CM_DiscardMap (built);
+	else
+	{
+		map = built;
+		map->next = cm_maps;
+		cm_maps = map;
+	}
+	return CM_Reference (map, checksum, checksum2);
+}
+
+/*
+=================
 CM_LoadMapBuffer
 
 A map from its file's contents; NULL, with the reason printed, if it can't be
@@ -408,46 +500,16 @@ used
 cmap_t *CM_LoadMapBuffer (const char *name, const byte *buf, int filesize, unsigned *checksum, unsigned *checksum2)
 {
 	cmap_t		*map;
-	bspfile_t	bsp;
 	unsigned	filesum;
-	bool		ok;
 
 	filesum = Com_BlockChecksum (buf, filesize);
-
-	// a listen server and its client share a map they both use
-	for (map = cm_maps ; map ; map = map->next)
-		if (!strcmp (map->name, name) && map->filesum == filesum)
-			break;
+	map = CM_FindMap (name, filesum);
+	if (map)
+		return CM_Reference (map, checksum, checksum2);
+	map = CM_Build (name, buf, filesize, filesum);
 	if (!map)
-	{
-		map = Mem_Calloc (1, sizeof(*map));
-		Arena_Init (&map->arena, "collision map");
-		Q_strncpyz (map->name, name, sizeof(map->name));
-		map->filesum = filesum;
-
-		lm = map;
-		cm_bsp = &bsp;
-		ok = BSP_Open (&bsp, name, buf, filesize) && CM_LoadBrushMap ();
-		cm_bsp = NULL;
-		lm = NULL;
-		if (!ok)
-		{
-			Con_Printf ("Couldn't load %s: %s\n", name, bsp.error);
-			Arena_Free (&map->arena);
-			Mem_Free (map);
-			return NULL;
-		}
-
-		map->next = cm_maps;
-		cm_maps = map;
-	}
-	map->refs++;
-
-	if (checksum)
-		*checksum = map->checksum;
-	if (checksum2)
-		*checksum2 = map->checksum2;
-	return map;
+		return NULL;
+	return CM_AdoptMap (map, checksum, checksum2);
 }
 
 /*

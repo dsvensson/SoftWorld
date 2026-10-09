@@ -86,6 +86,14 @@ cmap_t		*CM_LoadMap (const char *name, unsigned *checksum, unsigned *checksum2);
 cmap_t		*CM_LoadMapBuffer (const char *name, const byte *buf, int size, unsigned *checksum, unsigned *checksum2);
 void		CM_FreeMap (cmap_t *map);
 
+// a map from its file's contents apart from the maps loaded, on any thread (a
+// loader's), NULL if it can't be used; CM_AdoptMap makes it one of them on the
+// main thread, with a reference (the same map loaded already instead), or
+// CM_DiscardMap frees it
+cmap_t		*CM_BuildMap (const char *name, const byte *buf, int size);
+cmap_t		*CM_AdoptMap (cmap_t *built, unsigned *checksum, unsigned *checksum2);
+void		CM_DiscardMap (cmap_t *built);
+
 cmodel_t	*CM_WorldModel (cmap_t *map);
 
 // "*1", "*2", ..., NULL if there is no such model

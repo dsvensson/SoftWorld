@@ -142,6 +142,7 @@ void R_TexturesInit (void);
 void R_LoadTextureOverride (texture_t *tx, const char *modelname, struct arena_s *arena);
 void R_BuildTexturePixels (texture_t *tx, struct arena_s *arena);
 void R_LightLiquids (void);		// after d_unlitfloors or d_glowscale changed
+void R_LightModelLiquids (model_t *mod);	// one model's, loaded as they changed
 
 // the texels to draw tx with in place of its own, or NULL
 static inline const pixel_t *R_TextureOverride (const texture_t *tx, int mip)

@@ -24,18 +24,21 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "r_local.h"
 
-static model_t	*loadmodel;
+// the model being loaded, on the thread loading it: the main one, or a
+// loader's (Mod_LoadDetached)
+static thread_local model_t	*loadmodel;
 
 static void Mod_LoadSpriteModel (model_t *mod, void *buffer);
 static bool Mod_LoadBrushModel (model_t *mod, byte *buffer, int size);
 static void Mod_LoadAliasModel (model_t *mod, void *buffer);
 static model_t *Mod_LoadModel (model_t *mod, bool crash);
+static void Mod_SetSubmodel (model_t *mod, const dmodel_t *bm);
 
 static model_t	**mod_known;		// every model ever named; entries never move
 static int		mod_numknown, mod_maxknown;
 
-static vmarray_t	mod_scratch;		// contiguous working memory for building alias models
-static size_t		mod_scratch_used;
+static thread_local vmarray_t	mod_scratch;	// contiguous working memory for building alias
+static thread_local size_t		mod_scratch_used;	// models, each loading thread's
 
 /*
 ===============
@@ -62,6 +65,8 @@ static void *Mod_ScratchAlloc (size_t size)
 	void	*p;
 
 	size = (size + 15) & ~(size_t)15;
+	if (!mod_scratch.base)
+		VMArray_Init (&mod_scratch, "model scratch", 1, 256 * 1024 * 1024);
 	p = VMArray_Reserve (&mod_scratch, mod_scratch_used, size);
 	memset (p, 0, size);
 	mod_scratch_used += size;
@@ -112,7 +117,6 @@ Mod_Init
 */
 void Mod_Init (void)
 {
-	VMArray_Init (&mod_scratch, "model scratch", 1, 256 * 1024 * 1024);
 	FS_AddGamedirCallback (Mod_FlushAll);
 }
 
@@ -303,7 +307,7 @@ static model_t *Mod_LoadModel (model_t *mod, bool crash)
 {
 	byte	*buf;
 	int		size;
-	bool	ok;
+	model_t	*loaded;
 
 	if (!mod->needload)
 		return mod;
@@ -315,15 +319,15 @@ static model_t *Mod_LoadModel (model_t *mod, bool crash)
 			Sys_Error ("Mod_NumForName: %s not found", mod->name);
 		return NULL;
 	}
-	ok = Mod_LoadFromBuffer (mod, buf, size);
+	loaded = Mod_LoadDetached (mod->name, buf, size);
 	Mem_Free (buf);
-	if (!ok)
+	if (!loaded)
 	{
 		if (crash)
 			Sys_Error ("Mod_NumForName: %s can't be loaded", mod->name);
 		return NULL;
 	}
-	return mod;
+	return Mod_Install (loaded);
 }
 
 /*
@@ -339,7 +343,6 @@ bool Mod_LoadFromBuffer (model_t *mod, byte *buffer, int size)
 	mod->arena = Mem_Alloc (sizeof(arena_t));
 	Arena_Init (mod->arena, mod->name);
 	loadmodel = mod;
-	mod->needload = false;
 
 	if (size >= 4)
 		memcpy (&ident, buffer, 4);
@@ -361,7 +364,60 @@ bool Mod_LoadFromBuffer (model_t *mod, byte *buffer, int size)
 		}
 		break;
 	}
+	loadmodel = NULL;
+	mod->needload = false;
 	return true;
+}
+
+/*
+==================
+Mod_LoadDetached
+
+A model from its file's contents, of no name the renderer knows, on any
+thread (a loader's): Mod_Install makes it the named one, or Mod_FreeDetached
+frees it. NULL, the reason printed, if it can't be used.
+==================
+*/
+model_t *Mod_LoadDetached (const char *name, byte *buffer, int size)
+{
+	model_t	*mod = Mem_Calloc (1, sizeof(*mod));
+
+	Q_strncpyz (mod->name, name, sizeof(mod->name));
+	if (Mod_LoadFromBuffer (mod, buffer, size))
+		return mod;
+	Mem_Free (mod);
+	return NULL;
+}
+
+void Mod_FreeDetached (model_t *mod)
+{
+	Mod_FreeData (mod);
+	Mem_Free (mod);
+}
+
+/*
+==================
+Mod_Install
+
+A detached model (freed) as the one of its name, on the main thread; the
+model that name had loaded goes. Its liquids are lit for the light as it is
+now (R_LightModelLiquids): it can have changed while the model loaded.
+==================
+*/
+model_t *Mod_Install (model_t *detached)
+{
+	model_t	*mod = Mod_FindName (detached->name);
+
+	if (mod->type == mod_brush && !mod->needload)
+		D_FlushCaches ();	// the surface cache points into its surfaces
+	Mod_FreeData (mod);
+	*mod = *detached;
+	Mem_Free (detached);
+	if (mod->arena)
+		mod->arena->name = mod->name;
+	if (mod->type == mod_brush)
+		R_LightModelLiquids (mod);
+	return mod;
 }
 
 /*
@@ -400,7 +456,7 @@ model_t *Mod_ForName (char *modname, bool crash)
 ===============================================================================
 */
 
-static bspfile_t	*mod_bsp;		// the map being loaded
+static thread_local bspfile_t	*mod_bsp;		// the map being loaded
 
 // the reason loading failed; returns false
 static bool Mod_Fail (const char *fmt, ...)
@@ -1244,8 +1300,6 @@ Mod_LoadBrushModel
 static bool Mod_LoadBrushModel (model_t *mod, byte *buffer, int size)
 {
 	bspfile_t	bsp;
-	dmodel_t	*bm;
-	int			i;
 	bool		ok;
 
 	loadmodel->type = mod_brush;
@@ -1284,36 +1338,60 @@ static bool Mod_LoadBrushModel (model_t *mod, byte *buffer, int size)
 	mod->numframes = 2;		// regular and alternate animation
 
 //
-// set up the submodels (FIXME: this is confusing)
+// the whole map is the first of its models; the rest are the world's inline
+// models once it is the world (Mod_SetWorld)
 //
-	for (i=0 ; i<mod->numsubmodels ; i++)
-	{
-		bm = &mod->submodels[i];
-
-		mod->firstnode = bm->headnode[0];
-
-		mod->firstmodelsurface = bm->firstface;
-		mod->nummodelsurfaces = bm->numfaces;
-
-		VectorCopy (bm->maxs, mod->maxs);
-		VectorCopy (bm->mins, mod->mins);
-		mod->radius = RadiusFromBounds (mod->mins, mod->maxs);
-
-		mod->numleafs = bm->visleafs;
-
-		if (i < mod->numsubmodels-1)
-		{	// duplicate the basic information
-			char	subname[16];
-
-			snprintf (subname, sizeof(subname), "*%i", i+1);
-			loadmodel = Mod_FindName (subname);
-			*loadmodel = *mod;
-			loadmodel->arena = NULL;	// the data belongs to the world model
-			Q_strncpyz (loadmodel->name, subname, sizeof(loadmodel->name));
-			mod = loadmodel;
-		}
-	}
+	Mod_SetSubmodel (mod, &mod->submodels[0]);
 	return true;
+}
+
+/*
+=================
+Mod_SetSubmodel
+
+A brush model as one of its file's models: where its nodes and surfaces
+start, its bounds
+=================
+*/
+static void Mod_SetSubmodel (model_t *mod, const dmodel_t *bm)
+{
+	mod->firstnode = bm->headnode[0];
+
+	mod->firstmodelsurface = bm->firstface;
+	mod->nummodelsurfaces = bm->numfaces;
+
+	VectorCopy (bm->maxs, mod->maxs);
+	VectorCopy (bm->mins, mod->mins);
+	mod->radius = RadiusFromBounds (mod->mins, mod->maxs);
+
+	mod->numleafs = bm->visleafs;
+}
+
+/*
+=================
+Mod_SetWorld
+
+The world's inline models, "*1" on: copies of it, as its other models,
+sharing its data. Only the world's: another map's (a .bsp precached) would
+take their names.
+=================
+*/
+void Mod_SetWorld (model_t *world)
+{
+	model_t	*sub;
+	char	subname[16];
+	int		i;
+
+	for (i=1 ; i<world->numsubmodels ; i++)
+	{
+		snprintf (subname, sizeof(subname), "*%i", i);
+		sub = Mod_FindName (subname);
+		Mod_FreeData (sub);
+		*sub = *world;
+		sub->arena = NULL;	// the data belongs to the world model
+		Q_strncpyz (sub->name, subname, sizeof(sub->name));
+		Mod_SetSubmodel (sub, &world->submodels[i]);
+	}
 }
 
 /*
