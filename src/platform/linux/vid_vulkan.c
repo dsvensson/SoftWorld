@@ -1433,6 +1433,11 @@ bool VID_IsMinimized (void)
 	return Minimized;
 }
 
+float VID_RefreshRate (void)
+{
+	return window->RefreshRate ? window->RefreshRate () : 0;
+}
+
 bool VID_IsFullscreen (void)
 {
 	return window->IsFullscreen ();

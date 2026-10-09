@@ -296,6 +296,12 @@ bool VID_IsMinimized (void)
 	return Minimized;
 }
 
+// frames come at the display's pace (requestAnimationFrame): none to give
+float VID_RefreshRate (void)
+{
+	return 0;
+}
+
 bool VID_IsFullscreen (void)
 {
 	return vid_fullscreen;

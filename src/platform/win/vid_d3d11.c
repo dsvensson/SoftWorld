@@ -991,6 +991,19 @@ bool VID_IsMinimized (void)
 	return Minimized;
 }
 
+// the current mode of the monitor the window is most on (0 and 1 are a
+// display's default, which says nothing)
+float VID_RefreshRate (void)
+{
+	MONITORINFOEXW	info = {.cbSize = sizeof(info)};
+	DEVMODEW		mode = {.dmSize = sizeof(mode)};
+
+	if (!mainwindow || !GetMonitorInfoW (MonitorFromWindow (mainwindow, MONITOR_DEFAULTTONEAREST), (MONITORINFO *)&info)
+		|| !EnumDisplaySettingsW (info.szDevice, ENUM_CURRENT_SETTINGS, &mode) || mode.dmDisplayFrequency <= 1)
+		return 0;
+	return (float)mode.dmDisplayFrequency;
+}
+
 bool VID_IsFullscreen (void)
 {
 	return vid_fullscreen;

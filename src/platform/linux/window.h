@@ -44,6 +44,7 @@ typedef struct
 	void	(*SetFrameSize) (int pixelwidth, int pixelheight, int width, int height);
 	void	(*BeforePresent) (uint64_t serial, double time);
 	bool	(*Presented) (uint64_t serial);
+	float	(*RefreshRate) (void);		// the display's, frames a second; 0 not known yet
 
 	void	(*InputInit) (void);
 	void	(*InputShutdown) (void);

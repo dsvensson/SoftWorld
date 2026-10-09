@@ -907,6 +907,14 @@ bool VID_IsMinimized (void)
 	return Minimized;
 }
 
+// the window's screen's, the most a variable refresh (ProMotion) goes to
+float VID_RefreshRate (void)
+{
+	NSScreen	*screen = vid_window.screen;
+
+	return screen ? (float)screen.maximumFramesPerSecond : 0;
+}
+
 bool VID_IsFullscreen (void)
 {
 	return vid_fullscreen;

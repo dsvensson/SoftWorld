@@ -60,6 +60,11 @@ cvar_t	cl_hudswap	= {.name = "cl_hudswap", .string = "0", .archive = true,
 static cvar_t	cl_maxfps	= {.name = "cl_maxfps", .string = "0", .archive = true,
 	.description = "The most frames a second drawn, at least 30; 0 is no limit but the display's. "
 		"Without cl_independentPhysics: 30 to 72, 0 is rate/80."};
+// ezQuake's
+static cvar_t	cl_maxfps_menu	= {.name = "cl_maxfps_menu", .string = "0", .archive = true,
+	.description = "The most frames a second drawn while the menu or the console is open, or attract mode shows "
+		"maps; 0 (or less than 30) is the display's refresh rate. Commands go and packets are read at their own "
+		"rate still."};
 // FTE's name
 static cvar_t	cl_idlefps	= {.name = "cl_idlefps", .string = "50", .archive = true,
 	.description = "The most frames a second drawn while the window isn't the focus, to yield the CPU; 0 is "
@@ -1393,6 +1398,7 @@ static void CL_InitLocal (void)
 	Cvar_RegisterVariable (&cl_hudswap);
 	Cvar_RegisterVariable (&cl_maxfps);
 	Cvar_RegisterVariable (&cl_idlefps);
+	Cvar_RegisterVariable (&cl_maxfps_menu);
 	Cvar_RegisterVariable (&cl_timeout);
 	Cvar_RegisterVariable (&cl_pext_chunkeddownloads);
 	CSQC_RegisterVariables ();
@@ -1681,23 +1687,53 @@ static void CL_DecidePhysFrame (void)
 	cls.physaccum -= cls.physframetime;
 }
 
+// the display's refresh rate, asked again each second (the window may move)
+static float CL_RefreshRate (void)
+{
+	static double	asked = -1;
+	static float	refresh;
+
+	if (asked < 0 || host.realtime - asked >= 1 || host.realtime < asked)
+	{
+		asked = host.realtime;
+		refresh = VID_RefreshRate ();
+	}
+	return refresh;
+}
+
+// the menu or the console open, or attract mode's maps: cl_maxfps_menu's,
+// at 0 (or less than 30, as ezQuake) the display's; 0 if neither is known
+static float CL_MenuFPS (void)
+{
+	if (!CL_Attracting () && !CL_ConsoleForced () && cls.key_dest != key_menu && cls.key_dest != key_console)
+		return 0;
+	return cl_maxfps_menu.value >= 30 ? cl_maxfps_menu.value : CL_RefreshRate ();
+}
+
 /*
 ==================
 CL_IdleFPS
 
 Frames a second drawn when nobody watches, to yield the CPU: a little while
-not the focus (cl_idlefps), fewer when minimized or paused; 0 when watched
+not the focus (cl_idlefps), fewer when minimized or paused; or no more than
+the display shows while the menu or the console is open (cl_maxfps_menu);
+0 when watched
 ==================
 */
 static float CL_IdleFPS (float fps)
 {
+	float	idle = 0, menu;
+
 	if (cls.timedemo)
 		return 0;
-	if ((VID_IsMinimized () || (cl.paused && !VID_IsActive ())) && (!fps || fps > 20))
-		return 20;
-	if (!VID_IsActive () && cl_idlefps.value > 0 && (!fps || fps > cl_idlefps.value))
-		return cl_idlefps.value;
-	return 0;
+	if (VID_IsMinimized () || (cl.paused && !VID_IsActive ()))
+		idle = 20;
+	else if (!VID_IsActive () && cl_idlefps.value > 0)
+		idle = cl_idlefps.value;
+	menu = CL_MenuFPS ();
+	if (menu > 0 && (!idle || menu < idle))
+		idle = menu;
+	return idle && (!fps || fps > idle) ? idle : 0;
 }
 
 /*
@@ -1771,7 +1807,8 @@ bool CL_Connecting (void)
 CL_Frame
 
 Reads the server's packets, sends a command when one is due, and draws; not
-watched, draws at cl_idlefps's pace alone
+watched, or under the menu, draws at cl_idlefps's or cl_maxfps_menu's pace
+alone
 ==================
 */
 void CL_Frame (void)
@@ -1800,7 +1837,7 @@ void CL_Frame (void)
 		nextframe += 1.0 / fps;
 	else
 		nextframe = host.realtime + (fps ? 1.0 / fps : 0);
-	// not watched, drawn at cl_idlefps's pace, as cl_maxfps's above
+	// not watched, or under the menu, drawn at that pace, as cl_maxfps's above
 	draw = !idlefps || host.realtime >= nextdraw;
 	if (draw && idlefps)
 		nextdraw = host.realtime - nextdraw < 1.0 / idlefps ? nextdraw + 1.0 / idlefps : host.realtime + 1.0 / idlefps;

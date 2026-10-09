@@ -103,6 +103,10 @@ const char	*VID_GPUName (void);
 bool	VID_IsActive (void);		// the window has the focus
 bool	VID_IsMinimized (void);
 
+// the refresh rate of the display the window is on, frames a second; 0 if it
+// isn't known, or (the web's) frames come at the display's pace anyway
+float	VID_RefreshRate (void);
+
 // frames presented as fast as they are drawn, whatever vid_vsync says: a
 // timedemo's
 void	VID_SetUnpaced (bool on);

@@ -930,6 +930,12 @@ const wl_present_stats_t *WL_PresentStats (void)
 	return &wl_stats;
 }
 
+// the output's, as the last frame shown said it (presentation feedback)
+static float WL_RefreshRate (void)
+{
+	return wl_stats.refresh > 0 ? (float)(1 / wl_stats.refresh) : 0;
+}
+
 /*
 ===============================================================================
 
@@ -1461,6 +1467,7 @@ const window_backend_t	window_wayland =
 	.SetFrameSize = WL_SetFrameSize,
 	.BeforePresent = WL_BeforePresent,
 	.Presented = WL_Presented,
+	.RefreshRate = WL_RefreshRate,
 	.PreferredColors = WL_PreferredColors,
 	.InputInit = IN_WaylandInit,
 	.InputShutdown = IN_WaylandShutdown,
