@@ -616,6 +616,11 @@ static bool SV_LoadGame (const char *arg)
 	return sv.loadgame;
 }
 
+bool SV_CanLoad (void)
+{
+	return !host.dedicated;
+}
+
 static void SV_Loadgame_f (void)
 {
 	if (Cmd_Argc () < 2)

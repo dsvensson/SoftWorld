@@ -3,7 +3,7 @@
 // the server browser (sb_*.qc)
 
 // what the menus show
-enum { M_NONE, M_MAIN, M_SINGLEPLAYER, M_OPTIONS, M_KEYS, M_HELP, M_QUIT, M_SLIST };
+enum { M_NONE, M_MAIN, M_SINGLEPLAYER, M_OPTIONS, M_KEYS, M_HELP, M_QUIT, M_SKILL, M_LOAD, M_SAVE, M_SLIST };
 
 float	m_state;
 float	m_entersound;		// played after drawing a frame, so caching won't disrupt the sound
@@ -431,20 +431,82 @@ void(float key) M_Help_Key =
 
 SINGLE PLAYER
 
-NetQuake's: a new game from the game directory's start map, NetQuake's
-progs.dat on the program's own server. Load and Save aren't there yet.
+NetQuake's: a new game from the game directory's start map at a skill
+ironwail's menu asks for (and its last autosave there to resume), NetQuake's
+progs.dat on the program's own server; games loaded from and saved to its
+slots, s0 to s19 as ironwail has them
 
 ==============================================================================
 */
 
+#define	SINGLEPLAYER_ITEMS	3
+#define	MAX_SAVEGAMES		20
+
 float	m_singleplayer_cursor;
 float	m_newgame_asking;	// whether to end the game there is
+float	m_skill_cursor;
+float	m_skill_canresume;	// the start map has an autosave
+string	m_skill_saved;		// its date, if it says
+float	m_load_cursor;		// the Load and Save menus'
+string	m_savenames[MAX_SAVEGAMES];
+float	m_saveloadable[MAX_SAVEGAMES];
 
-// the game there is ended, a new one on the start map
-void() M_NewGame =
+// a game's comment, the second line of its file: "" for none
+string(string name) M_SaveComment =
 {
-	M_Close ();
-	localcmd ("disconnect\nmaxclients 1\ndeathmatch 0\ncoop 0\nmap start\n");
+	float	f = fopen (name, FILE_READ);
+	string	l;
+
+	if (f < 0)
+		return "";
+	fgets (f);	// the version
+	l = fgets (f);
+	fclose (f);
+	return l;
+};
+
+// the slots as NetQuake's menu shows them: their comments' 39 characters,
+// the underscores spaces
+void() M_ScanSaves =
+{
+	float	i;
+	string	l;
+
+	for (i = 0 ; i < MAX_SAVEGAMES ; i++)
+	{
+		l = M_SaveComment (sprintf ("s%d.sav", i));
+		m_saveloadable[i] = l != "";
+		m_savenames[i] = (l != "") ? strreplace ("_", " ", substring (l, 0, 39)) : "--- UNUSED SLOT ---";
+	}
+};
+
+void() M_Menu_Load_f =
+{
+	if (!canload ())
+		return;
+	M_ScanSaves ();
+	M_Enter (M_LOAD);
+};
+
+// only when the game can be saved, as NetQuake's
+void() M_Menu_Save_f =
+{
+	if (!cansave ())
+		return;
+	M_ScanSaves ();
+	M_Enter (M_SAVE);
+};
+
+// ironwail's: the skill, the current one picked, or the start map's last
+// autosave to resume, picked when there is one
+void() M_Menu_Skill_f =
+{
+	string	l = M_SaveComment ("autosave/start.sav");
+
+	m_skill_canresume = l != "";
+	m_skill_saved = (strlen (l) > 39) ? strreplace ("_", " ", substring (l, 39, 16)) : "";
+	m_skill_cursor = m_skill_canresume ? 4 : bound (0, floor (cvar ("skill") + 0.5), 3);
+	M_Enter (M_SKILL);
 };
 
 void() M_SinglePlayer_Draw =
@@ -454,7 +516,10 @@ void() M_SinglePlayer_Draw =
 	M_DrawPic (16, 4, "gfx/qplaque.lmp");
 	M_DrawTitle ("gfx/ttl_sgl.lmp");
 	M_DrawPic (72, 32, "gfx/sp_menu.lmp");
-	drawfill ([72 + menu_x, 52, 0], [size_x, size_y - 20, 0], '0 0 0', 0.6, 0);	// Load and Save, not yet
+	if (!canload ())
+		drawfill ([72 + menu_x, 52, 0], [size_x, 20, 0], '0 0 0', 0.6, 0);
+	if (!cansave ())
+		drawfill ([72 + menu_x, 72, 0], [size_x, 20, 0], '0 0 0', 0.6, 0);
 	M_DrawPic (54, 32 + m_singleplayer_cursor * 20, sprintf ("gfx/menudot%d.lmp", floor (time * 10) % 6 + 1));
 	if (m_newgame_asking)
 	{	// NetQuake's question
@@ -469,7 +534,7 @@ void(float key) M_SinglePlayer_Key =
 	if (m_newgame_asking)
 	{
 		if (key == 'y')
-			M_NewGame ();
+			M_Menu_Skill_f ();
 		if (key == 'y' || key == 'n' || key == K_ESCAPE)
 			m_newgame_asking = FALSE;
 		return;
@@ -479,15 +544,102 @@ void(float key) M_SinglePlayer_Key =
 	case K_ESCAPE:
 		M_Menu_Main_f ();
 		break;
+	case K_DOWNARROW:
+	case K_UPARROW:
+		localsound ("misc/menu1.wav");
+		m_singleplayer_cursor = Wrap (m_singleplayer_cursor + (key == K_DOWNARROW ? 1 : -1), SINGLEPLAYER_ITEMS);
+		break;
 	case K_ENTER:
 		m_entersound = TRUE;
-		if (m_singleplayer_cursor != 0)
-			break;
+		if (m_singleplayer_cursor == 1)
+			M_Menu_Load_f ();
+		else if (m_singleplayer_cursor == 2)
+			M_Menu_Save_f ();
 		// a game would end; a demo (attract mode's maps too) is no game
-		if ((clientstate () == 2 && !isdemo ()) || isserver ())
+		else if ((clientstate () == 2 && !isdemo ()) || isserver ())
 			m_newgame_asking = TRUE;
 		else
-			M_NewGame ();
+			M_Menu_Skill_f ();
+		break;
+	}
+};
+
+string	skillnames[4] = {"Easy", "Normal", "Hard", "Nightmare"};
+
+void() M_Skill_Draw =
+{
+	float	i;
+
+	M_DrawPic (16, 4, "gfx/qplaque.lmp");
+	M_DrawTitle ("gfx/ttl_sgl.lmp");
+	M_PrintWhite (72, 32, "Choose skill:");
+	for (i = 0 ; i < 4 ; i++)
+		M_Print (88, 48 + i * 8, skillnames[i]);
+	if (m_skill_canresume)
+	{
+		M_Print (88, 88, "Resume last game");
+		if (m_skill_saved != "")
+			M_Print (88, 96, sprintf ("saved %s", m_skill_saved));
+	}
+	if (m_skill_cursor < 4)
+		M_DrawCharacter (72, 48 + m_skill_cursor * 8, UI_Cursor ());
+	else
+		M_DrawCharacter (72, 88, UI_Cursor ());
+};
+
+void(float key) M_Skill_Key =
+{
+	switch (key)
+	{
+	case K_ESCAPE:
+		M_Menu_SinglePlayer_f ();
+		break;
+	case K_DOWNARROW:
+	case K_UPARROW:
+		localsound ("misc/menu1.wav");
+		m_skill_cursor = Wrap (m_skill_cursor + (key == K_DOWNARROW ? 1 : -1), 4 + m_skill_canresume);
+		break;
+	case K_ENTER:
+		M_Close ();
+		if (m_skill_cursor == 4)
+			localcmd ("load autosave/start\n");
+		else	// the game there is ended, a new one on the start map
+			localcmd (sprintf ("disconnect\nmaxclients 1\ndeathmatch 0\ncoop 0\nskill %d\nmap start\n",
+				m_skill_cursor));
+		break;
+	}
+};
+
+// NetQuake's Load and Save menus: the slots, the cursor's loaded from or
+// saved to
+void() M_LoadSave_Draw =
+{
+	float	i;
+
+	M_DrawTitle ((m_state == M_LOAD) ? "gfx/p_load.lmp" : "gfx/p_save.lmp");
+	for (i = 0 ; i < MAX_SAVEGAMES ; i++)
+		M_Print (16, 32 + i * 8, m_savenames[i]);
+	M_DrawCharacter (8, 32 + m_load_cursor * 8, UI_Cursor ());
+};
+
+void(float key) M_LoadSave_Key =
+{
+	switch (key)
+	{
+	case K_ESCAPE:
+		M_Menu_SinglePlayer_f ();
+		break;
+	case K_DOWNARROW:
+	case K_UPARROW:
+		localsound ("misc/menu1.wav");
+		m_load_cursor = Wrap (m_load_cursor + (key == K_DOWNARROW ? 1 : -1), MAX_SAVEGAMES);
+		break;
+	case K_ENTER:
+		if (m_state == M_LOAD && !m_saveloadable[m_load_cursor])
+			break;
+		localsound ("misc/menu2.wav");
+		localcmd (sprintf ("%s s%d\n", (m_state == M_LOAD) ? "load" : "save", m_load_cursor));
+		M_Close ();
 		break;
 	}
 };
@@ -589,7 +741,10 @@ menu_t	menus[M_SLIST] = {
 	{M_Options_Draw, M_Options_Key},
 	{M_Keys_Draw, M_Keys_Key},
 	{M_Help_Draw, M_Help_Key},
-	{M_Quit_Draw, M_Quit_Key}
+	{M_Quit_Draw, M_Quit_Key},
+	{M_Skill_Draw, M_Skill_Key},
+	{M_LoadSave_Draw, M_LoadSave_Key},
+	{M_LoadSave_Draw, M_LoadSave_Key}
 };
 
 void(float state) M_DrawState =

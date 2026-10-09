@@ -57,3 +57,8 @@ bool	SV_Attracting (void);		// the server runs a showcase
 // client's, from the server's), and its checksum2; NULL if not
 struct cmap_s	*SV_ShareMap (const char *name, unsigned *checksum2);
 void	SV_SetAttractStop (void (*stop) (void));	// called before the user's own level
+
+// savegames (sv_save.c): why the game can't be saved now, NULL if it can; and
+// whether this program loads them at all (it has a server and a player)
+const char	*SV_CanSave (void);
+bool	SV_CanLoad (void);

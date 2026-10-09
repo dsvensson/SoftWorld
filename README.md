@@ -30,7 +30,8 @@ server runs NetQuake's single player too.
   NetQuake's player movement (the server's, unpredicted), its messages in QuakeWorld's words,
   skill and coop, the level's monsters and secrets, the completed screen, and monsters' steps
   smoothed. The game holds still while the menu or console is up. `gamedir` runs a game's own
-  `quake.rc`, as NetQuake's `game` does (AD's picks its status bar there).
+  `quake.rc`, as NetQuake's `game` does (AD's picks its status bar there). Savegames as
+  ironwail's and FTE's, which load each other's, with ironwail's autosave.
 
 ## Building
 
@@ -306,6 +307,11 @@ seconds) says for a healthy player, a hurt one's later and sooner after a secret
 time with noclip, god or notarget doesn't count. `sv_autoload 2` loads the level's last save, made
 or loaded on it, when the progs restart the level for a dead player, as id1's do, or change to the
 same level; 3 does for any restart, 0 never (ironwail's 1, which asks, acts as 2).
+
+The menu's Single Player has NetQuake's Load and Save, twenty slots (`s0` to `s19`) with their
+levels' names and kills, Save there only when the game can be saved; id1's F2 and F3 open them
+(`menu_save`, `menu_load`), F6 and F9 quicksave and quickload (`quick.sav`). New Game asks for the
+skill, as ironwail's does, and offers the start map's last autosave to resume, with its date.
 
 ### IPv6
 

@@ -625,6 +625,21 @@ static bool M_IsFullscreen (qcvm_t *vm)
 	return true;
 }
 
+// float cansave(), float canload(): SoftWorld's, whether the game can be
+// saved now (a single player game, the player alive and not in an
+// intermission), and whether this program loads games at all
+static bool M_CanSave (qcvm_t *vm)
+{
+	QC_ReturnFloat (vm, SV_CanSave () ? 0.0f : 1.0f);
+	return true;
+}
+
+static bool M_CanLoad (qcvm_t *vm)
+{
+	QC_ReturnFloat (vm, SV_CanLoad () ? 1.0f : 0.0f);
+	return true;
+}
+
 static const struct
 {
 	const char		*name;
@@ -648,6 +663,8 @@ static const struct
 	{"clientstate", M_ClientState},
 	{"clipboard_set", M_ClipboardSet},
 	{"isfullscreen", M_IsFullscreen},
+	{"cansave", M_CanSave},
+	{"canload", M_CanLoad},
 };
 
 /*

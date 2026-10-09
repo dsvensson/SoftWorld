@@ -792,7 +792,7 @@ static void TestMenuProgs (void)
 	static const char	*entries[] = {"m_init", "m_shutdown", "m_draw", "m_keydown", "m_toggle", "m_consolecommand"};
 	static const char	*softworld[] = {"isfullscreen", "gethostcacheindexforaddress", "refreshhostcacheentry",
 		"hostcacheinsource", "gethostcachesource", "sethostcachesourcemark", "addhostcachesource", "removehostcachesource",
-		"addhostcacheserver"};
+		"addhostcacheserver", "cansave", "canload"};
 	uint8_t				*data;
 	size_t				size;
 	qc_progs_t			*p;

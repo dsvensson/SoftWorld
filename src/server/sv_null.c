@@ -83,3 +83,13 @@ void SV_SetAttractStop (void (*stop) (void))
 {
 	(void)stop;
 }
+
+const char *SV_CanSave (void)
+{
+	return "This program has no server to save a game of.";
+}
+
+bool SV_CanLoad (void)
+{
+	return false;
+}

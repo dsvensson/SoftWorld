@@ -11,6 +11,8 @@ void() m_init =
 	registercommand ("menu_keys");
 	registercommand ("help");
 	registercommand ("menu_quit");
+	registercommand ("menu_load");
+	registercommand ("menu_save");
 };
 
 void() m_shutdown =
@@ -93,6 +95,12 @@ float(string cmd) m_consolecommand =
 		return TRUE;
 	case "menu_quit":
 		M_Menu_Quit_f ();
+		return TRUE;
+	case "menu_load":
+		M_Menu_Load_f ();
+		return TRUE;
+	case "menu_save":
+		M_Menu_Save_f ();
 		return TRUE;
 	}
 	return FALSE;

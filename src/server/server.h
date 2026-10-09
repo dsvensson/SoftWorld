@@ -525,7 +525,6 @@ typedef struct sv_loadgame_s
 	char		*extensions;			// its comment block after the edicts, or NULL
 } sv_loadgame_t;
 
-const char *SV_CanSave (void);		// why the game can't be saved now, NULL if it can
 void SV_CheckAutosave (double frametime);	// each frame the world moves
 bool SV_AutoLoad (void);			// the level's last save in place of a restart (sv_autoload)
 void SV_ApplySave (const sv_loadgame_t *load);	// on the level just spawned

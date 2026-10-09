@@ -107,6 +107,17 @@ void(float cliptype, string text) clipboard_set = #0:clipboard_set;
 // SoftWorld's: the window fills the screen
 float() isfullscreen = #0:isfullscreen;
 
+// SoftWorld's: the game can be saved now (a single player game, the player
+// alive and not in an intermission); this program loads games at all
+float() cansave = #0:cansave;
+float() canload = #0:canload;
+
+// files: read through the search path when not under data/
+float(string filename, float mode, optional float mmapminsize) fopen = #48;
+void(float fhandle) fclose = #49;
+string(float fhandle) fgets = #50;
+#define	FILE_READ	0
+
 // SoftWorld's, the server list's: a server's view index (-1 not shown); a
 // server asked again ahead of the rest; whether a source named a server; a
 // source's name, type, location, marked, servers, state or age; its mark;
