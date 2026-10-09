@@ -636,24 +636,42 @@ static bool PF_precache_file (qcvm_t *vm)
 	return true;
 }
 
+/*
+=================
+PF_precache_sound / PF_precache_model
+
+In the spawn functions, or later during the level, as FTE takes them: a name
+new then goes to the clients that can take it (SV_LatePrecache)
+=================
+*/
 static bool PF_precache_sound (qcvm_t *vm)
 {
 	const char	*s;
 	int			i;
-	
-	if (sv.state != ss_loading)
-		return QC_Error (vm, "PF_Precache_*: Precache can only be done in spawn functions");
-		
+
+	if (sv.state == ss_dead)
+		return QC_Error (vm, "PF_precache_sound: no level");
+
 	s = QC_ArgString(vm, 0);
 	QC_ReturnWord (vm, QC_ArgWord (vm, 0));
 	if (!PR_CheckEmptyString (vm, s))
 		return false;
-	
+
 	for (i=0 ; i<MAX_SOUNDS-1 ; i++)		// the last stays NULL, ending the list
 	{
 		if (!sv.sound_precache[i])
 		{
+			// past 255 a sound needs replacement deltas, which a level has
+			// or not from its spawn
+			if (sv.state == ss_active && i >= MAX_QW_SOUNDS && !sv.replacementdeltas)
+			{
+				Con_Printf ("PF_precache_sound: %s is past the %i sounds the level can send\n", s,
+					MAX_QW_SOUNDS - 1);
+				return true;
+			}
 			sv.sound_precache[i] = SV_LevelString (s);
+			if (sv.state == ss_active)
+				SV_LatePrecache (PC_SOUND, i, sv.sound_precache[i]);
 			return true;
 		}
 		if (!strcmp(sv.sound_precache[i], s))
@@ -666,10 +684,10 @@ static bool PF_precache_model (qcvm_t *vm)
 {
 	const char	*s;
 	int			i;
-	
-	if (sv.state != ss_loading)
-		return QC_Error (vm, "PF_Precache_*: Precache can only be done in spawn functions");
-		
+
+	if (sv.state == ss_dead)
+		return QC_Error (vm, "PF_precache_model: no level");
+
 	s = QC_ArgString(vm, 0);
 	QC_ReturnWord (vm, QC_ArgWord (vm, 0));
 	if (!PR_CheckEmptyString (vm, s))
@@ -681,6 +699,11 @@ static bool PF_precache_model (qcvm_t *vm)
 		{
 			sv.model_precache[i] = SV_LevelString (s);
 			SV_LoadBrushModel (i);
+			if (sv.state == ss_active)
+			{
+				SV_FindModelNumbers ();
+				SV_LatePrecache (PC_MODEL, i, sv.model_precache[i]);
+			}
 			return true;
 		}
 		if (!strcmp(sv.model_precache[i], s))

@@ -238,6 +238,55 @@ void SV_Multicast (vec3_t origin, int to)
 	SV_MulticastProtExt (origin, to, 0, 0, 0);
 }
 
+/*
+=================
+SV_LatePrecache
+
+A model or sound precached during the level, as FTE sends it
+(svc_fte_precache): straight into each connected client's reliable stream,
+ahead of a sound started with it the same frame, and to QTV's viewers.
+Clients that join later have it in their lists. A client that can't take it
+(no FTE CSQC or replacement deltas, or past its list's limit) is said on
+the console, once.
+=================
+*/
+static bool SV_TakesLatePrecache (const client_t *cl, int kind, int index)
+{
+	if (!(cl->fteext & FTE_PEXT_CSQC) && !(cl->fteext2 & FTE_PEXT2_REPLACEMENTDELTAS))
+		return false;
+	if (kind == PC_MODEL)
+		return index < 256 || (cl->fteext & FTE_PEXT_MODELDBL);
+	return index < MAX_QW_SOUNDS || SV_ReplacementDeltas (cl);
+}
+
+void SV_LatePrecache (int kind, int index, const char *name)
+{
+	client_t	*cl;
+	byte		buf[4 + MAX_QPATH];
+	sizebuf_t	msg = {.data = buf, .maxsize = sizeof(buf)};
+	int			i;
+
+	MSG_WriteByte (&msg, svc_fte_precache);
+	MSG_WriteShort (&msg, kind | index);
+	MSG_WriteString (&msg, name);
+
+	for (i = 0, cl = svs.clients ; i < MAX_CLIENTS ; i++, cl++)
+	{
+		if (cl->state < cs_connected)
+			continue;
+		if (!SV_TakesLatePrecache (cl, kind, index))
+		{
+			if (!cl->nolateprecache)
+				Con_Printf ("%s can't take what is precached during the level, as %s\n", cl->name, name);
+			cl->nolateprecache = true;
+			continue;
+		}
+		ClientReliableWrite_Begin (cl, svc_fte_precache, msg.cursize);
+		ClientReliableWrite_SZ (cl, buf + 1, msg.cursize - 1);
+	}
+	SV_MVDAll (msg.data, msg.cursize);
+}
+
 void SV_MulticastExt (vec3_t origin, int to, unsigned fteext2)
 {
 	SV_MulticastProtExt (origin, to, 0, 0, fteext2);

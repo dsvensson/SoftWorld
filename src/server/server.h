@@ -270,6 +270,8 @@ typedef struct client_s
 	int				teleport_outgoing;	// the outgoing sequence they went out in, 0 once seen
 	int				teleport_incoming;	// the incoming sequence then
 	float			teleport_yaw;		// how far they turned the view
+
+	bool			nolateprecache;		// told it can't take a late precache (SV_LatePrecache)
 } client_t;
 
 // a client can leave the server in one of four ways:
@@ -561,6 +563,7 @@ void SV_BroadcastPrintf (int level, char *fmt, ...);
 void SV_BroadcastCommand (char *fmt, ...);
 void SV_SendMessagesToAll (void);
 void SV_FindModelNumbers (void);
+void SV_LatePrecache (int kind, int index, const char *name);	// PC_MODEL or PC_SOUND
 void SV_PrintToClient (client_t *cl, int level, const char *string);	// whatever its messagelevel
 // the stats a client is shown: its player's, or the one's a spectator tracks
 void SV_ClientStats (const client_t *client, int stats[MAX_STATS]);

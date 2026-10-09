@@ -61,6 +61,7 @@ static struct
 	byte		scratch[MVD_MAXBLOCK];	// a message being written
 	byte		scratch2[MVD_MAXBLOCK];
 	bool		overflowed;		// said once
+	int			levelsounds, levelmodels;	// the lists' last in the level's part; later ones go in snapshots
 } mvd;
 
 /*
@@ -371,6 +372,21 @@ static void MVD_WriteSnapshot (mvdbuf_t *b)
 		MSG_WriteByte (&msg, svc_setpause);
 		MSG_WriteByte (&msg, 1);
 	}
+	// what was precached after the level's part was written
+	for (i=mvd.levelsounds + 1 ; i<MAX_SOUNDS && sv.sound_precache[i] ; i++)
+	{
+		MVD_Room (b, &msg, 4 + (int)strlen (sv.sound_precache[i]));
+		MSG_WriteByte (&msg, svc_fte_precache);
+		MSG_WriteShort (&msg, PC_SOUND | i);
+		MSG_WriteString (&msg, sv.sound_precache[i]);
+	}
+	for (i=mvd.levelmodels + 1 ; i<MAX_MODELS && sv.model_precache[i] ; i++)
+	{
+		MVD_Room (b, &msg, 4 + (int)strlen (sv.model_precache[i]));
+		MSG_WriteByte (&msg, svc_fte_precache);
+		MSG_WriteShort (&msg, PC_MODEL | i);
+		MSG_WriteString (&msg, sv.model_precache[i]);
+	}
 	MVD_Write (b, DEM_ALL, 0, msg.data, msg.cursize);
 
 	for (i=0 ; i<MAX_CLIENTS ; i++)
@@ -453,6 +469,13 @@ static void MVD_WriteLevel (mvdbuf_t *b)
 
 	MVD_WriteList (&msg, b, svc_soundlist, sv.sound_precache, MAX_SOUNDS);
 	MVD_WriteList (&msg, b, svc_modellist, sv.model_precache, MAX_MODELS);
+	// the last in the lists: later ones go to joining viewers in the snapshot
+	for (mvd.levelsounds = 0 ; mvd.levelsounds + 1 < MAX_SOUNDS && sv.sound_precache[mvd.levelsounds + 1] ;
+		mvd.levelsounds++)
+		;
+	for (mvd.levelmodels = 0 ; mvd.levelmodels + 1 < MAX_MODELS && sv.model_precache[mvd.levelmodels + 1] ;
+		mvd.levelmodels++)
+		;
 
 	for (i=0 ; i<sv.num_static_entities ; i++)
 	{
