@@ -280,6 +280,17 @@ Worth knowing:
 | `f_version`, `f_system`, `f_modified` | answered in chat as ezQuake answers them; `f_modified` also as a command, and `allow_f_system 0` answers `f_system` with "disabled" |
 | `memstats` | memory by use |
 
+### Savegames
+
+A single player game of NetQuake's progs saves as NetQuake's version 5 `.sav`, the file ironwail,
+QuakeSpasm and FTE write and read. `save <name>` writes `<name>.sav` in the game directory (qw/
+for id1's game, a mod's own directory for its), and is refused, with NetQuake's messages, in a
+multiplayer game, deathmatch or coop, with QuakeWorld's progs, in an intermission and with the
+player dead. The edicts keep this server's numbers, the player 1 and the map's from 33 with the
+other players' slots empty, which ironwail and FTE load as they are; a comment after them, which
+they skip, says so and keeps the precaches, those QuakeC made during the level too. FTE's date
+follows NetQuake's 39 characters of comment.
+
 ### IPv6
 
 The native programs take IPv6 with IPv4: a server listens on both at its port (UDP, and TCP for

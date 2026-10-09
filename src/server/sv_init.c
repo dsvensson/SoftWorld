@@ -559,6 +559,7 @@ void SV_SpawnServer (char *server, spawnparms_t parms, cmap_t *built)
 		i = (int)(skill.value + 0.5f);
 		Cvar_SetValue ("skill", (float)(i < 0 ? 0 : i > 3 ? 3 : i));
 	}
+	sv.skill = (int)skill.value;
 
 	// load progs to get entity field count
 	// which determines how big each edict is

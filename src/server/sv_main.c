@@ -1666,6 +1666,7 @@ static void SV_InitLocal (void)
 	extern	cvar_t	sv_waterfriction;
 
 	SV_InitOperatorCommands	();
+	SV_InitSave ();
 	SV_UserInit ();
 	
 	Cvar_RegisterVariable (&spectator_password);

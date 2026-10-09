@@ -802,6 +802,126 @@ static void ED_Digest_f (void)
 /*
 ==============================================================================
 
+SAVEGAMES
+
+==============================================================================
+*/
+
+/*
+=============
+ED_SaveValue
+
+A value as NetQuake's savegames have it (PR_UglyValueString): entities by
+number, functions and fields by name, strings as they are; NULL for one
+that can't be written (a function of a progs added after the first)
+=============
+*/
+static const char *ED_SaveValue (uint32_t type, const int *val)
+{
+	static char		line[128];
+	qc_funcinfo_t	f;
+	qc_definfo_t	d;
+	uint32_t		i;
+
+	switch (type)
+	{
+	case ev_string:
+		return PR_GetString (val[0]);
+	case ev_entity:
+		snprintf (line, sizeof(line), "%i", val[0]);
+		return line;
+	case ev_function:
+		if (QC_FUNC_PROGS (val[0]) || !QC_ProgsFunction (pr.progs, QC_FUNC_INDEX (val[0]), &f))
+			return NULL;
+		return f.name;
+	case ev_field:
+		for (i = 1 ; ED_ProgsField (i, &d) ; i++)
+			if (d.ofs == (uint32_t)val[0])
+				return d.name;
+		return NULL;
+	case ev_float:
+		snprintf (line, sizeof(line), "%f", *(const float *)val);
+		return line;
+	case ev_vector:
+		snprintf (line, sizeof(line), "%f %f %f", ((const float *)val)[0], ((const float *)val)[1],
+			((const float *)val)[2]);
+		return line;
+	default:
+		return NULL;
+	}
+}
+
+/*
+=============
+ED_WriteGlobals
+
+The globals a savegame keeps: those the compiler marks to save, of the
+types NetQuake writes (a vector's come as its _x, _y and _z)
+=============
+*/
+void ED_WriteGlobals (FILE *f)
+{
+	qc_definfo_t	d;
+	const char		*v;
+	uint32_t		i;
+
+	fprintf (f, "{\n");
+	for (i = 0 ; QC_ProgsGlobalDefAt (pr.progs, i, &d) ; i++)
+	{
+		if (!d.save || (d.type != ev_string && d.type != ev_float && d.type != ev_entity))
+			continue;
+		if ((uint64_t)d.ofs + PR_TypeWords (d.type) > QC_ProgsNumGlobals (pr.progs))
+			continue;
+		if ((v = ED_SaveValue (d.type, (const int *)&pr.globals[d.ofs])))
+			fprintf (f, "\"%s\" \"%s\"\n", d.name, v);
+	}
+	fprintf (f, "}\n");
+}
+
+/*
+=============
+ED_Write
+
+An edict as a savegame keeps it: its fields with a value but the parts of
+vectors, as ED_Print shows them, and the alpha and color the server holds
+for progs without those fields; nothing for a free one
+=============
+*/
+void ED_Write (FILE *f, edict_t *ed, int num)
+{
+	qc_definfo_t	d;
+	const int		*v;
+	const char		*s;
+	uint32_t		i, j, words;
+	size_t			l;
+
+	fprintf (f, "{ // #%i\n", num);
+	if (!ed->free)
+	{
+		for (i = 1 ; ED_ProgsField (i, &d) ; i++)
+		{
+			l = strlen (d.name);
+			if (l >= 2 && d.name[l - 2] == '_')
+				continue;	// the parts of a vector
+			if (!(v = ED_FieldValue (ed, &d)))
+				continue;
+			words = PR_TypeWords (d.type);
+			for (j = 0 ; j < words && !v[j] ; j++)
+				;
+			if (j < words && (s = ED_SaveValue (d.type, v)))
+				fprintf (f, "\"%s\" \"%s\"\n", d.name, s);
+		}
+		if (!pr.fofs_alpha && ed->alpha)
+			fprintf (f, "\"alpha\" \"%f\"\n", ed->alpha);
+		if (!pr.fofs_colormod && (ed->colormod[0] || ed->colormod[1] || ed->colormod[2]))
+			fprintf (f, "\"colormod\" \"%f %f %f\"\n", ed->colormod[0], ed->colormod[1], ed->colormod[2]);
+	}
+	fprintf (f, "}\n");
+}
+
+/*
+==============================================================================
+
 THE MAP'S ENTITIES
 
 ==============================================================================

@@ -311,6 +311,10 @@ static void NQ_Send (int dest, const nqstream_t *s, int count)
 	client_t	*cl;
 	vec3_t		origin;
 
+	// the level's end, and a story's: no saving from here
+	if (svc == svc_intermission || svc == svc_finale || svc == NQSVC_CUTSCENE)
+		sv.intermission = true;
+
 	if (svc == svc_intermission || svc == svc_setangle)
 	{
 		if (dest == MSG_ONE)

@@ -112,6 +112,9 @@ void ED_Free (edict_t *ed);
 
 void ED_Print (edict_t *ed);
 
+// savegames: the globals and an edict as NetQuake's version 5 writes them
+void ED_WriteGlobals (FILE *f);
+void ED_Write (FILE *f, edict_t *ed, int num);
 
 void ED_LoadFromFile (char *data);
 
