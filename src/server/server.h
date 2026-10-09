@@ -63,6 +63,16 @@ typedef struct
 	int			skill;				// the level's, as it spawned (a savegame's)
 	bool		loadgame;			// a savegame's level, held still until its player is back
 	float		loadparms[NUM_SPAWN_PARMS];	// that player's spawn parms, from the save
+	char		lastsave[MAX_OSPATH];	// the save last made or loaded on the level (sv_autoload)
+
+	// ironwail's autosave: whether the player seems safe
+	struct
+	{
+		double	time;				// of the last
+		double	cheat;				// spent since with noclip, god or notarget
+		double	hurt_time, shoot_time;
+		float	prev_health, prev_secrets, secret_boost;
+	} autosave;
 
 	//check player/eyes models for hacks
 	unsigned	model_player_checksum;
@@ -516,6 +526,8 @@ typedef struct sv_loadgame_s
 } sv_loadgame_t;
 
 const char *SV_CanSave (void);		// why the game can't be saved now, NULL if it can
+void SV_CheckAutosave (double frametime);	// each frame the world moves
+bool SV_AutoLoad (void);			// the level's last save in place of a restart (sv_autoload)
 void SV_ApplySave (const sv_loadgame_t *load);	// on the level just spawned
 void SV_LoadedPlayerBegins (client_t *cl);		// a savegame's player back in their body
 void SV_InitSave (void);

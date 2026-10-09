@@ -117,7 +117,7 @@ void ED_Print (edict_t *ed);
 // and read back after their opening braces (slots: the client slots the
 // save's edicts are numbered with, NetQuake's 1)
 void ED_WriteGlobals (FILE *f);
-void ED_Write (FILE *f, edict_t *ed, int num);
+void ED_WriteEdicts (FILE *f, int empty, int empty_end);	// those from empty to empty_end written empty
 char *ED_ParseGlobals (char *data, int slots);
 char *ED_ParseSavedEdict (char *data, edict_t *ent, int slots);
 

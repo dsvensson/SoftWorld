@@ -880,43 +880,57 @@ void ED_WriteGlobals (FILE *f)
 
 /*
 =============
-ED_Write
+ED_WriteEdicts
 
-An edict as a savegame keeps it: its fields with a value but the parts of
-vectors, as ED_Print shows them, and the alpha and color the server holds
-for progs without those fields; nothing for a free one
+The edicts as a savegame keeps them, each its fields with a value but the
+parts of vectors (as ED_Print shows them) and the alpha and color the server
+holds for progs without those fields; nothing for a free one, nor for those
+from empty to empty_end (players' slots of no one). The fields are looked up
+once, for all.
 =============
 */
-void ED_Write (FILE *f, edict_t *ed, int num)
+void ED_WriteEdicts (FILE *f, int empty, int empty_end)
 {
-	qc_definfo_t	d;
+	qc_definfo_t	d, *fields;
 	const int		*v;
 	const char		*s;
-	uint32_t		i, j, words;
+	edict_t			*ed;
+	uint32_t		i, j, words, count = 0;
 	size_t			l;
+	int				e;
 
-	fprintf (f, "{ // #%i\n", num);
-	if (!ed->free)
+	fields = Mem_Alloc ((QC_ProgsNumFieldDefs (pr.progs) + 1) * sizeof(*fields));
+	for (i = 1 ; ED_ProgsField (i, &d) ; i++)
 	{
-		for (i = 1 ; ED_ProgsField (i, &d) ; i++)
-		{
-			l = strlen (d.name);
-			if (l >= 2 && d.name[l - 2] == '_')
-				continue;	// the parts of a vector
-			if (!(v = ED_FieldValue (ed, &d)))
-				continue;
-			words = PR_TypeWords (d.type);
-			for (j = 0 ; j < words && !v[j] ; j++)
-				;
-			if (j < words && (s = ED_SaveValue (d.type, v)))
-				fprintf (f, "\"%s\" \"%s\"\n", d.name, s);
-		}
-		if (!pr.fofs_alpha && ed->alpha)
-			fprintf (f, "\"alpha\" \"%f\"\n", ed->alpha);
-		if (!pr.fofs_colormod && (ed->colormod[0] || ed->colormod[1] || ed->colormod[2]))
-			fprintf (f, "\"colormod\" \"%f %f %f\"\n", ed->colormod[0], ed->colormod[1], ed->colormod[2]);
+		l = strlen (d.name);
+		if (l < 2 || d.name[l - 2] != '_')	// not the parts of a vector
+			fields[count++] = d;
 	}
-	fprintf (f, "}\n");
+
+	for (e = 0 ; e < sv.num_edicts ; e++)
+	{
+		fprintf (f, "{ // #%i\n", e);
+		ed = EDICT_NUM (e);
+		if (!ed->free && (e < empty || e > empty_end))
+		{
+			for (i = 0 ; i < count ; i++)
+			{
+				if (!(v = ED_FieldValue (ed, &fields[i])))
+					continue;
+				words = PR_TypeWords (fields[i].type);
+				for (j = 0 ; j < words && !v[j] ; j++)
+					;
+				if (j < words && (s = ED_SaveValue (fields[i].type, v)))
+					fprintf (f, "\"%s\" \"%s\"\n", fields[i].name, s);
+			}
+			if (!pr.fofs_alpha && ed->alpha)
+				fprintf (f, "\"alpha\" \"%f\"\n", ed->alpha);
+			if (!pr.fofs_colormod && (ed->colormod[0] || ed->colormod[1] || ed->colormod[2]))
+				fprintf (f, "\"colormod\" \"%f %f %f\"\n", ed->colormod[0], ed->colormod[1], ed->colormod[2]);
+		}
+		fprintf (f, "}\n");
+	}
+	Mem_Free (fields);
 }
 
 /*

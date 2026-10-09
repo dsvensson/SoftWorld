@@ -383,6 +383,9 @@ static void SV_Changelevel_f (void)
 		return;
 	}
 	SV_AttractStop ();
+	// the level again, as some progs restart it: its last save (sv_autoload)
+	if (!strcmp (Cmd_Argv(1), sv.name) && SV_AutoLoad ())
+		return;
 	SV_GotoLevel (Cmd_Argv(1), sv.state == ss_dead ? SPAWNPARMS_NEW : SPAWNPARMS_CHANGE, NULL, NULL);
 }
 
@@ -397,7 +400,7 @@ NetQuake's; id1's progs restart a single player's game so when the player dies
 static void SV_Restart_f (void)
 {
 	SV_AttractStop ();		// a showcase's level is no game to restart
-	if (sv.state == ss_dead)
+	if (sv.state == ss_dead || SV_AutoLoad ())	// the level's last save (sv_autoload)
 		return;
 	SV_GotoLevel (sv.name, SPAWNPARMS_KEEP, NULL, NULL);
 }

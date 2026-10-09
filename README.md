@@ -300,6 +300,13 @@ neither ClientConnect nor PutClientInServer touches; FTE's `RestoreGame` runs if
 it. A load is a single player game as New Game starts one, with the save's skill, and ends
 attract mode or the game there is.
 
+As ironwail does, `sv_autosave 1` saves to `autosave/<map>.sav` while the player seems safe: not
+hurt or firing for three seconds, slowing down, and as often as `sv_autosave_interval` (30
+seconds) says for a healthy player, a hurt one's later and sooner after a secret or a teleport;
+time with noclip, god or notarget doesn't count. `sv_autoload 2` loads the level's last save, made
+or loaded on it, when the progs restart the level for a dead player, as id1's do, or change to the
+same level; 3 does for any restart, 0 never (ironwail's 1, which asks, acts as 2).
+
 ### IPv6
 
 The native programs take IPv6 with IPv4: a server listens on both at its port (UDP, and TCP for

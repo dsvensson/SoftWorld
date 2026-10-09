@@ -1582,7 +1582,10 @@ void SV_Frame (double time, bool away)
 
 // move autonomous things around if enough time has passed
 	if (!still)
+	{
 		SV_Physics ();
+		SV_CheckAutosave (time);
+	}
 
 // get packets
 	if (!pr.nq)

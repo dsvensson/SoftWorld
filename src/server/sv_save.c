@@ -12,6 +12,21 @@
 #define	SAVEGAME_VERSION	5
 #define	SAVEGAME_COMMENT	39		// NetQuake's comment, FTE's date after it
 
+// ironwail's autosave and autoload
+static cvar_t	sv_autosave = {.name = "sv_autosave", .string = "1", .archive = true,
+	.description = "Saves a single player game to autosave/<map>.sav while the player seems safe, as ironwail "
+		"does: not hurt or firing lately, slowing down, the sooner the healthier, after a secret or a teleport.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "On"}, {0}}};
+static cvar_t	sv_autosave_interval = {.name = "sv_autosave_interval", .string = "30", .archive = true,
+	.description = "Seconds between autosaves of a healthy player standing still (sv_autosave); a hurt one's come "
+		"later, one finding a secret or teleported sooner. 0 is none."};
+static cvar_t	sv_autoload = {.name = "sv_autoload", .string = "2", .archive = true,
+	.description = "Loads the level's last save (made or loaded on it, an autosave too) in place of restarting "
+		"the level, as id1's progs restart it when the player dies, or of a changelevel to the level, as "
+		"ironwail does.",
+	.values = (const cvar_value_t[]){{"0", "Never"}, {"1", "For a dead player (ironwail asks first)"},
+		{"2", "For a dead player"}, {"3", "Always"}, {0}}};
+
 /*
 ==============================================================================
 
@@ -22,14 +37,13 @@ SAVING
 
 /*
 ==================
-SV_CanSave
+SV_SinglePlayer
 
-Why the game can't be saved now, NULL if it can: a single player game of
-NetQuake's progs, this program's player alone in it, alive and not in an
-intermission (NetQuake's messages)
+Why the game isn't one of a single player, NULL if it is: NetQuake's progs,
+neither deathmatch nor coop, this program's player alone in it
 ==================
 */
-const char *SV_CanSave (void)
+static const char *SV_SinglePlayer (void)
 {
 	client_t	*cl;
 	int			i;
@@ -44,9 +58,26 @@ const char *SV_CanSave (void)
 	cl = svs.clients;
 	if (cl->state != cs_spawned || cl->spectator || cl->netchan.remote_address.type != NA_LOOPBACK)
 		return "Not playing a local game.";
+	return NULL;
+}
+
+/*
+==================
+SV_CanSave
+
+Why the game can't be saved now, NULL if it can: a single player game, the
+player alive and not in an intermission (NetQuake's messages)
+==================
+*/
+const char *SV_CanSave (void)
+{
+	const char	*why = SV_SinglePlayer ();
+
+	if (why)
+		return why;
 	if (sv.intermission)
 		return "Can't save in intermission.";
-	if (cl->edict->v.health <= 0)
+	if (svs.clients[0].edict->v.health <= 0)
 		return "Can't savegame with a dead player";
 	return NULL;
 }
@@ -148,6 +179,7 @@ static void SV_Savegame_f (void)
 	char		name[MAX_OSPATH], path[MAX_OSPATH * 2], comment[80];
 	const char	*why;
 	bool		quiet = Cmd_Argc () > 2 && !strcmp (Cmd_Argv (2), "0"), failed;
+	double		start = Sys_DoubleTime ();
 	FILE		*f;
 	int			i;
 
@@ -173,6 +205,7 @@ static void SV_Savegame_f (void)
 		Con_Printf ("ERROR: couldn't open %s.\n", path);
 		return;
 	}
+	setvbuf (f, NULL, _IOFBF, 1 << 16);
 
 	SV_SaveComment (comment, sizeof(comment));
 	fprintf (f, "%i\n%s\n", SAVEGAME_VERSION, comment);
@@ -182,13 +215,7 @@ static void SV_Savegame_f (void)
 	for (i = 0 ; i < MAX_LIGHTSTYLES ; i++)
 		fprintf (f, "%s\n", sv.lightstyles[i] && *sv.lightstyles[i] ? sv.lightstyles[i] : "m");
 	ED_WriteGlobals (f);
-	for (i = 0 ; i < sv.num_edicts ; i++)
-	{
-		if (i > 1 && i <= MAX_CLIENTS)
-			fprintf (f, "{ // #%i\n}\n", i);	// a player's slot, empty in a game of one
-		else
-			ED_Write (f, EDICT_NUM (i), i);
-	}
+	ED_WriteEdicts (f, 2, MAX_CLIENTS);		// the other players' slots, empty in a game of one
 	SV_WriteSaveExtensions (f);
 	fprintf (f, "// %i edicts\n", sv.num_edicts);
 
@@ -197,7 +224,82 @@ static void SV_Savegame_f (void)
 	{
 		Con_Printf ("ERROR: couldn't write %s.\n", path);
 		remove (path);
+		return;
 	}
+	Q_strncpyz (sv.lastsave, name, sizeof(sv.lastsave));
+	Con_DPrintf ("%s: %i edicts in %.1f ms\n", name, sv.num_edicts, (Sys_DoubleTime () - start) * 1000);
+}
+
+/*
+==================
+SV_CheckAutosave
+
+ironwail's (Host_CheckAutosave): autosave/<map>.sav when the player seems
+safe, a score of the time since the last, the player's health, stillness,
+and a secret or a teleport just now reaching 1; time with noclip, god or
+notarget doesn't count. Each frame the world moves.
+==================
+*/
+void SV_CheckAutosave (double frametime)
+{
+	edict_t	*player;
+	float	health_change, speed, elapsed, score, teleported;
+
+	if (!sv_autosave.value || sv_autosave_interval.value <= 0 || SV_CanSave ())
+		return;
+	player = svs.clients[0].edict;
+
+	// a secret found
+	if (PR_GLOBAL(found_secrets) != sv.autosave.prev_secrets)
+	{
+		sv.autosave.prev_secrets = PR_GLOBAL(found_secrets);
+		sv.autosave.secret_boost = 1;
+	}
+	else
+		sv.autosave.secret_boost = fmaxf (0, sv.autosave.secret_boost - (float)frametime / 1.5f);
+
+	// hurt: more than a scratch, or below full health, or in slime or lava
+	if (!sv.autosave.prev_health)
+		sv.autosave.prev_health = player->v.health;
+	health_change = player->v.health - sv.autosave.prev_health;
+	if (health_change < 0 && (health_change < -3 || player->v.health < 100
+		|| player->v.watertype == CONTENTS_SLIME || player->v.watertype == CONTENTS_LAVA))
+		sv.autosave.hurt_time = sv.time;
+	sv.autosave.prev_health = player->v.health;
+
+	if (player->v.button0)
+		sv.autosave.shoot_time = sv.time;
+
+	if (player->v.movetype == MOVETYPE_NOCLIP || (int)player->v.flags & (FL_GODMODE | FL_NOTARGET))
+	{
+		sv.autosave.cheat += frametime;
+		return;
+	}
+	if (sv.time - sv.autosave.hurt_time < 3 || sv.time - sv.autosave.shoot_time < 3)
+		return;
+	speed = Length (player->v.velocity);
+	if (speed > 100)
+		return;
+	// Copper's func_void holds the player at the bottom a while before the damage
+	if (player->v.movetype == MOVETYPE_NONE)
+		return;
+	elapsed = (float)(sv.time - sv.autosave.time - sv.autosave.cheat);
+	if (elapsed < 3)
+		return;
+
+	score = elapsed / sv_autosave_interval.value;
+	score *= fminf (100, player->v.health + player->v.armortype * player->v.armorvalue) / 100;
+	score += fmaxf (0, health_change) / 100;
+	score -= speed / 100 * 0.25f;
+	score += sv.autosave.secret_boost * 0.25f;
+	teleported = pr.fofs_teleport_time ? (float)sv.time - E_FLOAT(player, pr.fofs_teleport_time) : 1.5f;
+	score += fmaxf (0, fminf (1, 1 - teleported / 1.5f)) * 0.5f;
+	if (score < 1)
+		return;
+
+	sv.autosave.time = sv.time;
+	sv.autosave.cheat = 0;
+	Cbuf_AddText (va ("save \"autosave/%s\" 0\n", sv.name));
 }
 
 /*
@@ -408,6 +510,9 @@ void SV_ApplySave (const sv_loadgame_t *load)
 	QC_SetTime (pr.vm, sv.time);
 	PR_GLOBAL(time) = (float)sv.time;
 	svs.serverflags = (int)PR_GLOBAL(serverflags);
+	Q_strncpyz (sv.lastsave, load->name, sizeof(sv.lastsave));
+	sv.autosave.time = sv.time;		// not saved again at once
+	sv.autosave.prev_secrets = PR_GLOBAL(found_secrets);
 
 	// its player: the one there is, reconnecting, or the one to connect
 	sv.loadgame = true;
@@ -450,43 +555,50 @@ void SV_LoadedPlayerBegins (client_t *cl)
 
 /*
 ==================
-SV_Loadgame_f
+SV_LoadGame
 
-load <name>: the savegame's level as it was, the map spawned as map spawns
-it, then its globals and edicts as saved; a single player game, as New
-Game starts one, with the save's skill
+The savegame's level as it was, the map spawned as map spawns it, then its
+globals and edicts as saved; a single player game, as New Game starts one,
+with the save's skill. False (said why) for a save that can't be loaded,
+the game there is left as it was.
 ==================
 */
-static void SV_Loadgame_f (void)
+static bool SV_LoadGame (const char *arg)
 {
 	sv_loadgame_t	load;
 	client_t		*cl;
 	byte			*file;
+	char			mapfile[MAX_QPATH + 16];
 	int				i, size;
+	FILE			*f;
 
-	if (Cmd_Argc () < 2)
-	{
-		Con_Printf ("load <savename> : load a game\n");
-		return;
-	}
 	if (host.dedicated)
 	{
 		Con_Printf ("Not playing a local game.\n");
-		return;
+		return false;
 	}
 	memset (&load, 0, sizeof(load));
-	if (!SV_SaveName (Cmd_Argv (1), load.name, sizeof(load.name)))
-		return;
+	if (!SV_SaveName (arg, load.name, sizeof(load.name)))
+		return false;
 	if (!(file = FS_LoadFile (load.name, &size)))
 	{
 		Con_Printf ("ERROR: %s not found.\n", load.name);
-		return;
+		return false;
 	}
 	if (!SV_ParseSaveHeader ((char *)file, &load))
 	{
 		Mem_Free (file);
-		return;
+		return false;
 	}
+	snprintf (mapfile, sizeof(mapfile), "maps/%s.bsp", load.map);
+	COM_FOpenFile (mapfile, &f);
+	if (!f)
+	{
+		Con_Printf ("ERROR: %s's map, %s, isn't there.\n", load.name, mapfile);
+		Mem_Free (file);
+		return false;
+	}
+	fclose (f);
 	SV_FindSaveExtensions (&load);
 
 	Con_Printf ("Loading game from %s...\n", load.name);
@@ -501,6 +613,43 @@ static void SV_Loadgame_f (void)
 	Cvar_SetValue ("skill", (float)load.skill);
 	SV_GotoLevel (load.map, SPAWNPARMS_NEW, NULL, &load);
 	Mem_Free (file);
+	return sv.loadgame;
+}
+
+static void SV_Loadgame_f (void)
+{
+	if (Cmd_Argc () < 2)
+	{
+		Con_Printf ("load <savename> : load a game\n");
+		return;
+	}
+	SV_LoadGame (Cmd_Argv (1));
+}
+
+/*
+==================
+SV_AutoLoad
+
+ironwail's (Host_AutoLoad): the level's last save, made or loaded on it, in
+place of a restart, as id1's progs restart the level when the player dies,
+or of a changelevel to the level; with sv_autoload 3 always, else only for
+a dead player (ironwail's 1 asks first, which this doesn't)
+==================
+*/
+bool SV_AutoLoad (void)
+{
+	char	name[MAX_OSPATH];
+
+	if (!sv_autoload.value || !sv.lastsave[0] || SV_SinglePlayer () || sv.intermission)
+		return false;
+	if (sv_autoload.value < 3 && svs.clients[0].edict->v.health > 0)
+		return false;
+	Q_strncpyz (name, sv.lastsave, sizeof(name));	// the spawn clears sv
+	Con_Printf ("Autoloading...\n");
+	if (SV_LoadGame (name))
+		return true;
+	Con_Printf ("Autoload failed!\n");
+	return false;
 }
 
 /*
@@ -527,4 +676,7 @@ void SV_InitSave (void)
 		"(ironwail's, QuakeSpasm's and FTE's too): its level as it was, a single player game with its skill. "
 		"Usage: load <name>");
 	Cmd_SetCompletion ("load", SV_CompleteSave);
+	Cvar_RegisterVariable (&sv_autosave);
+	Cvar_RegisterVariable (&sv_autosave_interval);
+	Cvar_RegisterVariable (&sv_autoload);
 }
