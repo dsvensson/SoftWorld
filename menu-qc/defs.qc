@@ -39,6 +39,7 @@ float(string s) tokenize = #58;
 string(float n) argv = #59;
 float() isserver = #60;
 float() clientstate = #62;
+float() isdemo = #349;
 void(string sample) localsound = #65;
 string(string format, ...) sprintf = #627;
 float(string s, float index) str2chr = #222;

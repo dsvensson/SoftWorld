@@ -483,8 +483,9 @@ void(float key) M_SinglePlayer_Key =
 		m_entersound = TRUE;
 		if (m_singleplayer_cursor != 0)
 			break;
-		if (clientstate () == 2 || isserver ())
-			m_newgame_asking = TRUE;		// a game would end
+		// a game would end; a demo (attract mode's maps too) is no game
+		if ((clientstate () == 2 && !isdemo ()) || isserver ())
+			m_newgame_asking = TRUE;
 		else
 			M_NewGame ();
 		break;
