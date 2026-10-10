@@ -368,6 +368,7 @@ typedef struct model_s
 	medge_t		*edges;
 
 	int			numnodes;
+	bool		sharednodes;	// a node or open leaf of the world's tree has two parents
 	mnode_t		*nodes;
 
 	int			numtexinfo;

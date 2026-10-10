@@ -221,6 +221,28 @@ void R_RotateBandBmodel (rband_t *b)
 
 /*
 ================
+R_LeafKey
+
+A leaf's key this run: its own if the walk came to it, or that of a hidden
+node above it (R_OccludedKeys); one from an earlier run if neither, a leaf
+off the band, where nothing in it is drawn
+================
+*/
+static int R_LeafKey (const rband_t *b, const mleaf_t *leaf)
+{
+	int				i = (int)(leaf - r_scene.worldmodel->leafs);
+	const mnode_t	*node;
+
+	if (b->leafpass[i] == b->pass)
+		return b->leafkeys[i];
+	for (node = leaf->parent ; node ; node = node->parent)
+		if (b->nodepass[node - r_scene.worldmodel->nodes] == b->pass)
+			return b->nodekeys[node - r_scene.worldmodel->nodes];
+	return b->leafkeys[i];
+}
+
+/*
+================
 R_RecursiveClipBPoly
 
 A brush entity's face, or a piece of it, cut by the world's node planes into
@@ -403,7 +425,7 @@ static void R_RecursiveClipBPoly (rband_t *b, bedge_t *pedges, mnode_t *pnode, m
 				{
 					if (pn->contents != CONTENTS_SOLID)
 					{
-						b->currentbkey = b->leafkeys[(mleaf_t *)pn - r_scene.worldmodel->leafs];
+						b->currentbkey = R_LeafKey (b, (mleaf_t *)pn);
 						R_RenderBmodelFace (b, psideedges[i], psurf);
 					}
 				}
@@ -560,7 +582,7 @@ void R_DrawSubmodelPolygons (rband_t *b, model_t *pmodel, int clipflags)
 		if (((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
 			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)))
 		{
-			b->currentkey = b->leafkeys[(mleaf_t *)b->entity->topnode - r_scene.worldmodel->leafs];
+			b->currentkey = R_LeafKey (b, (mleaf_t *)b->entity->topnode);
 
 		// FIXME: use bounding-box-based frustum clipping info?
 			R_RenderFace (b, psurf, clipflags);
@@ -683,21 +705,35 @@ R_OccludedKeys
 
 The leaves under a hidden node, one key for them all, where the walk would
 have given them theirs: a brush entity in one is split there and sorted by
-it (R_RecursiveClipBPoly), behind what hides the node
+it (R_RecursiveClipBPoly), behind what hides the node. Kept on the node, for
+R_LeafKey to find from a leaf, where each node and leaf has one parent;
+given each leaf where some have two.
 ================
 */
-static void R_OccludedKeys (rband_t *b, mnode_t *node, int key)
+static void R_OccludedLeafKeys (rband_t *b, mnode_t *node, int key)
 {
 	while (node->contents != CONTENTS_SOLID && node->visframe == r_visframecount)
 	{
 		if (node->contents < 0)
 		{
 			b->leafkeys[(mleaf_t *)node - r_scene.worldmodel->leafs] = key;
+			b->leafpass[(mleaf_t *)node - r_scene.worldmodel->leafs] = b->pass;
 			return;
 		}
-		R_OccludedKeys (b, node->children[0], key);
+		R_OccludedLeafKeys (b, node->children[0], key);
 		node = node->children[1];
 	}
+}
+
+static void R_OccludedKeys (rband_t *b, mnode_t *node, int key)
+{
+	if (node->contents < 0 || r_scene.worldmodel->sharednodes)
+	{
+		R_OccludedLeafKeys (b, node, key);
+		return;
+	}
+	b->nodekeys[node - r_scene.worldmodel->nodes] = key;
+	b->nodepass[node - r_scene.worldmodel->nodes] = b->pass;
 }
 
 /*
@@ -764,7 +800,7 @@ static void R_RecursiveWorldNode (rband_t *b, mnode_t *node, int clipflags)
 	}
 
 // hidden behind the faces met already
-	if (b->covered && b->occlusion && R_BandOccluded (b, node->minmaxs))
+	if (node->contents >= 0 && b->covered && b->occlusion && R_BandOccluded (b, node->minmaxs))
 	{
 		R_OccludedKeys (b, node, b->currentkey);
 		b->currentkey++;
@@ -791,6 +827,7 @@ static void R_RecursiveWorldNode (rband_t *b, mnode_t *node, int clipflags)
 		}
 
 		b->leafkeys[pleaf - r_scene.worldmodel->leafs] = b->currentkey;
+		b->leafpass[pleaf - r_scene.worldmodel->leafs] = b->pass;
 		b->currentkey++;		// all bmodels in a leaf share the same key
 	}
 	else

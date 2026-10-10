@@ -1080,18 +1080,25 @@ static void Mod_SetParents (void)
 	sp = 0;
 	stack[sp++] = loadmodel->nodes;
 	loadmodel->nodes->parent = NULL;
+	loadmodel->sharednodes = false;
 	while (sp)
 	{
 		node = stack[--sp];
 		for (j=0 ; j<2 ; j++)
 		{
 			if (node->children[j]->contents < 0)
-				node->children[j]->parent = node;		// a leaf
+			{	// a leaf; the solid ones are all one
+				if (node->children[j]->parent && node->children[j]->contents != CONTENTS_SOLID)
+					loadmodel->sharednodes = true;
+				node->children[j]->parent = node;
+			}
 			else if (!node->children[j]->parent)
 			{	// each node once, even in a map that shares them
 				node->children[j]->parent = node;
 				stack[sp++] = node->children[j];
 			}
+			else
+				loadmodel->sharednodes = true;
 		}
 	}
 	Mem_Free (stack);

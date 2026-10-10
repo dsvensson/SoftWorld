@@ -352,6 +352,9 @@ typedef struct rband_s
 	model_t		*world;
 	byte		*surfvisible;		// a bit per world surface, set by the leaves walked
 	int			*leafkeys;			// each leaf's key this frame, for brush models in it
+	unsigned	*leafpass;			// the run it was given it (R_LeafKey)
+	int			*nodekeys;			// a node hidden this run: its leaves' key
+	unsigned	*nodepass;
 	unsigned	*edgecache;			// each world edge's offset into edges, or
 									//  FULLY_CLIPPED_CACHED and the pass
 	unsigned	pass;				// counts the band's runs

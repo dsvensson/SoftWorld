@@ -154,10 +154,16 @@ static void R_BandRoom (rband_t *b)
 	{
 		Mem_Free (b->surfvisible);
 		Mem_Free (b->leafkeys);
+		Mem_Free (b->leafpass);
+		Mem_Free (b->nodekeys);
+		Mem_Free (b->nodepass);
 		Mem_Free (b->edgecache);
 		Mem_Free (b->edgenearzi);
 		b->surfvisible = Mem_Alloc ((size_t)(world->numsurfaces + 7) >> 3);
 		b->leafkeys = Mem_Calloc ((size_t)world->numloadedleafs, sizeof(*b->leafkeys));
+		b->leafpass = Mem_Calloc ((size_t)world->numloadedleafs, sizeof(*b->leafpass));
+		b->nodekeys = Mem_Calloc ((size_t)world->numnodes, sizeof(*b->nodekeys));
+		b->nodepass = Mem_Calloc ((size_t)world->numnodes, sizeof(*b->nodepass));
 		b->edgecache = Mem_Calloc ((size_t)world->numedges, sizeof(*b->edgecache));
 		b->edgenearzi = Mem_Alloc ((size_t)world->numedges * sizeof(*b->edgenearzi));
 		b->world = world;
