@@ -60,12 +60,32 @@ D_WarpScreen
 // the sine warp, to keep the edges from wrapping
 =============
 */
-void D_WarpScreen (void)
+#define WARP_JOB_LINES	16		// the lines a thread warps at a time
+
+// lines index * WARP_JOB_LINES on, of the view's
+static void D_WarpLines (void *ctx, int index)
 {
-	int		w, h, u, v, k, amp, base;
+	int		u, v, end;
 	pixel_t	*dest;
 	int		*col;
 	pixel_t	**row;
+
+	(void)ctx;
+	v = index * WARP_JOB_LINES;
+	end = v + WARP_JOB_LINES < r_viewrect.height ? v + WARP_JOB_LINES : r_viewrect.height;
+	dest = vid.buffer + (r_viewrect.y + v) * vid.rowpixels + r_viewrect.x;
+	for ( ; v<end ; v++, dest += vid.rowpixels)
+	{
+		col = &warp_column[warp_vturb[v]];
+		row = &warp_rowptr[v];
+		for (u=0 ; u<r_viewrect.width ; u++)
+			dest[u] = row[warp_uturb[u]][col[u]];
+	}
+}
+
+void D_WarpScreen (void)
+{
+	int		w, h, u, v, k, amp, base;
 
 	w = r_refdef.vrect.width;
 	h = r_refdef.vrect.height;
@@ -91,15 +111,7 @@ void D_WarpScreen (void)
 	for (v=0 ; v<h ; v++)
 		warp_vturb[v] = k * intsintable[base + v / k];
 
-	dest = vid.buffer + r_viewrect.y * vid.rowpixels + r_viewrect.x;
-
-	for (v=0 ; v<r_viewrect.height ; v++, dest += vid.rowpixels)
-	{
-		col = &warp_column[warp_vturb[v]];
-		row = &warp_rowptr[v];
-		for (u=0 ; u<r_viewrect.width ; u++)
-			dest[u] = row[warp_uturb[u]][col[u]];
-	}
+	Sys_Parallel ((r_viewrect.height + WARP_JOB_LINES - 1) / WARP_JOB_LINES, D_WarpLines, NULL);
 }
 
 
