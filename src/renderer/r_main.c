@@ -1213,7 +1213,16 @@ static void R_FinishEdgeDrawing (void)
 	double	prof = R_ProfStart ();
 
 	D_FinishSurfaces ();
-	R_DrawFences ();
+	// with threads, put together here and drawn on them
+	if (r_numthreads > 1)
+	{
+		D_BeginBatch (D_BATCH_FENCES);
+		R_DrawFences ();
+		D_EndBatch ();
+		D_FillBatch (D_BATCH_FENCES);
+	}
+	else
+		R_DrawFences ();
 	R_ProfEnd (PROF_SPANS, prof);
 }
 

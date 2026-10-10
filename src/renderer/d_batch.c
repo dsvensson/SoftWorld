@@ -38,7 +38,8 @@ typedef enum
 	DK_SPRITESPAN,
 	DK_PARTICLE,
 	DK_BLENDSPAN,
-	DK_FLATSPAN
+	DK_FLATSPAN,
+	DK_FENCESPAN
 } dkind_t;
 
 typedef struct
@@ -64,7 +65,7 @@ typedef struct
 		struct
 		{
 			int			u, v, count;
-			int			map;		// of the batch's sprite, blend or flat maps
+			int			map;		// of the batch's sprite, blend, flat or fence maps
 		} sprite;
 		struct
 		{
@@ -94,6 +95,8 @@ typedef struct
 	int					numblendmaps, maxblendmaps;
 	d_flatmap_t			*flatmaps;
 	int					numflatmaps, maxflatmaps;
+	d_fencemap_t		*fencemaps;
+	int					numfencemaps, maxfencemaps;
 } dbatch_t;
 
 static dbatch_t	d_batches[D_NUMBATCHES];
@@ -129,6 +132,7 @@ void D_SetBatchSize (int height)
 		b->numspritemaps = 0;
 		b->numblendmaps = 0;
 		b->numflatmaps = 0;
+		b->numfencemaps = 0;
 	}
 }
 
@@ -228,6 +232,19 @@ int D_KeepFlatMap (const d_flatmap_t *map)
 	return b->numflatmaps++;
 }
 
+int D_KeepFenceMap (const d_fencemap_t *map)
+{
+	dbatch_t	*b = d_keeping;
+
+	if (b->numfencemaps == b->maxfencemaps)
+	{
+		b->maxfencemaps = b->maxfencemaps ? b->maxfencemaps * 2 : 16;
+		b->fencemaps = Mem_Realloc (b->fencemaps, (size_t)b->maxfencemaps * sizeof(*b->fencemaps));
+	}
+	b->fencemaps[b->numfencemaps] = *map;
+	return b->numfencemaps++;
+}
+
 int D_KeepSpriteMap (const d_spritemap_t *map)
 {
 	dbatch_t	*b = d_keeping;
@@ -310,6 +327,16 @@ void D_KeepFlatSpan (int u, int v, int count, int map)
 	k->sprite.map = map;
 }
 
+void D_KeepFenceSpan (int u, int v, int count, int map)
+{
+	dkept_t	*k = D_Keep (v, DK_FENCESPAN);
+
+	k->sprite.u = u;
+	k->sprite.v = v;
+	k->sprite.count = count;
+	k->sprite.map = map;
+}
+
 void D_KeepSpriteSpan (int u, int v, int count, int map)
 {
 	dkept_t	*k = D_Keep (v, DK_SPRITESPAN);
@@ -364,6 +391,9 @@ static void D_FillStrip (void *ctx, int index)
 		case DK_FLATSPAN:
 			D_FlatSpan (&b->flatmaps[k->sprite.map], k->sprite.u, k->sprite.v, k->sprite.count);
 			break;
+		case DK_FENCESPAN:
+			D_FenceSpan (&b->fencemaps[k->sprite.map], k->sprite.u, k->sprite.v, k->sprite.count);
+			break;
 		case DK_PARTICLE:
 			D_ParticleLines (k->pdest, k->pz, k->particle.color, k->particle.zi, k->particle.width,
 				k->particle.lines);
@@ -390,6 +420,7 @@ static void D_Fill (dbatch_t *b)
 	b->numspritemaps = 0;
 	b->numblendmaps = 0;
 	b->numflatmaps = 0;
+	b->numfencemaps = 0;
 }
 
 void D_FillBatch (dbatchid_t batch)

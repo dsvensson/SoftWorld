@@ -187,6 +187,19 @@ typedef struct
 // a span of a sprite on line v, depth tested and written (d_sprite.c)
 void D_SpriteSpan (const d_spritemap_t *map, int u, int v, int count);
 
+// a fence's mapping, as D_FenceSpan draws a span of it from its cache block
+typedef struct
+{
+	const pixel_t	*block;
+	int				width;
+	float			sdivzorigin, sdivzstepu, sdivzstepv;
+	float			tdivzorigin, tdivzstepu, tdivzstepv;
+	float			ziorigin, zistepu, zistepv;
+	fixed16_t		sadjust, tadjust, bbextents, bbextentt;
+} d_fencemap_t;
+
+void D_FenceSpan (const d_fencemap_t *map, int u, int v, int count);
+
 // a translucent surface's mapping, as D_BlendSpan blends a span of it: from
 // its cache block, or a liquid's texture (turb, or turb30 for a TGA's)
 typedef struct
@@ -220,6 +233,8 @@ void D_FlatSpan (const d_flatmap_t *map, int u, int v, int count);
 bool D_Keeping (void);
 int D_KeepAliasMap (const simd_aliasmap_t *map);
 int D_KeepSpriteMap (const d_spritemap_t *map);
+int D_KeepFenceMap (const d_fencemap_t *map);
+void D_KeepFenceSpan (int u, int v, int count, int map);
 int D_KeepBlendMap (const d_blendmap_t *map);
 void D_KeepBlendSpan (int u, int v, int count, int map);
 int D_KeepFlatMap (const d_flatmap_t *map);

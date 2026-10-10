@@ -139,6 +139,7 @@ typedef enum
 	D_BATCH_MODELS,			// the entity list's
 	D_BATCH_TRANSLUCENT,
 	D_BATCH_VIEWMODEL,
+	D_BATCH_FENCES,
 	D_NUMBATCHES
 } dbatchid_t;
 void D_BeginBatch (dbatchid_t batch);

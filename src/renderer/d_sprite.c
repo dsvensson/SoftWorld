@@ -273,15 +273,15 @@ void D_DrawSprite (void)
 
 /*
 =====================
-D_FenceDrawSpans
+D_FenceSpan
 
-Spans of a fence surface from its cache block: depth tested, depth writing,
-the cut-out texels skipped
+A span of a fence on line v, from its cache block: depth tested and depth
+written, the cut-out texels skipped
 =====================
 */
-static void D_FenceDrawSpans (sspan_t *pspan)
+void D_FenceSpan (const d_fencemap_t *map, int u, int v, int count)
 {
-	int			count, spancount;
+	int			spancount;
 	float		pixelzi;
 	pixel_t		*pdest, texel;
 	fixed16_t	s, t, snext, tnext, sstep, tstep;
@@ -291,90 +291,85 @@ static void D_FenceDrawSpans (sspan_t *pspan)
 
 	sstep = 0;
 	tstep = 0;
+	if (count <= 0)
+		return;
 
-	sdivz8stepu = d_sdivzstepu * 8;
-	tdivz8stepu = d_tdivzstepu * 8;
-	zi8stepu = d_zistepu * 8;
+	sdivz8stepu = map->sdivzstepu * 8;
+	tdivz8stepu = map->tdivzstepu * 8;
+	zi8stepu = map->zistepu * 8;
 
-	for ( ; pspan->count != DS_SPAN_LIST_END ; pspan++)
-	{
-		count = pspan->count;
-		if (count <= 0)
-			continue;
-
-		pdest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
-		pz = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
+	pdest = d_viewbuffer + (screenwidth * v) + u;
+	pz = d_pzbuffer + (d_zwidth * v) + u;
 
 	// the initial s/z, t/z, 1/z, s and t, clamped
-		du = (float)pspan->u;
-		dv = (float)pspan->v;
+	du = (float)u;
+	dv = (float)v;
 
-		sdivz = d_sdivzorigin + dv*d_sdivzstepv + du*d_sdivzstepu;
-		tdivz = d_tdivzorigin + dv*d_tdivzstepv + du*d_tdivzstepu;
-		zi = d_ziorigin + dv*d_zistepv + du*d_zistepu;
-		z = (float)0x10000 / zi;
-		pixelzi = zi;
+	sdivz = map->sdivzorigin + dv*map->sdivzstepv + du*map->sdivzstepu;
+	tdivz = map->tdivzorigin + dv*map->tdivzstepv + du*map->tdivzstepu;
+	zi = map->ziorigin + dv*map->zistepv + du*map->zistepu;
+	z = (float)0x10000 / zi;
+	pixelzi = zi;
 
-		s = (int)(sdivz * z) + sadjust;
-		s = s > bbextents ? bbextents : (s < 0 ? 0 : s);
-		t = (int)(tdivz * z) + tadjust;
-		t = t > bbextentt ? bbextentt : (t < 0 ? 0 : t);
+	s = (int)(sdivz * z) + map->sadjust;
+	s = s > map->bbextents ? map->bbextents : (s < 0 ? 0 : s);
+	t = (int)(tdivz * z) + map->tadjust;
+	t = t > map->bbextentt ? map->bbextentt : (t < 0 ? 0 : t);
+
+	do
+	{
+		spancount = count >= 8 ? 8 : count;
+		count -= spancount;
+
+		if (count)
+		{
+			sdivz += sdivz8stepu;
+			tdivz += tdivz8stepu;
+			zi += zi8stepu;
+			z = (float)0x10000 / zi;
+			snext = (int)(sdivz * z) + map->sadjust;
+			snext = snext > map->bbextents ? map->bbextents : (snext < 8 ? 8 : snext);
+			tnext = (int)(tdivz * z) + map->tadjust;
+			tnext = tnext > map->bbextentt ? map->bbextentt : (tnext < 8 ? 8 : tnext);
+			sstep = (snext - s) >> 3;
+			tstep = (tnext - t) >> 3;
+		}
+		else
+		{
+			spancountminus1 = (float)(spancount - 1);
+			sdivz += map->sdivzstepu * spancountminus1;
+			tdivz += map->tdivzstepu * spancountminus1;
+			zi += map->zistepu * spancountminus1;
+			z = (float)0x10000 / zi;
+			snext = (int)(sdivz * z) + map->sadjust;
+			snext = snext > map->bbextents ? map->bbextents : (snext < 8 ? 8 : snext);
+			tnext = (int)(tdivz * z) + map->tadjust;
+			tnext = tnext > map->bbextentt ? map->bbextentt : (tnext < 8 ? 8 : tnext);
+			if (spancount > 1)
+			{
+				sstep = (snext - s) / (spancount - 1);
+				tstep = (tnext - t) / (spancount - 1);
+			}
+		}
 
 		do
 		{
-			spancount = count >= 8 ? 8 : count;
-			count -= spancount;
-
-			if (count)
+			texel = map->block[(s >> 16) + (t >> 16) * map->width];
+			if (!(texel & PIXEL_TRANSPARENT) && *pz <= pixelzi)
 			{
-				sdivz += sdivz8stepu;
-				tdivz += tdivz8stepu;
-				zi += zi8stepu;
-				z = (float)0x10000 / zi;
-				snext = (int)(sdivz * z) + sadjust;
-				snext = snext > bbextents ? bbextents : (snext < 8 ? 8 : snext);
-				tnext = (int)(tdivz * z) + tadjust;
-				tnext = tnext > bbextentt ? bbextentt : (tnext < 8 ? 8 : tnext);
-				sstep = (snext - s) >> 3;
-				tstep = (tnext - t) >> 3;
+				*pz = pixelzi;
+				*pdest = texel;
 			}
-			else
-			{
-				spancountminus1 = (float)(spancount - 1);
-				sdivz += d_sdivzstepu * spancountminus1;
-				tdivz += d_tdivzstepu * spancountminus1;
-				zi += d_zistepu * spancountminus1;
-				z = (float)0x10000 / zi;
-				snext = (int)(sdivz * z) + sadjust;
-				snext = snext > bbextents ? bbextents : (snext < 8 ? 8 : snext);
-				tnext = (int)(tdivz * z) + tadjust;
-				tnext = tnext > bbextentt ? bbextentt : (tnext < 8 ? 8 : tnext);
-				if (spancount > 1)
-				{
-					sstep = (snext - s) / (spancount - 1);
-					tstep = (tnext - t) / (spancount - 1);
-				}
-			}
+			pixelzi += map->zistepu;
+			pdest++;
+			pz++;
+			s += sstep;
+			t += tstep;
+		} while (--spancount > 0);
 
-			do
-			{
-				texel = cacheblock[(s >> 16) + (t >> 16) * cachewidth];
-				if (!(texel & PIXEL_TRANSPARENT) && *pz <= pixelzi)
-				{
-					*pz = pixelzi;
-					*pdest = texel;
-				}
-				pixelzi += d_zistepu;
-				pdest++;
-				pz++;
-				s += sstep;
-				t += tstep;
-			} while (--spancount > 0);
-
-			s = snext;
-			t = tnext;
-		} while (count > 0);
-	}
+		s = snext;
+		t = tnext;
+	} while (count > 0);
 }
 
 /*
@@ -384,8 +379,29 @@ D_DrawFencePolygon
 */
 void D_DrawFencePolygon (emitpoint_t *pverts, int nump)
 {
-	if (D_PolygonSpans (pverts, nump, sprite_spans, &r_refdef.vrect))
-		D_FenceDrawSpans (sprite_spans);
+	d_fencemap_t	map;
+	sspan_t			*pspan;
+	int				index;
+
+	if (!D_PolygonSpans (pverts, nump, sprite_spans, &r_refdef.vrect))
+		return;
+	map = (d_fencemap_t){
+		.block = cacheblock, .width = cachewidth,
+		.sdivzorigin = d_sdivzorigin, .sdivzstepu = d_sdivzstepu, .sdivzstepv = d_sdivzstepv,
+		.tdivzorigin = d_tdivzorigin, .tdivzstepu = d_tdivzstepu, .tdivzstepv = d_tdivzstepv,
+		.ziorigin = d_ziorigin, .zistepu = d_zistepu, .zistepv = d_zistepv,
+		.sadjust = sadjust, .tadjust = tadjust, .bbextents = bbextents, .bbextentt = bbextentt,
+	};
+	index = D_Keeping () ? D_KeepFenceMap (&map) : -1;
+	for (pspan = sprite_spans ; pspan->count != DS_SPAN_LIST_END ; pspan++)
+	{
+		if (pspan->count <= 0)
+			continue;
+		if (index >= 0)
+			D_KeepFenceSpan (pspan->u, pspan->v, pspan->count, index);
+		else
+			D_FenceSpan (&map, pspan->u, pspan->v, pspan->count);
+	}
 }
 
 /*
