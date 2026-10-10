@@ -28,6 +28,8 @@ static struct
 	volatile LONG	quit;
 	int				numworkers;
 	HANDLE			threads[MAX_WORKERS];
+	bool			started;		// a run Sys_ParallelFinish joins
+	bool			deferred;		// a run with no workers, which Finish runs
 } pool;
 
 int Sys_NumCores (void)
@@ -121,6 +123,52 @@ void Sys_SetWorkers (int workers)
 	pool.numworkers = i;
 }
 
+void Sys_ParallelStart (int count, void (*job) (void *ctx, int index), void *ctx)
+{
+	if (count <= 0)
+		return;
+
+	// the run, published before the workers are let in
+	pool.job = job;
+	pool.ctx = ctx;
+	InterlockedExchange (&pool.count, count);
+	if (!pool.numworkers)
+	{
+		pool.deferred = true;
+		return;
+	}
+	InterlockedExchange (&pool.done, 0);
+	InterlockedExchange (&pool.next, 0);
+	InterlockedExchange (&pool.running, 1);
+	Sys_WakeWorkers ();
+	pool.started = true;
+}
+
+void Sys_ParallelFinish (void)
+{
+	int		i;
+
+	if (pool.deferred)
+	{
+		pool.deferred = false;
+		for (i = 0 ; i < pool.count ; i++)
+			pool.job (pool.ctx, i);
+		return;
+	}
+	if (!pool.started)
+		return;
+	pool.started = false;
+
+	Sys_RunJobs ();
+	while (pool.done < pool.count)
+		YieldProcessor ();
+
+	// no worker may still be taking jobs when the next run is published
+	InterlockedExchange (&pool.running, 0);
+	while (pool.active)
+		YieldProcessor ();
+}
+
 void Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx)
 {
 	int		i;
@@ -133,24 +181,8 @@ void Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx)
 			job (ctx, i);
 		return;
 	}
-
-	// the run, published before the workers are let in
-	pool.job = job;
-	pool.ctx = ctx;
-	InterlockedExchange (&pool.count, count);
-	InterlockedExchange (&pool.done, 0);
-	InterlockedExchange (&pool.next, 0);
-	InterlockedExchange (&pool.running, 1);
-	Sys_WakeWorkers ();
-
-	Sys_RunJobs ();
-	while (pool.done < count)
-		YieldProcessor ();
-
-	// no worker may still be taking jobs when the next run is published
-	InterlockedExchange (&pool.running, 0);
-	while (pool.active)
-		YieldProcessor ();
+	Sys_ParallelStart (count, job, ctx);
+	Sys_ParallelFinish ();
 }
 
 /*

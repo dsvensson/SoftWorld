@@ -45,6 +45,8 @@ static struct
 	atomic_int		quit;
 	int				numworkers;
 	pthread_t		threads[SW_MAX_WORKERS];
+	bool			started;		// a run Sys_ParallelFinish joins
+	bool			deferred;		// a run with no workers, which Finish runs
 } pool;
 
 // takes and runs the run's jobs until none are left
@@ -124,6 +126,52 @@ void Sys_SetWorkers (int workers)
 	pool.numworkers = i;
 }
 
+void Sys_ParallelStart (int count, void (*job) (void *ctx, int index), void *ctx)
+{
+	if (count <= 0)
+		return;
+
+	// the run, published before the workers are let in
+	pool.job = job;
+	pool.ctx = ctx;
+	pool.count = count;
+	if (!pool.numworkers)
+	{
+		pool.deferred = true;
+		return;
+	}
+	atomic_store (&pool.done, 0);
+	atomic_store (&pool.next, 0);
+	atomic_store (&pool.running, 1);
+	Sys_WakeWorkers ();
+	pool.started = true;
+}
+
+void Sys_ParallelFinish (void)
+{
+	int		i;
+
+	if (pool.deferred)
+	{
+		pool.deferred = false;
+		for (i = 0 ; i < pool.count ; i++)
+			pool.job (pool.ctx, i);
+		return;
+	}
+	if (!pool.started)
+		return;
+	pool.started = false;
+
+	Sys_RunJobs ();
+	while (atomic_load (&pool.done) < pool.count)
+		Sys_CpuRelax ();
+
+	// no worker may still be taking jobs when the next run is published
+	atomic_store (&pool.running, 0);
+	while (atomic_load (&pool.active))
+		Sys_CpuRelax ();
+}
+
 void Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx)
 {
 	int		i;
@@ -136,24 +184,8 @@ void Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx)
 			job (ctx, i);
 		return;
 	}
-
-	// the run, published before the workers are let in
-	pool.job = job;
-	pool.ctx = ctx;
-	pool.count = count;
-	atomic_store (&pool.done, 0);
-	atomic_store (&pool.next, 0);
-	atomic_store (&pool.running, 1);
-	Sys_WakeWorkers ();
-
-	Sys_RunJobs ();
-	while (atomic_load (&pool.done) < count)
-		Sys_CpuRelax ();
-
-	// no worker may still be taking jobs when the next run is published
-	atomic_store (&pool.running, 0);
-	while (atomic_load (&pool.active))
-		Sys_CpuRelax ();
+	Sys_ParallelStart (count, job, ctx);
+	Sys_ParallelFinish ();
 }
 
 /*

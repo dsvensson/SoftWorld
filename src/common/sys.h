@@ -130,6 +130,14 @@ void	Sys_SetWorkers (int workers);
 // must not call Sys_Parallel, Sys_SetWorkers or Sys_Error.
 void	Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx);
 
+// Sys_Parallel in two: the workers start on the jobs, and the calling thread
+// goes on with something else until Sys_ParallelFinish, which takes the jobs
+// left and returns once all have finished. Between the two the calling thread
+// must not call Sys_Parallel, Sys_ParallelStart or Sys_SetWorkers, nor change
+// what the jobs read. Without workers the jobs are all run by Finish.
+void	Sys_ParallelStart (int count, void (*job) (void *ctx, int index), void *ctx);
+void	Sys_ParallelFinish (void);
+
 //
 // threads of their own (the server list's), apart from the workers
 //
