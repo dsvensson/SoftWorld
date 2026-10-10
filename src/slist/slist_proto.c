@@ -205,15 +205,18 @@ static bool SL_ParsePlayer (const char *line, const char *end, slplayer_t *p)
 void SL_ParseStatus (const char *text, size_t length, char *info, size_t infosize,
 	slplayer_t *roster, int max, int *count)
 {
-	const char	*end = text + length, *line, *eol, *last;
+	const char	*end, *line, *eol, *last;
 	size_t		n;
 
-	// servers end it with a NUL, a newline, or both
-	while (end > text && (end[-1] == 0 || end[-1] == '\n' || end[-1] == '\r' || end[-1] == ' '))
-		end--;
+	// servers end it with a NUL, a newline, or both; counted down, as a length
+	// is what the trailing ones come off and what memchr is given
+	while (length && (text[length - 1] == 0 || text[length - 1] == '\n'
+		|| text[length - 1] == '\r' || text[length - 1] == ' '))
+		length--;
+	end = text + length;
 
 	*count = 0;
-	eol = memchr (text, '\n', (size_t)(end - text));
+	eol = memchr (text, '\n', length);
 	if (!eol)
 		eol = end;
 	last = eol > text && eol[-1] == '\r' ? eol - 1 : eol;
