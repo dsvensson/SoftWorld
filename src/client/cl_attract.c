@@ -885,6 +885,12 @@ void CL_AttractStop (void)
 	FS_SetSearchChain (NULL);
 	BSP_WantVisPatch (VP_ATTRACT, false);
 	CL_AttractLook (false);
+
+	// the console opened over the maps is the one forced out of a game now,
+	// as at startup: it goes when the game or the demo comes up, which then
+	// has the keys and the mouse
+	if (cls.key_dest == key_console)
+		cls.key_dest = key_game;
 }
 
 /*
