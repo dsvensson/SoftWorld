@@ -106,7 +106,11 @@ int			D_DrawCacheSurface (const drawsurf_t *draw);	// returns the texels drawn
 void D_DrawFence (msurface_t *surf, const vec3_t transformed_org, emitpoint_t *pverts, int nump, float nearzi);
 void D_DrawTranslucentFace (msurface_t *surf, const vec3_t transformed_org, emitpoint_t *pverts, int nump,
 	float nearzi, int alpha);
-// the spans of a convex polygon on the screen, clockwise; false if it covers no scan line
+// the spans of a convex polygon on the screen, clockwise, held to rect: a line
+// each, in order, then DS_SPAN_LIST_END; spans has room for rect's height and
+// the end, pverts for one more vertex; false if it covers no scan line
+bool D_PolygonSpans (emitpoint_t *pverts, int nump, sspan_t *spans, const vrect_t *rect);
+// the same, drawn as a fence, blended
 void D_DrawFencePolygon (emitpoint_t *pverts, int nump);
 void D_DrawBlendedPolygon (emitpoint_t *pverts, int nump, int alpha, bool turb);
 // one color over what is there, depth tested and not written

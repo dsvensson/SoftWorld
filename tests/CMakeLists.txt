@@ -121,6 +121,13 @@ sw_add_program(test_part test_part.c)
 target_link_libraries(test_part PRIVATE sw_particles sw_render sw_common)
 add_test(NAME part COMMAND test_part)
 
+# test_polyspan runs the spans of the polygons sprites, fences and translucent
+# faces are drawn from (d_polyspan.c) over polygons in the view, around it and
+# far off it: each a line of the view, inside it, no more than its height.
+sw_add_program(test_polyspan test_polyspan.c)
+target_link_libraries(test_polyspan PRIVATE sw_render sw_common)
+add_test(NAME polyspan COMMAND test_polyspan)
+
 # test_bspload loads every map under the directory SW_BASEDIR names as a
 # collision map and as a render model. It needs the maps, so only the -maps
 # test presets run it (CI's with the shareware's), and without SW_BASEDIR it is

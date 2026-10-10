@@ -24,7 +24,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "d_local.h"
 
 static int		sprite_height;
-static int		minindex, maxindex;
 static sspan_t	*sprite_spans;
 
 
@@ -188,153 +187,6 @@ NextSpan:
 
 /*
 =====================
-D_ScanLeftEdge
-=====================
-*/
-static void D_ScanLeftEdge (emitpoint_t *pverts, int nump, sspan_t *spans)
-{
-	int			i, v, itop, ibottom, lmaxindex;
-	emitpoint_t	*pvert, *pnext;
-	sspan_t		*pspan;
-	float		du, dv, vtop, vbottom, slope;
-	fixed16_t	u, u_step;
-
-	pspan = spans;
-	i = minindex;
-	if (i == 0)
-		i = nump;
-
-	lmaxindex = maxindex;
-	if (lmaxindex == 0)
-		lmaxindex = nump;
-
-	vtop = ceilf(pverts[i].v);
-
-	do
-	{
-		pvert = &pverts[i];
-		pnext = pvert - 1;
-
-		vbottom = ceilf(pnext->v);
-
-		if (vtop < vbottom)
-		{
-			du = pnext->u - pvert->u;
-			dv = pnext->v - pvert->v;
-			slope = du / dv;
-			// a nearly level edge's slope is past an int's range: saturated,
-			// and the steps wrap
-			u_step = R_SaturateInt (slope * 0x10000);
-		// adjust u to ceil the integer portion
-			u = (int)((unsigned)R_SaturateInt ((pvert->u + (slope * (vtop - pvert->v))) * 0x10000) +
-					(0x10000 - 1));
-			itop = (int)vtop;
-			ibottom = (int)vbottom;
-
-			for (v=itop ; v<ibottom ; v++)
-			{
-				pspan->u = u >> 16;
-				pspan->v = v;
-				u = (int)((unsigned)u + (unsigned)u_step);
-				pspan++;
-			}
-		}
-
-		vtop = vbottom;
-
-		i--;
-		if (i == 0)
-			i = nump;
-
-	} while (i != lmaxindex);
-}
-
-
-/*
-=====================
-D_ScanRightEdge
-=====================
-*/
-static void D_ScanRightEdge (emitpoint_t *pverts, int nump, sspan_t *spans)
-{
-	int			i, v, itop, ibottom;
-	emitpoint_t	*pvert, *pnext;
-	sspan_t		*pspan;
-	float		du, dv, vtop, vbottom, slope, uvert, unext, vvert, vnext;
-	fixed16_t	u, u_step;
-
-	pspan = spans;
-	i = minindex;
-
-	vvert = pverts[i].v;
-	if (vvert < r_refdef.fvrecty_adj)
-		vvert = r_refdef.fvrecty_adj;
-	if (vvert > r_refdef.fvrectbottom_adj)
-		vvert = r_refdef.fvrectbottom_adj;
-
-	vtop = ceilf(vvert);
-
-	do
-	{
-		pvert = &pverts[i];
-		pnext = pvert + 1;
-
-		vnext = pnext->v;
-		if (vnext < r_refdef.fvrecty_adj)
-			vnext = r_refdef.fvrecty_adj;
-		if (vnext > r_refdef.fvrectbottom_adj)
-			vnext = r_refdef.fvrectbottom_adj;
-
-		vbottom = ceilf(vnext);
-
-		if (vtop < vbottom)
-		{
-			uvert = pvert->u;
-			if (uvert < r_refdef.fvrectx_adj)
-				uvert = r_refdef.fvrectx_adj;
-			if (uvert > r_refdef.fvrectright_adj)
-				uvert = r_refdef.fvrectright_adj;
-
-			unext = pnext->u;
-			if (unext < r_refdef.fvrectx_adj)
-				unext = r_refdef.fvrectx_adj;
-			if (unext > r_refdef.fvrectright_adj)
-				unext = r_refdef.fvrectright_adj;
-
-			du = unext - uvert;
-			dv = vnext - vvert;
-			slope = du / dv;
-			// as the left edge's
-			u_step = R_SaturateInt (slope * 0x10000);
-		// adjust u to ceil the integer portion
-			u = (int)((unsigned)R_SaturateInt ((uvert + (slope * (vtop - vvert))) * 0x10000) +
-					(0x10000 - 1));
-			itop = (int)vtop;
-			ibottom = (int)vbottom;
-
-			for (v=itop ; v<ibottom ; v++)
-			{
-				pspan->count = (u >> 16) - pspan->u;
-				u = (int)((unsigned)u + (unsigned)u_step);
-				pspan++;
-			}
-		}
-
-		vtop = vbottom;
-		vvert = vnext;
-
-		i++;
-		if (i == nump)
-			i = 0;
-
-	} while (i != maxindex);
-
-	pspan->count = DS_SPAN_LIST_END;	// mark the end of the span list 
-}
-
-
-/*
-=====================
 D_SpriteCalculateGradients
 =====================
 */
@@ -393,48 +245,6 @@ void D_SetSpriteSize (int height)
 
 /*
 =====================
-D_PolygonSpans
-=====================
-*/
-static bool D_PolygonSpans (emitpoint_t *pverts, int nump, sspan_t *spans)
-{
-	int			i;
-	float		ymin, ymax;
-
-// find the top and bottom vertices, and make sure there's at least one scan to
-// draw
-	ymin = 999999.9f;
-	ymax = -999999.9f;
-	for (i=0 ; i<nump ; i++)
-	{
-		if (pverts[i].v < ymin)
-		{
-			ymin = pverts[i].v;
-			minindex = i;
-		}
-		if (pverts[i].v > ymax)
-		{
-			ymax = pverts[i].v;
-			maxindex = i;
-		}
-	}
-
-	ymin = ceilf(ymin);
-	ymax = ceilf(ymax);
-	if (ymin >= ymax)
-		return false;		// doesn't cross any scans at all
-
-// copy the first vertex to the last vertex, so we don't have to deal with
-// wrapping
-	pverts[nump] = pverts[0];
-
-	D_ScanLeftEdge (pverts, nump, spans);
-	D_ScanRightEdge (pverts, nump, spans);
-	return true;
-}
-
-/*
-=====================
 D_DrawSprite
 =====================
 */
@@ -444,7 +254,7 @@ void D_DrawSprite (void)
 	sprite_height = r_spritedesc.pspriteframe->height;
 
 	D_SpriteCalculateGradients ();
-	if (D_PolygonSpans (r_spritedesc.pverts, r_spritedesc.nump, sprite_spans))
+	if (D_PolygonSpans (r_spritedesc.pverts, r_spritedesc.nump, sprite_spans, &r_refdef.vrect))
 		D_SpriteDrawSpans (sprite_spans);
 }
 
@@ -561,7 +371,7 @@ D_DrawFencePolygon
 */
 void D_DrawFencePolygon (emitpoint_t *pverts, int nump)
 {
-	if (D_PolygonSpans (pverts, nump, sprite_spans))
+	if (D_PolygonSpans (pverts, nump, sprite_spans, &r_refdef.vrect))
 		D_FenceDrawSpans (sprite_spans);
 }
 
@@ -572,7 +382,7 @@ D_DrawBlendedPolygon
 */
 void D_DrawBlendedPolygon (emitpoint_t *pverts, int nump, int alpha, bool turb)
 {
-	if (D_PolygonSpans (pverts, nump, sprite_spans))
+	if (D_PolygonSpans (pverts, nump, sprite_spans, &r_refdef.vrect))
 		D_DrawBlendedSpans (sprite_spans, alpha, turb);
 }
 
@@ -632,7 +442,7 @@ void D_DrawFlatPolygon (emitpoint_t *pverts, int nump, pixel_t color, int alpha)
 		return;		// seen edge on
 	ziorigin = pverts[0].zi - zistepu * pverts[0].u - zistepv * pverts[0].v;
 
-	if (!D_PolygonSpans (pverts, nump, sprite_spans))
+	if (!D_PolygonSpans (pverts, nump, sprite_spans, &r_refdef.vrect))
 		return;
 	for (pspan = sprite_spans ; pspan->count != DS_SPAN_LIST_END ; pspan++)
 	{
