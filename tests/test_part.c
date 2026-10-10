@@ -93,6 +93,12 @@ void Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx)
 	for (int i = 0 ; i < count ; i++)
 		job (ctx, i);
 }
+// no workers: the jobs are done as they're started
+void Sys_ParallelStart (int count, void (*job) (void *ctx, int index), void *ctx)
+{
+	Sys_Parallel (count, job, ctx);
+}
+void Sys_ParallelFinish (void) { }
 viddef_t vid;
 void VID_Update (void) { }
 
