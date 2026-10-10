@@ -236,6 +236,24 @@ static bool PR_CheckExtension (void *ctx, const char *name)
 	return QC_StandardExtension (name);
 }
 
+// whichpack's: the pack the search path finds the file in, "" for one of its
+// own, false for none; the progs learn only whether there's a file, and
+// where, as the client's do (CLQC_FilePack)
+static bool PR_FilePack (void *ctx, const char *path, char *pack, size_t size)
+{
+	const char	*source, *slash;
+	FILE		*f;
+
+	(void)ctx;
+	if (COM_FOpenFile (path, &f) < 0)
+		return false;
+	fclose (f);
+	source = FS_FileSource ();
+	slash = strrchr (source, '/');
+	Q_strncpyz (pack, file_from_pak ? slash ? slash + 1 : source : "", size);
+	return true;
+}
+
 static const qc_host_t	pr_host = {
 	.warning = PR_Warning,
 	.print = PR_Print,
@@ -252,6 +270,7 @@ static const qc_host_t	pr_host = {
 	.trace = PR_Trace,
 	.on_spawn = PR_OnSpawn,
 	.on_remove = PR_OnRemove,
+	.file_pack = PR_FilePack,
 };
 
 /*

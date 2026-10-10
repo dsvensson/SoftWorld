@@ -1691,7 +1691,9 @@ CAPTURE THE FLAG
 
 The flags and team starts of capture the flag maps, as KTX has them. There is
 no capture the flag here: each flag stands at its base, red or blue, to be
-seen, and is taken by no one.
+seen, and is taken by no one. A flag is ThreeWave's progs/flag.mdl, its skin
+the team's, where the server has it, else a key, as KTX's are without
+k_ctf_custom_models.
 
 ===============================================================================
 */
@@ -1713,8 +1715,14 @@ void() flag_place =
 	self.movetype = MOVETYPE_NONE;
 };
 
-void(string mdl) flag_start =
+void(string key) flag_start =
 {
+	local string	mdl;
+
+	if (whichpack ("progs/flag.mdl"))
+		mdl = "progs/flag.mdl";
+	else
+		mdl = key;
 	precache_model (mdl);
 	setmodel (self, mdl);
 	setsize (self, '-16 -16 0', '16 16 74');
