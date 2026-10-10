@@ -1017,8 +1017,11 @@ static void CL_FinishTimeDemo (void)
 
 	if (demo_bench)
 	{
-		// from the command buffer and not here, as the demo is still being read
+		// from the command buffer and not here, as the demo is still being read;
+		// the stages' times first where they were being taken
 		demo_bench = false;
+		if (Cvar_VariableValue ("r_profile"))
+			Cbuf_AddText ("r_profile_show\n");
 		Cbuf_AddText ("quit force\n");
 	}
 }
