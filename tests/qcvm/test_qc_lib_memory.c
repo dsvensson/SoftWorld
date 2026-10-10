@@ -68,7 +68,7 @@ static void BuiltinError (qh_t *h, const char *what, int line, const char *name,
 	qc_errkind_t	kind = QH_Fails (h, name, argc, args);
 
 	if (!QT_Check (kind == QC_ERR_BUILTIN && QT_Contains (QH_ErrorMessage (h), what), "a builtin error", __FILE__, line))
-		printf ("  %s: kind %d, \"%s\", wanted \"%s\"\n", name, kind, QH_ErrorMessage (h), what);
+		printf ("  %s: kind %d, \"%s\", wanted \"%s\"\n", name, (int)kind, QH_ErrorMessage (h), what);
 }
 #define BUILTIN_ERROR(h, what, ...)	BuiltinError ((h), (what), __LINE__, __VA_ARGS__)
 

@@ -160,7 +160,7 @@ static void TestDigestPtrHashesVmMemory (void)
 	p = I ((int32_t)ptr);
 	// NULs are hashed too
 	c = Crc16 ((const uint8_t *)"a\0bc", 4);
-	snprintf (want, sizeof(want), "%02x%02x", c & 0xFF, c >> 8);
+	snprintf (want, sizeof(want), "%02x%02x", (unsigned)(c & 0xFF), (unsigned)(c >> 8));
 	Eq (QH_OptString (h, "digest_ptr", ARGS (QH_S (h, "CRC16"), p, I (4))), want, "CRC16 of a\\0bc");
 	// with an offset
 	snprintf (crc, sizeof(crc), "%s", Digest (h, "CRC16", "bc"));

@@ -131,7 +131,7 @@ const char *NET_IPToBuf (const byte ip[16], char *s, size_t size)
 		else
 		{
 			length += snprintf (s + length, size - (size_t)length, "%s%x",
-				i && i != best + bestlength ? ":" : "", groups[i]);
+				i && i != best + bestlength ? ":" : "", (unsigned)groups[i]);
 			i++;
 		}
 	return s;

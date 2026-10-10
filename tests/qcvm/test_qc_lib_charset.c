@@ -206,7 +206,7 @@ static void CheckDecoded (const char *s, size_t len, uint32_t ch, size_t used, q
 	uint32_t		got = QC_DecodeUtf8 ((const uint8_t *)s, len, &gotused, &goterr);
 
 	if (!QT_CHECK (got == ch && gotused == used && goterr == err))
-		printf ("  decoded U+%X, %zu bytes, error %d\n", got, gotused, goterr);
+		printf ("  decoded U+%X, %zu bytes, error %d\n", got, gotused, (int)goterr);
 }
 
 static void CheckScheme (const char *s, qc_charscheme_t scheme, uint32_t ch)
