@@ -186,7 +186,10 @@ typedef struct
 // a span of a sprite on line v, depth tested and written (d_sprite.c)
 void D_SpriteSpan (const d_spritemap_t *map, int u, int v, int count);
 
-// what's kept in the batch D_BeginBatch began, if one is (d_batch.c)
+// what's kept in the batch D_BeginBatch began, if one is (d_batch.c), in
+// strips of lines: thin, as a view model is in few of the view's lines and
+// Sys_Parallel hands the strips out as threads come free
+#define D_STRIP_LINES	8
 bool D_Keeping (void);
 int D_KeepAliasMap (const simd_aliasmap_t *map);
 int D_KeepSpriteMap (const d_spritemap_t *map);
@@ -194,6 +197,9 @@ void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sf
 	int count, int map);
 void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z);
 void D_KeepSpriteSpan (int u, int v, int count, int map);
+// lines lines of a particle's square, width wide, from line v (d_part.c)
+void D_KeepParticle (int v, pixel_t *pdest, float *pz, pixel_t color, float zi, int width, int lines);
+void D_ParticleLines (pixel_t *pdest, float *pz, pixel_t color, float zi, int width, int lines);
 
 extern int		d_minmip;
 extern float	d_scalemip[3];

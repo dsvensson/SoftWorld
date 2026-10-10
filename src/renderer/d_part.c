@@ -57,7 +57,7 @@ void D_DrawParticle (particle_t *pparticle)
 	float	zi;
 	pixel_t	*pdest, color;
 	float	*pz;
-	int		i, izi, pix, count, u, v;
+	int		izi, pix, count, u, v, n;
 
 // transform point
 	VectorSubtract (pparticle->org, r_origin, local);
@@ -99,9 +99,35 @@ void D_DrawParticle (particle_t *pparticle)
 		color = R_FogPixel (color, zi);
 	count = pix << d_y_aspect_shift;
 
-	for ( ; count ; count--, pz += d_zwidth, pdest += screenwidth)
+	if (!D_Keeping ())
 	{
-		for (i=0 ; i<pix ; i++)
+		D_ParticleLines (pdest, pz, color, zi, pix, count);
+		return;
+	}
+	// a piece in each strip of lines it's in (d_batch.c)
+	for ( ; count ; count -= n, v += n, pz += n * d_zwidth, pdest += n * screenwidth)
+	{
+		n = D_STRIP_LINES - v % D_STRIP_LINES;
+		if (n > count)
+			n = count;
+		D_KeepParticle (v, pdest, pz, color, zi, pix, n);
+	}
+}
+
+/*
+==============
+D_ParticleLines
+
+lines lines of a particle's square, width wide, depth tested and written
+==============
+*/
+void D_ParticleLines (pixel_t *pdest, float *pz, pixel_t color, float zi, int width, int lines)
+{
+	int		i;
+
+	for ( ; lines ; lines--, pz += d_zwidth, pdest += screenwidth)
+	{
+		for (i=0 ; i<width ; i++)
 		{
 			if (pz[i] <= zi)
 			{

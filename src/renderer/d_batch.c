@@ -21,8 +21,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //
 // Between D_BeginBatch and D_EndBatch the models are put together as ever, in
 // order, on this thread, but what they draw isn't drawn: each span or pixel of
-// an alias model, and each span of a sprite, is kept in the strip of lines it
-// falls in. D_FillBatch draws the strips on the workers, each what it was
+// an alias model, each span of a sprite and each particle's square is kept in
+// the strip of lines it falls in. D_FillBatch draws the strips on the workers, each what it was
 // given in the order it was given it, and no pixel is in two strips, so every
 // pixel ends as it would have if drawn at once: the depth tests, the overdraw
 // and the ties alike. Nothing kept reads the frame until it is filled, so the
@@ -31,15 +31,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 #include "d_local.h"
 
-// thin, as a view model is in few of the view's lines and Sys_Parallel hands
-// the strips out as threads come free
-#define D_STRIP_LINES	8
-
 typedef enum
 {
 	DK_ALIASSPAN,
 	DK_ALIASPIXEL,
-	DK_SPRITESPAN
+	DK_SPRITESPAN,
+	DK_PARTICLE
 } dkind_t;
 
 typedef struct
@@ -65,6 +62,12 @@ typedef struct
 			int			u, v, count;
 			int			map;		// of the batch's sprite maps
 		} sprite;
+		struct
+		{
+			pixel_t		color;
+			float		zi;
+			int			width, lines;	// of its square in the strip
+		} particle;
 	};
 } dkept_t;
 
@@ -200,9 +203,9 @@ int D_KeepSpriteMap (const d_spritemap_t *map)
 
 /*
 ================
-D_KeepAliasSpan / D_KeepAliasPixel / D_KeepSpriteSpan
+D_KeepAliasSpan / D_KeepAliasPixel / D_KeepParticle / D_KeepSpriteSpan
 
-What an alias model or a sprite would have drawn on line v
+What an alias model, a particle or a sprite would have drawn on line v
 ================
 */
 void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
@@ -229,6 +232,18 @@ void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z)
 	k->pz = pz;
 	k->pixel.color = color;
 	k->pixel.z = z;
+}
+
+void D_KeepParticle (int v, pixel_t *pdest, float *pz, pixel_t color, float zi, int width, int lines)
+{
+	dkept_t	*k = D_Keep (v, DK_PARTICLE);
+
+	k->pdest = pdest;
+	k->pz = pz;
+	k->particle.color = color;
+	k->particle.zi = zi;
+	k->particle.width = width;
+	k->particle.lines = lines;
 }
 
 void D_KeepSpriteSpan (int u, int v, int count, int map)
@@ -272,6 +287,10 @@ static void D_FillStrip (void *ctx, int index)
 			break;
 		case DK_SPRITESPAN:
 			D_SpriteSpan (&b->spritemaps[k->sprite.map], k->sprite.u, k->sprite.v, k->sprite.count);
+			break;
+		case DK_PARTICLE:
+			D_ParticleLines (k->pdest, k->pz, k->particle.color, k->particle.zi, k->particle.width,
+				k->particle.lines);
 			break;
 		}
 	}

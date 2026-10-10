@@ -1274,7 +1274,8 @@ void R_RenderView (void)
 	R_EdgeDrawing ();
 
 	// with threads to draw them, the models are put together as the world's
-	// spans are drawn, kept, and drawn after them where they were drawn
+	// spans are drawn, kept, and drawn after them where they were drawn; the
+	// particles are drawn after the gun, nothing between, so with it
 	keep = r_numthreads > 1;
 	if (keep)
 	{
@@ -1285,8 +1286,11 @@ void R_RenderView (void)
 		prof = R_ProfStart ();
 		D_BeginBatch (D_BATCH_VIEWMODEL);
 		R_DrawViewModel ();
-		D_EndBatch ();
 		R_ProfEnd (PROF_VIEWMODEL, prof);
+		prof = R_ProfStart ();
+		R_DrawParticles ();
+		D_EndBatch ();
+		R_ProfEnd (PROF_PARTICLES, prof);
 	}
 
 	R_FinishEdgeDrawing ();
@@ -1333,7 +1337,8 @@ void R_RenderView (void)
 	}
 
 	prof = R_ProfStart ();
-	R_DrawParticles ();
+	if (!keep)
+		R_DrawParticles ();
 	R_DrawPartScene ();
 	R_ProfEnd (PROF_PARTICLES, prof);
 
