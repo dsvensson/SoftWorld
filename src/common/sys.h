@@ -138,6 +138,12 @@ void	Sys_Parallel (int count, void (*job) (void *ctx, int index), void *ctx);
 void	Sys_ParallelStart (int count, void (*job) (void *ctx, int index), void *ctx);
 void	Sys_ParallelFinish (void);
 
+// while on, a worker out of jobs waits a while for the next run before it
+// sleeps: on while a frame is drawn, whose runs are moments apart, where
+// waking a worker took longer than its share of a run; off between frames,
+// where sleeping is cheaper than spinning
+void	Sys_SpinWorkers (bool on);
+
 //
 // threads of their own (the server list's), apart from the workers
 //

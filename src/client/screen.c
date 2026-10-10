@@ -1191,6 +1191,11 @@ void SCR_UpdateScreen (void)
 
 	SCR_SetUpToDrawConsole ();
 
+	// the frame's runs on the workers are moments apart until it's drawn:
+	// waited for rather than slept through, where the next frame is due at
+	// once. Paced (cl_maxfps, vsync) the frames are some way apart, and the
+	// workers sleep: at 144 frames a second waiting cost a sixth more CPU
+	Sys_SpinWorkers (CL_FrameWait () <= 0);
 
 	// CSQC draws the view when it can, and the status bar if it asks
 	if (!CSQC_DrawView (&sbar))
@@ -1236,6 +1241,7 @@ void SCR_UpdateScreen (void)
 		M_Draw ();
 	}
 	Draw_Flush ();
+	Sys_SpinWorkers (false);
 
 	R_ProfEnd (PROF_2D, prof);
 	V_UpdateBlend ();

@@ -43,6 +43,7 @@ static struct
 	_Atomic uint32_t	generation;	// bumped by each run and by stopping; the workers wait on it
 	atomic_int		sleepers;		// workers waiting on the generation
 	atomic_int		quit;
+	atomic_int		spin;			// Sys_SpinWorkers
 	int				numworkers;
 	pthread_t		threads[SW_MAX_WORKERS];
 	bool			started;		// a run Sys_ParallelFinish joins
@@ -61,13 +62,23 @@ static void Sys_RunJobs (void)
 	}
 }
 
+// the most a worker waits for the next run of a frame, about a quarter of a
+// millisecond on a Ryzen 7950X; on ctf2m1 at 1280x800 and eight threads
+// waiting so drew the demo a thirtieth faster than sleeping at once
+#define	SPIN_RELAXES	20000
+
 static void *Sys_WorkerMain (void *unused)
 {
 	uint32_t	seen = 0, now;
+	int			i;
 
 	(void)unused;
 	for (;;)
 	{
+		// the next run of a frame is moments away: waited for a while
+		for (i = 0 ; i < SPIN_RELAXES && atomic_load (&pool.spin) && atomic_load (&pool.generation) == seen ; i++)
+			Sys_CpuRelax ();
+
 		// sleep until the next run
 		atomic_fetch_add (&pool.sleepers, 1);
 		while ((now = atomic_load (&pool.generation)) == seen)
@@ -124,6 +135,11 @@ void Sys_SetWorkers (int workers)
 			break;
 	pthread_attr_destroy (&attr);
 	pool.numworkers = i;
+}
+
+void Sys_SpinWorkers (bool on)
+{
+	atomic_store (&pool.spin, on);
 }
 
 void Sys_ParallelStart (int count, void (*job) (void *ctx, int index), void *ctx)

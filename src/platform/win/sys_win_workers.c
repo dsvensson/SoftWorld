@@ -26,6 +26,7 @@ static struct
 	volatile LONG	generation;		// bumped by each run and by stopping; the workers wait on it
 	volatile LONG	sleepers;		// workers waiting in WaitOnAddress
 	volatile LONG	quit;
+	volatile LONG	spin;			// Sys_SpinWorkers
 	int				numworkers;
 	HANDLE			threads[MAX_WORKERS];
 	bool			started;		// a run Sys_ParallelFinish joins
@@ -59,13 +60,21 @@ static void Sys_RunJobs (void)
 	}
 }
 
+// the most a worker waits for the next run of a frame (sys_workers_posix.c)
+#define	SPIN_RELAXES	20000
+
 static DWORD WINAPI Sys_WorkerMain (void *unused)
 {
 	LONG	seen = 0, now;
+	int		i;
 
 	(void)unused;
 	for (;;)
 	{
+		// the next run of a frame is moments away: waited for a while
+		for (i = 0 ; i < SPIN_RELAXES && pool.spin && pool.generation == seen ; i++)
+			YieldProcessor ();
+
 		// sleep until the next run
 		InterlockedIncrement (&pool.sleepers);
 		while ((now = pool.generation) == seen)
@@ -121,6 +130,11 @@ void Sys_SetWorkers (int workers)
 			break;
 	}
 	pool.numworkers = i;
+}
+
+void Sys_SpinWorkers (bool on)
+{
+	InterlockedExchange (&pool.spin, on);
 }
 
 void Sys_ParallelStart (int count, void (*job) (void *ctx, int index), void *ctx)
