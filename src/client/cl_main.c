@@ -2002,6 +2002,13 @@ void CL_Init (void)
 
 	cls.net_message.data = cls.net_message_buf;
 	cls.net_message.maxsize = sizeof(cls.net_message_buf);
+
+	// what's written for the server before there is one (the scoreboard's
+	// ping requests, shown while unconnected) goes where Netchan_Setup puts
+	// it, not into an empty buffer, an error; connecting clears it
+	cls.netchan.message.data = cls.netchan.message_buf;
+	cls.netchan.message.maxsize = sizeof(cls.netchan.message_buf);
+	cls.netchan.message.allowoverflow = true;
 	W_LoadWadFile ("gfx.wad");
 	Key_Init ();
 	Con_Init ();
