@@ -131,8 +131,9 @@ void Sys_WorkerWakeAll (_Atomic uint32_t *address)
 }
 
 // a Web Worker has no class of service to ask for
-void Sys_WorkerThreadAttr (pthread_attr_t *attr)
+void Sys_WorkerThreadAttr (pthread_attr_t *attr, int threads)
 {
+	(void)threads;
 	(void)attr;
 }
 

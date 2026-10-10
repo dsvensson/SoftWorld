@@ -33,8 +33,9 @@ void Sys_WorkerWakeAll (_Atomic uint32_t *address)
 }
 
 // run as the frame is drawn: on the performance cores
-void Sys_WorkerThreadAttr (pthread_attr_t *attr)
+void Sys_WorkerThreadAttr (pthread_attr_t *attr, int threads)
 {
+	(void)threads;
 	pthread_attr_set_qos_class_np (attr, QOS_CLASS_USER_INTERACTIVE, 0);
 }
 

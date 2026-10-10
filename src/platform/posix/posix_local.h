@@ -41,7 +41,7 @@ void	Sys_WorkerWait (_Atomic uint32_t *address, uint32_t value);
 void	Sys_WorkerWakeAll (_Atomic uint32_t *address);
 
 // a worker thread's attributes, besides its stack size
-void	Sys_WorkerThreadAttr (pthread_attr_t *attr);
+void	Sys_WorkerThreadAttr (pthread_attr_t *attr, int threads);
 
 // names the calling thread for debuggers, where the system has names (Linux's
 // are 15 characters)

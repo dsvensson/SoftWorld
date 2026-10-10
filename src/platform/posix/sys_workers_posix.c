@@ -118,7 +118,7 @@ void Sys_SetWorkers (int workers)
 	atomic_store (&pool.generation, 0);
 	pthread_attr_init (&attr);
 	pthread_attr_setstacksize (&attr, WORKER_STACK);
-	Sys_WorkerThreadAttr (&attr);
+	Sys_WorkerThreadAttr (&attr, workers + 1);
 	for (i = 0 ; i < workers ; i++)
 		if (pthread_create (&pool.threads[i], &attr, Sys_WorkerMain, NULL))
 			break;
