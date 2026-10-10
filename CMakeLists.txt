@@ -6,7 +6,7 @@ if(CMAKE_HOST_APPLE)
 	set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "Architectures of the macOS programs")
 endif()
 
-project(SoftWorld VERSION 3.07 LANGUAGES C)
+project(SoftWorld VERSION 3.08 LANGUAGES C)
 
 if(WIN32 AND MSVC)
 	enable_language(RC)
