@@ -769,3 +769,4 @@ float(entity targ, entity inflictor) CanDamage;
 .string			path;					// a rotate_train's next path_rotate
 .string			group;					// rotate doors that reverse together
 .string			event;					// what a path_rotate triggers
+.float			team_no;				// a TF map's team: 1 blue, 2 red

@@ -1684,3 +1684,129 @@ void() DropBackpack =
 };
 
 
+/*
+===============================================================================
+
+CAPTURE THE FLAG
+
+The flags and team starts of capture the flag maps, as KTX has them. There is
+no capture the flag here: each flag stands at its base, red or blue, to be
+seen, and is taken by no one.
+
+===============================================================================
+*/
+
+// on the floor where it stands, once the map's solids are in
+void() flag_place =
+{
+	self.movetype = MOVETYPE_TOSS;
+	self.velocity = '0 0 0';
+	self.origin_z = self.origin_z + 6;
+	if (!droptofloor (0, 0))	// QuakeWorld's takes neither
+	{
+		dprint ("Flag fell out of level at ");
+		dprint (vtos (self.origin));
+		dprint ("\n");
+		remove (self);
+		return;
+	}
+	self.movetype = MOVETYPE_NONE;
+};
+
+void(string mdl) flag_start =
+{
+	precache_model (mdl);
+	setmodel (self, mdl);
+	setsize (self, '-16 -16 0', '16 16 74');
+	self.solid = SOLID_NOT;
+	self.effects = self.effects | EF_DIMLIGHT;
+	self.think = flag_place;
+	self.nextthink = time + 0.2;
+};
+
+/*QUAKED item_flag_team1 (1 0 0) (-16 -16 0) (16 16 74)
+The red team's flag, at its base
+*/
+void() item_flag_team1 =
+{
+	self.items = IT_KEY2;
+	self.skin = 0;
+	self.effects = self.effects | EF_RED;
+	flag_start ("progs/w_g_key.mdl");
+};
+
+/*QUAKED item_flag_team2 (0 0 1) (-16 -16 0) (16 16 74)
+The blue team's flag, at its base
+*/
+void() item_flag_team2 =
+{
+	self.items = IT_KEY1;
+	self.skin = 1;
+	self.effects = self.effects | EF_BLUE;
+	flag_start ("progs/w_s_key.mdl");
+};
+
+/*QUAKED item_tfgoal (0 .5 .8) (-16 -16 0) (16 16 74)
+A Team Fortress map's flag, as KTX takes it: "team_no" 1 (Team Fortress'
+blue) is item_flag_team1, 2 (its red) item_flag_team2
+*/
+void() item_tfgoal =
+{
+	if (self.team_no == 2)
+	{
+		self.classname = "item_flag_team2";
+		item_flag_team2 ();
+	}
+	else if (self.team_no == 1)
+	{
+		self.classname = "item_flag_team1";
+		item_flag_team1 ();
+	}
+	else
+	{
+		dprint ("item_tfgoal: team_no ");
+		dprint (ftos (self.team_no));
+		dprint (" unsupported\n");
+		remove (self);
+	}
+};
+
+/*QUAKED info_player_team1 (1 0 0) (-16 -16 -24) (16 16 24)
+Where the red team starts
+*/
+void() info_player_team1 = {};
+
+/*QUAKED info_player_team2 (0 0 1) (-16 -16 -24) (16 16 24)
+Where the blue team starts
+*/
+void() info_player_team2 = {};
+
+void() info_player_team1_deathmatch = {};
+void() info_player_team2_deathmatch = {};
+
+/*QUAKED info_player_teamspawn (0 .5 .8) (-16 -16 -24) (16 16 24)
+A Team Fortress map's team start, as KTX takes it: "team_no" 2 (Team
+Fortress' red) is info_player_team1, 1 (its blue) info_player_team2
+*/
+void() info_player_teamspawn =
+{
+	if (self.team_no == 2)
+		self.classname = "info_player_team1";
+	else if (self.team_no == 1)
+		self.classname = "info_player_team2";
+	else
+	{
+		dprint ("info_player_teamspawn: team_no ");
+		dprint (ftos (self.team_no));
+		dprint (" unsupported\n");
+		remove (self);
+	}
+};
+
+// Team Fortress' short name for it
+void() i_p_t =
+{
+	self.classname = "info_player_teamspawn";
+	info_player_teamspawn ();
+};
+
