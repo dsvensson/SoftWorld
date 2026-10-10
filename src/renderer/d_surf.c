@@ -303,10 +303,6 @@ D_CheckCacheGuard ();   // DEBUG
 
 //=============================================================================
 
-void D_BeginSurfaceBatch (void)
-{
-	d_batch++;
-}
 
 /*
 ================
@@ -436,9 +432,56 @@ int D_DrawCacheSurface (const drawsurf_t *draw)
 
 /*
 ================
+D_DrawPendingSurfaces
+
+The blocks kept spans read, drawn on the worker threads before the spans are
+(D_CacheSurface): nothing reads them till then, and each is the batch's, so
+no other surface takes it in the meantime
+================
+*/
+static drawsurf_t	*d_pending;
+static int			*d_pendingtexels;
+static int			d_numpending, d_maxpending;
+
+static void D_DrawPendingSurface (void *ctx, int index)
+{
+	(void)ctx;
+	d_pendingtexels[index] = D_DrawCacheSurface (&d_pending[index]);
+}
+
+void D_DrawPendingSurfaces (void)
+{
+	double	prof;
+	int		i;
+
+	if (!d_numpending)
+		return;
+	prof = R_ProfStart ();
+	Sys_Parallel (d_numpending, D_DrawPendingSurface, NULL);
+	for (i = 0 ; i < d_numpending ; i++)
+		R_ProfCount (PROFN_TEXELS, d_pendingtexels[i]);
+	d_numpending = 0;
+	R_ProfEnd (PROF_SURFCACHE, prof);
+}
+
+// blocks still pending are drawn here, on this thread, before they stop
+// being the batch's
+void D_BeginSurfaceBatch (void)
+{
+	int		i;
+
+	for (i = 0 ; i < d_numpending ; i++)
+		R_ProfCount (PROFN_TEXELS, D_DrawCacheSurface (&d_pending[i]));
+	d_numpending = 0;
+	d_batch++;
+}
+
+/*
+================
 D_CacheSurface
 
-The surface's cache block at the mip level, drawn now if it must be
+The surface's cache block at the mip level, drawn now if it must be; while
+spans are kept, drawn with the other blocks they read before they are
 ================
 */
 surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
@@ -461,7 +504,17 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 		D_BeginSurfaceBatch ();
 		prep = D_PrepareCacheSurface (surface, miplevel, &cache, &draw);
 	}
-	if (prep == CACHE_DRAW)
+	if (prep == CACHE_DRAW && D_Keeping ())
+	{
+		if (d_numpending == d_maxpending)
+		{
+			d_maxpending = d_maxpending ? d_maxpending * 2 : 64;
+			d_pending = Mem_Realloc (d_pending, (size_t)d_maxpending * sizeof(*d_pending));
+			d_pendingtexels = Mem_Realloc (d_pendingtexels, (size_t)d_maxpending * sizeof(*d_pendingtexels));
+		}
+		d_pending[d_numpending++] = draw;
+	}
+	else if (prep == CACHE_DRAW)
 	{
 		prof = R_ProfStart ();
 		R_ProfCount (PROFN_TEXELS, D_DrawCacheSurface (&draw));

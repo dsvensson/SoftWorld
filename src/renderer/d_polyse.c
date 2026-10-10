@@ -120,24 +120,44 @@ static inline bool D_SkinHole (int texel)
 
 /*
 ================
-D_PolysetBlendSpan
+D_AliasBlendSpan
 
-A span of a translucent model: its texels depth tested and depth written as
-usual, into a row that is then fogged and blended into the frame
+A span of a translucent model, alpha of 256: its texels depth tested and
+depth written as usual, into a row that is then fogged and blended into the
+frame. Any thread's, kept spans' too (d_batch.c).
 ================
 */
-static void D_PolysetBlendSpan (spanpackage_t *p, int count, const simd_aliasmap_t *map)
+void D_AliasBlendSpan (pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
+	int count, const simd_aliasmap_t *map, int alpha)
 {
 	pixel_t	*row = D_BlendRow (count);
 	int		i;
 
 	for (i=0 ; i<count ; i++)
 		row[i] = 0xffffffffu;		// no texel: its top bit, which no pixel has
-	simd_aliasspan (row, p->pz, p->ptex, p->sfrac, p->tfrac, p->light, p->zi, count, map);
+	simd_aliasspan (row, pz, ptex, sfrac, tfrac, light, zi, count, map);
 	if (r_fogactive)
-		simd_fogspan (row, NULL, (float)p->zi * ALIAS_ZI_TO_FLOAT, (float)map->zistep * ALIAS_ZI_TO_FLOAT,
+		simd_fogspan (row, NULL, (float)zi * ALIAS_ZI_TO_FLOAT, (float)map->zistep * ALIAS_ZI_TO_FLOAT,
 			count, &d_fog);
-	simd_blendspan (p->pdest, row, NULL, 0, 0, d_alpha, count);
+	simd_blendspan (pdest, row, NULL, 0, 0, alpha, count);
+}
+
+/*
+================
+D_AliasBlendPixel
+
+A pixel of a translucent model, 1/z z, depth tested and written, fogged and
+blended; any thread's, as D_AliasBlendSpan
+================
+*/
+void D_AliasBlendPixel (pixel_t *dest, float *pz, pixel_t color, float z, int alpha)
+{
+	if (z < *pz)
+		return;
+	*pz = z;
+	if (r_fogactive)
+		color = R_FogPixel (color, z);
+	*dest = D_BlendPixel (color, *dest, alpha);
 }
 
 static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage);
@@ -238,12 +258,8 @@ static void D_AliasPoint (int u, int v, float z, pixel_t color)
 
 	if (D_Keeping ())
 	{
-		if (d_alpha >= 256)
-		{
-			D_KeepAliasPixel (v, dest, zbuf, color, z);
-			return;
-		}
-		D_FlushKept ();		// a blend reads what's under it
+		D_KeepAliasPixel (v, dest, zbuf, color, z, d_alpha);
+		return;
 	}
 	if (z >= *zbuf)
 	{
@@ -734,20 +750,19 @@ static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 
 		if (!lcount)
 			;
-		else if (keeping && d_alpha >= 256)
+		else if (keeping)
 		{
+			// a blend too: it reads what's under it when its strip is drawn,
+			// all kept before it drawn by then
 			if (mapindex < 0)
 				mapindex = D_KeepAliasMap (&map);
 			D_KeepAliasSpan (d_atoprow + (int)(pspanpackage - a_spans), pspanpackage->pdest, pspanpackage->pz,
 				pspanpackage->ptex, pspanpackage->sfrac, pspanpackage->tfrac, pspanpackage->light,
-				pspanpackage->zi, lcount, mapindex);
+				pspanpackage->zi, lcount, mapindex, d_alpha);
 		}
 		else if (d_alpha < 256)
-		{
-			if (keeping)
-				D_FlushKept ();		// a blend reads what's under it
-			D_PolysetBlendSpan (pspanpackage, lcount, &map);
-		}
+			D_AliasBlendSpan (pspanpackage->pdest, pspanpackage->pz, pspanpackage->ptex, pspanpackage->sfrac,
+				pspanpackage->tfrac, pspanpackage->light, pspanpackage->zi, lcount, &map, d_alpha);
 		else
 			simd_aliasspan (pspanpackage->pdest, pspanpackage->pz, pspanpackage->ptex, pspanpackage->sfrac,
 				pspanpackage->tfrac, pspanpackage->light, pspanpackage->zi, lcount, &map);

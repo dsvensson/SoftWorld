@@ -89,6 +89,7 @@ extern const pixel_t	*d_turbsource30;	// a TGA file's texels in its place, or NU
 
 extern void (*prealspandrawer)(void);
 surfcache_t	*D_CacheSurface (msurface_t *surface, int miplevel);
+void		D_DrawPendingSurfaces (void);	// the blocks D_CacheSurface left for kept spans
 
 // surfaces cached in batches: prepared one by one, then their blocks drawn
 // together, on any threads (D_DrawSurfaces)
@@ -226,9 +227,13 @@ void D_KeepFlatSpan (int u, int v, int count, int map);
 // what the batch has kept drawn now, and keeping going on: before what
 // can't be kept is drawn, or a cache block it reads is given up
 void D_FlushKept (void);
+// a model's span or pixel, alpha of 256: blended if less (D_AliasBlendSpan)
 void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
-	int count, int map);
-void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z);
+	int count, int map, int alpha);
+void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z, int alpha);
+void D_AliasBlendSpan (pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
+	int count, const simd_aliasmap_t *map, int alpha);
+void D_AliasBlendPixel (pixel_t *dest, float *pz, pixel_t color, float z, int alpha);
 void D_KeepSpriteSpan (int u, int v, int count, int map);
 // lines lines of a particle's square, width wide, from line v (d_part.c)
 void D_KeepParticle (int v, pixel_t *pdest, float *pz, pixel_t color, float zi, int width, int lines);

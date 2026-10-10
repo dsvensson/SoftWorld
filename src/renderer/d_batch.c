@@ -53,11 +53,13 @@ typedef struct
 			const byte	*ptex;
 			int			sfrac, tfrac, light, zi, count;
 			int			map;		// of the batch's alias maps
+			int			alpha;		// of 256, blended if less
 		} alias;
 		struct
 		{
 			pixel_t		color;
 			float		z;
+			int			alpha;
 		} pixel;
 		struct
 		{
@@ -249,7 +251,7 @@ sprite would have drawn on line v
 ================
 */
 void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
-	int count, int map)
+	int count, int map, int alpha)
 {
 	dkept_t	*k = D_Keep (v, DK_ALIASSPAN);
 
@@ -262,9 +264,10 @@ void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sf
 	k->alias.zi = zi;
 	k->alias.count = count;
 	k->alias.map = map;
+	k->alias.alpha = alpha;
 }
 
-void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z)
+void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z, int alpha)
 {
 	dkept_t	*k = D_Keep (v, DK_ALIASPIXEL);
 
@@ -272,6 +275,7 @@ void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z)
 	k->pz = pz;
 	k->pixel.color = color;
 	k->pixel.z = z;
+	k->pixel.alpha = alpha;
 }
 
 void D_KeepParticle (int v, pixel_t *pdest, float *pz, pixel_t color, float zi, int width, int lines)
@@ -335,11 +339,17 @@ static void D_FillStrip (void *ctx, int index)
 		switch (k->kind)
 		{
 		case DK_ALIASSPAN:
-			simd_aliasspan (k->pdest, k->pz, k->alias.ptex, k->alias.sfrac, k->alias.tfrac, k->alias.light,
-				k->alias.zi, k->alias.count, &b->aliasmaps[k->alias.map]);
+			if (k->alias.alpha < 256)
+				D_AliasBlendSpan (k->pdest, k->pz, k->alias.ptex, k->alias.sfrac, k->alias.tfrac, k->alias.light,
+					k->alias.zi, k->alias.count, &b->aliasmaps[k->alias.map], k->alias.alpha);
+			else
+				simd_aliasspan (k->pdest, k->pz, k->alias.ptex, k->alias.sfrac, k->alias.tfrac, k->alias.light,
+					k->alias.zi, k->alias.count, &b->aliasmaps[k->alias.map]);
 			break;
 		case DK_ALIASPIXEL:
-			if (k->pixel.z >= *k->pz)
+			if (k->pixel.alpha < 256)
+				D_AliasBlendPixel (k->pdest, k->pz, k->pixel.color, k->pixel.z, k->pixel.alpha);
+			else if (k->pixel.z >= *k->pz)
 			{
 				*k->pz = k->pixel.z;
 				*k->pdest = k->pixel.color;
@@ -373,6 +383,7 @@ it is empty after
 */
 static void D_Fill (dbatch_t *b)
 {
+	D_DrawPendingSurfaces ();
 	Sys_Parallel (b->numbusy, D_FillStrip, b);
 	b->numbusy = 0;
 	b->numaliasmaps = 0;
