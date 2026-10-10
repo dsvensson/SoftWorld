@@ -27,6 +27,9 @@ static void CL_FinishTimeDemo (void);
 static cvar_t	timedemo_dump = {.name = "timedemo_dump", .string = "0",
 	.description = "Writes every nth timedemo frame as a PNG in <basedir>/frames, for comparing renderers; 0 none."};
 
+// benchdemo, not timedemo: the program quits once the demo has been timed
+static bool		demo_bench;
+
 /*
 ==============
 CL_InitDemo
@@ -101,6 +104,7 @@ void CL_StopPlayback (void)
 
 	if (cls.timedemo)
 		CL_FinishTimeDemo ();
+	demo_bench = false;
 }
 
 #define dem_cmd		0
@@ -1010,6 +1014,13 @@ static void CL_FinishTimeDemo (void)
 	if (!time)
 		time = 1;
 	Con_Printf ("%i frames %5.1f seconds %5.1f fps\n", frames, time, frames/time);
+
+	if (demo_bench)
+	{
+		// from the command buffer and not here, as the demo is still being read
+		demo_bench = false;
+		Cbuf_AddText ("quit force\n");
+	}
 }
 
 /*
@@ -1039,5 +1050,30 @@ void CL_TimeDemo_f (void)
 	cls.td_starttime = 0;
 	cls.td_startframe = cls.framecount;
 	cls.td_lastframe = -1;		// get a new message this frame
+}
+
+/*
+====================
+CL_BenchDemo_f
+
+benchdemo [demoname]
+
+A timedemo that quits once the demo has been timed, which a benchmark or a
+profile wants: the program would otherwise go on to the console or the
+attract demos and draw those as fast as it can, which is not what was being
+measured. Con_Printf echoes the answer where the program was started, so
+nothing needs to read the console to collect it.
+====================
+*/
+void CL_BenchDemo_f (void)
+{
+	if (Cmd_Argc() != 2)
+	{
+		Con_Printf ("benchdemo <demoname> : times a demo, then quits\n");
+		return;
+	}
+
+	CL_TimeDemo_f ();
+	demo_bench = cls.timedemo;	// false where the demo wasn't there to play
 }
 

@@ -1476,8 +1476,12 @@ static void CL_InitLocal (void)
 		"Plays a .qwd or .mvd demo; without an extension, .qwd is tried first. Usage: playdemo <name>");
 	Cmd_AddCommand ("timedemo", CL_TimeDemo_f,
 		"Plays a demo as fast as it draws, then prints the frames a second. Usage: timedemo <name>");
+	Cmd_AddCommand ("benchdemo", CL_BenchDemo_f,
+		"Times a demo as timedemo does, then quits, for a benchmark or a profile that measures "
+		"the demo and nothing after it. Usage: benchdemo <name>");
 	Cmd_SetCompletion ("playdemo", CL_CompleteDemo);
 	Cmd_SetCompletion ("timedemo", CL_CompleteDemo);
+	Cmd_SetCompletion ("benchdemo", CL_CompleteDemo);
 	CL_InitDemo ();
 	CL_InitMVD ();
 	CL_InitItems ();
