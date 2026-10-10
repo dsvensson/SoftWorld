@@ -1313,7 +1313,17 @@ void R_RenderView (void)
 	R_ProfEnd (PROF_FOG, prof);
 
 	prof = R_ProfStart ();
-	R_DrawTranslucent ();
+	if (keep)
+	{
+		// put together in the order they're sorted in, and blended on the
+		// workers
+		D_BeginBatch (D_BATCH_TRANSLUCENT);
+		R_DrawTranslucent ();
+		D_EndBatch ();
+		D_FillBatch (D_BATCH_TRANSLUCENT);
+	}
+	else
+		R_DrawTranslucent ();
 	R_DrawRings ();
 	R_ProfEnd (PROF_MODELS, prof);
 

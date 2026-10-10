@@ -446,9 +446,22 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 	double			prof;
 	surfcache_t		*cache;
 	drawsurf_t		draw;
+	cacheprep_t		prep;
 
-	D_BeginSurfaceBatch ();		// a batch of one: its block is drawn at once
-	if (D_PrepareCacheSurface (surface, miplevel, &cache, &draw) == CACHE_DRAW)
+	// a batch of one: its block is drawn at once. While a batch of the
+	// spans is kept, every block it reads is the surface batch's until it is
+	// drawn: what has been kept is drawn, and the blocks given up, only when
+	// there's no room for another.
+	if (!D_Keeping ())
+		D_BeginSurfaceBatch ();
+	prep = D_PrepareCacheSurface (surface, miplevel, &cache, &draw);
+	if (prep == CACHE_TAKEN && D_Keeping ())
+	{
+		D_FlushKept ();
+		D_BeginSurfaceBatch ();
+		prep = D_PrepareCacheSurface (surface, miplevel, &cache, &draw);
+	}
+	if (prep == CACHE_DRAW)
 	{
 		prof = R_ProfStart ();
 		R_ProfCount (PROFN_TEXELS, D_DrawCacheSurface (&draw));

@@ -152,8 +152,9 @@ void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture, 
 D_BlendRow
 =============
 */
-static pixel_t	*d_blendrow;
-static int		d_blendrowsize;
+// each thread's, as kept translucent spans are blended on the workers
+static thread_local pixel_t	*d_blendrow;
+static thread_local int		d_blendrowsize;
 
 pixel_t *D_BlendRow (int count)
 {
@@ -177,29 +178,50 @@ keeps what is behind
 */
 void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb)
 {
-	simd_texmap_t	map = D_SpanTexmap ();
-	const int		*turbtab = sintable + ((int)(r_scene.time*SPEED)&(CYCLE-1));
-	pixel_t			*row;
-	float			zi;
+	d_blendmap_t	map = {
+		.map = D_SpanTexmap (),
+		.block = cacheblock, .blockwidth = cachewidth,
+		.turb = turb ? d_turbsource : NULL, .turb30 = turb ? d_turbsource30 : NULL,
+		.turbtab = sintable + ((int)(r_scene.time*SPEED)&(CYCLE-1)),
+		.alpha = alpha,
+	};
+	int				index = D_Keeping () ? D_KeepBlendMap (&map) : -1;
 
 	for ( ; pspan->count != DS_SPAN_LIST_END ; pspan++)
 	{
 		if (pspan->count <= 0)
 			continue;
-		row = D_BlendRow (pspan->count);
-		if (turb && d_turbsource30)
-			simd_turbspan_rgb30 (row, &map, d_turbsource30, turbtab, pspan->u, pspan->v, pspan->count);
-		else if (turb)
-			simd_turbspan (row, &map, d_turbsource, d_pal30_unlit, turbtab, pspan->u, pspan->v, pspan->count);
+		if (index >= 0)
+			D_KeepBlendSpan (pspan->u, pspan->v, pspan->count, index);
 		else
-			simd_texspan (row, &map, cacheblock, cachewidth, pspan->u, pspan->v, pspan->count);
-
-		zi = d_ziorigin + (float)pspan->v * d_zistepv + (float)pspan->u * d_zistepu;
-		if (r_fogactive)
-			simd_fogspan (row, NULL, zi, d_zistepu, pspan->count, &d_fog);
-		simd_blendspan (d_viewbuffer + screenwidth * pspan->v + pspan->u, row,
-			d_pzbuffer + d_zwidth * pspan->v + pspan->u, zi, d_zistepu, alpha, pspan->count);
+			D_BlendSpan (&map, pspan->u, pspan->v, pspan->count);
 	}
+}
+
+/*
+=============
+D_BlendSpan
+
+A span of a translucent surface, mapped and blended as map says
+=============
+*/
+void D_BlendSpan (const d_blendmap_t *map, int u, int v, int count)
+{
+	pixel_t	*row = D_BlendRow (count);
+	float	zi;
+
+	if (map->turb30)
+		simd_turbspan_rgb30 (row, &map->map, map->turb30, map->turbtab, u, v, count);
+	else if (map->turb)
+		simd_turbspan (row, &map->map, map->turb, d_pal30_unlit, map->turbtab, u, v, count);
+	else
+		simd_texspan (row, &map->map, map->block, map->blockwidth, u, v, count);
+
+	zi = map->map.ziorigin + (float)v * map->map.zistepv + (float)u * map->map.zistepu;
+	if (r_fogactive)
+		simd_fogspan (row, NULL, zi, map->map.zistepu, count, &d_fog);
+	simd_blendspan (d_viewbuffer + screenwidth * v + u, row,
+		d_pzbuffer + d_zwidth * v + u, zi, map->map.zistepu, map->alpha, count);
 }
 
 /*

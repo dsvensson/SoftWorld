@@ -137,6 +137,7 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts);
 typedef enum
 {
 	D_BATCH_MODELS,			// the entity list's
+	D_BATCH_TRANSLUCENT,
 	D_BATCH_VIEWMODEL,
 	D_NUMBATCHES
 } dbatchid_t;

@@ -236,11 +236,14 @@ static void D_AliasPoint (int u, int v, float z, pixel_t color)
 	pixel_t	*dest = &d_viewbuffer[d_scantable[v] + u];
 	float	*zbuf = zspantable[v] + u;
 
-	// a translucent model is drawn by R_DrawTranslucent, outside any batch
 	if (D_Keeping ())
 	{
-		D_KeepAliasPixel (v, dest, zbuf, color, z);
-		return;
+		if (d_alpha >= 256)
+		{
+			D_KeepAliasPixel (v, dest, zbuf, color, z);
+			return;
+		}
+		D_FlushKept ();		// a blend reads what's under it
 	}
 	if (z >= *zbuf)
 	{
@@ -731,7 +734,7 @@ static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 
 		if (!lcount)
 			;
-		else if (keeping)		// never translucent, as D_AliasPoint says
+		else if (keeping && d_alpha >= 256)
 		{
 			if (mapindex < 0)
 				mapindex = D_KeepAliasMap (&map);
@@ -740,7 +743,11 @@ static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 				pspanpackage->zi, lcount, mapindex);
 		}
 		else if (d_alpha < 256)
+		{
+			if (keeping)
+				D_FlushKept ();		// a blend reads what's under it
 			D_PolysetBlendSpan (pspanpackage, lcount, &map);
+		}
 		else
 			simd_aliasspan (pspanpackage->pdest, pspanpackage->pz, pspanpackage->ptex, pspanpackage->sfrac,
 				pspanpackage->tfrac, pspanpackage->light, pspanpackage->zi, lcount, &map);

@@ -36,7 +36,8 @@ typedef enum
 	DK_ALIASSPAN,
 	DK_ALIASPIXEL,
 	DK_SPRITESPAN,
-	DK_PARTICLE
+	DK_PARTICLE,
+	DK_BLENDSPAN
 } dkind_t;
 
 typedef struct
@@ -60,7 +61,7 @@ typedef struct
 		struct
 		{
 			int			u, v, count;
-			int			map;		// of the batch's sprite maps
+			int			map;		// of the batch's sprite or blend maps
 		} sprite;
 		struct
 		{
@@ -86,6 +87,8 @@ typedef struct
 	int					numaliasmaps, maxaliasmaps;
 	d_spritemap_t		*spritemaps;
 	int					numspritemaps, maxspritemaps;
+	d_blendmap_t		*blendmaps;
+	int					numblendmaps, maxblendmaps;
 } dbatch_t;
 
 static dbatch_t	d_batches[D_NUMBATCHES];
@@ -119,6 +122,7 @@ void D_SetBatchSize (int height)
 		b->numbusy = 0;
 		b->numaliasmaps = 0;
 		b->numspritemaps = 0;
+		b->numblendmaps = 0;
 	}
 }
 
@@ -126,12 +130,15 @@ void D_SetBatchSize (int height)
 ================
 D_BeginBatch / D_EndBatch
 
-What the models draw from here is kept in the batch, to its D_FillBatch
+What the models draw from here is kept in the batch, to its D_FillBatch; and
+a batch of the surface cache's begins, so every block the kept spans read is
+theirs until they're drawn (D_CacheSurface)
 ================
 */
 void D_BeginBatch (dbatchid_t batch)
 {
 	d_keeping = d_numstrips ? &d_batches[batch] : NULL;
+	D_BeginSurfaceBatch ();
 }
 
 void D_EndBatch (void)
@@ -170,9 +177,10 @@ static dkept_t *D_Keep (int v, dkind_t kind)
 
 /*
 ================
-D_KeepAliasMap / D_KeepSpriteMap
+D_KeepAliasMap / D_KeepBlendMap / D_KeepSpriteMap
 
-A triangle's or a sprite's mapping kept for its spans, by its index
+A triangle's, a translucent surface's or a sprite's mapping kept for its
+spans, by its index
 ================
 */
 int D_KeepAliasMap (const simd_aliasmap_t *map)
@@ -186,6 +194,19 @@ int D_KeepAliasMap (const simd_aliasmap_t *map)
 	}
 	b->aliasmaps[b->numaliasmaps] = *map;
 	return b->numaliasmaps++;
+}
+
+int D_KeepBlendMap (const d_blendmap_t *map)
+{
+	dbatch_t	*b = d_keeping;
+
+	if (b->numblendmaps == b->maxblendmaps)
+	{
+		b->maxblendmaps = b->maxblendmaps ? b->maxblendmaps * 2 : 16;
+		b->blendmaps = Mem_Realloc (b->blendmaps, (size_t)b->maxblendmaps * sizeof(*b->blendmaps));
+	}
+	b->blendmaps[b->numblendmaps] = *map;
+	return b->numblendmaps++;
 }
 
 int D_KeepSpriteMap (const d_spritemap_t *map)
@@ -203,9 +224,11 @@ int D_KeepSpriteMap (const d_spritemap_t *map)
 
 /*
 ================
-D_KeepAliasSpan / D_KeepAliasPixel / D_KeepParticle / D_KeepSpriteSpan
+D_KeepAliasSpan / D_KeepAliasPixel / D_KeepParticle / D_KeepBlendSpan /
+D_KeepSpriteSpan
 
-What an alias model, a particle or a sprite would have drawn on line v
+What an alias model, a particle, a translucent surface or a sprite would have
+drawn on line v
 ================
 */
 void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
@@ -244,6 +267,16 @@ void D_KeepParticle (int v, pixel_t *pdest, float *pz, pixel_t color, float zi, 
 	k->particle.zi = zi;
 	k->particle.width = width;
 	k->particle.lines = lines;
+}
+
+void D_KeepBlendSpan (int u, int v, int count, int map)
+{
+	dkept_t	*k = D_Keep (v, DK_BLENDSPAN);
+
+	k->sprite.u = u;
+	k->sprite.v = v;
+	k->sprite.count = count;
+	k->sprite.map = map;
 }
 
 void D_KeepSpriteSpan (int u, int v, int count, int map)
@@ -288,6 +321,9 @@ static void D_FillStrip (void *ctx, int index)
 		case DK_SPRITESPAN:
 			D_SpriteSpan (&b->spritemaps[k->sprite.map], k->sprite.u, k->sprite.v, k->sprite.count);
 			break;
+		case DK_BLENDSPAN:
+			D_BlendSpan (&b->blendmaps[k->sprite.map], k->sprite.u, k->sprite.v, k->sprite.count);
+			break;
 		case DK_PARTICLE:
 			D_ParticleLines (k->pdest, k->pz, k->particle.color, k->particle.zi, k->particle.width,
 				k->particle.lines);
@@ -299,17 +335,28 @@ static void D_FillStrip (void *ctx, int index)
 
 /*
 ================
-D_FillBatch
+D_FillBatch / D_FlushKept
 
-What the batch has kept, drawn on the worker threads; it is empty after
+What the batch has kept, or the one being kept, drawn on the worker threads;
+it is empty after
 ================
 */
-void D_FillBatch (dbatchid_t batch)
+static void D_Fill (dbatch_t *b)
 {
-	dbatch_t	*b = &d_batches[batch];
-
 	Sys_Parallel (b->numbusy, D_FillStrip, b);
 	b->numbusy = 0;
 	b->numaliasmaps = 0;
 	b->numspritemaps = 0;
+	b->numblendmaps = 0;
+}
+
+void D_FillBatch (dbatchid_t batch)
+{
+	D_Fill (&d_batches[batch]);
+}
+
+void D_FlushKept (void)
+{
+	if (d_keeping)
+		D_Fill (d_keeping);
 }

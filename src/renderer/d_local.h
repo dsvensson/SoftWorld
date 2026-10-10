@@ -186,6 +186,22 @@ typedef struct
 // a span of a sprite on line v, depth tested and written (d_sprite.c)
 void D_SpriteSpan (const d_spritemap_t *map, int u, int v, int count);
 
+// a translucent surface's mapping, as D_BlendSpan blends a span of it: from
+// its cache block, or a liquid's texture (turb, or turb30 for a TGA's)
+typedef struct
+{
+	simd_texmap_t	map;
+	const pixel_t	*block;
+	int				blockwidth;
+	const byte		*turb;
+	const pixel_t	*turb30;
+	const int		*turbtab;
+	int				alpha;
+} d_blendmap_t;
+
+// a span of it on line v, blended in where it's in front (d_scan.c)
+void D_BlendSpan (const d_blendmap_t *map, int u, int v, int count);
+
 // what's kept in the batch D_BeginBatch began, if one is (d_batch.c), in
 // strips of lines: thin, as a view model is in few of the view's lines and
 // Sys_Parallel hands the strips out as threads come free
@@ -193,6 +209,11 @@ void D_SpriteSpan (const d_spritemap_t *map, int u, int v, int count);
 bool D_Keeping (void);
 int D_KeepAliasMap (const simd_aliasmap_t *map);
 int D_KeepSpriteMap (const d_spritemap_t *map);
+int D_KeepBlendMap (const d_blendmap_t *map);
+void D_KeepBlendSpan (int u, int v, int count, int map);
+// what the batch has kept drawn now, and keeping going on: before what
+// can't be kept is drawn, or a cache block it reads is given up
+void D_FlushKept (void);
 void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
 	int count, int map);
 void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z);
