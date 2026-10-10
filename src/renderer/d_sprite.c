@@ -29,14 +29,17 @@ static sspan_t	*sprite_spans;
 
 /*
 =====================
-D_SpriteDrawSpans
+D_SpriteSpan
+
+A span of the sprite map maps, on line v from u: its texels depth tested,
+and depth written where drawn
 =====================
 */
-static void D_SpriteDrawSpans (sspan_t *pspan)
+void D_SpriteSpan (const d_spritemap_t *map, int u, int v, int count)
 {
-	int			count, spancount;
+	int			spancount;
 	double		pixelzi;
-	byte		*pbase;
+	const byte	*pbase = map->pixels;
 	pixel_t		*pdest;
 	fixed16_t	s, t, snext, tnext, sstep, tstep;
 	float		sdivz, tdivz, zi, z, du, dv, spancountminus1;
@@ -47,142 +50,130 @@ static void D_SpriteDrawSpans (sspan_t *pspan)
 	sstep = 0;	// keep compiler happy
 	tstep = 0;	// ditto
 
-	pbase = r_spritedesc.pspriteframe->pixels;
+	if (count <= 0)
+		return;
 
-	sdivz8stepu = d_sdivzstepu * 8;
-	tdivz8stepu = d_tdivzstepu * 8;
-	zi8stepu = d_zistepu * 8;
+	sdivz8stepu = map->sdivzstepu * 8;
+	tdivz8stepu = map->tdivzstepu * 8;
+	zi8stepu = map->zistepu * 8;
+
+	pdest = d_viewbuffer + (screenwidth * v) + u;
+	pz = d_pzbuffer + (d_zwidth * v) + u;
+
+// calculate the initial s/z, t/z, 1/z, s, and t and clamp
+	du = (float)u;
+	dv = (float)v;
+
+	sdivz = map->sdivzorigin + dv*map->sdivzstepv + du*map->sdivzstepu;
+	tdivz = map->tdivzorigin + dv*map->tdivzstepv + du*map->tdivzstepu;
+	zi = map->ziorigin + dv*map->zistepv + du*map->zistepu;
+	z = (float)0x10000 / zi;	// prescale to 16.16 fixed-point
+	pixelzi = zi;
+
+	s = (int)(sdivz * z) + map->sadjust;
+	if (s > map->bbextents)
+		s = map->bbextents;
+	else if (s < 0)
+		s = 0;
+
+	t = (int)(tdivz * z) + map->tadjust;
+	if (t > map->bbextentt)
+		t = map->bbextentt;
+	else if (t < 0)
+		t = 0;
 
 	do
 	{
-		pdest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
-		pz = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
+	// calculate s and t at the far end of the span
+		if (count >= 8)
+			spancount = 8;
+		else
+			spancount = count;
 
-		count = pspan->count;
+		count -= spancount;
 
-		if (count <= 0)
-			goto NextSpan;
+		if (count)
+		{
+		// calculate s/z, t/z, zi->fixed s and t at far end of span,
+		// calculate s and t steps across span by shifting
+			sdivz += sdivz8stepu;
+			tdivz += tdivz8stepu;
+			zi += zi8stepu;
+			z = (float)0x10000 / zi;	// prescale to 16.16 fixed-point
 
-	// calculate the initial s/z, t/z, 1/z, s, and t and clamp
-		du = (float)pspan->u;
-		dv = (float)pspan->v;
+			snext = (int)(sdivz * z) + map->sadjust;
+			if (snext > map->bbextents)
+				snext = map->bbextents;
+			else if (snext < 8)
+				snext = 8;	// prevent round-off error on <0 steps from
+							//  from causing overstepping & running off the
+							//  edge of the texture
 
-		sdivz = d_sdivzorigin + dv*d_sdivzstepv + du*d_sdivzstepu;
-		tdivz = d_tdivzorigin + dv*d_tdivzstepv + du*d_tdivzstepu;
-		zi = d_ziorigin + dv*d_zistepv + du*d_zistepu;
-		z = (float)0x10000 / zi;	// prescale to 16.16 fixed-point
-		pixelzi = zi;
+			tnext = (int)(tdivz * z) + map->tadjust;
+			if (tnext > map->bbextentt)
+				tnext = map->bbextentt;
+			else if (tnext < 8)
+				tnext = 8;	// guard against round-off error on <0 steps
 
-		s = (int)(sdivz * z) + sadjust;
-		if (s > bbextents)
-			s = bbextents;
-		else if (s < 0)
-			s = 0;
+			sstep = (snext - s) >> 3;
+			tstep = (tnext - t) >> 3;
+		}
+		else
+		{
+		// calculate s/z, t/z, zi->fixed s and t at last pixel in span (so
+		// can't step off polygon), clamp, calculate s and t steps across
+		// span by division, biasing steps low so we don't run off the
+		// texture
+			spancountminus1 = (float)(spancount - 1);
+			sdivz += map->sdivzstepu * spancountminus1;
+			tdivz += map->tdivzstepu * spancountminus1;
+			zi += map->zistepu * spancountminus1;
+			z = (float)0x10000 / zi;	// prescale to 16.16 fixed-point
+			snext = (int)(sdivz * z) + map->sadjust;
+			if (snext > map->bbextents)
+				snext = map->bbextents;
+			else if (snext < 8)
+				snext = 8;	// prevent round-off error on <0 steps from
+							//  from causing overstepping & running off the
+							//  edge of the texture
 
-		t = (int)(tdivz * z) + tadjust;
-		if (t > bbextentt)
-			t = bbextentt;
-		else if (t < 0)
-			t = 0;
+			tnext = (int)(tdivz * z) + map->tadjust;
+			if (tnext > map->bbextentt)
+				tnext = map->bbextentt;
+			else if (tnext < 8)
+				tnext = 8;	// guard against round-off error on <0 steps
+
+			if (spancount > 1)
+			{
+				sstep = (snext - s) / (spancount - 1);
+				tstep = (tnext - t) / (spancount - 1);
+			}
+		}
 
 		do
 		{
-		// calculate s and t at the far end of the span
-			if (count >= 8)
-				spancount = 8;
-			else
-				spancount = count;
-
-			count -= spancount;
-
-			if (count)
+			btemp = *(pbase + (s >> 16) + (t >> 16) * map->width);
+			if (btemp != 255)
 			{
-			// calculate s/z, t/z, zi->fixed s and t at far end of span,
-			// calculate s and t steps across span by shifting
-				sdivz += sdivz8stepu;
-				tdivz += tdivz8stepu;
-				zi += zi8stepu;
-				z = (float)0x10000 / zi;	// prescale to 16.16 fixed-point
-
-				snext = (int)(sdivz * z) + sadjust;
-				if (snext > bbextents)
-					snext = bbextents;
-				else if (snext < 8)
-					snext = 8;	// prevent round-off error on <0 steps from
-								//  from causing overstepping & running off the
-								//  edge of the texture
-
-				tnext = (int)(tdivz * z) + tadjust;
-				if (tnext > bbextentt)
-					tnext = bbextentt;
-				else if (tnext < 8)
-					tnext = 8;	// guard against round-off error on <0 steps
-
-				sstep = (snext - s) >> 3;
-				tstep = (tnext - t) >> 3;
-			}
-			else
-			{
-			// calculate s/z, t/z, zi->fixed s and t at last pixel in span (so
-			// can't step off polygon), clamp, calculate s and t steps across
-			// span by division, biasing steps low so we don't run off the
-			// texture
-				spancountminus1 = (float)(spancount - 1);
-				sdivz += d_sdivzstepu * spancountminus1;
-				tdivz += d_tdivzstepu * spancountminus1;
-				zi += d_zistepu * spancountminus1;
-				z = (float)0x10000 / zi;	// prescale to 16.16 fixed-point
-				snext = (int)(sdivz * z) + sadjust;
-				if (snext > bbextents)
-					snext = bbextents;
-				else if (snext < 8)
-					snext = 8;	// prevent round-off error on <0 steps from
-								//  from causing overstepping & running off the
-								//  edge of the texture
-
-				tnext = (int)(tdivz * z) + tadjust;
-				if (tnext > bbextentt)
-					tnext = bbextentt;
-				else if (tnext < 8)
-					tnext = 8;	// guard against round-off error on <0 steps
-
-				if (spancount > 1)
+				if (*pz <= pixelzi)
 				{
-					sstep = (snext - s) / (spancount - 1);
-					tstep = (tnext - t) / (spancount - 1);
+					*pz = (float)pixelzi;
+					*pdest = d_pal30_unlit[btemp];
 				}
 			}
 
-			do
-			{
-				btemp = *(pbase + (s >> 16) + (t >> 16) * cachewidth);
-				if (btemp != 255)
-				{
-					if (*pz <= pixelzi)
-					{
-						*pz = (float)pixelzi;
-						*pdest = d_pal30_unlit[btemp];
-					}
-				}
+			pixelzi += map->zistepu;
+			pdest++;
+			pz++;
+			s += sstep;
+			t += tstep;
+		} while (--spancount > 0);
 
-				pixelzi += d_zistepu;
-				pdest++;
-				pz++;
-				s += sstep;
-				t += tstep;
-			} while (--spancount > 0);
+		s = snext;
+		t = tnext;
 
-			s = snext;
-			t = tnext;
-
-		} while (count > 0);
-
-NextSpan:
-		pspan++;
-
-	} while (pspan->count != DS_SPAN_LIST_END);
+	} while (count > 0);
 }
-
 
 
 /*
@@ -250,12 +241,34 @@ D_DrawSprite
 */
 void D_DrawSprite (void)
 {
+	d_spritemap_t	map;
+	sspan_t			*pspan;
+	int				index;
+
 	cachewidth = r_spritedesc.pspriteframe->width;
 	sprite_height = r_spritedesc.pspriteframe->height;
 
 	D_SpriteCalculateGradients ();
-	if (D_PolygonSpans (r_spritedesc.pverts, r_spritedesc.nump, sprite_spans, &r_refdef.vrect))
-		D_SpriteDrawSpans (sprite_spans);
+	if (!D_PolygonSpans (r_spritedesc.pverts, r_spritedesc.nump, sprite_spans, &r_refdef.vrect))
+		return;
+
+	map = (d_spritemap_t){
+		.pixels = r_spritedesc.pspriteframe->pixels, .width = cachewidth,
+		.sdivzorigin = d_sdivzorigin, .sdivzstepu = d_sdivzstepu, .sdivzstepv = d_sdivzstepv,
+		.tdivzorigin = d_tdivzorigin, .tdivzstepu = d_tdivzstepu, .tdivzstepv = d_tdivzstepv,
+		.ziorigin = d_ziorigin, .zistepu = d_zistepu, .zistepv = d_zistepv,
+		.sadjust = sadjust, .tadjust = tadjust, .bbextents = bbextents, .bbextentt = bbextentt,
+	};
+	index = D_Keeping () ? D_KeepSpriteMap (&map) : -1;
+	for (pspan = sprite_spans ; pspan->count != DS_SPAN_LIST_END ; pspan++)
+	{
+		if (pspan->count <= 0)
+			continue;
+		if (index >= 0)
+			D_KeepSpriteSpan (pspan->u, pspan->v, pspan->count, index);
+		else
+			D_SpriteSpan (&map, pspan->u, pspan->v, pspan->count);
+	}
 }
 
 /*

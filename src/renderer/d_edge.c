@@ -471,15 +471,18 @@ static void D_AddTasks (int index)
 
 /*
 ==============
-D_DrawBatch
+D_StartBatch / D_JoinBatch / D_DrawBatch
 
-The jobs from first to end, a batch: their blocks, then their spans
+The jobs from first to end, a batch: their blocks drawn, then their spans
+started on the workers, and once they're drawn the batch is done with
 ==============
 */
-static void D_DrawBatch (int first, int end)
+static int		d_drawingfirst = -1, d_drawingend;	// the batch the workers are drawing
+
+static void D_StartBatch (int first, int end)
 {
 	double	prof;
-	int		i, numbuilds, texels;
+	int		i, numbuilds;
 
 	numbuilds = 0;
 	for (i=first ; i<end ; i++)
@@ -491,14 +494,33 @@ static void D_DrawBatch (int first, int end)
 	d_numtasks = 0;
 	for (i=first ; i<end ; i++)
 		D_AddTasks (i);
-	Sys_Parallel (d_numtasks, D_DrawTask, NULL);
+	Sys_ParallelStart (d_numtasks, D_DrawTask, NULL);
+	d_drawingfirst = first;
+	d_drawingend = end;
+}
+
+// once the batch's spans are all drawn
+static void D_JoinBatch (void)
+{
+	int		i, texels;
+
+	if (d_drawingfirst < 0)
+		return;
+	Sys_ParallelFinish ();
 
 	texels = 0;
-	for (i=first ; i<end ; i++)
+	for (i=d_drawingfirst ; i<d_drawingend ; i++)
 		texels += d_jobs[i].texels;
 	R_ProfCount (PROFN_TEXELS, texels);
 	R_ProfCount (PROFN_BATCHES, 1);
 	D_BeginSurfaceBatch ();
+	d_drawingfirst = -1;
+}
+
+static void D_DrawBatch (int first, int end)
+{
+	D_StartBatch (first, end);
+	D_JoinBatch ();
 }
 
 
@@ -506,7 +528,8 @@ static void D_DrawBatch (int first, int end)
 ==============
 D_DrawSurfaces
 
-The surfaces' spans the bands' scans have gathered
+The surfaces' spans the bands' scans have gathered: the last batch's are
+left drawing on the workers, until D_FinishSurfaces
 ==============
 */
 void D_DrawSurfaces (rband_t *bands, int numbands)
@@ -585,6 +608,23 @@ void D_DrawSurfaces (rband_t *bands, int numbands)
 		job->build = prep == CACHE_DRAW;
 	}
 	currententity = &r_worldentity;
-	D_DrawBatch (first, d_numjobs);
+	D_StartBatch (first, d_numjobs);
+	R_ProfEnd (PROF_DRAW, prof);
+}
+
+/*
+==============
+D_FinishSurfaces
+
+The surfaces' spans D_DrawSurfaces left the workers drawing, all drawn;
+what the calling thread did meanwhile mustn't have read or changed them, nor
+called Sys_Parallel
+==============
+*/
+void D_FinishSurfaces (void)
+{
+	double	prof = R_ProfStart ();
+
+	D_JoinBatch ();
 	R_ProfEnd (PROF_DRAW, prof);
 }

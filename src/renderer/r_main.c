@@ -912,7 +912,6 @@ static void R_DrawEntitiesOnList (void)
 	if (!r_drawentities.value)
 		return;
 
-	D_BeginAliasBatch (r_numthreads > 1);
 	for (i=0 ; i<(*r_scene.numvisedicts) ; i++)
 	{
 		currententity = &r_scene.visedicts[i];
@@ -920,7 +919,6 @@ static void R_DrawEntitiesOnList (void)
 		switch (currententity->model->type)
 		{
 		case mod_sprite:
-			D_FlushAliasBatch ();		// drawn at once, over the models before it
 			VectorCopy (currententity->origin, r_entorigin);
 			VectorSubtract (r_origin, r_entorigin, modelorg);
 			R_DrawSprite ();
@@ -937,7 +935,6 @@ static void R_DrawEntitiesOnList (void)
 			break;
 		}
 	}
-	D_EndAliasBatch ();
 }
 
 /*
@@ -957,7 +954,7 @@ static void R_DrawViewModel (void)
 	float		add;
 	dlight_t	*dl;
 	
-	float		saved[6], width;
+	float		saved[2], width, gunxscale;
 
 	if (!r_drawviewmodel.value || !r_scene.drawviewmodel)
 		return;
@@ -1010,36 +1007,23 @@ static void R_DrawViewModel (void)
 
 	r_viewlighting.plightvec = lightvec;
 
-	// the gun's own field of view, the rest of the projection as the scene's
-	saved[0] = xscale;
-	saved[1] = yscale;
-	saved[2] = xscaleinv;
-	saved[3] = yscaleinv;
-	saved[4] = aliasxscale;
-	saved[5] = aliasyscale;
+	// the gun's own field of view, the rest of the projection as the scene's:
+	// only the models' scales, which nothing but the models reads, so the
+	// world's spans can go on being drawn as the gun is put together
+	saved[0] = aliasxscale;
+	saved[1] = aliasyscale;
 	if (r_refdef.viewmodel_fov_x > 0)
 	{
 		width = 2.0f * tanf (r_refdef.viewmodel_fov_x / 360 * (float)Q_PI);
-		xscale = r_refdef.vrect.width / width;
-		yscale = xscale * pixelAspect;
-		xscaleinv = 1.0f / xscale;
-		yscaleinv = 1.0f / yscale;
-		aliasxscale = xscale * r_aliasuvscale;
-		aliasyscale = yscale * r_aliasuvscale;
+		gunxscale = r_refdef.vrect.width / width;
+		aliasxscale = gunxscale * r_aliasuvscale;
+		aliasyscale = gunxscale * pixelAspect * r_aliasuvscale;
 	}
 
-	// as big as it is in the view, and the last model drawn: its rows filled
-	// on all the threads
-	D_BeginAliasBatch (r_numthreads > 1);
 	R_AliasDrawModel (&r_viewlighting);
-	D_EndAliasBatch ();
 
-	xscale = saved[0];
-	yscale = saved[1];
-	xscaleinv = saved[2];
-	yscaleinv = saved[3];
-	aliasxscale = saved[4];
-	aliasyscale = saved[5];
+	aliasxscale = saved[0];
+	aliasyscale = saved[1];
 }
 
 
@@ -1182,7 +1166,7 @@ static void R_FinishBrushEntities (void)
 R_EdgeDrawing
 
 The world and the brush entities, in the view's bands on the worker threads,
-then their spans drawn and the fences on them
+then their spans started on them, to be finished by R_FinishEdgeDrawing
 ================
 */
 static void R_EdgeDrawing (void)
@@ -1214,6 +1198,21 @@ static void R_EdgeDrawing (void)
 	R_MergeAfters ();				// the lists start with what the bands met
 	R_FinishBrushEntities ();
 	D_DrawSurfaces (r_bands, r_numbands);
+	R_ProfEnd (PROF_SPANS, prof);
+}
+
+/*
+================
+R_FinishEdgeDrawing
+
+The world's spans all drawn, and the fences on them
+================
+*/
+static void R_FinishEdgeDrawing (void)
+{
+	double	prof = R_ProfStart ();
+
+	D_FinishSurfaces ();
 	R_DrawFences ();
 	R_ProfEnd (PROF_SPANS, prof);
 }
@@ -1229,6 +1228,7 @@ r_refdef must be set before the first call
 void R_RenderView (void)
 {
 	double	prof, now, gap;
+	bool	keep;
 
 	if (r_profile.value)
 	{
@@ -1273,6 +1273,24 @@ void R_RenderView (void)
 		
 	R_EdgeDrawing ();
 
+	// with threads to draw them, the models are put together as the world's
+	// spans are drawn, kept, and drawn after them where they were drawn
+	keep = r_numthreads > 1;
+	if (keep)
+	{
+		prof = R_ProfStart ();
+		D_BeginBatch (D_BATCH_MODELS);
+		R_DrawEntitiesOnList ();
+		R_ProfEnd (PROF_MODELS, prof);
+		prof = R_ProfStart ();
+		D_BeginBatch (D_BATCH_VIEWMODEL);
+		R_DrawViewModel ();
+		D_EndBatch ();
+		R_ProfEnd (PROF_VIEWMODEL, prof);
+	}
+
+	R_FinishEdgeDrawing ();
+
 	if (r_dspeeds.value)
 	{
 		se_time2 = (float)Sys_DoubleTime ();
@@ -1280,7 +1298,10 @@ void R_RenderView (void)
 	}
 
 	prof = R_ProfStart ();
-	R_DrawEntitiesOnList ();
+	if (keep)
+		D_FillBatch (D_BATCH_MODELS);
+	else
+		R_DrawEntitiesOnList ();
 	R_ProfEnd (PROF_MODELS, prof);
 
 	prof = R_ProfStart ();
@@ -1299,7 +1320,10 @@ void R_RenderView (void)
 	}
 
 	prof = R_ProfStart ();
-	R_DrawViewModel ();
+	if (keep)
+		D_FillBatch (D_BATCH_VIEWMODEL);
+	else
+		R_DrawViewModel ();
 	R_ProfEnd (PROF_VIEWMODEL, prof);
 
 	if (r_dspeeds.value)

@@ -131,11 +131,18 @@ extern vec3_t	r_pright, r_pup, r_ppn;
 
 void D_PolysetDraw (void);
 void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts);
-// the models drawn between them are filled on the worker threads, at the end
-// or a flush, as they would have been drawn (d_polyse.c); on is whether to
-void D_BeginAliasBatch (bool on);
-void D_FlushAliasBatch (void);
-void D_EndAliasBatch (void);
+// what the models draw between D_BeginBatch and D_EndBatch is kept in the
+// batch and drawn by D_FillBatch, on the worker threads, as it would have
+// been drawn then (d_batch.c)
+typedef enum
+{
+	D_BATCH_MODELS,			// the entity list's
+	D_BATCH_VIEWMODEL,
+	D_NUMBATCHES
+} dbatchid_t;
+void D_BeginBatch (dbatchid_t batch);
+void D_EndBatch (void);
+void D_FillBatch (dbatchid_t batch);
 void D_DrawParticle (particle_t *pparticle);
 void D_DrawSprite (void);
 void D_EndParticles (void);

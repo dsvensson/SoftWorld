@@ -431,6 +431,7 @@ void R_DrawSolidClippedSubmodelPolygons (rband_t *b, model_t *pmodel);
 void R_BeginEdgeFrame (rband_t *b);
 void R_ScanEdges (rband_t *b);
 void D_DrawSurfaces (rband_t *bands, int numbands);
+void D_FinishSurfaces (void);
 int R_BmodelCheckBBox (const entity_t *ent, const float *minmaxs, const rband_t *b);
 void R_BandWorldView (rband_t *b);
 bool R_GrowBandBModelClip (rband_t *b);

@@ -170,6 +170,30 @@ extern float	**zspantable;
 void D_SetWarpSize (int width, int height, int scale);
 void D_SetPolysetSize (int height);
 void D_SetSpriteSize (int height);
+void D_SetBatchSize (int height);
+
+// a sprite's mapping, as D_SpriteSpan draws a span of it
+typedef struct
+{
+	const byte	*pixels;
+	int			width;
+	float		sdivzorigin, sdivzstepu, sdivzstepv;
+	float		tdivzorigin, tdivzstepu, tdivzstepv;
+	float		ziorigin, zistepu, zistepv;
+	fixed16_t	sadjust, tadjust, bbextents, bbextentt;
+} d_spritemap_t;
+
+// a span of a sprite on line v, depth tested and written (d_sprite.c)
+void D_SpriteSpan (const d_spritemap_t *map, int u, int v, int count);
+
+// what's kept in the batch D_BeginBatch began, if one is (d_batch.c)
+bool D_Keeping (void);
+int D_KeepAliasMap (const simd_aliasmap_t *map);
+int D_KeepSpriteMap (const d_spritemap_t *map);
+void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
+	int count, int map);
+void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z);
+void D_KeepSpriteSpan (int u, int v, int count, int map);
 
 extern int		d_minmip;
 extern float	d_scalemip[3];
