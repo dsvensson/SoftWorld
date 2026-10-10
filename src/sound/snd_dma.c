@@ -54,7 +54,7 @@ static vec_t		sound_nominal_clip_dist=1000.0;
 
 cvar_t bgmvolume = {.name = "bgmvolume", .string = "1", .archive = true,
 	.description = "Music volume, 0 to 1, as the options menu sets it; nothing in this program plays music."};
-cvar_t volume = {.name = "volume", .string = "0.7", .archive = true,
+cvar_t volume = {.name = "volume", .string = "0.05", .archive = true,
 	.description = "Volume of all sound, 0 to 1."};
 
 static cvar_t nosound = {.name = "nosound", .string = "0",
