@@ -463,6 +463,7 @@ void CL_AttractDraw (void);			// over the view: the map's name and the fade's bl
 float CL_AttractBlack (void);		// how black the fade is, 0 to 1
 void CL_AttractCmd (usercmd_t *cmd);	// a command of no moves
 void CL_AttractKey (void);			// a key pressed
+bool CL_AttractKeyEvent (int key, bool down);	// attract mode's keys: true for one it took
 struct model_s *CL_AttractWorld (const char *name);	// the world loaded for the level coming up, NULL if another
 
 

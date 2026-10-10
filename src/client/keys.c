@@ -1330,6 +1330,15 @@ void Key_Event (int key, bool down)
 		return;
 	}
 
+	// attract mode's own keys, the bindings left as they are; the menu one
+	// brings up isn't typed the character
+	if (CL_AttractKeyEvent (key, down))
+	{
+		if (down)
+			key_char_eaten = true;
+		return;
+	}
+
 //
 // key up events only generate commands if the game key binding is
 // a button command (leading + sign).  These will occur even in console mode,

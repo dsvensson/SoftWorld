@@ -10,6 +10,8 @@
 // own settings (attract_look), whatever the player's are.
 
 #include "cl_local.h"
+#include "keys.h"
+#include "menu.h"
 
 static cvar_t	cl_attract = {.name = "cl_attract", .string = "1", .archive = true,
 	.description = "Shows maps while no game is on, behind the menu: each from one of its intermission spots for "
@@ -52,6 +54,7 @@ static const struct
 #define	ATTRACT_SIGNON		15		// seconds a level may take to come up
 #define	ATTRACT_FAILURES	5		// in a row, and attract mode stops
 #define	MAX_ATTRACT_SPOTS	64
+#define	ATTRACT_HISTORY		64		// maps shown, for attract_prev
 
 typedef enum
 {
@@ -78,6 +81,7 @@ typedef struct
 	int			map;
 	char		dir[MAX_QPATH], name[MAX_QPATH];	// its own copies: a scan may move the maps
 	uint64_t	seed;				// picks its spot
+	int			history;			// its place in the history, -1 a map new to it
 	fs_chain_t	*dirchain;			// its game directory's, the search path while it shows
 
 	// what it found
@@ -112,7 +116,18 @@ static struct
 	char			file[MAX_QPATH], message[64];
 	int				activeseq;		// the packet the level came up at
 	int				failures;		// in a row
-} attract = {.current = -1, .last = -1};
+
+	// the maps shown, each with its spot's seed, to go back and forth
+	// through (attract_prev, attract_next): the one shown is at histpos, and
+	// the next is the one after it, or a new one at the end
+	struct
+	{
+		int			map;
+		uint64_t	seed;
+	}				history[ATTRACT_HISTORY];
+	int				histlen, histpos;
+	int				wanthist;		// the history's map to load next, -1 as it goes
+} attract = {.current = -1, .last = -1, .wanthist = -1};
 
 /*
 ===============================================================================
@@ -191,6 +206,8 @@ static bool CL_AttractScan (void)
 	attract.queue = NULL;
 	attract.nummaps = attract.queuepos = 0;
 	attract.last = attract.current = -1;
+	attract.histlen = attract.histpos = 0;
+	attract.wanthist = -1;
 
 	Q_strncpyz (dirs, cl_attract_gamedirs.string, sizeof(dirs));
 	for (dir = dirs ; *dir ; dir = end)
@@ -436,11 +453,19 @@ map has failed
 static void CL_AttractLoadNext (void)
 {
 	attractjob_t	*j;
-	int				map;
+	int				map, history = -1;
 
 	if (attract.loading || attract.next || attract.state == AT_OFF)
 		return;
-	map = CL_AttractPick ();
+
+	// gone back: the one asked for, or the one after the one shown; else a
+	// new one
+	if (attract.wanthist >= 0)
+		history = attract.wanthist;
+	else if (attract.histlen && attract.histpos + 1 < attract.histlen)
+		history = attract.histpos + 1;
+	attract.wanthist = -1;
+	map = history >= 0 ? attract.history[history].map : CL_AttractPick ();
 	if (map < 0)
 	{
 		Con_Printf ("Attract mode: no map of \"%s\" has an info_intermission to be seen from\n",
@@ -456,7 +481,8 @@ static void CL_AttractLoadNext (void)
 	j->map = map;
 	Q_strncpyz (j->dir, attract.maps[map].dir, sizeof(j->dir));
 	Q_strncpyz (j->name, attract.maps[map].name, sizeof(j->name));
-	j->seed = CL_AttractRand ();
+	j->seed = history >= 0 ? attract.history[history].seed : CL_AttractRand ();
+	j->history = history;
 	j->dirchain = FS_OpenDirChain (attract.maps[map].dir, false);
 	j->job.chain = FS_RetainChain (j->dirchain);
 	attract.loading = j;
@@ -510,6 +536,33 @@ static void CL_AttractSetState (attractstate_t state)
 	attract.statetime = host.realtime;
 }
 
+/*
+=================
+CL_AttractRecord
+
+The map coming up in the history: where it was if it came from it, else
+after the one shown, those after that dropped, the oldest if it's full
+=================
+*/
+static void CL_AttractRecord (const attractjob_t *j)
+{
+	if (j->history >= 0 && j->history < attract.histlen)
+	{
+		attract.histpos = j->history;
+		return;
+	}
+	if (attract.histlen)
+		attract.histlen = attract.histpos + 1;
+	if (attract.histlen == ATTRACT_HISTORY)
+	{
+		memmove (attract.history, attract.history + 1, (ATTRACT_HISTORY - 1) * sizeof(attract.history[0]));
+		attract.histlen--;
+	}
+	attract.history[attract.histlen].map = j->map;
+	attract.history[attract.histlen].seed = j->seed;
+	attract.histpos = attract.histlen++;
+}
+
 // whether a game directory's own chain has the file
 static bool CL_AttractHasFile (fs_chain_t *chain, const char *name)
 {
@@ -542,6 +595,7 @@ static void CL_AttractShow (void)
 
 	attract.next = NULL;
 	FS_SetSearchChain (j->dirchain);
+	CL_AttractRecord (j);
 
 	// the directory's progs: id1's NetQuake's, qw's QuakeWorld's (the one
 	// built in without its own); a mod's qwprogs.dat if it has one, a
@@ -872,6 +926,83 @@ void CL_AttractError (void)
 }
 
 // a key pressed: what an error held back can start
+/*
+=================
+CL_AttractNext_f, CL_AttractPrev_f
+
+To the next map, the one after in the history or a new one, or back to the
+one before: faded out at once, to it. Only while a map is shown.
+=================
+*/
+static bool CL_AttractSkippable (void)
+{
+	return attract.state == AT_FADEIN || attract.state == AT_SHOWING;
+}
+
+static void CL_AttractNext_f (void)
+{
+	if (!CL_AttractSkippable ())
+		return;
+	CL_AttractSetState (AT_FADEOUT);
+}
+
+static void CL_AttractPrev_f (void)
+{
+	if (!CL_AttractSkippable () || attract.histpos <= 0)
+		return;
+
+	// what was loading or loaded for after is dropped (a load as it finishes)
+	attract.generation++;
+	attract.loading = NULL;
+	CL_AttractFreeJob (attract.next);
+	attract.next = NULL;
+	attract.wanthist = attract.histpos - 1;
+	CL_AttractSetState (AT_FADEOUT);
+	CL_AttractLoadNext ();
+}
+
+/*
+=================
+CL_AttractKeyEvent
+
+A key while attract mode shows, nothing in front of it, and the player's
+bindings not asked: the left and right arrows go back and on through the
+maps, any other key but a modifier and the console's brings up the menu.
+The release of a key it took is its too. False for a key it leaves alone.
+=================
+*/
+bool CL_AttractKeyEvent (int key, bool down)
+{
+	static bool	taken[256];		// by key number, as the bindings are
+	const char	*binding;
+
+	if (key < 0 || key >= 256)
+		return false;
+	if (!down)
+	{
+		if (!taken[key])
+			return false;
+		taken[key] = false;
+		return true;
+	}
+	if (attract.state == AT_OFF || cls.key_dest != key_game)
+		return false;
+	if (key == K_SHIFT || key == K_CTRL || key == K_ALT)
+		return false;
+	binding = Key_BindingForKey (key);
+	if (binding && !Q_strcasecmp (binding, "toggleconsole"))
+		return false;
+
+	taken[key] = true;
+	if (key == K_LEFTARROW)
+		Cbuf_AddText ("attract_prev\n");
+	else if (key == K_RIGHTARROW)
+		Cbuf_AddText ("attract_next\n");
+	else
+		M_ToggleMenu_f ();
+	return true;
+}
+
 void CL_AttractKey (void)
 {
 	attract.hold = false;
@@ -905,6 +1036,12 @@ void CL_InitAttract (void)
 	Cvar_RegisterVariable (&cl_attract_slimealpha);
 	Cvar_RegisterVariable (&cl_attract_volume);
 	Cvar_AddChangeHook (CL_AttractChanged);
+	Cmd_AddCommand ("attract_next", CL_AttractNext_f,
+		"In attract mode, on to the next map: the one after in those gone back through, or a new one. Right arrow "
+		"in attract mode, whatever it's bound to.");
+	Cmd_AddCommand ("attract_prev", CL_AttractPrev_f,
+		"In attract mode, back to the map before, from the same spot. Left arrow in attract mode, whatever it's "
+		"bound to.");
 	Cmd_AddCommand ("attract", CL_Attract_f,
 		"Starts attract mode (cl_attract) if no game is on: maps of cl_attract_gamedirs shown from their intermission "
 		"spots. It runs at startup when the command line starts nothing, and again when a game ends.");
