@@ -44,6 +44,7 @@ typedef struct surfcache_s
 	int					dlight;
 	int					lightcount;	// light values kept after the texels, 0 if none are yet
 	unsigned			batch;		// the batch of surfaces that last used it (D_BeginSurfaceBatch)
+	int					framedrawn;	// the frame its texels were last drawn for
 	int					size;		// including header
 	unsigned			width;
 	unsigned			height;		// DEBUG only needed for debug

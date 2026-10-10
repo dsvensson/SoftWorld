@@ -318,6 +318,11 @@ CACHE_DRAW: they must be drawn first, as *draw says (D_DrawCacheSurface).
 CACHE_TAKEN: the block, or the room for it, is an earlier surface's of the
 batch, so the batch must be drawn before this surface is prepared again, in
 a new batch.
+
+A block drawn for this frame already is as this frame wants it, dynamic
+light and all: a surface the bands each have a piece of is prepared for each,
+and drawing its lit block again (in a batch of its own, as the block was the
+batch's) would draw the same texels.
 ================
 */
 cacheprep_t D_PrepareCacheSurface (msurface_t *surface, int miplevel, surfcache_t **pcache, drawsurf_t *draw)
@@ -350,6 +355,11 @@ cacheprep_t D_PrepareCacheSurface (msurface_t *surface, int miplevel, surfcache_
 		cache->batch = d_batch;
 		return CACHE_READY;
 	}
+	if (cache && cache->framedrawn == r_framecount && cache->texture == texture)
+	{
+		cache->batch = d_batch;
+		return CACHE_READY;
+	}
 	if (cache && cache->batch == d_batch)
 		return CACHE_TAKEN;
 
@@ -375,6 +385,7 @@ cacheprep_t D_PrepareCacheSurface (msurface_t *surface, int miplevel, surfcache_
 		*pcache = cache;
 	}
 	cache->batch = d_batch;
+	cache->framedrawn = r_framecount;
 
 	if (surface->dlightframe == r_framecount)
 		cache->dlight = 1;
