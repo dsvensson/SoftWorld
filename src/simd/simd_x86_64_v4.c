@@ -99,7 +99,7 @@ static int Simd_V4_ClampScalar (int x, int lo, int hi)
 	return x;
 }
 
-static void Simd_V4_SpanStart (v4_stepper_t *st, const simd_texmap_t *map, int u, int v,
+SIMD_INLINE void Simd_V4_SpanStart (v4_stepper_t *st, const simd_texmap_t *map, int u, int v,
 	int count, int shift)
 {
 	float	du = (float)u, dv = (float)v, z;
@@ -117,7 +117,7 @@ static void Simd_V4_SpanStart (v4_stepper_t *st, const simd_texmap_t *map, int u
 }
 
 // subdivisions first .. first+n-1 (n at most 16), in lanes 0 .. n-1
-static v4_batch_t Simd_V4_SpanBatch (v4_stepper_t *st, int first, int n)
+SIMD_INLINE v4_batch_t Simd_V4_SpanBatch (v4_stepper_t *st, int first, int n)
 {
 	const simd_texmap_t	*map = st->map;
 	float		m1;

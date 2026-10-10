@@ -87,7 +87,7 @@ static inline int32x4_t Simd_M3_Clamp (int32x4_t x, int lo, int hi)
 	return vbslq_s32 (vcgtq_s32 (x, vhi), vhi, vmaxq_s32 (x, vdupq_n_s32 (lo)));
 }
 
-static void Simd_M3_SpanStart (m3_stepper_t *st, const simd_texmap_t *map, int u, int v, int count, int shift)
+SIMD_INLINE void Simd_M3_SpanStart (m3_stepper_t *st, const simd_texmap_t *map, int u, int v, int count, int shift)
 {
 	float	du = (float)u, dv = (float)v, z;
 
@@ -104,7 +104,7 @@ static void Simd_M3_SpanStart (m3_stepper_t *st, const simd_texmap_t *map, int u
 }
 
 // subdivisions first .. first+n-1 (n at most 4), in lanes 0 .. n-1
-static void Simd_M3_SpanBatch (m3_stepper_t *st, int first, int n, m3_batch_t *b)
+SIMD_INLINE void Simd_M3_SpanBatch (m3_stepper_t *st, int first, int n, m3_batch_t *b)
 {
 	const simd_texmap_t	*map = st->map;
 	float		sd[4] = {0, 0, 0, 0}, td[4] = {0, 0, 0, 0}, zd[4] = {1, 1, 1, 1}, m1;

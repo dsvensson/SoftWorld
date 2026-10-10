@@ -104,7 +104,7 @@ static inline __m256i Simd_V3_Clamp (__m256i x, int lo, int hi)
 	return _mm256_blendv_epi8 (_mm256_max_epi32 (x, _mm256_set1_epi32 (lo)), vhi, _mm256_cmpgt_epi32 (x, vhi));
 }
 
-static void Simd_V3_SpanStart (v3_stepper_t *st, const simd_texmap_t *map, int u, int v, int count, int shift)
+SIMD_INLINE void Simd_V3_SpanStart (v3_stepper_t *st, const simd_texmap_t *map, int u, int v, int count, int shift)
 {
 	float	du = (float)u, dv = (float)v, z;
 
@@ -121,7 +121,7 @@ static void Simd_V3_SpanStart (v3_stepper_t *st, const simd_texmap_t *map, int u
 }
 
 // subdivisions first .. first+n-1 (n at most 8), in lanes 0 .. n-1
-static void Simd_V3_SpanBatch (v3_stepper_t *st, int first, int n, v3_batch_t *b)
+SIMD_INLINE void Simd_V3_SpanBatch (v3_stepper_t *st, int first, int n, v3_batch_t *b)
 {
 	const simd_texmap_t	*map = st->map;
 	float		sd[8] = {0}, td[8] = {0}, zd[8] = {1, 1, 1, 1, 1, 1, 1, 1}, m1;

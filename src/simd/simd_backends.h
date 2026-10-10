@@ -24,6 +24,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "simd.h"
 
+// a helper inlined into the kernels that call it: the span steppers were
+// left calls of their own, and the textured spans took a fifth longer for it
+#if defined(_MSC_VER) && !defined(__clang__)
+#define SIMD_INLINE	static __forceinline
+#else
+#define SIMD_INLINE	static inline __attribute__((always_inline))
+#endif
+
 void	Simd_Scalar_ZSpan (float *dest, int count, float zi, float step);
 void	Simd_Scalar_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src, int srcwidth,
 			int u, int v, int count);
