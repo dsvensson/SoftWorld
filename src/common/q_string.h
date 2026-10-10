@@ -49,17 +49,22 @@ void	Q_strncatz (char *dest, const char *src, size_t size);
 // false where it didn't all fit, dest then holding as much of it as does. A
 // path that truncated names no file, so a caller building one takes the false
 // for the miss it is rather than looking the shortened name up.
-// GCC and clang check the format against the arguments, and hold dest to be
-// size bytes written. Neither has an attribute for the truncation GCC looks
+// GCC and clang check the format against the arguments; GCC alone holds a
+// parameter to be a buffer of the size another gives, which catches a size
+// wider than the buffer. Neither has an attribute for the truncation GCC looks
 // for in snprintf itself, which it knows only as a built-in: a call here is
 // checked by its return, not by the compiler.
 #if defined(__GNUC__)
-#define Q_FORMAT(fmt, first)	__attribute__((format (printf, fmt, first), \
-	access (write_only, 1, 2)))
+#define Q_FORMAT(fmt, first)	__attribute__((format (printf, fmt, first)))
 #else
 #define Q_FORMAT(fmt, first)
 #endif
-bool	Q_snprintfz (char *dest, size_t size, const char *fmt, ...) Q_FORMAT(3, 4);
+#if defined(__GNUC__) && !defined(__clang__)
+#define Q_WRITES(buf, size)	__attribute__((access (write_only, buf, size)))
+#else
+#define Q_WRITES(buf, size)
+#endif
+bool	Q_snprintfz (char *dest, size_t size, const char *fmt, ...) Q_FORMAT(3, 4) Q_WRITES(1, 2);
 
 int		Q_atoi (const char *str);
 float	Q_atof (const char *str);

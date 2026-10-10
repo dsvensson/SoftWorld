@@ -3,11 +3,19 @@
 option(SW_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 
 # What GCC checks and clang doesn't, where the codebase is already clean of it.
-# The front end's checks hold however the build is optimized; the middle end's
-# want an optimized one, and are compiled, not linked, so a Release build's LTO
-# link (which carries no warning flags) is not where they are found. Each is
-# asked for rather than looked up by version, as the older GCC a distribution
-# has takes only the ones it knows.
+# Each is asked for rather than looked up by version, as the older GCC a
+# distribution has takes only the ones it knows.
+#
+# The front end's checks hold however the build is optimized. The middle end's
+# (-Wmaybe-uninitialized, -Wformat-truncation, -Warray-bounds, -Wstringop-*,
+# -Wclobbered and the rest of -Wall's own) want an optimized build, and with
+# link-time optimization they run at the link, which carries the flags of the
+# link line and not a target's: not these, and not -Werror. So SW_LTO=ON, a
+# Release build's default, is not where they are found, and putting them on the
+# link instead is no answer -- whole-program inlining makes -Wmaybe-uninitialized
+# alone report scores of times, differently as the inlining changes. The
+# configure that holds the whole set to -Werror is an optimized one without LTO:
+# the linux-warn preset, or -DSW_LTO=OFF.
 set(sw_gnu_warnings
 	# the front end
 	-Wduplicated-cond -Wjump-misses-init -Wenum-int-mismatch -Wformat-signedness

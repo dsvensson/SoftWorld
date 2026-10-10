@@ -132,6 +132,12 @@ ctest --preset linux-v4
 | `linux-v4` | x86-64-v4 (AVX-512) |
 | `linux-v3` | x86-64-v3 (AVX2) |
 | `linux-generic` | baseline x86-64 or arm64, scalar kernels |
+| `linux-warn` | x86-64-v4 with no LTO, where GCC's whole warning set is in force |
+
+GCC's middle-end warnings (`-Wmaybe-uninitialized`, `-Wformat-truncation` and the rest) want an
+optimized build, and link-time optimization defers them to a link that carries no warning flags,
+so the Release builds above never report them. `linux-warn` is the same build without LTO, where
+they are compiled and `-Werror` covers them; `cmake/warnings.cmake` has the detail.
 
 `-debug` build presets build Debug, and `-maps` test presets load the maps as on Windows. The
 tests include `test_present_vulkan`, which draws the shader with Vulkan and compares it with what

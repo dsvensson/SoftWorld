@@ -104,6 +104,12 @@
 			"cacheVariables": { "SW_ARCH": "generic" }
 		},
 		{
+			"name": "linux-warn",
+			"displayName": "GCC's whole warning set, x86-64-v4 (no LTO)",
+			"inherits": "linux",
+			"cacheVariables": { "SW_ARCH": "x86-64-v4", "SW_LTO": "OFF" }
+		},
+		{
 			"name": "web",
 			"displayName": "Emscripten, WebAssembly (from a shell emsdk_env set up)",
 			"inherits": "base",
@@ -132,6 +138,7 @@
 		{ "name": "linux-v3-debug", "configurePreset": "linux-v3", "configuration": "Debug" },
 		{ "name": "linux-generic", "configurePreset": "linux-generic", "configuration": "Release" },
 		{ "name": "linux-generic-debug", "configurePreset": "linux-generic", "configuration": "Debug" },
+		{ "name": "linux-warn", "configurePreset": "linux-warn", "configuration": "Release" },
 		{ "name": "web", "configurePreset": "web", "configuration": "Release" },
 		{ "name": "web-debug", "configurePreset": "web", "configuration": "Debug" }
 	],
@@ -170,6 +177,8 @@
 			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "linux-generic-maps", "configurePreset": "linux-generic", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "include": { "label": "maps" } } },
+		{ "name": "linux-warn", "configurePreset": "linux-warn", "configuration": "Release", "output": { "outputOnFailure": true },
+			"filter": { "exclude": { "label": "maps" } } },
 		{ "name": "web", "configurePreset": "web", "configuration": "Release", "output": { "outputOnFailure": true },
 			"filter": { "exclude": { "label": "maps" } } }
 	]
