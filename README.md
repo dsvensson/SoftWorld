@@ -234,6 +234,9 @@ render:direct_scanout = 2     # fullscreen games scanned out
 general:allow_tearing = true  # vid_vsync 0 tears in fullscreen
 ```
 
+Shift+Escape opens and closes the console from anywhere, the menu and the message line too;
+unlike `` ` ``, it isn't a binding, so nothing can take it away.
+
 In the console, Tab completes a command or variable as far as the candidates agree, and Tab
 again lists them and goes through them (Shift+Tab back). What completing would add shows
 faded after the line; Right or End takes it. The line edits as bash's does: Ctrl+A and Ctrl+E

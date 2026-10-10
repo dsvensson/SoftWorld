@@ -1299,12 +1299,19 @@ void Key_Event (int key, bool down)
 		key_char_eaten = false;
 
 //
-// handle escape specialy, so the user can never unbind it
+// handle escape specialy, so the user can never unbind it; with Shift it
+// opens or closes the console from the game, the menu or the message line,
+// as FTE's does: a way to it that no binding, and no menu, can take away
 //
 	if (key == K_ESCAPE)
 	{
 		if (!down)
 			return;
+		if (shift_down)
+		{
+			Con_ToggleConsole_f ();
+			return;
+		}
 		switch (cls.key_dest)
 		{
 		case key_message:
