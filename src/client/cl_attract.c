@@ -24,7 +24,7 @@ static cvar_t	cl_attract_time = {.name = "cl_attract_time", .string = "12", .arc
 	.description = "Seconds attract mode (cl_attract) shows each map."};
 static cvar_t	cl_attract_fov = {.name = "cl_attract_fov", .string = "110", .archive = true,
 	.description = "Attract mode's (cl_attract) field of view, in place of fov's, 10 to 170."};
-static cvar_t	cl_attract_wateralpha = {.name = "cl_attract_wateralpha", .string = "0.4", .archive = true,
+static cvar_t	cl_attract_wateralpha = {.name = "cl_attract_wateralpha", .string = "0.65", .archive = true,
 	.description = "How opaque attract mode (cl_attract) draws water, 0 to 1, in place of r_wateralpha."};
 static cvar_t	cl_attract_slimealpha = {.name = "cl_attract_slimealpha", .string = "0.6", .archive = true,
 	.description = "How opaque attract mode (cl_attract) draws slime, 0 to 1, in place of r_slimealpha."};
