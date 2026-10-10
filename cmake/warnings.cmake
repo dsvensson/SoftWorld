@@ -1,5 +1,6 @@
-# Warning policy: MSVC /W4, clang-cl /W4 (= -Wall -Wextra) and Apple clang -Wall -Wextra,
-# treated as errors when SW_WARNINGS_AS_ERRORS is on. No per-warning suppressions.
+# Warning policy: MSVC /W4, clang-cl /W4 (= -Wall -Wextra), and GCC and clang
+# (Apple's and Emscripten's too) -Wall -Wextra -Wshadow, treated as errors when
+# SW_WARNINGS_AS_ERRORS is on. No per-warning suppressions.
 option(SW_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 
 # What GCC checks and clang doesn't, where the codebase is already clean of it.
@@ -47,7 +48,10 @@ function(sw_set_warnings target)
 			target_compile_options(${target} PRIVATE /WX)
 		endif()
 	else()
-		target_compile_options(${target} PRIVATE -Wall -Wextra)
+		# -Wshadow: what MSVC's /W4 has as C4459 (a declaration hiding a
+		# global), and GCC and clang only with the rest of the shadowing; the
+		# codebase is clean of it all
+		target_compile_options(${target} PRIVATE -Wall -Wextra -Wshadow)
 		if(SW_GNU_WARNINGS)
 			target_compile_options(${target} PRIVATE ${SW_GNU_WARNINGS})
 		endif()
