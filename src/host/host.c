@@ -151,20 +151,23 @@ server just sent it
 */
 void Host_Frame (double time)
 {
+	double	step;
+
 	if (setjmp (host_abort))
 		return;			// something bad happened, or the server disconnected
 	host_abort_set = true;
 
-	if (host_framerate.value > 0)
-		time = host_framerate.value;
-	host.realtime += time;
+	// the step the frame runs, which host_framerate fixes; longjmp leaves the
+	// argument indeterminate were it the one assigned to
+	step = host_framerate.value > 0 ? host_framerate.value : time;
+	host.realtime += step;
 
 	Sys_SendKeyEvents ();
 	IN_Commands ();			// gamepad buttons
 	Cbuf_Execute ();
 
 	if (SV_Active ())
-		SV_Frame (time, !CL_KeysInGame ());
+		SV_Frame (step, !CL_KeysInGame ());
 
 	CL_Frame ();
 }

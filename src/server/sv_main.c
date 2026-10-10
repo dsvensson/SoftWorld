@@ -830,7 +830,7 @@ static void SVC_DirectConnect (void)
 			if (*q > 31 && *q <= 127)
 				*p++ = *q;
 	} else
-		strncpy (info, userinfo, sizeof(info)-1);
+		Q_strncpyz (info, userinfo, sizeof(info));
 
 	// if there is allready a slot for this ip, drop it
 	for (i=0,cl=svs.clients ; i<MAX_CLIENTS ; i++,cl++)

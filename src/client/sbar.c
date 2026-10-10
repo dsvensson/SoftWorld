@@ -1207,8 +1207,7 @@ static void Sbar_TeamOverlay (void)
 		Draw_String ( x, y, num);
 
 	// draw team
-		team[4] = 0;
-		strncpy (team, tm->team, 4);
+		Q_strncpyz (team, tm->team, sizeof(team));
 		Draw_String (x + 104, y, team);
 
 	// draw total
@@ -1376,8 +1375,7 @@ static void Sbar_DeathmatchOverlay (int start)
 		// team
 		if (teamplay)
 		{
-			team[4] = 0;
-			strncpy (team, Info_ValueForKey(s->userinfo, "team"), 4);
+			Q_strncpyz (team, Info_ValueForKey(s->userinfo, "team"), sizeof(team));
 			Draw_String (x+152, y, team);
 		}
 
@@ -1486,8 +1484,7 @@ static void Sbar_MiniDeathmatchOverlay (void)
 	// team
 		if (teamplay)
 		{
-			team[4] = 0;
-			strncpy (team, Info_ValueForKey(s->userinfo, "team"), 4);
+			Q_strncpyz (team, Info_ValueForKey(s->userinfo, "team"), sizeof(team));
 			Draw_String (x+48, y, team);
 		}
 
@@ -1519,8 +1516,7 @@ static void Sbar_MiniDeathmatchOverlay (void)
 		tm = teams + k;
 
 	// draw pings
-		team[4] = 0;
-		strncpy (team, tm->team, 4);
+		Q_strncpyz (team, tm->team, sizeof(team));
 		Draw_String (x, y, team);
 
 	// draw total

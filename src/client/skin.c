@@ -85,7 +85,7 @@ void Skin_Find (player_info_t *sc)
 	numskins++;
 
 	memset (skin, 0, sizeof(*skin));
-	strncpy(skin->name, skinname, sizeof(skin->name) - 1);
+	Q_strncpyz (skin->name, skinname, sizeof(skin->name));
 }
 
 
