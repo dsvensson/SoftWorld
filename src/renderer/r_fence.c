@@ -617,11 +617,52 @@ R_DrawTranslucent
 After the models: the translucent surfaces and models, the farthest first
 ================
 */
-static int R_TranslucentOrder (const void *a, const void *b)
+// the list the farthest first, those as far in the order they were added: a
+// radix sort of the distances' bits, two passes of 11 and one of 10, each
+// keeping the order of equal digits. A distance is a sum of squares, never
+// negative, so its bits order as it does, and inverted they put the
+// farthest first.
+static void R_SortTranslucent (void)
 {
-	float	da = ((const translucent_t *)a)->dist, db = ((const translucent_t *)b)->dist;
+	static translucent_t	*scratch;
+	static int				maxscratch;
+	static const int		shifts[3] = {0, 11, 22};
+	translucent_t			*from = r_translucent, *to, *swap;
+	uint32_t				key;
+	int						count[2048], pass, i, sum, c, bits;
 
-	return da < db ? 1 : da > db ? -1 : 0;
+	if (r_numtranslucent > maxscratch)
+	{
+		maxscratch = r_maxtranslucent;
+		scratch = Mem_Realloc (scratch, (size_t)maxscratch * sizeof(*scratch));
+	}
+	to = scratch;
+	for (pass = 0 ; pass < 3 ; pass++)
+	{
+		bits = pass < 2 ? 11 : 10;
+		memset (count, 0, sizeof(count));
+		for (i = 0 ; i < r_numtranslucent ; i++)
+		{
+			memcpy (&key, &from[i].dist, sizeof(key));
+			count[(~key >> shifts[pass]) & ((1u << bits) - 1)]++;
+		}
+		for (i = 0, sum = 0 ; i < (1 << bits) ; i++)
+		{
+			c = count[i];
+			count[i] = sum;
+			sum += c;
+		}
+		for (i = 0 ; i < r_numtranslucent ; i++)
+		{
+			memcpy (&key, &from[i].dist, sizeof(key));
+			to[count[(~key >> shifts[pass]) & ((1u << bits) - 1)]++] = from[i];
+		}
+		swap = from;
+		from = to;
+		to = swap;
+	}
+	if (from != r_translucent)		// an odd number of passes ends in the scratch
+		memcpy (r_translucent, from, (size_t)r_numtranslucent * sizeof(*r_translucent));
 }
 
 void R_DrawTranslucent (void)
@@ -631,7 +672,7 @@ void R_DrawTranslucent (void)
 
 	if (!r_numtranslucent)
 		return;
-	qsort (r_translucent, (size_t)r_numtranslucent, sizeof(*r_translucent), R_TranslucentOrder);
+	R_SortTranslucent ();
 	R_PrepareItems (r_numtranslucent);
 	for (i = 0, t = r_translucent ; i < r_numtranslucent ; i++, t++)
 	{
