@@ -30,7 +30,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 
 typedef struct {
-	vrect_t	rect;
 	int		width;
 	int		height;
 	byte	*ptexbytes;
@@ -433,6 +432,10 @@ What the recorded calls draw, into vid.hud
 
 static hudpixel_t	draw_pal[256];		// the palette, opaque
 
+// the layer's lines a thread draws, top to bottom - 1: Draw_Flush shares the
+// lines out, and every writer below draws only what is on its thread's
+static thread_local int	draw_cliptop, draw_clipbottom = INT_MAX;
+
 /*
 ================
 Draw_Image
@@ -445,20 +448,30 @@ static void Draw_Image (int x, int y, const byte *src, int srcrow, int w, int h,
 	int transparent)
 {
 	int			k = (int)vid.scale;
-	int			v, j;
-	hudpixel_t	*dest;
+	int			v, j, first, end;
+	hudpixel_t	*dest, *drawn;
 
 	for (v=0 ; v<h ; v++, src += srcrow)
 	{
-		dest = vid.hud + (y+v)*k*vid.rowpixels + x*k;
-		simd_expand8 (dest, src, pal, w, k, transparent);
-		// the other rows of the block: copies, or drawn again around transparent texels
-		for (j=1 ; j<k ; j++)
+		// the block's lines on the thread's
+		first = (y+v)*k;
+		end = first + k;
+		if (first < draw_cliptop)
+			first = draw_cliptop;
+		if (end > draw_clipbottom)
+			end = draw_clipbottom;
+		if (first >= end)
+			continue;
+		drawn = vid.hud + first*vid.rowpixels + x*k;
+		simd_expand8 (drawn, src, pal, w, k, transparent);
+		// the other lines of the block: copies, or drawn again around transparent texels
+		for (j=first+1 ; j<end ; j++)
 		{
+			dest = vid.hud + j*vid.rowpixels + x*k;
 			if (transparent < 0)
-				memcpy (dest + j*vid.rowpixels, dest, (size_t)w * k * sizeof(hudpixel_t));
+				memcpy (dest, drawn, (size_t)w * k * sizeof(hudpixel_t));
 			else
-				simd_expand8 (dest + j*vid.rowpixels, src, pal, w, k, transparent);
+				simd_expand8 (dest, src, pal, w, k, transparent);
 		}
 	}
 }
@@ -482,6 +495,8 @@ static void Draw_Block (int x, int y, int w, int h, hudpixel_t p)
 	y1 = y + h > (int)vid.conheight ? (int)vid.conheight : y + h;
 	for (v=y0*k ; v<y1*k ; v++)
 	{
+		if (v < draw_cliptop || v >= draw_clipbottom)
+			continue;
 		dest = vid.hud + v*vid.rowpixels;
 		for (u=x0*k ; u<x1*k ; u++)
 			dest[u] = p;
@@ -529,6 +544,8 @@ static void Draw_BlendNow (int x, int y, int w, int h, hudpixel_t p)
 	// premultiplied: a channel is at most alpha, and what is kept at most the rest
 	for (row=y*k ; row<(y+h)*k ; row++)
 	{
+		if (row < draw_cliptop || row >= draw_clipbottom)
+			continue;
 		dest = vid.hud + row*vid.rowpixels + x*k;
 		for (u=0 ; u<w*k ; u++)
 			dest[u] = p + (hudpixel_t)(kept[dest[u] & 255] | kept[(dest[u] >> 8) & 255] << 8
@@ -553,6 +570,8 @@ static void Draw_ImageHalf (int x, int y, const byte *src, int srcrow, int w, in
 	for (v=0 ; v<h ; v++, src += srcrow)
 		for (j=0 ; j<k ; j++)
 		{
+			if ((y+v)*k + j < draw_cliptop || (y+v)*k + j >= draw_clipbottom)
+				continue;
 			dest = vid.hud + ((y+v)*k + j)*vid.rowpixels + x*k;
 			for (u=0 ; u<w ; u++)
 			{
@@ -581,8 +600,9 @@ again
 
 static const hudpixel_t *Draw_TintPalette (unsigned rgb)
 {
-	static struct { unsigned rgb; hudpixel_t pal[256]; }	tints[DRAW_TINTS];
-	static int		used, next;
+	// each thread's, as Draw_Flush shares the lines out
+	static thread_local struct { unsigned rgb; hudpixel_t pal[256]; }	tints[DRAW_TINTS];
+	static thread_local int		used, next;
 	unsigned		r, g, b;
 	int				i, j;
 
@@ -733,20 +753,15 @@ static void Draw_TileClearNow (int x, int y, int w, int h)
 	byte			*psrc;
 	vrect_t			vr;
 
-	r_rectdesc.rect.x = x;
-	r_rectdesc.rect.y = y;
-	r_rectdesc.rect.width = w;
-	r_rectdesc.rect.height = h;
-
-	vr.y = r_rectdesc.rect.y;
-	height = r_rectdesc.rect.height;
+	vr.y = y;
+	height = h;
 
 	tileoffsety = vr.y % r_rectdesc.height;
 
 	while (height > 0)
 	{
-		vr.x = r_rectdesc.rect.x;
-		width = r_rectdesc.rect.width;
+		vr.x = x;
+		width = w;
 
 		if (tileoffsety != 0)
 			vr.height = r_rectdesc.height - tileoffsety;
@@ -815,6 +830,10 @@ static void Draw_QCPicNow (const qpic_t *pic, const int *arg)
 		px1 = (x+w)*k;
 	if (py1 > (y+h)*k)
 		py1 = (y+h)*k;
+	if (py0 < draw_cliptop)
+		py0 = draw_cliptop;
+	if (py1 > draw_clipbottom)
+		py1 = draw_clipbottom;
 	for (py=py0 ; py<py1 ; py++)
 	{
 		ty = sy + (int)((int64_t)(py - y*k) * sh / (h*k));
@@ -842,8 +861,8 @@ static void Draw_QCPicNow (const qpic_t *pic, const int *arg)
 // and row's texel found once, as a full-screen image is drawn every frame
 static void Draw_QCImageNow (const drawimage_t *img, const int *arg)
 {
-	static int	*cols;
-	static int	numcols;
+	static thread_local int	*cols;		// each thread's, as Draw_Flush shares the lines out
+	static thread_local int	numcols;
 	int			k = (int)vid.scale;
 	int			x = (int16_t)(arg[0] & 0xffff), y = arg[0] >> 16;
 	int			w = arg[1] & 0xffff, h = arg[1] >> 16;
@@ -863,6 +882,10 @@ static void Draw_QCImageNow (const drawimage_t *img, const int *arg)
 		px1 = (x+w)*k;
 	if (py1 > (y+h)*k)
 		py1 = (y+h)*k;
+	if (py0 < draw_cliptop)
+		py0 = draw_cliptop;
+	if (py1 > draw_clipbottom)
+		py1 = draw_clipbottom;
 	if (px1 <= px0 || py1 <= py0)
 		return;
 	if (px1 - px0 > numcols)
@@ -958,6 +981,12 @@ Draw_Flush
 The frame's 2D into vid.hud, unless it is the last frame's
 ================
 */
+#define DRAW_JOB_LINES	16		// the layer's lines a thread draws at a time
+
+static int	draw_flushing;			// the calls Draw_FlushLines draws
+
+static void Draw_FlushLines (void *ctx, int index);
+
 void Draw_Flush (void)
 {
 	const drawcmd_t	*c;
@@ -978,7 +1007,38 @@ void Draw_Flush (void)
 
 	for (i=0 ; i<256 ; i++)
 		draw_pal[i] = HUD_RGBA (d_palrgb[i][0], d_palrgb[i][1], d_palrgb[i][2], 255);
-	memset (vid.hud, 0, (size_t)vid.rowpixels * vid.height * sizeof(hudpixel_t));
+
+	// the console's background puts the version in its pic as it's drawn, so
+	// a frame with it is drawn on this thread
+	for (i=0, c = draw_calls[now] ; i<draw_numcalls[now] ; i++, c++)
+		if (c->op == DC_CONBACK)
+			break;
+	draw_flushing = now;
+	if (i < draw_numcalls[now])
+		Draw_FlushLines (NULL, -1);
+	else
+		Sys_Parallel (((int)vid.height + DRAW_JOB_LINES - 1) / DRAW_JOB_LINES, Draw_FlushLines, NULL);
+}
+
+/*
+================
+Draw_FlushLines
+
+The calls' lines index * DRAW_JOB_LINES on, cleared and drawn, on a worker
+thread; index -1 all of them
+================
+*/
+static void Draw_FlushLines (void *ctx, int index)
+{
+	const drawcmd_t	*c;
+	int				now = draw_flushing, top, bottom, i;
+
+	(void)ctx;
+	top = index < 0 ? 0 : index * DRAW_JOB_LINES;
+	bottom = index < 0 || top + DRAW_JOB_LINES > (int)vid.height ? (int)vid.height : top + DRAW_JOB_LINES;
+	memset (vid.hud + top*vid.rowpixels, 0, (size_t)vid.rowpixels * (size_t)(bottom - top) * sizeof(hudpixel_t));
+	draw_cliptop = top;
+	draw_clipbottom = bottom;
 
 	for (i=0, c = draw_calls[now] ; i<draw_numcalls[now] ; i++, c++)
 	{
@@ -1019,6 +1079,8 @@ void Draw_Flush (void)
 			break;
 		}
 	}
+	draw_cliptop = 0;
+	draw_clipbottom = INT_MAX;
 }
 
 /*
