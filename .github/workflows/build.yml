@@ -268,8 +268,16 @@ jobs:
         include:
           - arch: x86-64-v4
             preset: linux-v4
+            ship: true
           - arch: x86-64-v3
             preset: linux-v3
+            ship: true
+          # GCC's middle-end warnings, which the builds above leave to an LTO
+          # link that carries no warning flags (cmake/warnings.cmake). Built to
+          # be held to -Werror and nothing else: it ships and tests nothing,
+          # and SW_WEBRTC=ON below is what puts net_rtc.c in front of it.
+          - arch: warnings
+            preset: linux-warn
 
     env:
       FTEQCC: ${{ github.workspace }}/fteqcc/fteqcc
@@ -284,6 +292,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Shareware
+        if: matrix.ship
         uses: actions/cache/restore@v6
         with:
           path: shareware
@@ -340,6 +349,7 @@ jobs:
 
       # as for Windows: the runners' CPUs all run AVX2, not all AVX-512
       - name: CPU
+        if: matrix.ship
         id: cpu
         run: |
           if build/$PRESET/Release/cpu_supported; then runs=true; else runs=false; fi
@@ -348,18 +358,20 @@ jobs:
       # without a GPU, present_vulkan is skipped. The shareware by the working
       # directory: github.workspace is the host's path, not the container's
       - name: Test
-        if: steps.cpu.outputs.runs == 'true'
+        if: matrix.ship && steps.cpu.outputs.runs == 'true'
         run: |
           ctest --preset $PRESET
           SW_BASEDIR="$PWD/shareware" ctest --preset $PRESET-maps
 
       # tarred here: the artifact's own zip loses the executable bit
       - name: Package
+        if: matrix.ship
         run: |
           mkdir -p dist
           tar -C build/$PRESET/Release -czf dist/SoftWorld-Linux-${{ matrix.arch }}.tar.gz softworld
 
       - name: Upload
+        if: matrix.ship
         uses: actions/upload-artifact@v7
         with:
           name: SoftWorld-Linux-${{ matrix.arch }}.tar.gz
@@ -368,7 +380,7 @@ jobs:
           if-no-files-found: error
 
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: matrix.ship && startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/release.sh dist/SoftWorld-Linux-${{ matrix.arch }}.tar.gz
