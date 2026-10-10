@@ -131,6 +131,11 @@ extern vec3_t	r_pright, r_pup, r_ppn;
 
 void D_PolysetDraw (void);
 void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts);
+// the models drawn between them are filled on the worker threads, at the end
+// or a flush, as they would have been drawn (d_polyse.c); on is whether to
+void D_BeginAliasBatch (bool on);
+void D_FlushAliasBatch (void);
+void D_EndAliasBatch (void);
 void D_DrawParticle (particle_t *pparticle);
 void D_DrawSprite (void);
 void D_EndParticles (void);

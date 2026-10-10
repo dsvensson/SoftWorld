@@ -912,6 +912,7 @@ static void R_DrawEntitiesOnList (void)
 	if (!r_drawentities.value)
 		return;
 
+	D_BeginAliasBatch (r_numthreads > 1);
 	for (i=0 ; i<(*r_scene.numvisedicts) ; i++)
 	{
 		currententity = &r_scene.visedicts[i];
@@ -919,6 +920,7 @@ static void R_DrawEntitiesOnList (void)
 		switch (currententity->model->type)
 		{
 		case mod_sprite:
+			D_FlushAliasBatch ();		// drawn at once, over the models before it
 			VectorCopy (currententity->origin, r_entorigin);
 			VectorSubtract (r_origin, r_entorigin, modelorg);
 			R_DrawSprite ();
@@ -935,6 +937,7 @@ static void R_DrawEntitiesOnList (void)
 			break;
 		}
 	}
+	D_EndAliasBatch ();
 }
 
 /*
@@ -1025,7 +1028,11 @@ static void R_DrawViewModel (void)
 		aliasyscale = yscale * r_aliasuvscale;
 	}
 
+	// as big as it is in the view, and the last model drawn: its rows filled
+	// on all the threads
+	D_BeginAliasBatch (r_numthreads > 1);
 	R_AliasDrawModel (&r_viewlighting);
+	D_EndAliasBatch ();
 
 	xscale = saved[0];
 	yscale = saved[1];

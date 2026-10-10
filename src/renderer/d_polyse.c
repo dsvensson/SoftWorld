@@ -75,6 +75,8 @@ static int				r_sstepx, r_tstepx, r_lstepy, r_sstepy, r_tstepy;
 static int				r_zistepx, r_zistepy;
 static int				d_aspancount, d_countextrastep;
 
+static int				d_atoprow;		// the triangle's top row, a_spans[0]'s
+
 static spanpackage_t			*a_spans;
 static spanpackage_t			*d_pedgespanpackage;
 static int				ystart;
@@ -149,17 +151,177 @@ static void D_PolysetScanLeftEdge (int height);
 
 
 /*
+==============================================================================
+
+ALIAS BATCHES
+
+Between D_BeginAliasBatch and D_EndAliasBatch the triangles are walked as ever,
+in order, but a span or a pixel isn't drawn: it is kept in the strip of rows it
+falls in, and the strips are drawn on the worker threads when the batch is
+flushed. A strip draws what it was given in the order it was given it, and no
+pixel is in two strips, so every pixel ends as it would have drawn at once:
+the depth tests, the overdraw and the ties alike. What can't wait (a
+translucent span, which reads the frame) flushes the batch and draws at once.
+
+==============================================================================
+*/
+
+// thin, as a view model is in few of the view's rows and Sys_Parallel hands
+// the strips out as threads come free
+#define D_STRIP_ROWS	8
+
+typedef struct
+{
+	pixel_t		*pdest;
+	float		*pz;
+	const byte	*ptex;			// NULL for a single pixel
+	union
+	{
+		struct
+		{
+			int		sfrac, tfrac, light, zi, count;
+			int		map;		// of d_amaps
+		} span;
+		struct
+		{
+			pixel_t	color;
+			float	z;
+		} pixel;
+	};
+} d_aliasdraw_t;
+
+typedef struct
+{
+	d_aliasdraw_t	*draws;
+	int				numdraws, maxdraws;
+} d_aliasstrip_t;
+
+static d_aliasstrip_t	*d_strips;
+static int				d_numstrips;
+static int				*d_busystrips;		// those with something to draw
+static int				d_numbusy;
+static simd_aliasmap_t	*d_amaps;			// the triangles' the spans draw with
+static int				d_numamaps, d_maxamaps;
+static bool				d_batching;
+
+/*
 ================
 D_SetPolysetSize
 
 A span for every scan line, one to mark the end and one more because of
-cache line pretouching
+cache line pretouching; and a batch's strips of the lines
 ================
 */
 void D_SetPolysetSize (int height)
 {
+	int		i;
+
 	Mem_Free (a_spans);
 	a_spans = Mem_Calloc ((size_t)height + 3, sizeof(*a_spans));
+
+	for (i=0 ; i<d_numstrips ; i++)
+		Mem_Free (d_strips[i].draws);
+	Mem_Free (d_strips);
+	Mem_Free (d_busystrips);
+	d_numstrips = (height + D_STRIP_ROWS - 1) / D_STRIP_ROWS;
+	d_strips = Mem_Calloc ((size_t)d_numstrips, sizeof(*d_strips));
+	d_busystrips = Mem_Alloc ((size_t)d_numstrips * sizeof(*d_busystrips));
+	d_numbusy = 0;
+	d_numamaps = 0;
+}
+
+/*
+================
+D_AliasDraw
+
+Room for what a batch draws on line v, at the end of its strip's
+================
+*/
+static d_aliasdraw_t *D_AliasDraw (int v)
+{
+	d_aliasstrip_t	*s = &d_strips[v / D_STRIP_ROWS];
+
+	if (!s->numdraws)
+		d_busystrips[d_numbusy++] = (int)(s - d_strips);
+	if (s->numdraws == s->maxdraws)
+	{
+		s->maxdraws = s->maxdraws ? s->maxdraws * 2 : 256;
+		s->draws = Mem_Realloc (s->draws, (size_t)s->maxdraws * sizeof(*s->draws));
+	}
+	return &s->draws[s->numdraws++];
+}
+
+/*
+================
+D_AliasMap
+
+A triangle's map kept for the batch's spans, by its index
+================
+*/
+static int D_AliasMap (const simd_aliasmap_t *map)
+{
+	if (d_numamaps == d_maxamaps)
+	{
+		d_maxamaps = d_maxamaps ? d_maxamaps * 2 : 256;
+		d_amaps = Mem_Realloc (d_amaps, (size_t)d_maxamaps * sizeof(*d_amaps));
+	}
+	d_amaps[d_numamaps] = *map;
+	return d_numamaps++;
+}
+
+/*
+================
+D_DrawAliasStrip
+
+A strip's spans and pixels, on a worker thread, in the order they were met
+================
+*/
+static void D_DrawAliasStrip (void *ctx, int index)
+{
+	d_aliasstrip_t	*s = &d_strips[((int *)ctx)[index]];
+	d_aliasdraw_t	*d;
+	int				i;
+
+	for (i=0, d=s->draws ; i<s->numdraws ; i++, d++)
+	{
+		if (d->ptex)
+			simd_aliasspan (d->pdest, d->pz, d->ptex, d->span.sfrac, d->span.tfrac, d->span.light, d->span.zi,
+				d->span.count, &d_amaps[d->span.map]);
+		else if (d->pixel.z >= *d->pz)
+		{
+			*d->pz = d->pixel.z;
+			*d->pdest = d->pixel.color;
+		}
+	}
+	s->numdraws = 0;
+}
+
+/*
+================
+D_BeginAliasBatch / D_FlushAliasBatch / D_EndAliasBatch
+
+on: the models drawn from here are batched; with one thread to draw them,
+keeping them would only cost
+================
+*/
+void D_BeginAliasBatch (bool on)
+{
+	d_batching = on && d_numstrips > 0;
+}
+
+void D_FlushAliasBatch (void)
+{
+	if (!d_numbusy)
+		return;
+	Sys_Parallel (d_numbusy, D_DrawAliasStrip, d_busystrips);
+	d_numbusy = 0;
+	d_numamaps = 0;
+}
+
+void D_EndAliasBatch (void)
+{
+	D_FlushAliasBatch ();
+	d_batching = false;
 }
 
 /*
@@ -224,13 +386,43 @@ static void D_AliasPut (pixel_t *dest, pixel_t color, float zi)
 
 /*
 ================
+D_AliasPoint
+
+A pixel of a model at u, v, depth tested at z: kept in the batch, or drawn
+================
+*/
+static void D_AliasPoint (int u, int v, float z, pixel_t color)
+{
+	pixel_t			*dest = &d_viewbuffer[d_scantable[v] + u];
+	float			*zbuf = zspantable[v] + u;
+	d_aliasdraw_t	*d;
+
+	if (d_batching && d_alpha >= 256)
+	{
+		d = D_AliasDraw (v);
+		d->pdest = dest;
+		d->pz = zbuf;
+		d->ptex = NULL;
+		d->pixel.color = color;
+		d->pixel.z = z;
+		return;
+	}
+	D_FlushAliasBatch ();		// a blend reads what the batch would draw
+	if (z >= *zbuf)
+	{
+		*zbuf = z;
+		D_AliasPut (dest, color, z);
+	}
+}
+
+/*
+================
 D_PolysetDrawFinalVerts
 ================
 */
 void D_PolysetDrawFinalVerts (finalvert_t *fv, int nverts)
 {
-	int		i;
-	float	z, *zbuf;
+	int		i, pix;
 
 	for (i=0 ; i<nverts ; i++, fv++)
 	{
@@ -239,18 +431,10 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int nverts)
 		if ((fv->v[0] < r_refdef.vrectright) &&
 			(fv->v[1] < r_refdef.vrectbottom))
 		{
-			z = fv->v[5] * ALIAS_ZI_TO_FLOAT;
-			zbuf = zspantable[fv->v[1]] + fv->v[0];
-			if (z >= *zbuf)
-			{
-				int		pix = D_SkinTexel (fv->v[2], fv->v[3]);
-
-				if (D_SkinHole (pix))
-					continue;
-				*zbuf = z;
-				D_AliasPut (&d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]],
-					D_AliasPixel (r_affinetridesc.skinremap[pix], fv->v[4]), z);
-			}
+			pix = D_SkinTexel (fv->v[2], fv->v[3]);
+			if (!D_SkinHole (pix))
+				D_AliasPoint (fv->v[0], fv->v[1], fv->v[5] * ALIAS_ZI_TO_FLOAT,
+					D_AliasPixel (r_affinetridesc.skinremap[pix], fv->v[4]));
 		}
 	}
 }
@@ -395,7 +579,6 @@ static void D_PolysetRecursiveTriangle (int *lp1, int *lp2, int *lp3)
 	int		*temp;
 	int		d, pix;
 	int		new[6];
-	float	zf, *zbuf;
 
 	d = lp2[0] - lp1[0];
 	if (d < -1 || d > 1)
@@ -449,15 +632,10 @@ split:
 		goto nodraw;
 
 
-	zf = new[5] * ALIAS_ZI_TO_FLOAT;
-	zbuf = zspantable[new[1]] + new[0];
 	pix = D_SkinTexel (new[2], new[3]);
-	if (zf >= *zbuf && !D_SkinHole (pix))
-	{
-		*zbuf = zf;
-		D_AliasPut (&d_viewbuffer[d_scantable[new[1]] + new[0]],
-			D_AliasPixel (r_affinetridesc.skinremap[pix], d_tlight), zf);
-	}
+	if (!D_SkinHole (pix))
+		D_AliasPoint (new[0], new[1], new[5] * ALIAS_ZI_TO_FLOAT,
+			D_AliasPixel (r_affinetridesc.skinremap[pix], d_tlight));
 
 nodraw:
 // recursively continue
@@ -699,6 +877,8 @@ static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 		.tint = {r_affinetridesc.tint[0], r_affinetridesc.tint[1], r_affinetridesc.tint[2]},
 		.holey = r_affinetridesc.holey,
 	};
+	int				mapindex = -1;		// the map's in the batch, once a span is kept
+	d_aliasdraw_t	*d;
 
 	do
 	{
@@ -715,9 +895,29 @@ static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 			d_aspancount += ubasestep;
 		}
 
-		if (lcount && d_alpha < 256)
+		if (!lcount)
+			;
+		else if (d_alpha < 256)
+		{
+			D_FlushAliasBatch ();		// it blends with what the batch would draw
 			D_PolysetBlendSpan (pspanpackage, lcount, &map);
-		else if (lcount)
+		}
+		else if (d_batching)
+		{
+			if (mapindex < 0)
+				mapindex = D_AliasMap (&map);
+			d = D_AliasDraw (d_atoprow + (int)(pspanpackage - a_spans));
+			d->pdest = pspanpackage->pdest;
+			d->pz = pspanpackage->pz;
+			d->ptex = pspanpackage->ptex;
+			d->span.sfrac = pspanpackage->sfrac;
+			d->span.tfrac = pspanpackage->tfrac;
+			d->span.light = pspanpackage->light;
+			d->span.zi = pspanpackage->zi;
+			d->span.count = lcount;
+			d->span.map = mapindex;
+		}
+		else
 			simd_aliasspan (pspanpackage->pdest, pspanpackage->pz, pspanpackage->ptex, pspanpackage->sfrac,
 				pspanpackage->tfrac, pspanpackage->light, pspanpackage->zi, lcount, &map);
 
@@ -764,6 +964,7 @@ static void D_RasterizeAliasPolySmooth (void)
 	d_pedgespanpackage = a_spans;
 
 	ystart = plefttop[1];
+	d_atoprow = ystart;		// a_spans go on down from it, both left edges'
 	d_aspancount = plefttop[0] - prighttop[0];
 
 	d_ptex = (byte *)r_affinetridesc.pskin + (plefttop[2] >> 16) +
