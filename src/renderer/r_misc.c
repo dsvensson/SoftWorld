@@ -233,6 +233,13 @@ R_TransformFrustum
 */
 void R_TransformFrustum (void)
 {
+	R_ViewFrustum (vright, vup, vpn, modelorg, view_clipplanes);
+}
+
+// the four planes of the view from org with those vectors, their normals and
+// distances; any thread's
+void R_ViewFrustum (const vec3_t right, const vec3_t up, const vec3_t forward, const vec3_t org, clipplane_t planes[4])
+{
 	int		i;
 	vec3_t	v, v2;
 	
@@ -242,13 +249,13 @@ void R_TransformFrustum (void)
 		v[1] = -screenedge[i].normal[0];
 		v[2] = screenedge[i].normal[1];
 
-		v2[0] = v[1]*vright[0] + v[2]*vup[0] + v[0]*vpn[0];
-		v2[1] = v[1]*vright[1] + v[2]*vup[1] + v[0]*vpn[1];
-		v2[2] = v[1]*vright[2] + v[2]*vup[2] + v[0]*vpn[2];
+		v2[0] = v[1]*right[0] + v[2]*up[0] + v[0]*forward[0];
+		v2[1] = v[1]*right[1] + v[2]*up[1] + v[0]*forward[1];
+		v2[2] = v[1]*right[2] + v[2]*up[2] + v[0]*forward[2];
 
-		VectorCopy (v2, view_clipplanes[i].normal);
+		VectorCopy (v2, planes[i].normal);
 
-		view_clipplanes[i].dist = DotProduct (modelorg, v2);
+		planes[i].dist = DotProduct (org, v2);
 	}
 }
 

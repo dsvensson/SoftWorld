@@ -212,6 +212,7 @@ void R_DrawAliasEntity (void);
 void R_RotateBmodel (void);
 void R_TransformFrustum (void);
 void R_EntityViewVectors (const entity_t *ent, vec3_t right, vec3_t up, vec3_t forward);
+void R_EntityModelView (const entity_t *ent, vec3_t org, vec3_t right, vec3_t up, vec3_t forward);
 
 void R_LightDataInit (void);
 void R_LoadLightData (model_t *mod, bspfile_t *bsp);
@@ -302,6 +303,7 @@ typedef struct clipplane_s
 } clipplane_t;
 
 extern	clipplane_t	view_clipplanes[4];
+void R_ViewFrustum (const vec3_t right, const vec3_t up, const vec3_t forward, const vec3_t org, clipplane_t planes[4]);
 
 //=============================================================================
 // the bands of the view

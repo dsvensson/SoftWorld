@@ -179,6 +179,30 @@ void R_EntityViewVectors (const entity_t *ent, vec3_t right, vec3_t up, vec3_t f
 
 /*
 ================
+R_EntityModelView
+
+The view's origin and vectors in a brush entity's model space, as
+R_DrawSurfaceAfter and R_RotateBmodel set modelorg and turn the view to it,
+from the world's view; any thread's
+================
+*/
+void R_EntityModelView (const entity_t *ent, vec3_t org, vec3_t right, vec3_t up, vec3_t forward)
+{
+	float	rotation[3][3];
+
+	R_EntityRotation (ent, rotation);
+	VectorSubtract (r_origin, ent->origin, org);
+	R_EntityRotate (rotation, org);
+	VectorCopy (base_vright, right);
+	VectorCopy (base_vup, up);
+	VectorCopy (base_vpn, forward);
+	R_EntityRotate (rotation, right);
+	R_EntityRotate (rotation, up);
+	R_EntityRotate (rotation, forward);
+}
+
+/*
+================
 R_RotateBandBmodel
 
 The band's view into its entity's model space
