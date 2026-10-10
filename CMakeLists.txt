@@ -132,6 +132,10 @@ elseif(NOT WIN32)
 	# more is found, for linkers that search each once in order (GNU ld)
 	set(CMAKE_C_LINK_EXECUTABLE
 		"<CMAKE_C_COMPILER> <FLAGS> <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> -Wl,--start-group <LINK_LIBRARIES> -Wl,--end-group")
+	# a C++ library in the link (libdatachannel, SW_WEBRTC=ON) has CMake link the
+	# program with the C++ driver, which reads a rule of its own
+	set(CMAKE_CXX_LINK_EXECUTABLE
+		"<CMAKE_CXX_COMPILER> <FLAGS> <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> -Wl,--start-group <LINK_LIBRARIES> -Wl,--end-group")
 endif()
 
 # all executables land in <build dir>/<config>, whichever directory defines them

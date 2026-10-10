@@ -627,10 +627,13 @@ static void RTC_IceServers (rtcConfiguration *config, rtcservers_t *s, netadr_t 
 		if (user)
 			*strchr (token, '?') = 0;
 		if (user && auth)
-			snprintf (s->servers[count], sizeof(s->servers[0]), "turn:%.*s:%s@%s", (int)strcspn (user + 6, "?"),
-				user + 6, auth + 6, token + 5);
+		{
+			if (!Q_snprintfz (s->servers[count], sizeof(s->servers[0]), "turn:%.*s:%s@%s",
+				(int)strcspn (user + 6, "?"), user + 6, auth + 6, token + 5))
+				continue;	// no relay answers at a shortened URL
+		}
 		else
-			snprintf (s->servers[count], sizeof(s->servers[0]), "%s", token);
+			Q_strncpyz (s->servers[count], token, sizeof(s->servers[0]));
 		s->list[count] = s->servers[count];
 		count++;
 	}
@@ -671,17 +674,25 @@ static void RTC_PollEvents (void)
 		else if (ws >= 0 && event.kind == EV_DESCRIPTION)
 		{
 			RTC_JsonEscape (buffer, sizeof(buffer), event.text);
-			snprintf (json, sizeof(json), "{\"type\":\"%s\",\"sdp\":\"%s\"}", event.extra, buffer);
-			RTC_Debug ("WebRTC: our %s (%i)\n", event.extra, peer);
-			RTC_SendBroker (ws, peer, ICEMSG_OFFER, json);
+			if (!Q_snprintfz (json, sizeof(json), "{\"type\":\"%s\",\"sdp\":\"%s\"}", event.extra, buffer))
+				RTC_Debug ("WebRTC: our %s doesn't fit a message\n", event.extra);
+			else
+			{
+				RTC_Debug ("WebRTC: our %s (%i)\n", event.extra, peer);
+				RTC_SendBroker (ws, peer, ICEMSG_OFFER, json);
+			}
 		}
 		else if (ws >= 0 && event.kind == EV_CANDIDATE)
 		{
 			RTC_JsonEscape (buffer, sizeof(buffer), event.text);
-			snprintf (json, sizeof(json), "{\"candidate\":\"%s\",\"sdpMid\":\"%s\",\"sdpMLineIndex\":0}", buffer,
-				event.extra);
-			RTC_Debug ("WebRTC: our %s\n", event.text);
-			RTC_SendBroker (ws, peer, ICEMSG_CANDIDATE, json);
+			if (!Q_snprintfz (json, sizeof(json), "{\"candidate\":\"%s\",\"sdpMid\":\"%s\",\"sdpMLineIndex\":0}",
+				buffer, event.extra))
+				RTC_Debug ("WebRTC: our candidate doesn't fit a message\n");
+			else
+			{
+				RTC_Debug ("WebRTC: our %s\n", event.text);
+				RTC_SendBroker (ws, peer, ICEMSG_CANDIDATE, json);
+			}
 		}
 		free (event.text);
 		free (event.extra);
