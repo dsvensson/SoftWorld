@@ -34,7 +34,9 @@ typedef enum
 	QC_FORMAT_FTE32,	// FTE's version 7, 32-bit statements and definitions
 	QC_FORMAT_KK7,		// KK QuakeWorld's version 7 (32-bit statements, 16-bit definitions),
 						// which FTE also assumes for an unknown secondary version
-	QC_FORMAT_UHEXEN2	// uHexen2's version 7 (32-bit records, opcode and type in the top half)
+	QC_FORMAT_UHEXEN2,	// uHexen2's version 7 (32-bit records, opcode and type in the top half)
+	QC_FORMAT_QF		// QuakeForge's 0.fff.002 (2001): version 6's records, its own numbers
+						// for the opcodes past id's and for its types
 } qc_format_t;
 
 // the type of a global or field definition: FTE's EV_* codes; others are
@@ -161,7 +163,7 @@ const char	*QC_LoadErrorText (const qc_loaderror_t *error, char *buf, size_t siz
 const char	*QC_LoadNoteText (const qc_loadnote_t *note, char *buf, size_t size);
 
 qc_format_t	QC_ProgsFormat (const qc_progs_t *progs);
-uint32_t	QC_ProgsVersion (const qc_progs_t *progs);		// 3, 6 or 7
+uint32_t	QC_ProgsVersion (const qc_progs_t *progs);		// 3, 6, 7 or QuakeForge's 0x00fff002
 uint32_t	QC_ProgsCRC (const qc_progs_t *progs);			// of the system definitions
 const qc_loadnote_t	*QC_ProgsNotes (const qc_progs_t *progs, uint32_t *count);
 

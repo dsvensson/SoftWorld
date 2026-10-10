@@ -15,6 +15,7 @@
 #define FTE32_MAGIC		0x65167402u
 #define UHEXEN2_MAGIC	0x37324855u		// "UH27"
 #define KK7_MAGIC		0x57514B4Bu		// "KKQW"
+#define QF_VERSION		0x00fff002u		// QuakeForge's 0.fff.002
 #define LNO_MAGIC		0x464F4E4Cu		// "LNOF"
 
 #define BREAKPOINT_BIT	0x8000u
@@ -143,6 +144,9 @@ static bool QC_ReadHeader (loader_t *l, header_t *h, extheader_t *ext)
 	case 6:
 		l->progs->format = QC_FORMAT_V6;
 		return true;
+	case QF_VERSION:
+		l->progs->format = QC_FORMAT_QF;
+		return true;
 	case 7:
 		switch (w[22])
 		{
@@ -183,6 +187,7 @@ static layout_t QC_Layout (qc_format_t format)
 		return (layout_t){12, 12, 64};
 	case QC_FORMAT_V6:
 	case QC_FORMAT_FTE16:
+	case QC_FORMAT_QF:
 		return (layout_t){8, 8, 36};
 	case QC_FORMAT_FTE32:
 	case QC_FORMAT_UHEXEN2:
@@ -195,7 +200,7 @@ static layout_t QC_Layout (qc_format_t format)
 
 static bool QC_Has16BitStatements (qc_format_t format)
 {
-	return format == QC_FORMAT_QTEST || format == QC_FORMAT_V6 || format == QC_FORMAT_FTE16;
+	return format == QC_FORMAT_QTEST || format == QC_FORMAT_V6 || format == QC_FORMAT_FTE16 || format == QC_FORMAT_QF;
 }
 
 // the bytes of count records of size bytes at ofs, or NULL (with the error set)
@@ -217,10 +222,52 @@ static const uint8_t *QC_Section (loader_t *l, uint32_t ofs, uint32_t count, siz
 	return l->data + ofs;
 }
 
+/*
+QuakeForge's 0.fff.002 opcodes past id's (its pr_comp.h and pr_exec.c of
+2001-11-13), as ours that do the same: its strings', its unsigned LT_I, its
+pointers' (relative to its globals) and those we have none of are left
+unknown, poisoned statements that fault only if run
+*/
+static uint32_t QC_QFOpcode (uint32_t op)
+{
+	static const uint16_t	ops[] = {
+		[71] = QOP_ADD_I, [72] = QOP_SUB_I, [73] = QOP_MUL_I, [74] = QOP_DIV_I,
+		[75] = QOP_BITAND_I, [76] = QOP_BITOR_I,
+		[77] = QOP_GE_I, [78] = QOP_LE_I, [79] = QOP_GT_I,
+		[81] = QOP_AND_I, [82] = QOP_OR_I, [83] = QOP_NOT_I, [84] = QOP_EQ_I, [85] = QOP_NE_I,
+		[86] = QOP_STORE_I, [88] = QOP_LOAD_I,
+		[89] = QOP_CONV_ITOF, [90] = QOP_CONV_FTOI,
+		[92] = QOP_BITXOR_I, [97] = QOP_LSHIFT_I, [98] = QOP_RSHIFT_I,
+	};
+	uint32_t	number = op & ~BREAKPOINT_BIT;
+
+	if (number <= QOP_BITOR_F)
+		return op;		// id's
+	if (number < sizeof(ops) / sizeof(ops[0]) && ops[number])
+		return (op & BREAKPOINT_BIT) | ops[number];
+	return (op & BREAKPOINT_BIT) | (BREAKPOINT_BIT - 1);	// none of ours
+}
+
+// QuakeForge's types: id's, then quaternion, integer and unsigned
+static uint32_t QC_QFType (uint32_t type)
+{
+	uint32_t	flags = type & 0xC000u, number = type & ~0xC000u;
+
+	if (number == 8)
+		number = 0x3FFF;			// a quaternion: none of ours
+	else if (number == 9)
+		number = QC_EV_INTEGER;
+	else if (number == 10)
+		number = QC_EV_UINT;
+	return flags | number;
+}
+
 static rawstatement_t QC_DecodeStatement (qc_format_t format, const uint8_t *r)
 {
 	switch (format)
 	{
+	case QC_FORMAT_QF:
+		return (rawstatement_t){QC_QFOpcode (QC_LE16 (r)), QC_LE16 (r + 2), QC_LE16 (r + 4), QC_LE16 (r + 6), 0};
 	case QC_FORMAT_QTEST:
 		return (rawstatement_t){QC_LE16 (r + 4), QC_LE16 (r + 6), QC_LE16 (r + 8), QC_LE16 (r + 10), QC_LE32 (r)};
 	case QC_FORMAT_V6:
@@ -248,6 +295,9 @@ static qc_def_t QC_DecodeDef (qc_format_t format, const uint8_t *r)
 	case QC_FORMAT_FTE16:
 	case QC_FORMAT_KK7:
 		type = QC_LE16 (r); ofs = QC_LE16 (r + 2); name = QC_LE32 (r + 4);
+		break;
+	case QC_FORMAT_QF:
+		type = QC_QFType (QC_LE16 (r)); ofs = QC_LE16 (r + 2); name = QC_LE32 (r + 4);
 		break;
 	case QC_FORMAT_UHEXEN2:
 		type = QC_LE32 (r) >> 16; ofs = QC_LE32 (r + 4); name = QC_LE32 (r + 8);

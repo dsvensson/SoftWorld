@@ -398,6 +398,7 @@ static uint32_t QA_PutDefs (qa_out_t *o, const qa_def_t *defs, size_t count, qc_
 		case QC_FORMAT_V6:
 		case QC_FORMAT_FTE16:
 		case QC_FORMAT_KK7:
+		case QC_FORMAT_QF:
 			QA_Put16 (o, d->type);
 			QA_Put16 (o, d->ofs);
 			QA_Put32 (o, d->name);
@@ -446,6 +447,7 @@ uint8_t *QA_Build (const qc_asm_t *a, qc_format_t format, size_t *size)
 			[[fallthrough]];
 		case QC_FORMAT_V6:
 		case QC_FORMAT_FTE16:
+		case QC_FORMAT_QF:
 			QA_Put16 (&o, s->op);
 			QA_Put16 (&o, s->a);
 			QA_Put16 (&o, s->b);
@@ -509,7 +511,7 @@ uint8_t *QA_Build (const qc_asm_t *a, qc_format_t format, size_t *size)
 	if (a->numbodyless)
 		ofs_bodyless = QA_Put (&o, a->bodyless, a->bodylesslen);
 
-	header[0] = format == QC_FORMAT_QTEST ? 3 : format == QC_FORMAT_V6 ? 6 : 7;
+	header[0] = format == QC_FORMAT_QTEST ? 3 : format == QC_FORMAT_V6 ? 6 : format == QC_FORMAT_QF ? 0x00fff002 : 7;
 	header[1] = 0x1234;
 	header[2] = ofs_statements;
 	header[3] = (uint32_t)a->numstatements;

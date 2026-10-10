@@ -6,7 +6,8 @@ re-entrant QuakeC VM hardened for untrusted progs. It lives in `src/qcvm` as the
 and the client uses it for client-side QuakeC (CSQC).
 
 - **Formats and opcodes:** progs from `fteqcc` for any FTE target: version 6, FTE version 7
-  (16- and 32-bit statements), KK7, uHexen2 and QTest, with every opcode FTE runs.
+  (16- and 32-bit statements), KK7, uHexen2 and QTest, with every opcode FTE runs; and
+  QuakeForge's 0.fff.002, as far as its opcodes are FTE's.
 - **Builtins:** about 200 standard builtins that need no engine, under FTE's numbering for
   CSQC, SSQC and menu progs. They cover maths, vectors, strings, `sprintf`, tokenizers, info
   strings, entity searches, hash tables, string buffers, VM memory, JSON and digests.

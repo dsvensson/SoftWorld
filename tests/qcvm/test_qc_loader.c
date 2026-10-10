@@ -527,6 +527,46 @@ static void TestUnknownSecondaryVersion (void)
 	QA_Free (a);
 }
 
+// QuakeForge's 0.fff.002: its numbers for the opcodes past id's and for its
+// types, as written (the assembler doesn't translate them); those we have are
+// ours, the rest poisoned
+static void TestQuakeForge (void)
+{
+	qc_asm_t			*a = QA_New ();
+	qc_progs_t			*p;
+	qc_definfo_t		info;
+	const qc_loadnote_t	*notes;
+	uint32_t			x, first, count;
+
+	x = QA_Global1 (a, "x", 9, 0);			// QuakeForge's integer
+	QA_Global1 (a, "u", 10, 0);				// its unsigned
+	QA_Function (a, "f", NULL, 0, 0);
+	first = QA_Here (a);
+	QA_Emit (a, 81, x, x, x);				// AND_I
+	QA_Emit (a, 89, x, 0, x);				// CONV_IF
+	QA_Emit (a, 75, x, x, x);				// BITAND_I
+	QA_Emit (a, 80, x, x, x);				// LT_I, unsigned there: none of ours
+	QA_Emit (a, 66, x, x, x);				// ADD_S: none of ours
+	QA_Emit (a, QOP_ADD_F, x, x, x);		// id's, as they are
+	QA_Emit (a, QOP_DONE, 0, 0, 0);
+
+	p = QA_Load (a, QC_FORMAT_QF);
+	QT_EQ_U (QC_ProgsFormat (p), QC_FORMAT_QF);
+	QT_EQ_U (QC_ProgsVersion (p), 0x00fff002);
+	QT_EQ_U (p->statements[first].op, QOP_AND_I);
+	QT_EQ_U (p->statements[first + 1].op, QOP_CONV_ITOF);
+	QT_EQ_U (p->statements[first + 2].op, QOP_BITAND_I);
+	QT_EQ_U (p->statements[first + 3].op, QOP_BAD);
+	QT_EQ_U (p->statements[first + 4].op, QOP_BAD);
+	QT_EQ_U (p->statements[first + 5].op, QOP_ADD_F);
+	notes = QC_ProgsNotes (p, &count);
+	QT_CHECK (count == 2 && notes[0].kind == QC_NOTE_POISONED_STATEMENT && notes[1].kind == QC_NOTE_POISONED_STATEMENT);
+	QT_CHECK (QC_ProgsGlobalDef (p, "x", &info) && info.type == QC_EV_INTEGER);
+	QT_CHECK (QC_ProgsGlobalDef (p, "u", &info) && info.type == QC_EV_UINT);
+	QC_ReleaseProgs (p);
+	QA_Free (a);
+}
+
 static void TestBodyless (void)
 {
 	qc_asm_t	*a = Sample ();
@@ -918,6 +958,7 @@ int main (void)
 	TestCalledBuiltins ();
 	TestOverlappingNames ();
 	TestCorruption ();
+	TestQuakeForge ();
 	TestQWProgs ();
 	TestMenuProgs ();
 	TestKtxCsprogs ();

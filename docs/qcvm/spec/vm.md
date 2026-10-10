@@ -469,7 +469,15 @@ to the start of the file. Check counts, not offsets.
 | 7, secondary `"UH27"` | uHexen2: 32-bit records, opcode = raw >> 16, def type = raw >> 16, Hexen 2 calling forced; otherwise treated as v6 |
 | 7, secondary `"KKQW"` | KK7: 32-bit statements and 16-bit defs; otherwise treated as v6 |
 | 7, any other secondary | assumed KK7 (with a note) |
+| 0x00fff002 | QuakeForge's 0.fff.002 (its `qfcc` of late 2001): v6 records, its own numbers for the opcodes past 65 and for its types; translated |
 | anything else | rejected |
+
+QuakeForge's opcodes past id's become those of FTE's that do the same: 71–79 (`ADD_I`, `SUB_I`,
+`MUL_I`, `DIV_I`, `BITAND_I`, `BITOR_I`, `GE_I`, `LE_I`, `GT_I`), 81–86 (`AND_I`, `OR_I`, `NOT_I`,
+`EQ_I`, `NE_I`, `STORE_I`), 88 `LOAD_I`, 89 `CONV_ITOF`, 90 `CONV_FTOI`, 92 `BITXOR_I`, 97
+`LSHIFT_I`, 98 `RSHIFT_I`. The rest (its string ops, its unsigned `LT_I`, its pointers relative
+to its globals, and those FTE lacks) are poisoned. Its types 8 (quaternion), 9 (integer) and 10
+(unsigned) become unknown, `ev_integer` and `ev_uint`. Its programs carry no CRC.
 
 Function records are 36 bytes, except in QTest.
 

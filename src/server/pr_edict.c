@@ -1448,6 +1448,7 @@ void PR_LoadProgs (void)
 	char				num[32], text[1024], lnoname[MAX_QPATH];
 	fs_chain_t			*dir;
 	qc_loaderror_t		lerr;
+	qc_definfo_t		newmis;
 	qc_error_t			err;
 	qc_config_t			config;
 	const qc_loadnote_t	*notes;
@@ -1491,8 +1492,13 @@ void PR_LoadProgs (void)
 		Mem_Free (lno);
 	}
 
-	// FTE's PROG_UNKNOWN acts as NetQuake's
-	pr.nq = QC_ProgsCRC (pr.progs) != PROGHEADER_CRC;
+	// FTE's PROG_UNKNOWN acts as NetQuake's. QuakeForge's progs have no CRC:
+	// QuakeWorld's by newmis, a global of its system definitions and none of
+	// NetQuake's
+	if (QC_ProgsFormat (pr.progs) == QC_FORMAT_QF)
+		pr.nq = !QC_ProgsGlobalDef (pr.progs, "newmis", &newmis);
+	else
+		pr.nq = QC_ProgsCRC (pr.progs) != PROGHEADER_CRC;
 	Con_DPrintf ("%s: %s's\n", pr.name, pr.nq ? "NetQuake" : "QuakeWorld");
 
 	QC_DefaultConfig (&config, QC_SSQC);
