@@ -250,7 +250,7 @@ Worth knowing:
 | | |
 |---|---|
 | `-scale n`, `vid_scale` | render at 320×200 times n (1, the default, is 320×200 itself); 0 picks the largest that fits the window |
-| `vid_widescreen`, `vid_crt` | wider view (hor+); CRT pixel aspect |
+| `vid_widescreen`, `vid_crt` | wider view (hor+), the status bar in its middle; CRT pixel aspect |
 | `r_lightmode` | 1 linear light in RGB, brighter than white where it is (the default); 0 lighting as Quake had it |
 | `r_fullbright_scale`, `r_dlight_scale` | in `r_lightmode 1`, fullbright colors no darker than their color times this (1.5), on walls and models and where light doesn't reach: particles (fire too), sprites, liquids, the sky; dynamic lights' light on surfaces times `r_dlight_scale` |
 | `r_externaltextures` | TGA files in `textures/<map>/` or `textures/` in place of the map's textures, truecolor (1, the default); walls take them in `r_lightmode 1` |

@@ -499,6 +499,14 @@ bool Sbar_Below (bool full)
 	}
 }
 
+// the layout's room right of the bar: the small scoreboard takes 192 and the
+// teams beside it 320 (where id's QuakeWorld, its bar at the left, showed them
+// from layouts 512 and 640 wide)
+static int Sbar_RightRoom (void)
+{
+	return (int)vid.conwidth - (sbar_xofs + 320);
+}
+
 // QuakeWorld's heads-up bar, without its backdrops: hudstyle 3 in a view of
 // the whole screen
 static bool Sbar_Headsup (void)
@@ -566,9 +574,13 @@ static void Sbar_DrawInventory (void)
 	int		flashon;
 	bool	headsup;
 	bool    hudswap;
+	int		edge;
 
 	headsup = Sbar_Headsup ();
 	hudswap = cl_hudswap.value; // Get that nasty float out :)
+	// the heads-up weapons and ammo at the screen's edge, the left with hudswap,
+	// from the bar's left
+	edge = (hudswap ? 0 : (int)vid.conwidth) - sbar_xofs;
 
 	if (!headsup)
 		Sbar_DrawBackdrop (0, -24, sb_ibar);
@@ -593,7 +605,7 @@ static void Sbar_DrawInventory (void)
 
 			if (headsup) {
 				if (i || vid.conheight>200)
-					Sbar_DrawSubPic ((hudswap) ? 0 : (vid.conwidth-24),-68-(7-i)*16 , sb_weapons[flashon][i],0,0,24,16);
+					Sbar_DrawSubPic ((hudswap) ? edge : edge-24,-68-(7-i)*16 , sb_weapons[flashon][i],0,0,24,16);
 			
 			} else 
 			Sbar_DrawPic (i*24, -16, sb_weapons[flashon][i]);
@@ -608,13 +620,13 @@ static void Sbar_DrawInventory (void)
 		snprintf (num, sizeof(num), "%3i",cl.stats[STAT_SHELLS+i] );
 		if (headsup) {
 //			Sbar_DrawSubPic(3, -24, sb_ibar, 3, 0, 42,11);
-			Sbar_DrawSubPic((hudswap) ? 0 : (vid.conwidth-42), -24 - (4-i)*11, sb_ibar, 3+(i*48), 0, 42, 11);
+			Sbar_DrawSubPic((hudswap) ? edge : edge-42, -24 - (4-i)*11, sb_ibar, 3+(i*48), 0, 42, 11);
 			if (num[0] != ' ')
-				Sbar_DrawCharacter ( (hudswap) ? 3 : (vid.conwidth-39), -24 - (4-i)*11, 18 + num[0] - '0');
+				Sbar_DrawCharacter ( (hudswap) ? edge+3 : edge-39, -24 - (4-i)*11, 18 + num[0] - '0');
 			if (num[1] != ' ')
-				Sbar_DrawCharacter ( (hudswap) ? 11 : (vid.conwidth-31), -24 - (4-i)*11, 18 + num[1] - '0');
+				Sbar_DrawCharacter ( (hudswap) ? edge+11 : edge-31, -24 - (4-i)*11, 18 + num[1] - '0');
 			if (num[2] != ' ')
-				Sbar_DrawCharacter ( (hudswap) ? 19 : (vid.conwidth-23), -24 - (4-i)*11, 18 + num[2] - '0');
+				Sbar_DrawCharacter ( (hudswap) ? edge+19 : edge-23, -24 - (4-i)*11, 18 + num[2] - '0');
 		} else {
 		if (num[0] != ' ')
 			Sbar_DrawCharacter ( (6*i+1)*8 - 2, -24, 18 + num[0] - '0');
@@ -666,7 +678,6 @@ static void Sbar_DrawFrags (void)
 	l = scoreboardlines <= 4 ? scoreboardlines : 4;
 	
 	x = 23;
-//	xofs = (vid.conwidth - 320)>>1;
 	y = vid.conheight - SBAR_HEIGHT - 23;
 
 	for (i=0 ; i<l ; i++)
@@ -687,10 +698,8 @@ static void Sbar_DrawFrags (void)
 		top = Sbar_ColorForMap (top);
 		bottom = Sbar_ColorForMap (bottom);
 	
-//		Draw_Fill (xofs + x*8 + 10, y, 28, 4, top);
-//		Draw_Fill (xofs + x*8 + 10, y+4, 28, 3, bottom);
-		Draw_Fill (x*8 + 10, y, 28, 4, top);
-		Draw_Fill (x*8 + 10, y+4, 28, 3, bottom);
+		Draw_Fill (sbar_xofs + x*8 + 10, y, 28, 4, top);
+		Draw_Fill (sbar_xofs + x*8 + 10, y+4, 28, 3, bottom);
 
 	// draw number
 		f = s->frags;
@@ -1071,9 +1080,10 @@ void Sbar_Draw (void)
 	style = Sbar_HudStyle ();
 	modern = style == 1 || style == 2;
 	headsup = Sbar_Headsup ();
-	// the classic and the modern ones in the middle, as id's and ironwail's
-	// (the classic one at the left in deathmatch); QuakeWorld's at the left
-	sbar_xofs = style == 3 || (!style && Sbar_Deathmatch ()) ? 0 : ((int)vid.conwidth - 320) / 2;
+	// every one in the middle of a layout wider than 320 (vid_widescreen), as
+	// id's NetQuake and ironwail's have theirs; id's QuakeWorld kept its at the
+	// left for the small scoreboard, which goes right of the bar where it fits
+	sbar_xofs = ((int)vid.conwidth - 320) / 2;
 
 		
 // top line
@@ -1081,7 +1091,7 @@ void Sbar_Draw (void)
 	{
 		if (!cl.spectator || Cam_TrackNum () >= 0)
 			Sbar_DrawInventory ();
-		if ((!headsup || vid.conwidth<512) && Sbar_Deathmatch ())
+		if ((!headsup || Sbar_RightRoom () < 192) && Sbar_Deathmatch ())
 			Sbar_DrawFrags ();
 	}	
 
@@ -1406,7 +1416,7 @@ static void Sbar_MiniDeathmatchOverlay (void)
 	char			shortname[16+1];
 	team_t			*tm;
 
-	if (vid.conwidth < 512 || !scr.sb_lines)
+	if (Sbar_RightRoom () < 192 || !scr.sb_lines)
 		return; // not enuff room
 
 	teamplay = atoi(Info_ValueForKey(cl.serverinfo, "teamplay"));
@@ -1414,7 +1424,7 @@ static void Sbar_MiniDeathmatchOverlay (void)
 
 // scores	
 	Sbar_SortFrags (false);
-	if (vid.conwidth >= 640)
+	if (Sbar_RightRoom () >= 320)
 		Sbar_SortTeams();
 
 	if (!scoreboardlines)
@@ -1441,7 +1451,7 @@ static void Sbar_MiniDeathmatchOverlay (void)
 	if (i < 0)
 		i = 0;
 
-	x = 324;
+	x = sbar_xofs + 324;
 
 	for (/* */ ; i < scoreboardlines && (unsigned)y < vid.conheight - 8 + 1; i++)
 	{
@@ -1492,7 +1502,7 @@ static void Sbar_MiniDeathmatchOverlay (void)
 	}
 
 	// draw teams if room
-	if (vid.conwidth < 640 || !teamplay)
+	if (Sbar_RightRoom () < 320 || !teamplay)
 		return;
 
 	// draw seperator
