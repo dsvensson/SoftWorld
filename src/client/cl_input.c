@@ -553,7 +553,11 @@ void CL_SendCmd (void)
 	frame_t		*f;
 
 	if (cls.demoplayback)
-	{	// sendcmds come from the demo; an MVD's buttons pick who to watch
+	{	// sendcmds come from the demo; an MVD's buttons pick who to watch,
+		// and the mouse turns the camera flown (captured only then)
+		usercmd_t	dummy = {0};
+
+		IN_Move (&dummy);
 		if (cls.mvdplayback)
 			CL_MVDButtons ((in_attack.state & 2) != 0, (in_jump.state & 2) != 0);
 		in_attack.state &= ~2;
