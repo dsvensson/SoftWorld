@@ -37,6 +37,38 @@ static inline __m512i Simd_V4_Iota (void)
 	return _mm512_setr_epi32 (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
 }
 
+// src[idx] of the first n lanes stored to dest. Zen 4's gathers are
+// microcode: on one thread a third of all the ops a frame retired, and the
+// textured spans' alone twice as slow as loading the sixteen texels one at a
+// time. So a whole vector's are loaded so, the indices out of the vector four
+// at a time, not through memory, which a store of the vector and loads of its
+// lanes would wait on; signed, as a gather's are. Where the texels go on to
+// be worked on in the vector (an alias span's), gathers came out ahead.
+SIMD_INLINE void Simd_V4_FetchStore (uint32_t *dest, const uint32_t *src, __m512i idx, int n)
+{
+	__m128i		q;
+	uint64_t	a, b;
+	int			i;
+
+	if (n < 16)
+	{
+		_mm512_mask_storeu_epi32 (dest, Simd_V4_Lanes (n),
+			_mm512_mask_i32gather_epi32 (_mm512_setzero_si512 (), Simd_V4_Lanes (n), idx, src, 4));
+		return;
+	}
+	for (i = 0 ; i < 4 ; i++)
+	{
+		q = i == 0 ? _mm512_castsi512_si128 (idx) : i == 1 ? _mm512_extracti32x4_epi32 (idx, 1)
+			: i == 2 ? _mm512_extracti32x4_epi32 (idx, 2) : _mm512_extracti32x4_epi32 (idx, 3);
+		a = (uint64_t)_mm_cvtsi128_si64 (q);
+		b = (uint64_t)_mm_extract_epi64 (q, 1);
+		dest[i*4 + 0] = src[(int32_t)(uint32_t)a];
+		dest[i*4 + 1] = src[(int32_t)(uint32_t)(a >> 32)];
+		dest[i*4 + 2] = src[(int32_t)(uint32_t)b];
+		dest[i*4 + 3] = src[(int32_t)(uint32_t)(b >> 32)];
+	}
+}
+
 // count 8 bit texels, zero extended to 32 bit lanes
 static inline __m512i Simd_V4_LoadTexels (const byte *src, __mmask16 lanes)
 {
@@ -185,7 +217,6 @@ void Simd_V4_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *
 	v4_stepper_t	st;
 	v4_batch_t		b;
 	int				first, n, p, pixels;
-	__mmask16		lanes;
 	__m512i			lane = Simd_V4_Iota ();
 	__m512i			sub = _mm512_srli_epi32 (lane, 3);		// two subdivisions per vector
 	__m512i			within = _mm512_and_si512 (lane, _mm512_set1_epi32 (7));
@@ -206,9 +237,7 @@ void Simd_V4_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *
 			t = _mm512_add_epi32 (_mm512_permutexvar_epi32 (which, b.tstart),
 				_mm512_mullo_epi32 (within, _mm512_permutexvar_epi32 (which, b.tstep)));
 			idx = _mm512_add_epi32 (_mm512_srai_epi32 (s, 16), _mm512_mullo_epi32 (_mm512_srai_epi32 (t, 16), width));
-			lanes = Simd_V4_Lanes (pixels - p);
-			_mm512_mask_storeu_epi32 (dest + p, lanes,
-				_mm512_mask_i32gather_epi32 (_mm512_setzero_si512 (), lanes, idx, src, 4));
+			Simd_V4_FetchStore (dest + p, src, idx, pixels - p < 16 ? pixels - p : 16);
 		}
 	}
 }
