@@ -594,13 +594,58 @@ void Simd_V4_CopyStream (void *dest, size_t destpitch, const void *src, size_t s
 	_mm_sfence ();
 }
 
-// these are the scalar kernels' until they are vectorized here
+// a channel fogged, at bit shift, as Simd_Scalar_FogChannel fogs it
+SIMD_INLINE __m512i Simd_V4_FogChannel (__m512i p, __m512 fog, __m512 a, __m512 ia, int shift)
+{
+	const __m512i	channel = _mm512_set1_epi32 (1023);
+	__m512			fs = _mm512_cvtepi32_ps (_mm512_and_si512 (_mm512_srli_epi32 (p, (unsigned)shift), channel));
+	__m512			x;
+	__m512i			c;
+
+	fs = _mm512_mul_ps (fs, fs);
+	fs = _mm512_mul_ps (fs, fs);
+	x = _mm512_mul_ps (_mm512_add_ps (_mm512_mul_ps (fs, a), _mm512_mul_ps (fog, ia)), _mm512_set1_ps (1.0f / 256.0f));
+	c = _mm512_cvttps_epu32 (_mm512_add_ps (_mm512_sqrt_ps (_mm512_sqrt_ps (x)), _mm512_set1_ps (0.5f)));
+	return _mm512_slli_epi32 (_mm512_min_epu32 (c, channel), (unsigned)shift);
+}
+
 void Simd_V4_FogSpan (uint32_t *dest, const float *zbuf, float zi, float step, int count,
 	const simd_fog_t *fog)
 {
-	Simd_Scalar_FogSpan (dest, zbuf, zi, step, count, fog);
+	const __m512i	base = _mm512_set1_epi32 (fog->base), last = _mm512_set1_epi32 (fog->size - 1);
+	const __m512i	topbit = _mm512_set1_epi32 ((int)0x80000000u), skybit = _mm512_set1_epi32 (0x40000000);
+	const __m512	r = _mm512_set1_ps (fog->color[0]), g = _mm512_set1_ps (fog->color[1]);
+	const __m512	b = _mm512_set1_ps (fog->color[2]), sky = _mm512_set1_ps (fog->sky);
+	__mmask16		lanes, fogged, notsky;
+	__m512i			p, e, out;
+	__m512			z, a, ia;
+	int				i;
+
+	for (i = 0 ; i < count ; i += 16)
+	{
+		lanes = Simd_V4_Lanes (count - i);
+		p = _mm512_maskz_loadu_epi32 (lanes, dest + i);
+		fogged = _mm512_mask_testn_epi32_mask (lanes, p, topbit);
+		if (!fogged)
+			continue;
+		z = zbuf ? _mm512_maskz_loadu_ps (lanes, zbuf + i)
+			: _mm512_add_ps (_mm512_set1_ps (zi), _mm512_mul_ps (_mm512_cvtepi32_ps (_mm512_add_epi32 (Simd_V4_Iota (),
+				_mm512_set1_epi32 (i))), _mm512_set1_ps (step)));
+
+		// the table's entries by the bits of 1/z, negative ones the first
+		e = _mm512_sub_epi32 (_mm512_srai_epi32 (_mm512_castps_si512 (z), SIMD_FOG_SHIFT), base);
+		e = _mm512_min_epi32 (_mm512_max_epi32 (e, _mm512_setzero_si512 ()), last);
+		notsky = _mm512_mask_testn_epi32_mask (fogged, p, skybit);
+		a = _mm512_mask_i32gather_ps (sky, notsky, e, fog->table, 4);
+		ia = _mm512_sub_ps (_mm512_set1_ps (256.0f), a);
+
+		out = _mm512_or_si512 (Simd_V4_FogChannel (p, r, a, ia, 0),
+			_mm512_or_si512 (Simd_V4_FogChannel (p, g, a, ia, 10), Simd_V4_FogChannel (p, b, a, ia, 20)));
+		_mm512_mask_storeu_epi32 (dest + i, fogged, out);
+	}
 }
 
+// these are the scalar kernels' until they are vectorized here
 void Simd_V4_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
 	const int *turb, int u, int v, int count)
 {

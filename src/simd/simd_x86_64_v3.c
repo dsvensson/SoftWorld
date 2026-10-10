@@ -555,13 +555,59 @@ void Simd_V3_CopyStream (void *dest, size_t destpitch, const void *src, size_t s
 	_mm_sfence ();
 }
 
-// these are the scalar kernels' until they are vectorized here
+// a channel fogged, at bit shift, as Simd_Scalar_FogChannel fogs it
+static inline __m256i Simd_V3_FogChannel (__m256i p, __m256 fog, __m256 a, __m256 ia, int shift)
+{
+	const __m256i	mask = _mm256_set1_epi32 (1023);
+	__m128i			count = _mm_cvtsi32_si128 (shift);
+	__m256			fs = _mm256_cvtepi32_ps (_mm256_and_si256 (_mm256_srl_epi32 (p, count), mask));
+	__m256			x;
+	__m256i			c;
+
+	fs = _mm256_mul_ps (fs, fs);
+	fs = _mm256_mul_ps (fs, fs);
+	x = _mm256_mul_ps (_mm256_add_ps (_mm256_mul_ps (fs, a), _mm256_mul_ps (fog, ia)), _mm256_set1_ps (1.0f / 256.0f));
+	c = _mm256_cvttps_epi32 (_mm256_add_ps (_mm256_sqrt_ps (_mm256_sqrt_ps (x)), _mm256_set1_ps (0.5f)));
+	return _mm256_sll_epi32 (_mm256_min_epi32 (c, mask), count);
+}
+
 void Simd_V3_FogSpan (uint32_t *dest, const float *zbuf, float zi, float step, int count,
 	const simd_fog_t *fog)
 {
-	Simd_Scalar_FogSpan (dest, zbuf, zi, step, count, fog);
+	const __m256i	base = _mm256_set1_epi32 (fog->base), last = _mm256_set1_epi32 (fog->size - 1);
+	const __m256i	topbit = _mm256_set1_epi32 ((int)0x80000000u), skybit = _mm256_set1_epi32 (0x40000000);
+	const __m256	r = _mm256_set1_ps (fog->color[0]), g = _mm256_set1_ps (fog->color[1]);
+	const __m256	b = _mm256_set1_ps (fog->color[2]), sky = _mm256_set1_ps (fog->sky);
+	__m256i			m, notsky, p, e, out;
+	__m256			z, a, ia;
+	int				i;
+
+	for (i = 0 ; i < count ; i += 8)
+	{
+		// the lanes of the span not left as they are
+		m = Simd_V3_Lanes (count - i);
+		p = _mm256_maskload_epi32 ((const int *)(dest + i), m);
+		m = _mm256_andnot_si256 (_mm256_cmpeq_epi32 (_mm256_and_si256 (p, topbit), topbit), m);
+		if (_mm256_testz_si256 (m, m))
+			continue;
+		z = zbuf ? _mm256_maskload_ps (zbuf + i, m)
+			: _mm256_add_ps (_mm256_set1_ps (zi), _mm256_mul_ps (_mm256_cvtepi32_ps (_mm256_add_epi32 (Simd_V3_Iota (),
+				_mm256_set1_epi32 (i))), _mm256_set1_ps (step)));
+
+		// the table's entries by the bits of 1/z, negative ones the first
+		e = _mm256_sub_epi32 (_mm256_srai_epi32 (_mm256_castps_si256 (z), SIMD_FOG_SHIFT), base);
+		e = _mm256_min_epi32 (_mm256_max_epi32 (e, _mm256_setzero_si256 ()), last);
+		notsky = _mm256_andnot_si256 (_mm256_cmpeq_epi32 (_mm256_and_si256 (p, skybit), skybit), m);
+		a = _mm256_mask_i32gather_ps (sky, fog->table, e, _mm256_castsi256_ps (notsky), 4);
+		ia = _mm256_sub_ps (_mm256_set1_ps (256.0f), a);
+
+		out = _mm256_or_si256 (Simd_V3_FogChannel (p, r, a, ia, 0),
+			_mm256_or_si256 (Simd_V3_FogChannel (p, g, a, ia, 10), Simd_V3_FogChannel (p, b, a, ia, 20)));
+		_mm256_maskstore_epi32 ((int *)(dest + i), m, out);
+	}
 }
 
+// these are the scalar kernels' until they are vectorized here
 void Simd_V3_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
 	const int *turb, int u, int v, int count)
 {
