@@ -37,7 +37,8 @@ typedef enum
 	DK_ALIASPIXEL,
 	DK_SPRITESPAN,
 	DK_PARTICLE,
-	DK_BLENDSPAN
+	DK_BLENDSPAN,
+	DK_FLATSPAN
 } dkind_t;
 
 typedef struct
@@ -61,7 +62,7 @@ typedef struct
 		struct
 		{
 			int			u, v, count;
-			int			map;		// of the batch's sprite or blend maps
+			int			map;		// of the batch's sprite, blend or flat maps
 		} sprite;
 		struct
 		{
@@ -89,6 +90,8 @@ typedef struct
 	int					numspritemaps, maxspritemaps;
 	d_blendmap_t		*blendmaps;
 	int					numblendmaps, maxblendmaps;
+	d_flatmap_t			*flatmaps;
+	int					numflatmaps, maxflatmaps;
 } dbatch_t;
 
 static dbatch_t	d_batches[D_NUMBATCHES];
@@ -123,6 +126,7 @@ void D_SetBatchSize (int height)
 		b->numaliasmaps = 0;
 		b->numspritemaps = 0;
 		b->numblendmaps = 0;
+		b->numflatmaps = 0;
 	}
 }
 
@@ -177,10 +181,10 @@ static dkept_t *D_Keep (int v, dkind_t kind)
 
 /*
 ================
-D_KeepAliasMap / D_KeepBlendMap / D_KeepSpriteMap
+D_KeepAliasMap / D_KeepBlendMap / D_KeepFlatMap / D_KeepSpriteMap
 
-A triangle's, a translucent surface's or a sprite's mapping kept for its
-spans, by its index
+A triangle's, a translucent surface's, a flat polygon's or a sprite's
+mapping kept for its spans, by its index
 ================
 */
 int D_KeepAliasMap (const simd_aliasmap_t *map)
@@ -209,6 +213,19 @@ int D_KeepBlendMap (const d_blendmap_t *map)
 	return b->numblendmaps++;
 }
 
+int D_KeepFlatMap (const d_flatmap_t *map)
+{
+	dbatch_t	*b = d_keeping;
+
+	if (b->numflatmaps == b->maxflatmaps)
+	{
+		b->maxflatmaps = b->maxflatmaps ? b->maxflatmaps * 2 : 16;
+		b->flatmaps = Mem_Realloc (b->flatmaps, (size_t)b->maxflatmaps * sizeof(*b->flatmaps));
+	}
+	b->flatmaps[b->numflatmaps] = *map;
+	return b->numflatmaps++;
+}
+
 int D_KeepSpriteMap (const d_spritemap_t *map)
 {
 	dbatch_t	*b = d_keeping;
@@ -225,10 +242,10 @@ int D_KeepSpriteMap (const d_spritemap_t *map)
 /*
 ================
 D_KeepAliasSpan / D_KeepAliasPixel / D_KeepParticle / D_KeepBlendSpan /
-D_KeepSpriteSpan
+D_KeepFlatSpan / D_KeepSpriteSpan
 
-What an alias model, a particle, a translucent surface or a sprite would have
-drawn on line v
+What an alias model, a particle, a translucent surface, a flat polygon or a
+sprite would have drawn on line v
 ================
 */
 void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
@@ -272,6 +289,16 @@ void D_KeepParticle (int v, pixel_t *pdest, float *pz, pixel_t color, float zi, 
 void D_KeepBlendSpan (int u, int v, int count, int map)
 {
 	dkept_t	*k = D_Keep (v, DK_BLENDSPAN);
+
+	k->sprite.u = u;
+	k->sprite.v = v;
+	k->sprite.count = count;
+	k->sprite.map = map;
+}
+
+void D_KeepFlatSpan (int u, int v, int count, int map)
+{
+	dkept_t	*k = D_Keep (v, DK_FLATSPAN);
 
 	k->sprite.u = u;
 	k->sprite.v = v;
@@ -324,6 +351,9 @@ static void D_FillStrip (void *ctx, int index)
 		case DK_BLENDSPAN:
 			D_BlendSpan (&b->blendmaps[k->sprite.map], k->sprite.u, k->sprite.v, k->sprite.count);
 			break;
+		case DK_FLATSPAN:
+			D_FlatSpan (&b->flatmaps[k->sprite.map], k->sprite.u, k->sprite.v, k->sprite.count);
+			break;
 		case DK_PARTICLE:
 			D_ParticleLines (k->pdest, k->pz, k->particle.color, k->particle.zi, k->particle.width,
 				k->particle.lines);
@@ -348,6 +378,7 @@ static void D_Fill (dbatch_t *b)
 	b->numaliasmaps = 0;
 	b->numspritemaps = 0;
 	b->numblendmaps = 0;
+	b->numflatmaps = 0;
 }
 
 void D_FillBatch (dbatchid_t batch)

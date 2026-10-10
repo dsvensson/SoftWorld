@@ -202,6 +202,16 @@ typedef struct
 // a span of it on line v, blended in where it's in front (d_scan.c)
 void D_BlendSpan (const d_blendmap_t *map, int u, int v, int count);
 
+// a flat polygon's 1/z and color, as D_FlatSpan blends a span of it in where
+// it's in front, the depth left as it is (d_sprite.c)
+typedef struct
+{
+	float		ziorigin, zistepu, zistepv;
+	pixel_t		color;
+	int			alpha;
+} d_flatmap_t;
+void D_FlatSpan (const d_flatmap_t *map, int u, int v, int count);
+
 // what's kept in the batch D_BeginBatch began, if one is (d_batch.c), in
 // strips of lines: thin, as a view model is in few of the view's lines and
 // Sys_Parallel hands the strips out as threads come free
@@ -211,6 +221,8 @@ int D_KeepAliasMap (const simd_aliasmap_t *map);
 int D_KeepSpriteMap (const d_spritemap_t *map);
 int D_KeepBlendMap (const d_blendmap_t *map);
 void D_KeepBlendSpan (int u, int v, int count, int map);
+int D_KeepFlatMap (const d_flatmap_t *map);
+void D_KeepFlatSpan (int u, int v, int count, int map);
 // what the batch has kept drawn now, and keeping going on: before what
 // can't be kept is drawn, or a cache block it reads is given up
 void D_FlushKept (void);

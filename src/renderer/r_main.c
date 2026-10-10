@@ -1315,16 +1315,19 @@ void R_RenderView (void)
 	prof = R_ProfStart ();
 	if (keep)
 	{
-		// put together in the order they're sorted in, and blended on the
-		// workers
+		// put together in the order they're sorted in, and the rings after,
+		// and blended on the workers
 		D_BeginBatch (D_BATCH_TRANSLUCENT);
 		R_DrawTranslucent ();
+		R_DrawRings ();
 		D_EndBatch ();
 		D_FillBatch (D_BATCH_TRANSLUCENT);
 	}
 	else
+	{
 		R_DrawTranslucent ();
-	R_DrawRings ();
+		R_DrawRings ();
+	}
 	R_ProfEnd (PROF_MODELS, prof);
 
 	if (r_dspeeds.value)

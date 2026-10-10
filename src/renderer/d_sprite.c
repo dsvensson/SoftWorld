@@ -412,11 +412,10 @@ void D_DrawFlatPolygon (emitpoint_t *pverts, int nump, pixel_t color, int alpha)
 {
 	sspan_t		*pspan;
 	emitpoint_t	swap;
-	pixel_t		*pdest;
-	float		*pz;
-	float		zi, zistepu, zistepv, ziorigin, area, det, best;
+	d_flatmap_t	map;
+	float		zistepu, zistepv, ziorigin, area, det, best;
 	float		du1, dv1, du2, dv2;
-	int			i, j, count;
+	int			i, j, index;
 
 	// clockwise on the screen, as the edge scanning takes it
 	area = 0;
@@ -457,17 +456,34 @@ void D_DrawFlatPolygon (emitpoint_t *pverts, int nump, pixel_t color, int alpha)
 
 	if (!D_PolygonSpans (pverts, nump, sprite_spans, &r_refdef.vrect))
 		return;
+	map = (d_flatmap_t){.ziorigin = ziorigin, .zistepu = zistepu, .zistepv = zistepv, .color = color, .alpha = alpha};
+	index = D_Keeping () ? D_KeepFlatMap (&map) : -1;
 	for (pspan = sprite_spans ; pspan->count != DS_SPAN_LIST_END ; pspan++)
 	{
-		count = pspan->count;
-		if (count <= 0)
+		if (pspan->count <= 0)
 			continue;
-		pdest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
-		pz = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
-		zi = ziorigin + pspan->v * zistepv + pspan->u * zistepu;
-		for ( ; count ; count--, pdest++, pz++, zi += zistepu)
-			if (*pz <= zi)
-				*pdest = D_BlendPixel (color, *pdest, alpha);
+		if (index >= 0)
+			D_KeepFlatSpan (pspan->u, pspan->v, pspan->count, index);
+		else
+			D_FlatSpan (&map, pspan->u, pspan->v, pspan->count);
 	}
+}
+
+/*
+=====================
+D_FlatSpan
+
+A span of a flat polygon on line v, blended in where it's in front
+=====================
+*/
+void D_FlatSpan (const d_flatmap_t *map, int u, int v, int count)
+{
+	pixel_t	*pdest = d_viewbuffer + (screenwidth * v) + u;
+	float	*pz = d_pzbuffer + (d_zwidth * v) + u;
+	float	zi = map->ziorigin + v * map->zistepv + u * map->zistepu;
+
+	for ( ; count ; count--, pdest++, pz++, zi += map->zistepu)
+		if (*pz <= zi)
+			*pdest = D_BlendPixel (map->color, *pdest, map->alpha);
 }
 
