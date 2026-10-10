@@ -61,14 +61,14 @@ D_DrawSolidSurface
 ==============
 */
 
-static void D_DrawSolidSurface (surf_t *surf, int color)
+static void D_DrawSolidSurface (espan_t *spans, int color)
 {
 	espan_t	*span;
 	pixel_t	*pdest, pix;
 	int		u;
 
 	pix = d_pal30[color & 255];
-	for (span=surf->spans ; span ; span=span->pnext)
+	for (span=spans ; span ; span=span->pnext)
 	{
 		pdest = d_viewbuffer + screenwidth*span->v + span->u;
 		for (u = 0 ; u < span->count ; u++)
@@ -226,7 +226,10 @@ spread over the worker threads (how to draw, mip level, texture mapping, in
 a brush model's turned view), then given their cache blocks on this thread,
 and drawn in batches: the cache blocks that must be drawn first, and then the
 surfaces' spans, both spread over the workers. Each pixel is in the spans of
-one surface only, so the order the surfaces are drawn in makes no difference.
+one surface only, so the order the surfaces are drawn in makes no difference;
+nor does the order of a surface's spans, so a big surface is shared out by its
+lines, as a batch takes as long as its biggest task: a floor could be a third
+of a batch's pixels, and the other threads would wait for its one.
 
 ===============================================================================
 */
@@ -262,6 +265,21 @@ static surf_t	**d_drawn;			// those surfaces
 static int		*d_builds;			// the jobs of a batch whose blocks are drawn first
 static int		d_numjobs, d_maxjobs;
 static vec3_t	world_transformed_modelorg;
+
+// a batch's jobs as the workers take them: a job's spans, or a big job's on
+// lines vtop to vbottom
+typedef struct
+{
+	int		job;
+	int		vtop, vbottom;			// vbottom < vtop: all of them
+} dstask_t;
+
+static dstask_t	*d_tasks;
+static int		d_numtasks, d_maxtasks;
+static bool		d_sharejobs;		// a band a thread, more than one: big jobs are shared
+
+#define D_TASK_PIXELS	8192		// a job with more is shared out by its lines
+#define D_TASK_SPANS	128			// a task's spans drawn at a time
 
 #define D_PREPARE_JOBS	128			// prepared by a thread at a time
 
@@ -351,16 +369,13 @@ static void D_BuildJob (void *ctx, int index)
 	job->texels = D_DrawCacheSurface (&job->buildsurf);
 }
 
-// a job's spans and their 1/z
-static void D_DrawJob (void *ctx, int index)
+// spans of a job, and their 1/z
+static void D_DrawJobSpans (const dsjob_t *job, espan_t *spans)
 {
-	dsjob_t	*job = &((dsjob_t *)ctx)[index];
-	espan_t	*spans = job->surf->spans;
-
 	switch (job->draw)
 	{
 	case DS_SOLID:
-		D_DrawSolidSurface (job->surf, job->color);
+		D_DrawSolidSurface (spans, job->color);
 		break;
 	case DS_SKY:
 		D_DrawSkyScans (spans);
@@ -376,6 +391,82 @@ static void D_DrawJob (void *ctx, int index)
 		break;
 	}
 	D_DrawZSpans (spans, &job->map);
+}
+
+// a task's spans: a job's, or those on its lines of a job's, copied as
+// the job's go on being read by the tasks with its other lines
+static void D_DrawTask (void *ctx, int index)
+{
+	dstask_t	*task = &d_tasks[index];
+	dsjob_t		*job = &d_jobs[task->job];
+	espan_t		copies[D_TASK_SPANS], *span;
+	int			i, n;
+
+	(void)ctx;
+	if (task->vbottom < task->vtop)
+	{
+		D_DrawJobSpans (job, job->surf->spans);
+		return;
+	}
+
+	// the spans go up the lines, as each line's are put in front
+	n = 0;
+	for (span = job->surf->spans ; span && span->v >= task->vtop ; span = span->pnext)
+	{
+		if (span->v > task->vbottom)
+			continue;
+		copies[n++] = *span;
+		if (n == D_TASK_SPANS)
+		{
+			for (i=0 ; i<n-1 ; i++)
+				copies[i].pnext = &copies[i+1];
+			copies[n-1].pnext = NULL;
+			D_DrawJobSpans (job, copies);
+			n = 0;
+		}
+	}
+	if (n)
+	{
+		for (i=0 ; i<n-1 ; i++)
+			copies[i].pnext = &copies[i+1];
+		copies[n-1].pnext = NULL;
+		D_DrawJobSpans (job, copies);
+	}
+}
+
+/*
+==============
+D_AddTasks
+
+A job's tasks: the job, or for one with more than D_TASK_PIXELS pixels its
+lines in as many parts, no part less than a line, where there are threads
+to share them
+==============
+*/
+static void D_AddTasks (int index)
+{
+	surf_t	*s = d_jobs[index].surf;
+	int		k, parts, lines;
+
+	lines = s->spans->v - s->vtop + 1;
+	parts = d_sharejobs ? s->pixels / D_TASK_PIXELS : 1;
+	if (parts > lines)
+		parts = lines;
+	if (parts < 2)
+		parts = 1;
+	if (d_numtasks + parts > d_maxtasks)
+	{
+		d_maxtasks = (d_numtasks + parts) * 2;
+		d_tasks = Mem_Realloc (d_tasks, (size_t)d_maxtasks * sizeof(*d_tasks));
+	}
+	if (parts == 1)
+	{
+		d_tasks[d_numtasks++] = (dstask_t){.job = index, .vtop = 1, .vbottom = 0};
+		return;
+	}
+	for (k=0 ; k<parts ; k++)
+		d_tasks[d_numtasks++] = (dstask_t){.job = index,
+			.vtop = s->vtop + lines * k / parts, .vbottom = s->vtop + lines * (k + 1) / parts - 1};
 }
 
 /*
@@ -397,7 +488,10 @@ static void D_DrawBatch (int first, int end)
 	prof = R_ProfStart ();
 	Sys_Parallel (numbuilds, D_BuildJob, d_builds);
 	R_ProfEnd (PROF_SURFCACHE, prof);
-	Sys_Parallel (end - first, D_DrawJob, d_jobs + first);
+	d_numtasks = 0;
+	for (i=first ; i<end ; i++)
+		D_AddTasks (i);
+	Sys_Parallel (d_numtasks, D_DrawTask, NULL);
 
 	texels = 0;
 	for (i=first ; i<end ; i++)
@@ -427,6 +521,7 @@ void D_DrawSurfaces (rband_t *bands, int numbands)
 	currententity = &r_worldentity;
 	TransformVector (modelorg, transformed_modelorg);
 	VectorCopy (transformed_modelorg, world_transformed_modelorg);
+	d_sharejobs = numbands > 1;
 
 // TODO: could preset a lot of this at mode set time
 	if (r_drawflat.value)
@@ -440,7 +535,7 @@ void D_DrawSurfaces (rband_t *bands, int numbands)
 				if (!s->spans)
 					continue;
 
-				D_DrawSolidSurface (s, (int)((intptr_t)s->data & 0xFF));
+				D_DrawSolidSurface (s->spans, (int)((intptr_t)s->data & 0xFF));
 				D_DrawZSpans (s->spans, &map);
 			}
 		}

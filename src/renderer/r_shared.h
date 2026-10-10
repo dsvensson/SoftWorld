@@ -92,7 +92,11 @@ typedef struct surf_s
 	bool	insubmodel;
 	float		d_ziorigin, d_zistepu, d_zistepv;
 
-	int			pad[2];				// to 64 bytes
+	// the pixels of its spans, and the line of its first: the line of its
+	// last is the first in spans (R_EmitSpan); D_DrawSurfaces shares out
+	// a big surface's lines by them
+	int			pixels;
+	int			vtop;
 } surf_t;
 
 // a band's surfaces are generated in front to back order by the bsp;

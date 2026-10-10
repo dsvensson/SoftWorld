@@ -344,28 +344,46 @@ pushback:
 
 /*
 ==============
+R_EmitSpan
+
+A span of surf on the line scanned, from its last_u to iu: put in front of
+its spans, as the lines go down. Its pixels are counted and its first line
+kept, which the drawing shares a big surface out by (D_DrawSurfaces).
+==============
+*/
+static inline void R_EmitSpan (rband_t *b, surf_t *surf, int iu)
+{
+	espan_t	*span;
+
+	if (iu <= surf->last_u)
+		return;
+	if (!surf->spans)
+	{
+		surf->pixels = 0;
+		surf->vtop = b->current_iv;
+	}
+	span = b->span_p++;
+	span->u = surf->last_u;
+	span->count = iu - span->u;
+	span->v = b->current_iv;
+	span->pnext = surf->spans;
+	surf->spans = span;
+	surf->pixels += span->count;
+}
+
+/*
+==============
 R_CleanupSpan
 ==============
 */
 static void R_CleanupSpan (rband_t *b)
 {
 	surf_t	*surf;
-	int		iu;
-	espan_t	*span;
 
 // now that we've reached the right edge of the screen, we're done with any
 // unfinished surfaces, so emit a span for whatever's on top
 	surf = b->surfaces[1].next;
-	iu = b->edge_tail_u_shift20;
-	if (iu > surf->last_u)
-	{
-		span = b->span_p++;
-		span->u = surf->last_u;
-		span->count = iu - span->u;
-		span->v = b->current_iv;
-		span->pnext = surf->spans;
-		surf->spans = span;
-	}
+	R_EmitSpan (b, surf, b->edge_tail_u_shift20);
 
 // reset spanstate for all surfaces in the surface stack
 	do
@@ -383,7 +401,6 @@ R_TrailingEdge
 */
 static void R_TrailingEdge (rband_t *b, surf_t *surf, edge_t *edge)
 {
-	espan_t			*span;
 	int				iu;
 
 // don't generate a span if this is an inverted span, with the end
@@ -398,15 +415,7 @@ static void R_TrailingEdge (rband_t *b, surf_t *surf, edge_t *edge)
 		{
 		// emit a span (current top going away)
 			iu = (int)(edge->u >> 20);
-			if (iu > surf->last_u)
-			{
-				span = b->span_p++;
-				span->u = surf->last_u;
-				span->count = iu - span->u;
-				span->v = b->current_iv;
-				span->pnext = surf->spans;
-				surf->spans = span;
-			}
+			R_EmitSpan (b, surf, iu);
 
 		// set last_u on the surface below
 			surf->next->last_u = iu;
@@ -426,7 +435,6 @@ R_LeadingEdge
 */
 static void R_LeadingEdge (rband_t *b, edge_t *edge)
 {
-	espan_t			*span;
 	surf_t			*surf, *surf2;
 	int				iu;
 	double			fu, newzi, testzi, newzitop, newzibottom;
@@ -522,16 +530,7 @@ continue_search:
 newtop:
 		// emit a span (obscures current top)
 			iu = (int)(edge->u >> 20);
-
-			if (iu > surf2->last_u)
-			{
-				span = b->span_p++;
-				span->u = surf2->last_u;
-				span->count = iu - span->u;
-				span->v = b->current_iv;
-				span->pnext = surf2->spans;
-				surf2->spans = span;
-			}
+			R_EmitSpan (b, surf2, iu);
 
 			// set last_u on the new span
 			surf->last_u = iu;
