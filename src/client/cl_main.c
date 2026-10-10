@@ -1348,6 +1348,21 @@ static void CL_SendChatState (void)
 	CL_SetUserinfo ("chat", state ? va("%i", state) : "");
 }
 
+/*
+=================
+CL_CfgReset_f
+
+What a first start has: every variable at its default (the serverinfo ones
+aside), then default.cfg again, with the binds it gives: id's replaced by this
+client's own, as Cmd_SetExecSuffix has them, or a game's own
+=================
+*/
+static void CL_CfgReset_f (void)
+{
+	Cvar_ResetAll_f ();
+	Cbuf_InsertText ("exec default.cfg\n");
+}
+
 static void CL_InitLocal (void)
 {
 	extern	cvar_t		baseskin;
@@ -1490,9 +1505,10 @@ static void CL_InitLocal (void)
 	Cmd_AddCommand ("user", CL_User_f, "Lists a player's userinfo. Usage: user <name or userid>");
 	Cmd_AddCommand ("users", CL_Users_f, "Lists the players' user ids, frags and names.");
 
-	Cmd_AddCommand ("cfg_reset", Cvar_ResetAll_f,
-		"Sets every variable back to its default but the server's serverinfo ones (deathmatch, timelimit...); "
-		"binds stay, which exec default.cfg resets.");
+	Cmd_AddCommand ("cfg_reset", CL_CfgReset_f,
+		"Sets every variable back to its default but the server's serverinfo ones (deathmatch, timelimit...), "
+		"and runs default.cfg again: the binds of a first start, this client's own in place of id's (WASD, "
+		"the arrows playing a demo) or a game's own.");
 
 	Cmd_AddCommand ("setinfo", CL_SetInfo_f,
 		"Sets a userinfo key the server and other players see, or lists your userinfo when given none. "
