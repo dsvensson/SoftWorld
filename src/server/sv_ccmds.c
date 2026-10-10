@@ -118,7 +118,11 @@ static void SV_Logfile_f (void)
 		return;
 	}
 
-	snprintf (name, sizeof(name), "%s/qconsole.log", com_gamedir);
+	if (!Q_snprintfz (name, sizeof(name), "%s/qconsole.log", com_gamedir))
+	{
+		Con_Printf ("The path of qconsole.log doesn't fit.\n");
+		return;
+	}
 	Con_Printf ("Logging text to %s.\n", name);
 	svs.logfile = fopen (name, "w");
 	if (!svs.logfile)
@@ -147,7 +151,11 @@ static void SV_Fraglogfile_f (void)
 	// find an unused name
 	for (i=0 ; i<1000 ; i++)
 	{
-		snprintf (name, sizeof(name), "%s/frag_%i.log", com_gamedir, i);
+		if (!Q_snprintfz (name, sizeof(name), "%s/frag_%i.log", com_gamedir, i))
+		{
+			i = 1000;	// give error
+			break;
+		}
 		svs.fraglogfile = fopen (name, "r");
 		if (!svs.fraglogfile)
 		{	// can't read it, so create this one
@@ -322,8 +330,10 @@ void SV_GotoLevel (const char *name, spawnparms_t parms, cmap_t *built, const sv
 	Q_strncpyz (level, name, sizeof(level));		// name may be sv.name, which spawning clears
 
 	// check to make sure the level exists
-	snprintf (expanded, sizeof(expanded), "maps/%s.bsp", level);
-	COM_FOpenFile (expanded, &f);
+	if (Q_snprintfz (expanded, sizeof(expanded), "maps/%s.bsp", level))
+		COM_FOpenFile (expanded, &f);
+	else
+		f = NULL;
 	if (!f)
 	{
 		Con_Printf ("Can't find %s\n", expanded);
@@ -865,7 +875,11 @@ static void SV_Snap (int uid)
 
 	snprintf(pcxname, sizeof(pcxname), "%d-00.pcx", uid);
 
-	snprintf(checkname, sizeof(checkname), "%s/snap", gamedirfile);
+	if (!Q_snprintfz (checkname, sizeof(checkname), "%s/snap", gamedirfile))
+	{
+		Con_Printf ("Snap: the path of the snap directory doesn't fit.\n");
+		return;
+	}
 	Sys_mkdir(gamedirfile);
 	Sys_mkdir(checkname);
 
@@ -873,7 +887,11 @@ static void SV_Snap (int uid)
 	{
 		pcxname[strlen(pcxname) - 6] = (char)(i/10 + '0');
 		pcxname[strlen(pcxname) - 5] = (char)(i%10 + '0');
-		snprintf (checkname, sizeof(checkname), "%s/snap/%s", gamedirfile, pcxname);
+		if (!Q_snprintfz (checkname, sizeof(checkname), "%s/snap/%s", gamedirfile, pcxname))
+		{
+			i = 100;	// as though none were free
+			break;
+		}
 		if (Sys_FileTime(checkname) == -1)
 			break;	// file doesn't exist
 	} 

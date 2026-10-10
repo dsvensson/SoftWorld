@@ -15,7 +15,7 @@ static struct
 	char		map[MAX_QPATH];
 	char		progs[MAX_QPATH];
 	fs_chain_t	*progsdir;		// held for the level
-	char		deathmatch[8];
+	char		deathmatch[16];
 	vec3_t		origin, angles;
 	void		(*stop) (void);	// SV_SetAttractStop's
 	bool		quiet;			// SV_AttractQuiet's

@@ -1619,7 +1619,8 @@ static void CSQC_BackUp (const char *cached, const byte *data, int size)
 	char	path[MAX_OSPATH];
 	FILE	*f;
 
-	snprintf (path, sizeof(path), "%s/%s", com_gamedir, cached);
+	if (!Q_snprintfz (path, sizeof(path), "%s/%s", com_gamedir, cached))
+		return;
 	COM_CreatePath (path);
 	f = fopen (path, "wb");
 	if (!f)

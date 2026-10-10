@@ -340,7 +340,8 @@ void COM_WriteFile (char *filename, void *data, int len)
 	FILE	*f;
 	char	fullpath[MAX_OSPATH];
 
-	snprintf (fullpath, sizeof(fullpath), "%s/%s", com_gamedir, filename);
+	if (!Q_snprintfz (fullpath, sizeof(fullpath), "%s/%s", com_gamedir, filename))
+		Sys_Error ("COM_WriteFile: the path of %s doesn't fit", filename);
 
 	f = fopen (fullpath, "wb");
 	if (!f) {
@@ -410,7 +411,8 @@ bool FS_InGameDir (const char *path)
 					return true;
 			continue;
 		}
-		snprintf (netpath, sizeof(netpath), "%s/%s", search->filename, path);
+		if (!Q_snprintfz (netpath, sizeof(netpath), "%s/%s", search->filename, path))
+			continue;	// nothing can be named by a path that doesn't fit one
 		if (Sys_FileTime (netpath) != -1)
 			return true;
 	}
@@ -466,7 +468,8 @@ int COM_FOpenFile (const char *filename, FILE **file)
 					continue;
 			}
 			
-			snprintf (netpath, sizeof(netpath), "%s/%s",search->filename, filename);
+			if (!Q_snprintfz (netpath, sizeof(netpath), "%s/%s", search->filename, filename))
+				continue;	// nothing can be named by a path that doesn't fit one
 			
 			findtime = Sys_FileTime (netpath);
 			if (findtime == -1)
@@ -984,7 +987,8 @@ static fs_chain_t *FS_NewChain (const char *dir, bool alone, bool loud)
 	chain->paths = chain->base;
 	if (alone || !FS_IsBaseDir (dir))
 	{
-		snprintf (path, sizeof(path), "%s/%s", com_basedir, dir);
+		if (!Q_snprintfz (path, sizeof(path), "%s/%s", com_basedir, dir))
+			Sys_Error ("The path of the %s directory doesn't fit", dir);
 		chain->paths = COM_PushDirectory (path, chain->base, loud);
 	}
 	return chain;
@@ -1075,10 +1079,11 @@ void COM_Gamedir (char *dir)
 	gamedir_changed = true;
 
 	// the base's (id1 and qw) is qw's directory
-	if (FS_IsBaseDir (dir))
-		snprintf (com_gamedir, sizeof(com_gamedir), "%s/qw", com_basedir);
-	else
-		snprintf (com_gamedir, sizeof(com_gamedir), "%s/%s", com_basedir, dir);
+	// everything read and written is named from it, so a short one is no game
+	if (!(FS_IsBaseDir (dir)
+		? Q_snprintfz (com_gamedir, sizeof(com_gamedir), "%s/qw", com_basedir)
+		: Q_snprintfz (com_gamedir, sizeof(com_gamedir), "%s/%s", com_basedir, dir)))
+		Sys_Error ("The path of the %s game directory doesn't fit", dir);
 
 	if (gamedir_entered)
 		gamedir_entered ();

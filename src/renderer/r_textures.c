@@ -79,11 +79,14 @@ static byte *R_FindTexture (const char *dir, const char *name, const char *suffi
 		if (file[i] == '*')
 			file[i] = '#';
 
-	snprintf (path, sizeof(path), "textures/%s/%s%s.tga", dir, file, suffix);
-	rgba = R_LoadTGA (path, w, h);
-	if (rgba)
-		return rgba;
-	snprintf (path, sizeof(path), "textures/%s%s.tga", file, suffix);
+	if (Q_snprintfz (path, sizeof(path), "textures/%s/%s%s.tga", dir, file, suffix))
+	{
+		rgba = R_LoadTGA (path, w, h);
+		if (rgba)
+			return rgba;
+	}
+	if (!Q_snprintfz (path, sizeof(path), "textures/%s%s.tga", file, suffix))
+		return NULL;
 	return R_LoadTGA (path, w, h);
 }
 

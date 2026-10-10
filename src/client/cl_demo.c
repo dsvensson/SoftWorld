@@ -619,7 +619,11 @@ void CL_Record_f (void)
 	if (cls.demorecording)
 		CL_Stop_f();
 
-	snprintf (demopath, sizeof(demopath), "%s/%s", com_gamedir, Cmd_Argv(1));
+	if (!Q_snprintfz (demopath, sizeof(demopath), "%s/%s", com_gamedir, Cmd_Argv(1)))
+	{
+		Con_Printf ("The path of %s doesn't fit\n", Cmd_Argv(1));
+		return;
+	}
 
 //
 // open the demo file
@@ -860,7 +864,11 @@ void CL_ReRecord_f (void)
 	if (cls.demorecording)
 		CL_Stop_f();
 
-	snprintf (demopath, sizeof(demopath), "%s/%s", com_gamedir, Cmd_Argv(1));
+	if (!Q_snprintfz (demopath, sizeof(demopath), "%s/%s", com_gamedir, Cmd_Argv(1)))
+	{
+		Con_Printf ("The path of %s doesn't fit\n", Cmd_Argv(1));
+		return;
+	}
 
 //
 // open the demo file

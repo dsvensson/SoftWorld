@@ -54,7 +54,11 @@ static bool R_LoadSkyboxFaces (const char *name, const char *prefix, const char 
 
 	for (i = 0 ; i < SKYBOX_FACES ; i++)
 	{
-		snprintf (path, sizeof(path), "%s%s%s%s.tga", prefix, name, sep, suffixes[i]);
+		if (!Q_snprintfz (path, sizeof(path), "%s%s%s%s.tga", prefix, name, sep, suffixes[i]))
+		{	// a name that doesn't fit names no face
+			Mem_Free (faces);
+			return false;
+		}
 		rgba = R_LoadTGA (path, &w, &h);
 		if (!rgba)
 		{

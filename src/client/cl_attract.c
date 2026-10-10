@@ -372,7 +372,8 @@ static void CL_AttractLoad (loadjob_t *job)
 
 	j->failed = true;
 	BSP_WantVisPatch (VP_ATTRACT, true);	// its liquids seen through (r_novis 2), as its water is drawn
-	snprintf (path, sizeof(path), "maps/%s.bsp", j->name);
+	if (!Q_snprintfz (path, sizeof(path), "maps/%s.bsp", j->name))
+		return;		// failed, as set above
 	if (!CL_AttractSpots (j, path))
 	{
 		Con_DPrintf ("Attract mode: %s/%s has no info_intermission\n", j->dir, path);

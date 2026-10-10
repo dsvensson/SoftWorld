@@ -368,7 +368,8 @@ static bool SL_JsonObject (sljson_t *j)
 			*slash = 0;
 		if (!(sid = strstr (link, "sid=")) || !isdigit ((byte)sid[4]))
 			return true;
-		snprintf (stream, sizeof(stream), "%d@%s", atoi (sid + 4), host);
+		if (!Q_snprintfz (stream, sizeof(stream), "%d@%s", atoi (sid + 4), host))
+			return true;	// no relay is named that
 	}
 	else if (strchr (link, '@'))
 		Q_strncpyz (stream, link, sizeof(stream));

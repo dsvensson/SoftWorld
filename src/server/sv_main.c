@@ -1318,7 +1318,11 @@ static void SV_WriteIP_f (void)
 	char	name[MAX_OSPATH];
 	int		i;
 
-	snprintf (name, sizeof(name), "%s/listip.cfg", com_gamedir);
+	if (!Q_snprintfz (name, sizeof(name), "%s/listip.cfg", com_gamedir))
+	{
+		Con_Printf ("The path of listip.cfg doesn't fit.\n");
+		return;
+	}
 
 	Con_Printf ("Writing %s.\n", name);
 

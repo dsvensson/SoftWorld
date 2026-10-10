@@ -483,9 +483,9 @@ static slbatch_t *SL_ReadQTVList (const char *url)
 		return NULL;
 	b->source = SL_QTVBATCH;
 	if (!(data = HTTP_GetAll (url, SL_MAXLIST, SL_FETCHTIME, &length, error, sizeof(error))))
-		snprintf (b->message, sizeof(b->message), "Server browser: the QTV list: %s\n", error);
+		Q_snprintfz (b->message, sizeof(b->message), "Server browser: the QTV list: %s\n", error);
 	else if (!(b->ok = SL_ParseQTVList (data, length, SL_Streamed, b) >= 0))
-		snprintf (b->message, sizeof(b->message), "Server browser: the QTV list (%s) isn't one\n", url);
+		Q_snprintfz (b->message, sizeof(b->message), "Server browser: the QTV list (%s) isn't one\n", url);
 	free (data);
 	return b;
 }

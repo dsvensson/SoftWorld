@@ -266,12 +266,11 @@ Where a download goes: the game directory; skins, which all game directories
 share, in qw
 ================
 */
-static void CL_DownloadPath (const char *file, char *path, size_t size)
+static bool CL_DownloadPath (const char *file, char *path, size_t size)
 {
 	if (!strncmp (file, "skins/", 6))
-		snprintf (path, size, "%s/qw/%s", FS_BaseDir (), file);
-	else
-		snprintf (path, size, "%s/%s", com_gamedir, file);
+		return Q_snprintfz (path, size, "%s/qw/%s", FS_BaseDir (), file);
+	return Q_snprintfz (path, size, "%s/%s", com_gamedir, file);
 }
 
 /*
@@ -307,7 +306,11 @@ static bool CL_OpenDownload (void)
 {
 	char	path[MAX_OSPATH];
 
-	CL_DownloadPath (cls.downloadtempname, path, sizeof(path));
+	if (!CL_DownloadPath (cls.downloadtempname, path, sizeof(path)))
+	{
+		Con_Printf ("The path of %s doesn't fit\n", cls.downloadtempname);
+		return false;
+	}
 	COM_CreatePath (path);
 	cls.download = fopen (path, "wb");
 	if (!cls.download)
@@ -373,8 +376,8 @@ static void CL_CloseDownload (void)
 	{
 		fclose (cls.download);
 		cls.download = NULL;
-		CL_DownloadPath (cls.downloadtempname, path, sizeof(path));
-		remove (path);
+		if (CL_DownloadPath (cls.downloadtempname, path, sizeof(path)))
+			remove (path);
 	}
 	dl.awaiting = false;
 	dl.chunked = false;
@@ -495,7 +498,11 @@ static bool CL_WebDownload (const char *local)
 	COM_StripExtension (cls.downloadlocalname, cls.downloadtempname);
 	Q_strncatz (cls.downloadtempname, ".tmp", sizeof(cls.downloadtempname));
 	snprintf (w->url, sizeof(w->url), "%s%s", src, local + 5);
-	CL_DownloadPath (cls.downloadtempname, w->path, sizeof(w->path));
+	if (!CL_DownloadPath (cls.downloadtempname, w->path, sizeof(w->path)))
+	{
+		free (w);
+		return false;
+	}
 	COM_CreatePath (w->path);
 	atomic_store (&w->total, -1);
 	atomic_store (&w->state, WEB_RUNNING);
@@ -541,8 +548,12 @@ void CL_DownloadFrame (void)
 	cls.downloadpercent = 0;
 
 	took = host.realtime - dl.started;
-	CL_DownloadPath (cls.downloadtempname, oldn, sizeof(oldn));
-	CL_DownloadPath (cls.downloadlocalname, newn, sizeof(newn));
+	if (!CL_DownloadPath (cls.downloadtempname, oldn, sizeof(oldn))
+		|| !CL_DownloadPath (cls.downloadlocalname, newn, sizeof(newn)))
+	{
+		ok = false;
+		Q_strncpyz (error, "its path doesn't fit", sizeof(error));
+	}
 	if (!ok)
 		Con_Printf ("Couldn't download %s: %s\n", cls.downloadname, error);
 	else
@@ -615,11 +626,15 @@ static void CL_FinishDownload (void)
 	cls.download = NULL;
 	cls.downloadpercent = 0;
 
-	CL_DownloadPath (cls.downloadtempname, oldn, sizeof(oldn));
-	CL_DownloadPath (cls.downloadlocalname, newn, sizeof(newn));
-	remove (newn);
-	if (rename (oldn, newn))
-		Con_Printf ("failed to rename %s\n", oldn);
+	if (!CL_DownloadPath (cls.downloadtempname, oldn, sizeof(oldn))
+		|| !CL_DownloadPath (cls.downloadlocalname, newn, sizeof(newn)))
+		Con_Printf ("failed to name %s\n", cls.downloadname);
+	else
+	{
+		remove (newn);
+		if (rename (oldn, newn))
+			Con_Printf ("failed to rename %s\n", oldn);
+	}
 
 	if (dl.chunked)
 	{

@@ -31,6 +31,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "in_events.h"
 #include "keys.h"
 #include "print.h"
+#include "q_string.h"
 #include "linux_local.h"
 
 #include <dirent.h>
@@ -168,7 +169,7 @@ static bool IN_OpenPad (const char *path)
 
 	pad_fd = fd;
 	if (ioctl (fd, EVIOCGNAME (sizeof(pad_name)), pad_name) < 0)
-		snprintf (pad_name, sizeof(pad_name), "%s", path);
+		Q_snprintfz (pad_name, sizeof(pad_name), "%s", path);
 	for (i = 0 ; i < NUM_AXES ; i++)
 	{
 		memset (&pad_info[i], 0, sizeof(pad_info[i]));

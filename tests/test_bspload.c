@@ -225,7 +225,7 @@ static void TestPak (const char *path)
 		// a copy of its own, so reading past a map's end is caught
 		map = Mem_Alloc ((size_t)len + 1);
 		memcpy (map, pak + ofs, (size_t)len);
-		snprintf (full, sizeof(full), "%s:%s", path, name);
+		Q_snprintfz (full, sizeof(full), "%s:%s", path, name);
 		TestMap (full, map, len);
 		Mem_Free (map);
 	}

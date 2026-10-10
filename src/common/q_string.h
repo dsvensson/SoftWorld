@@ -45,6 +45,22 @@ void	Q_strncpyz (char *dest, const char *src, size_t size);
 // appends src to dest (a buffer of size bytes), truncating and always terminating
 void	Q_strncatz (char *dest, const char *src, size_t size);
 
+// a formatted string into dest (a buffer of size bytes), always terminated;
+// false where it didn't all fit, dest then holding as much of it as does. A
+// path that truncated names no file, so a caller building one takes the false
+// for the miss it is rather than looking the shortened name up.
+// GCC and clang check the format against the arguments, and hold dest to be
+// size bytes written. Neither has an attribute for the truncation GCC looks
+// for in snprintf itself, which it knows only as a built-in: a call here is
+// checked by its return, not by the compiler.
+#if defined(__GNUC__)
+#define Q_FORMAT(fmt, first)	__attribute__((format (printf, fmt, first), \
+	access (write_only, 1, 2)))
+#else
+#define Q_FORMAT(fmt, first)
+#endif
+bool	Q_snprintfz (char *dest, size_t size, const char *fmt, ...) Q_FORMAT(3, 4);
+
 int		Q_atoi (const char *str);
 float	Q_atof (const char *str);
 

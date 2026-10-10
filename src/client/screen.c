@@ -783,7 +783,11 @@ static void SCR_ScreenShot_f (void)
 	for (i=0 ; i<=99 ; i++)
 	{
 		snprintf (filename, sizeof(filename), "quake%02d.png", i);
-		snprintf (path, sizeof(path), "%s/%s", com_gamedir, filename);
+		if (!Q_snprintfz (path, sizeof(path), "%s/%s", com_gamedir, filename))
+		{
+			i = 100;	// as though none were free
+			break;
+		}
 		if (Sys_FileTime (path) == -1)
 			break;	// file doesn't exist
 	}

@@ -79,6 +79,17 @@ void Q_strncatz (char *dest, const char *src, size_t size)
 		Q_strncpyz (dest + len, src, size - len);
 }
 
+bool Q_snprintfz (char *dest, size_t size, const char *fmt, ...)
+{
+	va_list	args;
+	int		n;
+
+	va_start (args, fmt);
+	n = vsnprintf (dest, size, fmt, args);
+	va_end (args);
+	return n >= 0 && (size_t)n < size;
+}
+
 int Q_atoi (const char *str)
 {
 	int		val;

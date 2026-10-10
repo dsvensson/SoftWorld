@@ -277,28 +277,27 @@ static bool HTTP_ParseURL (const char *url, httpurl_t *u)
 }
 
 // where a redirect leads from base: a URL, or one relative to base's
-static void HTTP_ResolveURL (const httpurl_t *base, const char *location, char *out, size_t size)
+static bool HTTP_ResolveURL (const httpurl_t *base, const char *location, char *out, size_t size)
 {
 	char	origin[300], dir[1024], *slash;
 
 	if (strstr (location, "://"))
 	{
 		Q_strncpyz (out, location, size);
-		return;
+		return true;
 	}
 	snprintf (origin, sizeof(origin), strchr (base->host, ':') ? "%s://[%s]:%i" : "%s://%s:%i",
 		base->tls ? "https" : "http", base->host, base->port);
 	if (location[0] == '/' && location[1] == '/')
-		snprintf (out, size, "%s:%s", base->tls ? "https" : "http", location);
-	else if (location[0] == '/')
-		snprintf (out, size, "%s%s", origin, location);
-	else
+		return Q_snprintfz (out, size, "%s:%s", base->tls ? "https" : "http", location);
+	if (location[0] == '/')
+		return Q_snprintfz (out, size, "%s%s", origin, location);
 	{
 		Q_strncpyz (dir, base->path, sizeof(dir));
 		dir[strcspn (dir, "?")] = 0;
 		if ((slash = strrchr (dir, '/')))
 			slash[1] = 0;
-		snprintf (out, size, "%s%s%s", origin, dir, location);
+		return Q_snprintfz (out, size, "%s%s%s", origin, dir, location);
 	}
 }
 
@@ -480,7 +479,11 @@ bool HTTP_Get (const char *url, double timeout, httpbody_t body, void *ctx, char
 		case HTTP_GOT:
 			return true;
 		case HTTP_REDIRECTED:
-			HTTP_ResolveURL (&u, location, current, sizeof(current));
+			if (!HTTP_ResolveURL (&u, location, current, sizeof(current)))
+			{
+				snprintf (error, errorsize, "%s redirects somewhere too long to follow", current);
+				return false;
+			}
 			break;
 		case HTTP_FAILED:
 		default:
