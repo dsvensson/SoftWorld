@@ -29,8 +29,7 @@
 			"name": "linux",
 			"hidden": true,
 			"inherits": "base",
-			"condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
-			"cacheVariables": { "CMAKE_C_COMPILER": "clang", "CMAKE_CXX_COMPILER": "clang++", "CMAKE_LINKER_TYPE": "LLD" }
+			"condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
 		},
 		{
 			"name": "msvc-v4",
@@ -88,19 +87,19 @@
 		},
 		{
 			"name": "linux-v4",
-			"displayName": "clang + lld, x86-64-v4 (AVX-512)",
+			"displayName": "clang or GCC, x86-64-v4 (AVX-512)",
 			"inherits": "linux",
 			"cacheVariables": { "SW_ARCH": "x86-64-v4" }
 		},
 		{
 			"name": "linux-v3",
-			"displayName": "clang + lld, x86-64-v3 (AVX2)",
+			"displayName": "clang or GCC, x86-64-v3 (AVX2)",
 			"inherits": "linux",
 			"cacheVariables": { "SW_ARCH": "x86-64-v3" }
 		},
 		{
 			"name": "linux-generic",
-			"displayName": "clang + lld, baseline x86-64 or arm64, scalar kernels",
+			"displayName": "clang or GCC, baseline x86-64 or arm64, scalar kernels",
 			"inherits": "linux",
 			"cacheVariables": { "SW_ARCH": "generic" }
 		},

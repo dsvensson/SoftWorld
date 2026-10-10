@@ -111,11 +111,13 @@ make.
 You need a Wayland compositor (Hyprland, KDE Plasma, Sway and the like; GNOME draws no title bar
 for the window) or an X11 desktop, a GPU with Vulkan 1.3, and:
 
-- clang with lld (the presets' compiler and linker), or GCC; CMake 3.28 or later and Ninja.
+- clang or GCC; CMake 3.28 or later and Ninja. The presets take the host's own C compiler and
+  linker, so `CC=clang CXX=clang++ cmake --preset linux-v4` picks the other one, and
+  `-DCMAKE_LINKER_TYPE=LLD` links with lld (faster, and CMake 3.29 or later).
 - Vulkan's headers and loader, glslang (which compiles the shader), and the development files of
   wayland-client, wayland-protocols 1.41 or later, xkbcommon, PipeWire, Xlib, XInput 2 and
   libXss. On Arch:
-  `pacman -S cmake ninja clang lld vulkan-headers vulkan-icd-loader glslang wayland
+  `pacman -S cmake ninja gcc vulkan-headers vulkan-icd-loader glslang wayland
   wayland-protocols libxkbcommon libpipewire libx11 libxi libxss`.
 - fteqcc or git, and mbedTLS or a configure that builds it, as on Windows.
 
