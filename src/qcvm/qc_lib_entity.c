@@ -34,6 +34,7 @@ static bool QC_ChainField (qcvm_t *vm, int i, const char *name, uint32_t *cf)
 {
 	int64_t	f = QC_Argc (vm) > i ? (int64_t)QC_ArgWord (vm, i) : QC_LibField (vm, "chain");
 
+	*cf = 0;
 	if (f < 0 || !QC_LibFieldOk (vm, (uint32_t)f, 1))
 		return QC_BadField (vm, name);
 	*cf = (uint32_t)f;

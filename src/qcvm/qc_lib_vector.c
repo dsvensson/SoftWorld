@@ -457,6 +457,7 @@ static bool QC_RequiredField (qcvm_t *vm, const char *builtin, const char *name,
 {
 	int64_t	ofs = QC_LibField (vm, name);
 
+	*f = 0;
 	if (ofs < 0)
 		return QC_Error (vm, "%s: the progs has no .%s field", builtin, name);
 	*f = (uint32_t)ofs;
@@ -468,6 +469,7 @@ static bool QC_SelfEntity (qcvm_t *vm, const char *builtin, uint32_t *e)
 {
 	uint32_t	g;
 
+	*e = 0;
 	if (!QC_LibGlobal (vm, "self", QC_EV_ENTITY, &g))
 		return QC_Error (vm, "%s: the progs has no `self` global", builtin);
 	*e = QC_GetS (&vm->mem, g);

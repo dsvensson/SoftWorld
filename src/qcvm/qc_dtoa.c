@@ -633,15 +633,13 @@ static double QC_HexDigitsToDouble (const uint8_t *digits, size_t count, int64_t
 	size_t		k;
 	int			lz;
 
-	for (k = 0 ; k < count ; k++)
+	// the first sixteen make the mantissa; the rest only carry weight
+	for (k = 0 ; k < count && k < 16 ; k++)
+		m = (m << 4) | digits[k];
+	for ( ; k < count ; k++)
 	{
-		if (k < 16)
-			m = (m << 4) | digits[k];
-		else
-		{
-			sticky |= digits[k] != 0;
-			exp += 4;
-		}
+		sticky |= digits[k] != 0;
+		exp += 4;
 	}
 	if (!m)
 		return 0.0;

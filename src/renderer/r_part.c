@@ -92,7 +92,13 @@ void R_ReadPointFile_f (void)
 	particle_t	*p;
 	char	fname[MAX_OSPATH];
 
-// FIXME	sprintf (fname,"maps/%s.pts", sv.name);
+	if (!r_scene.worldmodel)
+	{
+		Con_Printf ("pointfile: no map is loaded\n");
+		return;
+	}
+	COM_StripExtension (r_scene.worldmodel->name, fname);
+	Q_strncatz (fname, ".pts", sizeof(fname));
 
 	COM_FOpenFile (fname, &f);
 	if (!f)

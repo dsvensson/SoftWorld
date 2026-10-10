@@ -1216,7 +1216,7 @@ gives a size of its own; true once the compositor has configured it
 */
 bool WL_Init (int width, int height)
 {
-	struct zwp_linux_dmabuf_feedback_v1	*feedback;
+	struct zwp_linux_dmabuf_feedback_v1	*feedback = NULL;
 	int		multiple;
 
 	way.display = wl_display_connect (NULL);
@@ -1237,7 +1237,8 @@ bool WL_Init (int width, int height)
 		zwp_linux_dmabuf_feedback_v1_add_listener (feedback, &wl_feedback_listener, NULL);
 	}
 	wl_display_roundtrip (way.display);
-	if (way.dmabuf)
+	// the one taken above, as the roundtrip can take the global away
+	if (feedback)
 		zwp_linux_dmabuf_feedback_v1_destroy (feedback);
 
 	way.surface = wl_compositor_create_surface (way.compositor);

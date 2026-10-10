@@ -1014,6 +1014,7 @@ static bool QC_PickSlot (qcvm_t *vm, uint32_t *out)
 	double		now = QC_Now (vm);
 	uint32_t	first = vm->config.first_spawnable, start, grow, e;
 
+	*out = 0;
 	start = first < m->num_edicts ? first : m->num_edicts;
 	for (e = start ; e < m->num_edicts ; e++)
 		if (!m->slots[e].in_use && (m->slots[e].freetime < 2 || now - m->slots[e].freetime > 0.5))

@@ -285,7 +285,10 @@ bool QC_PtrRead (qcvm_t *vm, uint32_t base, uint32_t offset, void *out, uint32_t
 		&& (data = (const uint8_t *)QC_StaticText (&vm->strings, base & QC_INDEX_MASK)))
 		size = (uint32_t)strlen ((const char *)data);
 	if (!data)
+	{
+		memset (out, 0, n);
 		return QC_Fail (vm, QC_ERR_BAD_POINTER_READ, addr, NULL);
+	}
 	for (i = 0 ; i < n ; i++)
 	{
 		at = (uint64_t)offset + i;
