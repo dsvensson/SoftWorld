@@ -42,6 +42,103 @@ int		*intsintable;
 R_EmitEdge
 ================
 */
+/*
+================
+R_FaceEdgeLines
+
+The lines v to v2 of an edge of the world face being emitted, its u on the
+first, as the scan steps it: leading, where the face's span on a line starts
+(edge->u >> 20), or trailing, where it ends (before that)
+================
+*/
+static void R_FaceEdgeLines (rband_t *b, int64_t u, int64_t u_step, int v, int v2, bool leading)
+{
+	int		y;
+
+	// lines not met before have neither
+	if (b->facetop > b->facebottom)
+	{
+		b->facetop = v;
+		b->facebottom = v - 1;
+	}
+	for (y = v ; y < b->facetop ; y++)
+	{
+		b->faceleft[y] = INT64_MIN;
+		b->faceright[y] = INT64_MAX;
+	}
+	for (y = b->facebottom + 1 ; y <= v2 ; y++)
+	{
+		b->faceleft[y] = INT64_MIN;
+		b->faceright[y] = INT64_MAX;
+	}
+	if (v < b->facetop)
+		b->facetop = v;
+	if (v2 > b->facebottom)
+		b->facebottom = v2;
+
+	for (y = v ; y <= v2 ; y++, u += u_step)
+	{
+		if (leading)
+		{
+			if (u > b->faceleft[y])
+				b->faceleft[y] = u;
+		}
+		else if (u < b->faceright[y])
+			b->faceright[y] = u;
+	}
+}
+
+/*
+================
+R_CoverFace
+
+The pixels the world face just emitted will draw on its lines, wherever it
+is in front, kept as covered: nothing the walk meets after it is in front of
+it. On a line they are from its leading edge's u >> 20 to before its trailing
+edge's, the u the scan steps to there; where the face was clipped on the
+right its spans end at the view's edge, which no edge marks, and a pixel in
+from that is kept.
+================
+*/
+static void R_CoverFace (rband_t *b)
+{
+	int64_t		left, right;
+	uint64_t	*row, mask;
+	int			y, x0, x1, w0, w1, w;
+
+	for (y = b->facetop ; y <= b->facebottom ; y++)
+	{
+		left = b->faceleft[y];
+		right = b->faceright[y];
+		if (right == INT64_MAX && b->makerightedge)
+			right = (int64_t)(r_refdef.vrectright - 1) << 20;
+		if (left == INT64_MIN || right == INT64_MAX)
+			continue;
+		x0 = (int)(left >> 20);
+		x1 = (int)(right >> 20) - 1;
+		if (x0 < r_refdef.vrect.x)
+			x0 = r_refdef.vrect.x;
+		if (x1 > r_refdef.vrectright - 1)
+			x1 = r_refdef.vrectright - 1;
+		if (x0 > x1)
+			continue;
+
+		row = b->cover + (size_t)y * (size_t)b->coverwords;
+		w0 = x0 >> 6;
+		w1 = x1 >> 6;
+		for (w = w0 ; w <= w1 ; w++)
+		{
+			mask = ~(uint64_t)0;
+			if (w == w0)
+				mask &= ~(uint64_t)0 << (x0 & 63);
+			if (w == w1)
+				mask &= ~(uint64_t)0 >> (63 - (x1 & 63));
+			row[w] |= mask;
+		}
+		b->covered = 1;
+	}
+}
+
 static void R_EmitEdge (rband_t *b, mvertex_t *pv0, mvertex_t *pv1)
 {
 	edge_t	*edge;
@@ -210,6 +307,9 @@ static void R_EmitEdge (rband_t *b, mvertex_t *pv0, mvertex_t *pv1)
 		b->edgestarts[edge - b->edges] = EDGE_OUTSIDE;
 		return;
 	}
+	b->edgeends[edge - b->edges] = v2;
+	if (b->occlusion && !b->insubmodel)
+		R_FaceEdgeLines (b, edge->u, edge->u_step, v, v2, side != 0);
 
 	edge->nextremove = b->removeedges[v2];
 	b->removeedges[v2] = edge;
@@ -337,6 +437,23 @@ static void R_EmitCachedEdge (rband_t *b, unsigned offset)
 
 	pedge_t = (edge_t *)((uintptr_t)b->edges + offset);
 
+	// for occlusion, its lines as this face's: trailing where it goes in
+	// surfs[0], leading in surfs[1]
+	if (b->occlusion && !b->insubmodel)
+	{
+		uint32_t	start = b->edgestarts[pedge_t - b->edges];
+		int			v;
+
+		if (start != EDGE_OUTSIDE)
+		{
+			v = (int)(start >> 1);
+			if (v < b->top)
+				v = b->top;
+			R_FaceEdgeLines (b, pedge_t->u, pedge_t->u_step, v, b->edgeends[pedge_t - b->edges],
+				pedge_t->surfs[0] != 0);
+		}
+	}
+
 	if (!pedge_t->surfs[0])
 		pedge_t->surfs[0] = (uint32_t)(b->surface_p - b->surfaces);
 	else
@@ -406,6 +523,8 @@ void R_RenderFace (rband_t *b, msurface_t *fa, int clipflags)
 	}
 
 // push the edges through
+	b->facetop = 1;
+	b->facebottom = 0;		// no lines yet
 	b->emitted = false;
 	b->nearzi = 0;
 	b->nearzionly = false;
@@ -514,6 +633,9 @@ void R_RenderFace (rband_t *b, msurface_t *fa, int clipflags)
 			ycenter * b->surface_p->d_zistepv;
 
 	b->surface_p++;
+
+	if (b->occlusion && !b->insubmodel)
+		R_CoverFace (b);
 }
 
 
@@ -572,6 +694,8 @@ void R_RenderBmodelFace (rband_t *b, bedge_t *pedges, msurface_t *psurf)
 	}
 
 // push the edges through
+	b->facetop = 1;
+	b->facebottom = 0;		// no lines yet
 	b->emitted = false;
 	b->nearzi = 0;
 	b->nearzionly = false;
@@ -636,4 +760,7 @@ void R_RenderBmodelFace (rband_t *b, bedge_t *pedges, msurface_t *psurf)
 			ycenter * b->surface_p->d_zistepv;
 
 	b->surface_p++;
+
+	if (b->occlusion && !b->insubmodel)
+		R_CoverFace (b);
 }

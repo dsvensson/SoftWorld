@@ -602,6 +602,106 @@ static inline bool R_BandCullsBox (const rband_t *b, const float *minmaxs, const
 
 /*
 ================
+R_BandOccluded
+
+Whether all a box could be on the band's lines is on pixels covered by the
+faces the walk met (rband_t cover): its corners in view space bound by the
+view's axes, and their projections by the bounds' extremes, a pixel out.
+Not where any of it is nearer than the near clip.
+================
+*/
+static bool R_BandOccluded (const rband_t *b, const float *minmaxs)
+{
+	vec3_t			center, half;
+	float			cx, cy, cz, ex, ey, ez, zmin, zmax, xmin, xmax, ymin, ymax;
+	float			minxz, maxxz, minyz, maxyz;
+	int				x0, x1, y0, y1, y, w, w0, w1, j;
+	const uint64_t	*row;
+	uint64_t		mask;
+
+	for (j = 0 ; j < 3 ; j++)
+	{
+		center[j] = 0.5f * (minmaxs[j] + minmaxs[3+j]) - b->modelorg[j];
+		half[j] = 0.5f * (minmaxs[3+j] - minmaxs[j]);
+	}
+	cz = DotProduct (center, b->vpn);
+	ez = fabsf (b->vpn[0]) * half[0] + fabsf (b->vpn[1]) * half[1] + fabsf (b->vpn[2]) * half[2];
+	zmin = cz - ez;
+	if (!(zmin >= NEAR_CLIP * 2))
+		return false;		// near the eye, or NaN
+	zmax = cz + ez;
+	cx = DotProduct (center, b->vright);
+	ex = fabsf (b->vright[0]) * half[0] + fabsf (b->vright[1]) * half[1] + fabsf (b->vright[2]) * half[2];
+	cy = DotProduct (center, b->vup);
+	ey = fabsf (b->vup[0]) * half[0] + fabsf (b->vup[1]) * half[1] + fabsf (b->vup[2]) * half[2];
+	xmin = cx - ex;
+	xmax = cx + ex;
+	ymin = cy - ey;
+	ymax = cy + ey;
+	minxz = xmin >= 0 ? xmin / zmax : xmin / zmin;
+	maxxz = xmax >= 0 ? xmax / zmin : xmax / zmax;
+	minyz = ymin >= 0 ? ymin / zmax : ymin / zmin;
+	maxyz = ymax >= 0 ? ymax / zmin : ymax / zmax;
+
+	x0 = (int)floorf (xcenter + xscale * minxz) - 1;
+	x1 = (int)ceilf (xcenter + xscale * maxxz) + 1;
+	y0 = (int)floorf (ycenter - yscale * maxyz) - 1;
+	y1 = (int)ceilf (ycenter - yscale * minyz) + 1;
+	if (x0 < r_refdef.vrect.x)
+		x0 = r_refdef.vrect.x;
+	if (x1 > r_refdef.vrectright - 1)
+		x1 = r_refdef.vrectright - 1;
+	if (y0 < b->top)
+		y0 = b->top;
+	if (y1 > b->bottom - 1)
+		y1 = b->bottom - 1;
+	if (x0 > x1 || y0 > y1)
+		return true;		// none of it on the band's lines
+
+	w0 = x0 >> 6;
+	w1 = x1 >> 6;
+	for (y = y0 ; y <= y1 ; y++)
+	{
+		row = b->cover + (size_t)y * (size_t)b->coverwords;
+		for (w = w0 ; w <= w1 ; w++)
+		{
+			mask = ~(uint64_t)0;
+			if (w == w0)
+				mask &= ~(uint64_t)0 << (x0 & 63);
+			if (w == w1)
+				mask &= ~(uint64_t)0 >> (63 - (x1 & 63));
+			if ((row[w] & mask) != mask)
+				return false;
+		}
+	}
+	return true;
+}
+
+/*
+================
+R_OccludedKeys
+
+The leaves under a hidden node, one key for them all, where the walk would
+have given them theirs: a brush entity in one is split there and sorted by
+it (R_RecursiveClipBPoly), behind what hides the node
+================
+*/
+static void R_OccludedKeys (rband_t *b, mnode_t *node, int key)
+{
+	while (node->contents != CONTENTS_SOLID && node->visframe == r_visframecount)
+	{
+		if (node->contents < 0)
+		{
+			b->leafkeys[(mleaf_t *)node - r_scene.worldmodel->leafs] = key;
+			return;
+		}
+		R_OccludedKeys (b, node->children[0], key);
+		node = node->children[1];
+	}
+}
+
+/*
+================
 R_RecursiveWorldNode
 ================
 */
@@ -661,6 +761,14 @@ static void R_RecursiveWorldNode (rband_t *b, mnode_t *node, int clipflags)
 			if (d >= 0)
 				clipflags &= ~(1<<i);	// node is entirely on screen
 		}
+	}
+
+// hidden behind the faces met already
+	if (b->covered && b->occlusion && R_BandOccluded (b, node->minmaxs))
+	{
+		R_OccludedKeys (b, node, b->currentkey);
+		b->currentkey++;
+		return;
 	}
 	
 // if a leaf node, draw stuff
@@ -730,7 +838,8 @@ static void R_RecursiveWorldNode (rband_t *b, mnode_t *node, int clipflags)
 				{
 					if ((surf->flags & SURF_PLANEBACK) &&
 						(b->surfvisible[n >> 3] & (1 << (n & 7))) &&
-						!((clipflags & 48) && R_BandCullsBox (b, surf->minmaxs, vec3_origin, clipflags)))
+						!((clipflags & 48) && R_BandCullsBox (b, surf->minmaxs, vec3_origin, clipflags)) &&
+						!(b->covered && b->occlusion && R_BandOccluded (b, surf->minmaxs)))
 					{
 						R_RenderFace (b, surf, clipflags);
 					}
@@ -745,7 +854,8 @@ static void R_RecursiveWorldNode (rband_t *b, mnode_t *node, int clipflags)
 				{
 					if (!(surf->flags & SURF_PLANEBACK) &&
 						(b->surfvisible[n >> 3] & (1 << (n & 7))) &&
-						!((clipflags & 48) && R_BandCullsBox (b, surf->minmaxs, vec3_origin, clipflags)))
+						!((clipflags & 48) && R_BandCullsBox (b, surf->minmaxs, vec3_origin, clipflags)) &&
+						!(b->covered && b->occlusion && R_BandOccluded (b, surf->minmaxs)))
 					{
 						R_RenderFace (b, surf, clipflags);
 					}

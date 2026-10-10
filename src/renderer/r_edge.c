@@ -61,6 +61,12 @@ void R_BeginEdgeFrame (rband_t *b)
 	b->outofedges = b->outofsurfaces = b->outofspans = b->outofbmodel = b->outofafters = false;
 	b->faceclip = b->polycount = 0;
 	R_BandWorldView (b);
+
+	b->occlusion = r_occlusion.value != 0;
+	b->covered = 0;
+	if (b->occlusion)
+		memset (b->cover + (size_t)b->top * (size_t)b->coverwords, 0,
+			(size_t)(b->bottom - b->top) * (size_t)b->coverwords * sizeof(*b->cover));
 }
 
 

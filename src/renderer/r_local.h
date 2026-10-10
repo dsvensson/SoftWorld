@@ -303,6 +303,7 @@ typedef struct clipplane_s
 } clipplane_t;
 
 extern	clipplane_t	view_clipplanes[4];
+extern cvar_t	r_occlusion;
 void R_ViewFrustum (const vec3_t right, const vec3_t up, const vec3_t forward, const vec3_t org, clipplane_t planes[4]);
 
 //=============================================================================
@@ -409,6 +410,19 @@ typedef struct rband_s
 
 // what ran out of room: the band is drawn again with more (r_band.c)
 	bool		outofedges, outofsurfaces, outofspans, outofbmodel, outofafters;
+
+// occlusion (r_bsp.c): the walk goes front to back, and where a world face it
+// met is on a line no face it meets later is in front of it there, so the
+// pixels each line's faces will draw are kept, and a node or leaf whose box
+// falls wholly on them is hidden, and not walked (r_occlusion)
+	bool		occlusion;			// on for this run
+	uint64_t	*cover;				// by line, coverwords words, a bit a pixel
+	int			coverwords;
+	int			covered;			// faces covering pixels so far
+	int64_t		*faceleft, *faceright;	// by line: the face being emitted's leading
+									//  and trailing edges' u, as the scan steps them
+	int			facetop, facebottom;	// its lines with either, none if top > bottom
+	int			*edgeends;			// by edge: its last line in the band
 
 	int			faceclip, polycount;	// counts, for r_speeds
 	double		time;				// the last run took, in seconds

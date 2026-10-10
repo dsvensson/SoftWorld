@@ -76,9 +76,11 @@ void R_SetBandRoom (int numedges, int numsurfs)
 	{
 		Mem_Free (b->edges);
 		Mem_Free (b->edgestarts);
+		Mem_Free (b->edgeends);
 		Mem_Free (b->surfmem);
 		b->edges = NULL;
 		b->edgestarts = NULL;
+		b->edgeends = NULL;
 		b->surfmem = NULL;
 		b->maxedges = b->maxsurfs = 0;
 		b->world = NULL;
@@ -96,9 +98,11 @@ static void R_AllocBandEdges (rband_t *b, int numedges, int numsurfs)
 {
 	Mem_Free (b->edges);
 	Mem_Free (b->edgestarts);
+	Mem_Free (b->edgeends);
 	b->maxedges = numedges;
 	b->edges = Mem_Calloc ((size_t)numedges, sizeof(*b->edges));
 	b->edgestarts = Mem_Alloc ((size_t)numedges * sizeof(*b->edgestarts));
+	b->edgeends = Mem_Alloc ((size_t)numedges * sizeof(*b->edgeends));
 
 	Mem_Free (b->surfmem);
 	b->maxsurfs = numsurfs;
@@ -164,6 +168,13 @@ static void R_BandRoom (rband_t *b)
 		Mem_Free (b->removeedges);
 		Mem_Free (b->linestart);
 		Mem_Free (b->columnstart);
+		Mem_Free (b->cover);
+		Mem_Free (b->faceleft);
+		Mem_Free (b->faceright);
+		b->coverwords = (r_edgewidth + 63) / 64;
+		b->cover = Mem_Alloc ((size_t)r_edgeheight * (size_t)b->coverwords * sizeof(*b->cover));
+		b->faceleft = Mem_Alloc ((size_t)r_edgeheight * sizeof(*b->faceleft));
+		b->faceright = Mem_Alloc ((size_t)r_edgeheight * sizeof(*b->faceright));
 		b->removeedges = Mem_Calloc ((size_t)r_edgeheight, sizeof(*b->removeedges));
 		b->linestart = Mem_Alloc ((size_t)(r_edgeheight + 2) * sizeof(*b->linestart));
 		b->columnstart = Mem_Alloc ((size_t)(r_edgewidth + 1) * sizeof(*b->columnstart));

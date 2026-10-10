@@ -128,6 +128,10 @@ static cvar_t	r_profile = {.name = "r_profile", .string = "0",
 static cvar_t	r_threads = {.name = "r_threads", .string = "0", .archive = true,
 	.description = "Threads drawing the view, this one included; 0 is one a core, at most 8."};
 #define R_AUTO_THREADS	8		// the most r_threads 0 picks: more drew no faster (Ryzen 7950X)
+cvar_t	r_occlusion = {.name = "r_occlusion", .string = "1",
+	.description = "Skips the parts of the world hidden behind faces already met on the walk, front to back; "
+		"what is drawn is the same.",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "On"}, {0}}};
 static cvar_t	r_bandcount = {.name = "r_bands", .string = "0",
 	.description = "Horizontal bands the view is split into, the world walked and scanned in each apart, "
 		"on the threads at once; 0 is one a thread, 1 the whole view at once."};
@@ -301,6 +305,7 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_profile);
 	Cvar_RegisterVariable (&r_threads);
 	Cvar_RegisterVariable (&r_bandcount);
+	Cvar_RegisterVariable (&r_occlusion);
 	Cmd_AddCommand ("r_profile_show", R_Profile_f,
 		"Prints each drawing stage's average microseconds a frame since it last printed (needs r_profile 1), "
 		"and starts counting again.");
