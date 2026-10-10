@@ -510,6 +510,20 @@ static void CL_AttractSetState (attractstate_t state)
 	attract.statetime = host.realtime;
 }
 
+// whether a game directory's own chain has the file
+static bool CL_AttractHasFile (fs_chain_t *chain, const char *name)
+{
+	FILE	*f = NULL;
+
+	FS_UseChain (chain);
+	COM_FOpenFile (name, &f);
+	FS_UseChain (NULL);
+	if (!f)
+		return false;
+	fclose (f);
+	return true;
+}
+
 /*
 =================
 CL_AttractShow
@@ -524,26 +538,20 @@ static void CL_AttractShow (void)
 	attractmap_t	*m = &attract.maps[j->map];
 	sv_attract_t	level = {0};
 	fs_chain_t		*progsdir;
-	FILE			*f = NULL;
 	bool			nq;
 
 	attract.next = NULL;
 	FS_SetSearchChain (j->dirchain);
 
 	// the directory's progs: id1's NetQuake's, qw's QuakeWorld's (the one
-	// built in without its own), a mod's progs.dat if it has one
+	// built in without its own); a mod's qwprogs.dat if it has one, a
+	// QuakeWorld mod's as qw's is, in deathmatch, even beside a progs.dat;
+	// else its progs.dat if it has one
 	progsdir = FS_OpenDirChain (m->dir, true);
 	if (!strcmp (m->dir, "id1") || !strcmp (m->dir, "qw"))
 		nq = !strcmp (m->dir, "id1");
 	else
-	{
-		FS_UseChain (progsdir);
-		COM_FOpenFile ("progs.dat", &f);
-		FS_UseChain (NULL);
-		nq = f != NULL;
-		if (f)
-			fclose (f);
-	}
+		nq = !CL_AttractHasFile (progsdir, "qwprogs.dat") && CL_AttractHasFile (progsdir, "progs.dat");
 
 	level.map = m->name;
 	level.progs = nq ? "progs.dat" : "qwprogs.dat";
