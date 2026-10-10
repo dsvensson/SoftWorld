@@ -564,12 +564,12 @@ static void CL_AttractRecord (const attractjob_t *j)
 }
 
 // whether a game directory's own chain has the file
-static bool CL_AttractHasFile (fs_chain_t *chain, const char *name)
+static bool CL_AttractHasFile (fs_chain_t *chain, const char *file)
 {
 	FILE	*f = NULL;
 
 	FS_UseChain (chain);
-	COM_FOpenFile (name, &f);
+	COM_FOpenFile (file, &f);
 	FS_UseChain (NULL);
 	if (!f)
 		return false;
