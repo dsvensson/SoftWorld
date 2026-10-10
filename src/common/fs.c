@@ -142,6 +142,7 @@ static void COM_CheckRegistered (void)
 {
 	FILE		*h;
 	unsigned short	check[128];
+	size_t		got;
 	int			i;
 
 	COM_FOpenFile("gfx/pop.lmp", &h);
@@ -153,8 +154,11 @@ static void COM_CheckRegistered (void)
 		return;
 	}
 
-	fread (check, 1, sizeof(check), h);
+	got = fread (check, 1, sizeof(check), h);
 	fclose (h);
+
+	if (got != sizeof(check))
+		Sys_Error ("Corrupted data file.");
 	
 	for (i=0 ; i<128 ; i++)
 		if (pop[i] != (unsigned short)BigShort (check[i]))
@@ -684,6 +688,12 @@ byte *FS_LoadFile (const char *path, int *length)
 	len = com_filesize = COM_FOpenFile (path, &h);
 	if (!h)
 		return NULL;
+	if (len < 0)
+	{	// open, but of no length to read (an unseekable file)
+		fclose (h);
+		Con_Printf ("FS_LoadFile: can't tell the length of %s\n", path);
+		return NULL;
+	}
 
 	buf = Mem_Alloc ((size_t)len + 1);
 	buf[len] = 0;

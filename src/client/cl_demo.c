@@ -180,6 +180,15 @@ static void CL_WriteDemoMessage (sizebuf_t *msg)
 	fflush (cls.demofile);
 }
 
+// a demo's next field, into out; at its end playback stops and this is false
+static bool CL_DemoRead (void *out, size_t size)
+{
+	if (fread (out, size, 1, cls.demofile) == 1)
+		return true;
+	CL_StopPlayback ();
+	return false;
+}
+
 /*
 ====================
 CL_GetDemoMessage
@@ -189,14 +198,15 @@ CL_GetDemoMessage
 */
 static bool CL_GetDemoMessage (void)
 {
-	int		r, i, j;
+	int		i, j;
 	float	f;
 	float	demotime;
 	byte	c;
 	usercmd_t *pcmd;
 
 	// read the time from the packet
-	fread(&demotime, sizeof(demotime), 1, cls.demofile);
+	if (!CL_DemoRead (&demotime, sizeof(demotime)))
+		return 0;
 	demotime = LittleFloat(demotime);
 
 // decide if it is time to grab the next message		
@@ -236,19 +246,16 @@ static bool CL_GetDemoMessage (void)
 		Host_Error ("CL_GetDemoMessage: cls.state != ca_active");
 	
 	// get the msg type
-	fread (&c, sizeof(c), 1, cls.demofile);
+	if (!CL_DemoRead (&c, sizeof(c)))
+		return 0;
 	
 	switch (c) {
 	case dem_cmd :
 		// user sent input
 		i = cls.netchan.outgoing_sequence & UPDATE_MASK;
 		pcmd = &cl.frames[i].cmd;
-		r = (int)fread (pcmd, sizeof(*pcmd), 1, cls.demofile);
-		if (r != 1)
-		{
-			CL_StopPlayback ();
+		if (!CL_DemoRead (pcmd, sizeof(*pcmd)))
 			return 0;
-		}
 		// byte order stuff
 		for (j = 0; j < 3; j++)
 			pcmd->angles[j] = LittleFloat(pcmd->angles[j]);
@@ -260,36 +267,31 @@ static bool CL_GetDemoMessage (void)
 		cls.netchan.outgoing_sequence++;
 		for (i=0 ; i<3 ; i++)
 		{
-			r = (int)fread (&f, 4, 1, cls.demofile);
-			if (r != 1)
-			{
-				CL_StopPlayback ();
+			if (!CL_DemoRead (&f, 4))
 				return 0;
-			}
 			cl.viewangles[i] = LittleFloat (f);
 		}
 		break;
 
 	case dem_read:
 		// get the next message
-		fread (&cls.net_message.cursize, 4, 1, cls.demofile);
+		if (!CL_DemoRead (&cls.net_message.cursize, 4))
+			return 0;
 		cls.net_message.cursize = LittleLong (cls.net_message.cursize);
 	//Con_Printf("read: %ld bytes\n", net_message.cursize);
 		// as big as a packet put together of FTE's fragments
 		if (cls.net_message.cursize < 0 || cls.net_message.cursize > (int)sizeof(cls.net_message_buf))
 			Sys_Error ("Demo message too big");
-		r = (int)fread (cls.net_message.data, cls.net_message.cursize, 1, cls.demofile);
-		if (r != 1)
-		{
-			CL_StopPlayback ();
+		if (!CL_DemoRead (cls.net_message.data, (size_t)cls.net_message.cursize))
 			return 0;
-		}
 		break;
 
 	case dem_set :
-		fread (&i, 4, 1, cls.demofile);
+		if (!CL_DemoRead (&i, 4))
+			return 0;
 		cls.netchan.outgoing_sequence = LittleLong(i);
-		fread (&i, 4, 1, cls.demofile);
+		if (!CL_DemoRead (&i, 4))
+			return 0;
 		cls.netchan.incoming_sequence = LittleLong(i);
 		break;
 
