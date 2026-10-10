@@ -197,31 +197,76 @@ void SV_UnlinkEdict (edict_t *ent)
 /*
 ====================
 SV_TouchLinks
+
+The triggers ent's box meets, touched in the order the area nodes list them.
+They are gathered first and touched after: a touch function can unlink or
+free any of them (two items picked up at once, the first removing the
+second), and the lists can't be walked while they change. Each is checked
+again as its turn comes, and ent too, which a touch can free. A touch can
+link entities touching triggers in turn, so the gathered lists are a stack,
+each call's above its caller's, kept by index as it grows.
 ====================
 */
-static void SV_TouchLinks ( edict_t *ent, areanode_t *node )
-{
-	link_t		*l, *next;
-	edict_t		*touch;
-	int			old_self, old_other;
+static edict_t	**sv_touchstack;
+static int		sv_touchtop, sv_touchmax;
 
-// touch linked edicts
-	for (l = node->trigger_edicts.next ; l != &node->trigger_edicts ; l = next)
-	{
-		next = l->next;
-		touch = EDICT_FROM_AREA(l);
-		if (touch == ent)
-			continue;
-		if (!touch->v.touch || touch->v.solid != SOLID_TRIGGER)
-			continue;
-		if (ent->v.absmin[0] > touch->v.absmax[0]
+static bool SV_TouchesTrigger (const edict_t *ent, const edict_t *touch)
+{
+	if (touch == ent || touch->free)
+		return false;
+	if (!touch->v.touch || touch->v.solid != SOLID_TRIGGER)
+		return false;
+	return !(ent->v.absmin[0] > touch->v.absmax[0]
 		|| ent->v.absmin[1] > touch->v.absmax[1]
 		|| ent->v.absmin[2] > touch->v.absmax[2]
 		|| ent->v.absmax[0] < touch->v.absmin[0]
 		|| ent->v.absmax[1] < touch->v.absmin[1]
-		|| ent->v.absmax[2] < touch->v.absmin[2] )
+		|| ent->v.absmax[2] < touch->v.absmin[2]);
+}
+
+static void SV_GatherTriggers (const edict_t *ent, const areanode_t *node)
+{
+	const link_t	*l;
+	edict_t			*touch;
+
+	for (l = node->trigger_edicts.next ; l != &node->trigger_edicts ; l = l->next)
+	{
+		touch = EDICT_FROM_AREA(l);
+		if (!SV_TouchesTrigger (ent, touch))
 			continue;
-			
+		if (sv_touchtop == sv_touchmax)
+		{
+			sv_touchmax = sv_touchmax ? sv_touchmax * 2 : 256;
+			sv_touchstack = Mem_Realloc (sv_touchstack, (size_t)sv_touchmax * sizeof(*sv_touchstack));
+		}
+		sv_touchstack[sv_touchtop++] = touch;
+	}
+
+// recurse down both sides
+	if (node->axis == -1)
+		return;
+	if (ent->v.absmax[node->axis] > node->dist)
+		SV_GatherTriggers (ent, node->children[0]);
+	if (ent->v.absmin[node->axis] < node->dist)
+		SV_GatherTriggers (ent, node->children[1]);
+}
+
+static void SV_TouchLinks (edict_t *ent)
+{
+	edict_t		*touch;
+	int			base = sv_touchtop, top, i;
+	int			old_self, old_other;
+
+	SV_GatherTriggers (ent, sv.areanodes);
+	top = sv_touchtop;
+	for (i = base ; i < top ; i++)
+	{
+		touch = sv_touchstack[i];
+		if (ent->free)
+			break;
+		if (!SV_TouchesTrigger (ent, touch))
+			continue;
+
 		old_self = PR_GLOBAL(self);
 		old_other = PR_GLOBAL(other);
 
@@ -233,15 +278,7 @@ static void SV_TouchLinks ( edict_t *ent, areanode_t *node )
 		PR_GLOBAL(self) = old_self;
 		PR_GLOBAL(other) = old_other;
 	}
-	
-// recurse down both sides
-	if (node->axis == -1)
-		return;
-	
-	if ( ent->v.absmax[node->axis] > node->dist )
-		SV_TouchLinks ( ent, node->children[0] );
-	if ( ent->v.absmin[node->axis] < node->dist )
-		SV_TouchLinks ( ent, node->children[1] );
+	sv_touchtop = base;
 }
 
 /*
@@ -320,7 +357,7 @@ void SV_LinkEdict (edict_t *ent, bool touch_triggers)
 	
 // if touch_triggers, touch all entities at this node and decend for more
 	if (touch_triggers)
-		SV_TouchLinks ( ent, sv.areanodes );
+		SV_TouchLinks (ent);
 }
 
 
