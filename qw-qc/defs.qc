@@ -752,3 +752,20 @@ float (entity e, float healamount, float ignore) T_Heal; // health function
 float(entity targ, entity inflictor) CanDamage;
 
 
+
+//
+// the brush entities of mods' maps (hiprot.qc, func_bob.qc, func_laser.qc,
+// triggers.qc)
+//
+.float			alpha;					// drawn this opaque, 0 for wholly (FTE's)
+.float			waitmin2;				// func_bob's slowing down
+.float			healamount, healmax;	// trigger_heal's
+.float			healtimer;				// when a player may be healed again
+.float			duration;
+.vector			neworigin;				// rotation: where a target is turned to
+.vector			rotate;					// its rate, or a path_rotate's
+.float			endtime;
+.float			rotate_type;			// how a target follows
+.string			path;					// a rotate_train's next path_rotate
+.string			group;					// rotate doors that reverse together
+.string			event;					// what a path_rotate triggers

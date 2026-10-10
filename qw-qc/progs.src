@@ -14,5 +14,8 @@ buttons.qc
 triggers.qc
 plats.qc
 misc.qc
+hiprot.qc
+func_bob.qc
+func_laser.qc
 
 server.qc

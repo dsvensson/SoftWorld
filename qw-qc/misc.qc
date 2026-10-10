@@ -606,6 +606,18 @@ void() func_wall =
 	setmodel (self, self.model);
 };
 
+/*QUAKED func_ctf_wall (0 .5 .8) ?
+A solid wall in a capture the flag map, as KTX has it: a func_wall that
+nothing changes
+*/
+void() func_ctf_wall =
+{
+	self.angles = '0 0 0';
+	self.movetype = MOVETYPE_PUSH;
+	self.solid = SOLID_BSP;
+	setmodel (self, self.model);
+};
+
 
 /*QUAKED func_illusionary (0 .5 .8) ?
 A simple entity that looks solid but lets you walk through it.

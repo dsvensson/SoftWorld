@@ -670,3 +670,51 @@ void() trigger_monsterjump =
 	self.touch = trigger_monsterjump_touch;
 };
 
+//============================================================================
+
+// a living player in it is healed, healamount at a time, up to healmax, each
+// wait seconds at most
+void() trigger_heal_touch =
+{
+	if (other.classname != "player" || other.health <= 0 || other.deadflag != DEAD_NO)
+		return;
+	if (other.healtimer > time)
+		return;
+
+	if (other.takedamage && other.health < self.healmax)
+	{
+		sound (self, CHAN_AUTO, self.noise, 1, ATTN_NORM);
+		if (other.health + self.healamount > self.healmax)
+			T_Heal (other, self.healmax - other.health, 1);
+		else
+			T_Heal (other, self.healamount, 1);
+		other.healtimer = time + self.wait;
+	}
+};
+
+/*QUAKED trigger_heal (.5 .5 .5) ?
+Heals a player in it, as KTX has it
+"healamount" health given at a time (default 5)
+"healmax" health it heals up to (default 100, at most 250)
+"wait" seconds between heals of a player (default 1)
+"noise" sound when healing (default "items/r_item1.wav")
+*/
+void() trigger_heal =
+{
+	if (!self.noise)
+		self.noise = "items/r_item1.wav";
+	precache_sound (self.noise);
+
+	InitTrigger ();
+
+	if (self.wait == 0)
+		self.wait = 1;
+	if (self.healamount == 0)
+		self.healamount = 5;
+	if (self.healmax == 0)
+		self.healmax = 100;
+	else if (self.healmax > 250)
+		self.healmax = 250;
+
+	self.touch = trigger_heal_touch;
+};
