@@ -174,6 +174,7 @@ static double			connect_time = -1;		// for connection retransmits
 
 
 static double		oldrealtime;			// last frame run
+static double		olddrawtime;			// last frame drawn
 static double		nextframe;				// when the next frame is due, at cl_maxfps
 static double		nextdraw;				// when the next is drawn, not watched (cl_idlefps)
 
@@ -1842,9 +1843,11 @@ void CL_Frame (void)
 	float fps, idlefps;
 	int			oldincoming;
 	bool		draw;
+	double		stepped;		// the frame's time, from the last run
+	double		frametime;		// host.realtime as the frame began
 
 	if (oldrealtime > host.realtime)
-		oldrealtime = nextframe = nextdraw = 0;
+		oldrealtime = olddrawtime = nextframe = nextdraw = 0;
 
 	fps = CL_MaxFPS ();
 	idlefps = CL_IdleFPS (fps);
@@ -1865,6 +1868,7 @@ void CL_Frame (void)
 	// a timedemo draws as fast as it can: no cl_maxfps (above), no vsync
 	VID_SetUnpaced (cls.timedemo);
 
+	frametime = host.realtime;		// a QuakeWorld demo's packets move host.realtime
 	cls.frametime = host.realtime - oldrealtime;
 	oldrealtime = host.realtime;
 	if (cls.frametime > 0.2)
@@ -1908,12 +1912,22 @@ void CL_Frame (void)
 	repredict |= cls.physframe || cls.netchan.incoming_sequence != oldincoming;
 
 	// a frame not drawn: the lights fade on, as they do drawn
+	stepped = cls.frametime;
 	if (!draw)
 	{
 		if (cls.state == ca_active)
-			CL_DecayLights ();
+			CL_DecayLights (stepped);
 		return;
 	}
+
+	// what's done only for a drawn frame (the view, the screen and the
+	// console's slide, the particles, the sound) goes by the time since the
+	// last one drawn, not since the last frame run: drawn at cl_maxfps_menu's
+	// or cl_idlefps' pace, it would lose the frames between
+	cls.frametime = frametime - olddrawtime;
+	olddrawtime = frametime;
+	if (cls.frametime > 0.2)
+		cls.frametime = 0.2;
 
 	if (repredict)
 		CL_SetUpPlayerPrediction(false);	// other players, without prediction
@@ -1938,7 +1952,7 @@ void CL_Frame (void)
 	// update audio
 	CL_UpdateSound ();
 	if (cls.state == ca_active)
-		CL_DecayLights ();
+		CL_DecayLights (stepped);
 
 
 	if (host_speeds.value)

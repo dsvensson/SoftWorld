@@ -237,7 +237,8 @@ typedef struct
 	double		physframetime;	// seconds the command covers
 	double		physaccum;		// time not yet covered by a command
 
-	double		frametime;		// seconds since the last drawn frame, at most 0.2
+	double		frametime;		// seconds since the last frame run, at most 0.2; from
+								//  where a frame is drawn on, since the last drawn
 	int			framecount;		// frames drawn, never reset
 	int			fps_count;		// frames drawn, for show_fps
 
@@ -439,7 +440,7 @@ static inline entity_t *CL_StaticEntity (int i)
 // cl_main
 //
 dlight_t *CL_AllocDlight (int key);
-void	CL_DecayLights (void);
+void	CL_DecayLights (double frametime);
 
 
 void CL_NextDemo (void);

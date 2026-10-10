@@ -145,9 +145,10 @@ static void CL_NewDlight (int key, float x, float y, float z, float radius, floa
 ===============
 CL_DecayLights
 
+The lights fade by the frame's time, every frame run, drawn or not
 ===============
 */
-void CL_DecayLights (void)
+void CL_DecayLights (double frametime)
 {
 	int			i;
 	dlight_t	*dl;
@@ -158,7 +159,7 @@ void CL_DecayLights (void)
 		if (dl->die < cl.time || !dl->radius)
 			continue;
 		
-		dl->radius = (float)(dl->radius - cls.frametime*dl->decay);
+		dl->radius = (float)(dl->radius - frametime*dl->decay);
 		if (dl->radius < 0)
 			dl->radius = 0;
 	}
