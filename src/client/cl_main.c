@@ -912,11 +912,18 @@ CL_Changing_f
 
 Just sent as a hint to the client that they should
 drop to full console
+
+An MVD goes on to its next level at the level's serverdata, which clears
+what this would. mvdsv's QTV stream carries the hint after the new level's
+gamestate, as its map command broadcasts it once the level is spawned: the
+level would come up and be dropped from, never to come back.
 =================
 */
 static void CL_Changing_f (void)
 {
 	if (CL_Downloading ())  // don't change when downloading
+		return;
+	if (cls.mvdplayback)
 		return;
 
 	S_StopAllSounds (true);
