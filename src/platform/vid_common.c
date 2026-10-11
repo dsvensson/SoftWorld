@@ -32,10 +32,11 @@ bool VID_Vsync (void)
 static cvar_t	vid_scale = {.name = "vid_scale", .string = "1", .archive = true,
 	.description = "Render pixels per pixel of the 320x200 layout, up to 4; 0 is the most the window holds. "
 		"-scale overrides it.", .min = 0, .max = 4};
-// pixels 1.2 times as tall as wide, as 320x200 was shown on 4:3 screens
-static cvar_t	vid_crt = {.name = "vid_crt", .string = "1", .archive = true,
-	.description = "Shows pixels 1.2 times as tall as wide, as 320x200 was shown on 4:3 screens.",
-	.values = (const cvar_value_t[]){{"0", "Square pixels"}, {"1", "Pixels 1.2 times as tall as wide"}, {0}}};
+// how many times as tall as wide a pixel is shown: 1.2 as 320x200 was shown on
+// 4:3 screens, 1 square
+static cvar_t	vid_pixel_height = {.name = "vid_pixel_height", .string = "1.2", .archive = true,
+	.description = "How many times as tall as wide a pixel is shown: 1.2 as 320x200 was shown on 4:3 screens, "
+		"1 square.", .min = 1, .max = 2};
 // the layout is as wide as the window instead of 320, and sees more to the sides
 static cvar_t	vid_widescreen = {.name = "vid_widescreen", .string = "1", .archive = true,
 	.description = "Makes the layout as wide as the window instead of 320, seeing more to the sides.",
@@ -59,7 +60,7 @@ cvar_t	vid_hdr_paperwhite = {.name = "vid_hdr_paperwhite", .string = "0", .archi
 		"On macOS the nits are over a white of 100."};
 
 static int		vid_forcedscale;	// -scale, which the configuration can't change
-static bool		vid_crtshown;		// vid_crt when the frame was set
+static float	vid_pixelshown;		// vid_pixel_height when the frame was set
 static vid_present_t	vid_present = {.gamma = 1};
 
 int VID_RegisterCommon (void)
@@ -69,7 +70,7 @@ int VID_RegisterCommon (void)
 
 	Cvar_RegisterVariable (&vid_vsync);
 	Cvar_RegisterVariable (&vid_scale);
-	Cvar_RegisterVariable (&vid_crt);
+	Cvar_RegisterVariable (&vid_pixel_height);
 	Cvar_RegisterVariable (&vid_widescreen);
 	Cvar_RegisterVariable (&vid_scalemode);
 	Cvar_RegisterVariable (&vid_contrast);
@@ -105,7 +106,7 @@ vid_scale, or the largest whole multiple of 320x200 the window holds
 static int VID_WantedScale (int clientwidth, int clientheight)
 {
 	int		scale;
-	float	stretch = vid_crt.value ? VID_CRT_STRETCH : 1.0f;
+	float	stretch = vid_pixel_height.value;
 
 	if (vid_forcedscale)
 		scale = vid_forcedscale;
@@ -134,7 +135,7 @@ at the scale, in steps of 8
 */
 static int VID_WantedWidth (int scale, int clientwidth, int clientheight)
 {
-	float	stretch = vid_crt.value ? VID_CRT_STRETCH : 1.0f;
+	float	stretch = vid_pixel_height.value;
 	int		width;
 
 	if (!vid_widescreen.value || clientheight <= 0)
@@ -160,7 +161,7 @@ vid_frame_t VID_WantedFrame (int clientwidth, int clientheight)
 
 void VID_SetFrame (const vid_frame_t *frame, unsigned rowpixels)
 {
-	vid_crtshown = vid_crt.value != 0;
+	vid_pixelshown = vid_pixel_height.value;
 	vid.huddirty = true;
 
 	vid.rowpixels = rowpixels;
@@ -169,7 +170,7 @@ void VID_SetFrame (const vid_frame_t *frame, unsigned rowpixels)
 	vid.conwidth = (unsigned)(frame->width / frame->scale);
 	vid.conheight = (unsigned)(frame->height / frame->scale);
 	// the renderer's pixel aspect: width over height of a pixel as shown
-	vid.aspect = vid_crt.value ? ((float)VID_BASE_HEIGHT / (float)VID_BASE_WIDTH) * (320.0f / 240.0f) : 1.0f;
+	vid.aspect = 1.0f / vid_pixelshown;
 	vid.recalc_refdef = 1;
 
 	vid.scale = (unsigned)frame->scale;
@@ -185,7 +186,7 @@ bool VID_NeedsResize (int clientwidth, int clientheight)
 		return false;
 	frame = VID_WantedFrame (clientwidth, clientheight);
 	return frame.scale != (int)vid.scale || frame.width / frame.scale != (int)vid.conwidth
-		|| (vid_crt.value != 0) != vid_crtshown;
+		|| vid_pixel_height.value != vid_pixelshown;
 }
 
 vid_fit_t VID_Fit (int clientwidth, int clientheight)
@@ -194,7 +195,7 @@ vid_fit_t VID_Fit (int clientwidth, int clientheight)
 	float		sx, sy;
 
 	// aspect-preserving fit; whole multiples of the render size unless filling the window
-	fit.stretch = vid_crt.value ? VID_CRT_STRETCH : 1.0f;
+	fit.stretch = vid_pixel_height.value;
 	sx = (float)clientwidth / (float)vid.width;
 	sy = (float)clientheight / ((float)vid.height * fit.stretch);
 	fit.scale = sx < sy ? sx : sy;

@@ -258,7 +258,8 @@ Worth knowing:
 | | |
 |---|---|
 | `-scale n`, `vid_scale` | render at 320×200 times n, `vid_scale` up to 4 (1, the default, is 320×200 itself); 0 picks the largest that fits the window |
-| `vid_widescreen`, `vid_crt`, `vid_scalemode` | wider view (hor+), the status bar in its middle; CRT pixel aspect; the frame filling the window, sharp bilinear (0 whole multiples of it, letterboxed). All three 1 by default |
+| `vid_widescreen`, `vid_scalemode` | wider view (hor+), the status bar in its middle; the frame filling the window, sharp bilinear (0 whole multiples of it, letterboxed). Both 1 by default |
+| `vid_pixel_height` | how many times as tall as wide a pixel is shown: 1.2 (the default) as 320×200 was shown on 4:3 screens, 1 square, up to 2 |
 | `r_lightmode` | 1 linear light in RGB, brighter than white where it is (the default); 0 lighting as Quake had it |
 | `r_litwater` | liquids lit by their lightmaps in a map whose light tool lit them, as Quakespasm, FTE and ezQuake light them (1, the default); 0 unlit, as Quake drew them |
 | `r_fullbright_scale`, `r_dlight_scale` | in `r_lightmode 1`, fullbright colors no darker than their color times this (1.5), on walls and models and where light doesn't reach: particles (fire too), sprites, unlit liquids, the sky; dynamic lights' light on surfaces times `r_dlight_scale` |

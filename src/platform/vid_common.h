@@ -10,7 +10,6 @@
 #define VID_BASE_WIDTH	320
 #define VID_BASE_HEIGHT	200
 #define VID_MAX_SCALE	16
-#define VID_CRT_STRETCH	1.2f	// 320x200 shown as 320x240
 
 extern cvar_t	vid_vsync;
 
