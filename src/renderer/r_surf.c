@@ -613,13 +613,14 @@ int R_DrawSurface (void)
 	mt = r_drawsurf.texture;
 
 	// in r_lightmode 1 the texels are pixels (a pixel each where the colormap's
-	// are a byte): a TGA file's in place of the texture's own, or its own with
-	// their fullbright light apart, both with mip levels made in linear light
+	// are a byte): r_max_size's or a TGA file's in place of the texture's own,
+	// or its own with their fullbright light apart, with mip levels made in
+	// linear light
 	r_rgbsource = r_glowsource = NULL;
 	if (r_lightmode.value)
 	{
 		r_rgbsource = R_TextureOverride (mt, r_drawsurf.surfmip);
-		r_glowsource = mt->glow[r_drawsurf.surfmip];
+		r_glowsource = R_TextureOverrideGlow (mt, r_drawsurf.surfmip);
 		if (!r_rgbsource)
 		{
 			r_rgbsource = mt->pixels[r_drawsurf.surfmip];

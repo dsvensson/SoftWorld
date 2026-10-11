@@ -48,6 +48,7 @@ static const struct
 	{.name = "r_telealpha"},
 	{.name = "d_mipcap"},
 	{.name = "d_mipscale"},
+	{.name = "r_max_size"},
 	{.name = "volume", .own = &cl_attract_volume},
 };
 

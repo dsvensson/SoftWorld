@@ -175,9 +175,10 @@ static simd_turblight_t D_TurbLight (const msurface_t *pface, const surfcache_t 
 	}
 	else if (R_TextureOverride (tx, 0))
 	{
-		// a TGA file's texels, as the file has them, and their fullbright light
-		lit.texels = tx->rgb[1];
-		lit.glow = tx->glow[0];
+		// r_max_size's or a TGA file's texels, as they are before their floors,
+		// and their fullbright light
+		lit.texels = R_TextureOverride (tx, 1);
+		lit.glow = R_TextureOverrideGlow (tx, 0);
 		lit.glowscale = d_glowscale;
 	}
 	else

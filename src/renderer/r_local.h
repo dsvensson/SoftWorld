@@ -136,18 +136,31 @@ typedef struct
 const partimage_t	*R_PartImage (int index);
 void	R_DrawPartScene (void);		// r_scene.particles, into the view
 
-// r_textures.c: TGA files in place of a map's textures
+// r_textures.c: TGA files in place of a map's textures, and r_max_size
 extern cvar_t	r_externaltextures;
+extern cvar_t	r_max_size;
 void R_TexturesInit (void);
 void R_LoadTextureOverride (texture_t *tx, const char *modelname, struct arena_s *arena);
 void R_BuildTexturePixels (texture_t *tx, struct arena_s *arena);
 void R_LightLiquids (void);		// after d_unlitfloors or d_glowscale changed
 void R_LightModelLiquids (model_t *mod);	// one model's, loaded as they changed
+void R_CheckMaxSize (void);		// each frame, before the world is drawn
 
-// the texels to draw tx with in place of its own, or NULL
+// the texels to draw tx with in place of its own, or NULL: r_max_size's, else
+// a TGA file's
 static inline const pixel_t *R_TextureOverride (const texture_t *tx, int mip)
 {
+	if (tx->small)
+		return tx->smallrgb[mip];
 	return r_externaltextures.value ? tx->rgb[mip] : NULL;
+}
+
+// their fullbright light, NULL for none
+static inline const pixel_t *R_TextureOverrideGlow (const texture_t *tx, int mip)
+{
+	if (tx->small)
+		return tx->smallglow[mip];
+	return r_externaltextures.value ? tx->glow[mip] : NULL;
 }
 
 // r_worldspawn.c: what the map's worldspawn entity says
