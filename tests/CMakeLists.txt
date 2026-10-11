@@ -191,12 +191,13 @@ endif()
 
 # test_present_vulkan draws present.glsl with Vulkan as vid_vulkan.c does, and
 # compares what it shows with VID_FrameToRGB, and its HDR and PQ with what they
-# should be. It needs a GPU with Vulkan 1.3, and without one is skipped.
+# should be; and the CRT shader's passes after it (crt_vulkan.c), and their mip
+# chain. It needs a GPU with Vulkan 1.3, and without one is skipped.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	find_package(Vulkan 1.3 REQUIRED)
 	sw_add_program(test_present_vulkan test_present_vulkan.c
 		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c" $<TARGET_OBJECTS:sw_crt>
-		$<TARGET_OBJECTS:sw_present_spirv>)
+		$<TARGET_OBJECTS:sw_present_spirv> $<TARGET_OBJECTS:sw_crt_vulkan>)
 	target_include_directories(test_present_vulkan PRIVATE
 		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/platform/linux"
 		"${PROJECT_SOURCE_DIR}/src/renderer")

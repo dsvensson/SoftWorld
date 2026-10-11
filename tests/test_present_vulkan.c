@@ -25,11 +25,20 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // on an edge between its two; in linear HDR, SDR white at paper white, the
 // brightest light rolled off below the peak, and the 2D at paper white; and as PQ,
 // the same in cd/m² over BT.2020. Without a GPU with Vulkan 1.3 it is skipped.
+//
+// And the CRT shader's passes (crt_vulkan.c) after the frame, as vid_vulkan.c
+// records them: with its own oimage 1 each pixel is the frame's as drawn at its
+// own size, within 1 of VID_FrameToRGB, and in linear light and PQ at paper white;
+// at its defaults, three frames of a frame white in its top left quarter are
+// finite and brightest there; and PrePass's mip chain, crt_spd's in one dispatch
+// or two (a frame 5000 across), is each level's texels the average of the four
+// they cover in the level before, within 1.
 
 #include "cvar.h"
 #include "sys.h"
 #include "vid_common.h"
 #include "present_spirv.h"
+#include "crt_vulkan.h"
 
 #include <vulkan/vulkan.h>
 
@@ -104,8 +113,10 @@ static VkQueue			queue;
 static VkCommandPool	pool;
 static VkCommandBuffer	commands;
 static VkFence			fence;
+static uint32_t			family;
 static VkPipelineLayout	layout;
 static VkPipeline		pipeline;
+static VkPipeline		originalpipeline;	// into the CRT shader's frame, RGBA8
 static VkImage			target;
 static VkImageView		targetview;
 static VkDeviceMemory	targetmemory;
@@ -168,16 +179,67 @@ static VkShaderModule ShaderModule (const unsigned char *code, size_t size)
 	return module;
 }
 
+// the pipeline as vid_vulkan.c makes it, for a target of format
+static VkPipeline CreatePipeline (VkShaderModule vs, VkShaderModule fs, VkFormat format)
+{
+	static const VkDynamicState	dynamic[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+	VkPipeline					made;
+
+	Check (vkCreateGraphicsPipelines (device, VK_NULL_HANDLE, 1, &(VkGraphicsPipelineCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+			.pNext = &(VkPipelineRenderingCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+				.colorAttachmentCount = 1,
+				.pColorAttachmentFormats = &format,
+			},
+			.stageCount = 2,
+			.pStages = (VkPipelineShaderStageCreateInfo[]){
+				{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_VERTEX_BIT,
+					.module = vs, .pName = "main"},
+				{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+					.module = fs, .pName = "main"},
+			},
+			.pVertexInputState = &(VkPipelineVertexInputStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO},
+			.pInputAssemblyState = &(VkPipelineInputAssemblyStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+				.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST},
+			.pViewportState = &(VkPipelineViewportStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+				.viewportCount = 1,
+				.scissorCount = 1},
+			.pRasterizationState = &(VkPipelineRasterizationStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+				.polygonMode = VK_POLYGON_MODE_FILL,
+				.cullMode = VK_CULL_MODE_NONE,
+				.lineWidth = 1.0f},
+			.pMultisampleState = &(VkPipelineMultisampleStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+				.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT},
+			.pColorBlendState = &(VkPipelineColorBlendStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+				.attachmentCount = 1,
+				.pAttachments = &(VkPipelineColorBlendAttachmentState){
+					.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
+						| VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT}},
+			.pDynamicState = &(VkPipelineDynamicStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+				.dynamicStateCount = 2,
+				.pDynamicStates = dynamic},
+			.layout = layout,
+		}, NULL, &made), "vkCreateGraphicsPipelines");
+	return made;
+}
+
 // false if there is no GPU to test on
 static bool Setup (void)
 {
-	static const VkDynamicState	dynamic[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
 	static const VkFormat		format = VK_FORMAT_R32G32B32A32_SFLOAT;
 	VkPhysicalDevice			gpus[16];
 	VkPhysicalDeviceProperties	props;
 	VkQueueFamilyProperties		families[16];
 	VkMemoryRequirements		req;
-	uint32_t					count = 16, numfamilies = 16, family = 0, i;
+	uint32_t					count = 16, numfamilies = 16, i;
 	VkShaderModule				vs, fs;
 	VkPhysicalDeviceVulkan13Features	f13 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
 	VkPhysicalDeviceVulkan12Features	f12 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
@@ -254,49 +316,8 @@ static bool Setup (void)
 				.size = sizeof(vid_present_push_t),
 			},
 		}, NULL, &layout), "vkCreatePipelineLayout");
-	Check (vkCreateGraphicsPipelines (device, VK_NULL_HANDLE, 1, &(VkGraphicsPipelineCreateInfo){
-			.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-			.pNext = &(VkPipelineRenderingCreateInfo){
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-				.colorAttachmentCount = 1,
-				.pColorAttachmentFormats = &format,
-			},
-			.stageCount = 2,
-			.pStages = (VkPipelineShaderStageCreateInfo[]){
-				{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_VERTEX_BIT,
-					.module = vs, .pName = "main"},
-				{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-					.module = fs, .pName = "main"},
-			},
-			.pVertexInputState = &(VkPipelineVertexInputStateCreateInfo){
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO},
-			.pInputAssemblyState = &(VkPipelineInputAssemblyStateCreateInfo){
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-				.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST},
-			.pViewportState = &(VkPipelineViewportStateCreateInfo){
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-				.viewportCount = 1,
-				.scissorCount = 1},
-			.pRasterizationState = &(VkPipelineRasterizationStateCreateInfo){
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-				.polygonMode = VK_POLYGON_MODE_FILL,
-				.cullMode = VK_CULL_MODE_NONE,
-				.lineWidth = 1.0f},
-			.pMultisampleState = &(VkPipelineMultisampleStateCreateInfo){
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-				.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT},
-			.pColorBlendState = &(VkPipelineColorBlendStateCreateInfo){
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-				.attachmentCount = 1,
-				.pAttachments = &(VkPipelineColorBlendAttachmentState){
-					.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
-						| VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT}},
-			.pDynamicState = &(VkPipelineDynamicStateCreateInfo){
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-				.dynamicStateCount = 2,
-				.pDynamicStates = dynamic},
-			.layout = layout,
-		}, NULL, &pipeline), "vkCreateGraphicsPipelines");
+	pipeline = CreatePipeline (vs, fs, format);
+	originalpipeline = CreatePipeline (vs, fs, VK_FORMAT_R8G8B8A8_UNORM);
 
 	// the layers as vid_vulkan.c makes them, rows the frame's width apart
 	CreateBuffer (&framebuf, WIDTH * HEIGHT * 4, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
@@ -607,6 +628,359 @@ static void TestHDR (void)
 	Expect ("PQ 2D white", PQToNits (out[12]), 2 * 203 * 0.99f, 2 * 203 * 1.01f);
 }
 
+/*
+===============================================================================
+
+THE CRT SHADER
+
+===============================================================================
+*/
+
+static void Submit (void)
+{
+	Check (vkEndCommandBuffer (commands), "vkEndCommandBuffer");
+	Check (vkQueueSubmit (queue, 1, &(VkSubmitInfo){
+			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+			.commandBufferCount = 1,
+			.pCommandBuffers = &commands,
+		}, fence), "vkQueueSubmit");
+	Check (vkWaitForFences (device, 1, &fence, VK_TRUE, 5000000000ull), "the GPU didn't finish");
+	vkResetFences (device, 1, &fence);
+}
+
+/*
+================
+DrawCRT
+
+The frame through the CRT shader's passes into width x height of the target, as
+vid_vulkan.c records them: as present.glsl shows it at its own size, in SDR,
+into CRT_ORIGINAL, then the passes for a frame of sourcewidth x sourceheight,
+the last in the target's rendering; a frame of 60 Hz after the last
+================
+*/
+static void DrawCRT (const vid_crt_params_t *params, int output, float paperwhite, int sourcewidth, int sourceheight,
+	int width, int height, float *out)
+{
+	static vid_crt_frame_t	crtframe;
+	static double			time = 1;
+	vid_fit_t				whole = {0, 0, WIDTH, HEIGHT, 1, 1};
+	vid_present_push_t		push;
+	vid_crt_pass_t			passes[CRT_PASSES];
+	VkExtent2D				extent;
+
+	if (CRT_Vulkan_SizeChanged (sourcewidth, sourceheight, width, height))
+		CRT_Vulkan_SetSize (sourcewidth, sourceheight, width, height);
+	VID_FillConstants (&push.constants, &whole, VID_OUTPUT_SDR, 1, 1);
+	push.view[0] = (uint32_t)framebuf.address;
+	push.view[1] = (uint32_t)(framebuf.address >> 32);
+	push.hud[0] = (uint32_t)hudbuf.address;
+	push.hud[1] = (uint32_t)(hudbuf.address >> 32);
+	push.rowpixels = vid.rowpixels;
+	time += 1 / 60.0;
+	VID_CRT_BeginFrame (&crtframe, time);
+	VID_CRT_FillPasses (passes, &crtframe, sourcewidth, sourceheight, width, height, output, paperwhite);
+
+	vkResetCommandBuffer (commands, 0);
+	vkBeginCommandBuffer (commands, &(VkCommandBufferBeginInfo){.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO});
+	CRT_Vulkan_BeginOriginal (commands, &extent);
+	vkCmdBindPipeline (commands, VK_PIPELINE_BIND_POINT_GRAPHICS, originalpipeline);
+	vkCmdPushConstants (commands, layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+	vkCmdDraw (commands, 3, 1, 0, 0);
+	CRT_Vulkan_EndOriginal (commands);
+	CRT_Vulkan_RecordPasses (commands, 0, params, passes, crtframe.parity);
+
+	vkCmdPipelineBarrier2 (commands, &(VkDependencyInfo){
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &(VkImageMemoryBarrier2){
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+			.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+			.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+			.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			.image = target,
+			.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
+		},
+	});
+	vkCmdBeginRendering (commands, &(VkRenderingInfo){
+		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+		.renderArea = {{0, 0}, {(uint32_t)width, (uint32_t)height}},
+		.layerCount = 1,
+		.colorAttachmentCount = 1,
+		.pColorAttachments = &(VkRenderingAttachmentInfo){
+			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+			.imageView = targetview,
+			.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		},
+	});
+	CRT_Vulkan_RecordLast (commands, VK_FORMAT_R32G32B32A32_SFLOAT,
+		&(VkViewport){0, 0, (float)width, (float)height, 0, 1}, &(VkRect2D){{0, 0}, {(uint32_t)width, (uint32_t)height}});
+	vkCmdEndRendering (commands);
+	vkCmdPipelineBarrier2 (commands, &(VkDependencyInfo){
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &(VkImageMemoryBarrier2){
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+			.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+			.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			.image = target,
+			.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
+		},
+	});
+	vkCmdCopyImageToBuffer (commands, target, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readback.buffer, 1,
+		&(VkBufferImageCopy){
+			.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+			.imageExtent = {(uint32_t)width, (uint32_t)height, 1},
+		});
+	vkCmdPipelineBarrier2 (commands, &(VkDependencyInfo){
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.memoryBarrierCount = 1,
+		.pMemoryBarriers = &(VkMemoryBarrier2){
+			.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+			.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+			.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
+			.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
+		},
+	});
+	Submit ();
+	memcpy (out, readback.data, (size_t)width * (size_t)height * 16);
+}
+
+static double SrgbToLinear (double c)
+{
+	return c <= 0.04045 ? c / 12.92 : pow ((c + 0.055) / 1.055, 2.4);
+}
+
+// with oimage 1, the frame as it is: in SDR within 1 of VID_FrameToRGB, in light
+// that at paper white, and as PQ, that light at 203 cd/m2 a reference white
+static void TestCRTOriginal (void)
+{
+	static float		out[WIDTH * HEIGHT * 4];
+	static byte			rgb[WIDTH * HEIGHT * 3];
+	vid_crt_params_t	params;
+	double				want, worsthdr = 0, worstpq = 0, nits;
+	int					i, c, d, worst = 0, off = 0, offhdr = 0, offpq = 0;
+
+	VID_CRT_FillParams (&params);
+	params.oimage = 1;
+	Fill ();
+	VID_SetPresent (&(vid_present_t){.blend = {0.5f, 0.2f, 0.1f, 0.3f}, .gamma = 0.8f});
+
+	DrawCRT (&params, VID_OUTPUT_SDR, 1, WIDTH, HEIGHT, WIDTH, HEIGHT, out);
+	VID_FrameToRGB (rgb, true);
+	for (i = 0 ; i < WIDTH * HEIGHT ; i++)
+		for (c = 0 ; c < 3 ; c++)
+		{
+			d = abs ((int)lroundf (out[i * 4 + c] * 255) - rgb[i * 3 + c]);
+			if (d > worst)
+				worst = d;
+			if (d > 1 && off++ < 5)
+				printf ("CRT original: pixel %d channel %d is %.1f, VID_FrameToRGB %d\n", i, c, out[i * 4 + c] * 255,
+					rgb[i * 3 + c]);
+		}
+	printf ("CRT, the original image: at most %d from VID_FrameToRGB, %d channels over 1\n", worst, off);
+
+	DrawCRT (&params, VID_OUTPUT_LINEAR, 2, WIDTH, HEIGHT, WIDTH, HEIGHT, out);
+	for (i = 0 ; i < WIDTH * HEIGHT ; i++)
+		for (c = 0 ; c < 3 ; c++)
+		{
+			want = 2 * SrgbToLinear (rgb[i * 3 + c] / 255.0);
+			if (fabs (out[i * 4 + c] - want) > worsthdr)
+				worsthdr = fabs (out[i * 4 + c] - want);
+			if (fabs (out[i * 4 + c] - want) > 0.02 && offhdr++ < 5)
+				printf ("CRT original, linear: pixel %d channel %d is %.4f, not %.4f\n", i, c, out[i * 4 + c], want);
+		}
+	printf ("CRT, the original image in light at paper white 2: at most %.4f off, %d channels over 0.02\n", worsthdr,
+		offhdr);
+
+	// PQ: gray pixels alone, which BT.2020 keeps as they are, without the blend
+	VID_SetPresent (&(vid_present_t){.gamma = 1});
+	for (i = 0 ; i < WIDTH * HEIGHT ; i++)
+		((pixel_t *)framebuf.data)[i] = RGB30 (i % 1024, i % 1024, i % 1024);
+	memset (hudbuf.data, 0, WIDTH * HEIGHT * 4);
+	DrawCRT (&params, VID_OUTPUT_SDR, 1, WIDTH, HEIGHT, WIDTH, HEIGHT, out);
+	for (i = 0 ; i < WIDTH * HEIGHT ; i++)
+		rgb[i] = (byte)lroundf (out[i * 4] * 255);
+	DrawCRT (&params, VID_OUTPUT_PQ, 2, WIDTH, HEIGHT, WIDTH, HEIGHT, out);
+	for (i = 0 ; i < WIDTH * HEIGHT ; i++)
+	{
+		want = 2 * 203 * SrgbToLinear (rgb[i] / 255.0);
+		nits = PQToNits (out[i * 4]);
+		if (fabs (nits - want) / fmax (want, 10) > worstpq)
+			worstpq = fabs (nits - want) / fmax (want, 10);
+		if (fabs (nits - want) / fmax (want, 10) > 0.01 && offpq++ < 5)
+			printf ("CRT original, PQ: pixel %d is %.2f cd/m2, not %.2f\n", i, nits, want);
+	}
+	printf ("CRT, the original image as PQ at paper white 2: at most %.3f %% off, %d pixels over 1 %%\n",
+		worstpq * 100, offpq);
+	VID_SetPresent (&(vid_present_t){.gamma = 1});
+	if (off || offhdr || offpq)
+		failures++;
+}
+
+// at the defaults, a frame white in its top left quarter: three frames, every
+// value finite, and the quarter four times as bright as the one across from it
+static void TestCRTDefaults (void)
+{
+	static float		out[MAX_WIDTH * MAX_HEIGHT * 4];
+	pixel_t				*frame = framebuf.data;
+	vid_crt_params_t	params;
+	double				topleft = 0, bottomright = 0;
+	float				v;
+	int					x, y, i, bad = 0;
+
+	VID_CRT_FillParams (&params);
+	memset (hudbuf.data, 0, WIDTH * HEIGHT * 4);
+	for (y = 0 ; y < HEIGHT ; y++)
+		for (x = 0 ; x < WIDTH ; x++)
+			frame[y * vid.rowpixels + x] = x < WIDTH / 2 && y < HEIGHT / 2
+				? RGB30 (RGB30_WHITE, RGB30_WHITE, RGB30_WHITE) : RGB30 (0, 0, 0);
+	for (i = 0 ; i < 3 ; i++)
+		DrawCRT (&params, VID_OUTPUT_SDR, 1, WIDTH, HEIGHT, MAX_WIDTH, MAX_HEIGHT, out);
+	for (y = 0 ; y < MAX_HEIGHT ; y++)
+		for (x = 0 ; x < MAX_WIDTH ; x++)
+			for (i = 0 ; i < 3 ; i++)
+			{
+				v = out[(y * MAX_WIDTH + x) * 4 + i];
+				if (!isfinite (v) || v < 0 || v > 1.001f)
+				{
+					if (bad++ < 5)
+						printf ("CRT defaults: pixel %d,%d channel %d is %f\n", x, y, i, v);
+					continue;
+				}
+				if (x < MAX_WIDTH / 2 && y < MAX_HEIGHT / 2)
+					topleft += v;
+				else if (x >= MAX_WIDTH / 2 && y >= MAX_HEIGHT / 2)
+					bottomright += v;
+			}
+	topleft /= MAX_WIDTH / 2 * MAX_HEIGHT / 2 * 3;
+	bottomright /= MAX_WIDTH / 2 * MAX_HEIGHT / 2 * 3;
+	printf ("CRT, defaults, 3 frames: %d values not in 0 to 1, the white quarter %.3f, the black one %.3f\n", bad,
+		topleft, bottomright);
+	// the glow and bloom light the black quarter a little
+	if (bad || topleft < 0.3 || bottomright > topleft / 4)
+		failures++;
+}
+
+// a level of PrePass, RGBA as floats, and its size; width x height of level 0
+static float *ReadLevel (int level, int width, int height, int *levelwidth, int *levelheight)
+{
+	VkImage		image;
+	float		*pixels;
+	int			levels, i;
+	VkImageMemoryBarrier2	barrier = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+		.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+		.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+		.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+		.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, 1},
+	};
+
+	image = CRT_Vulkan_Image (CRT_PREPASS, &levels);
+	*levelwidth = width >> level > 1 ? width >> level : 1;
+	*levelheight = height >> level > 1 ? height >> level : 1;
+	barrier.image = image;
+	vkResetCommandBuffer (commands, 0);
+	vkBeginCommandBuffer (commands, &(VkCommandBufferBeginInfo){.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO});
+	vkCmdPipelineBarrier2 (commands, &(VkDependencyInfo){.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
+	vkCmdCopyImageToBuffer (commands, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readback.buffer, 1,
+		&(VkBufferImageCopy){
+			.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, (uint32_t)level, 0, 1},
+			.imageExtent = {(uint32_t)*levelwidth, (uint32_t)*levelheight, 1},
+		});
+	// back as the passes left it
+	barrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+	barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+	barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
+	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	vkCmdPipelineBarrier2 (commands, &(VkDependencyInfo){.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
+	Submit ();
+	pixels = malloc ((size_t)*levelwidth * (size_t)*levelheight * 16);
+	for (i = 0 ; i < *levelwidth * *levelheight * 4 ; i++)
+		pixels[i] = ((const byte *)readback.data)[i] / 255.0f;
+	return pixels;
+}
+
+/*
+================
+TestMips
+
+PrePass's mip chain against the average of the level before's four texels a
+texel covers (what lies past an edge of a level 1 across, the texel there),
+reduced from its top level as read back, unrounded
+================
+*/
+static void TestMips (const char *what, int width, int height)
+{
+	float	*ref, *next, *level, want, got;
+	int		levels, w, h, nw, nh, l, x, y, c, x1, y1, d, worst = 0, off = 0;
+
+	CRT_Vulkan_Image (CRT_PREPASS, &levels);
+	ref = ReadLevel (0, width, height, &w, &h);
+	for (l = 1 ; l < levels ; l++)
+	{
+		level = ReadLevel (l, width, height, &nw, &nh);
+		next = malloc ((size_t)nw * (size_t)nh * 16);
+		for (y = 0 ; y < nh ; y++)
+			for (x = 0 ; x < nw ; x++)
+				for (c = 0 ; c < 4 ; c++)
+				{
+					x1 = 2 * x + 1 < w ? 2 * x + 1 : w - 1;
+					y1 = 2 * y + 1 < h ? 2 * y + 1 : h - 1;
+					want = (ref[(2 * y * w + 2 * x) * 4 + c] + ref[(2 * y * w + x1) * 4 + c]
+						+ ref[(y1 * w + 2 * x) * 4 + c] + ref[(y1 * w + x1) * 4 + c]) * 0.25f;
+					got = level[(y * nw + x) * 4 + c];
+					next[(y * nw + x) * 4 + c] = want;
+					d = abs ((int)lroundf (want * 255) - (int)lroundf (got * 255));
+					if (d > worst)
+						worst = d;
+					if (d > 1 && off++ < 5)
+						printf ("%s: level %d texel %d,%d channel %d is %.1f, not %.1f\n", what, l, x, y, c, got * 255,
+							want * 255);
+				}
+		free (level);
+		free (ref);
+		ref = next;
+		w = nw;
+		h = nh;
+	}
+	free (ref);
+	printf ("%s: %d levels, at most %d from the average of the texels they cover, %d channels over 1\n", what, levels,
+		worst, off);
+	if (off)
+		failures++;
+}
+
+static void TestCRT (void)
+{
+	static float		out[64 * 64 * 4];
+	vid_crt_params_t	params;
+
+	TestCRTOriginal ();
+	TestCRTDefaults ();
+	TestMips ("CRT mip chain, one dispatch", WIDTH, HEIGHT);
+	// a frame 5000 across: 6 levels from its top, then the rest from the sixth
+	VID_CRT_FillParams (&params);
+	DrawCRT (&params, VID_OUTPUT_SDR, 1, 5000, 40, 64, 64, out);
+	TestMips ("CRT mip chain of 5000x40, two dispatches", 5000, 40);
+}
+
 int main (void)
 {
 	if (!Setup ())
@@ -626,6 +1000,16 @@ int main (void)
 
 	VID_SetPresent (&(vid_present_t){.gamma = 1});
 	TestHDR ();
+
+	VID_CRT_Register ();
+	if (!CRT_Vulkan_Init (gpu, device, queue, family, 1))
+	{
+		printf ("CRT: the shader's passes couldn't be made\n");
+		return 1;
+	}
+	TestCRT ();
+	vkDeviceWaitIdle (device);
+	CRT_Vulkan_Shutdown ();
 
 	if (failures)
 	{

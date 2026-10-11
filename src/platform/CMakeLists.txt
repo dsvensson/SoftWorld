@@ -365,13 +365,32 @@ else()
 		"${PROJECT_SOURCE_DIR}/src/renderer")
 	sw_set_warnings(sw_present_spirv)
 
+	# the CRT shader's: a vertex stage, a fragment stage a pass and the mip
+	# chain's compute stage, and its passes in Vulkan (crt_vulkan.c)
+	set(SW_CRT_SPIRV "${SW_SHADER_DIR}/crt_vert.spv" "${SW_SHADER_DIR}/crt_comp.spv")
+	sw_compile_glsl("${SW_SHADER_DIR}/crt_vert.spv" "${SW_CRT_DIR}/crt.glsl" vert)
+	sw_compile_glsl("${SW_SHADER_DIR}/crt_comp.spv" "${SW_CRT_DIR}/crt.glsl" comp)
+	foreach(pass afterglow prepass avglum linearize gauss_h gauss_v bloom_h bloom_v crt deconvergence)
+		string(TOUPPER "${pass}" name)
+		sw_compile_glsl("${SW_SHADER_DIR}/crt_${pass}_frag.spv" "${SW_CRT_DIR}/crt.glsl" frag DEFINES PASS_${name}
+			DEPENDS ${SW_CRT_INCLUDES})
+		list(APPEND SW_CRT_SPIRV "${SW_SHADER_DIR}/crt_${pass}_frag.spv")
+	endforeach()
+	add_library(sw_crt_vulkan OBJECT linux/crt_spirv.c linux/crt_vulkan.c ${SW_CRT_SPIRV})
+	set_source_files_properties(linux/crt_spirv.c PROPERTIES
+		OBJECT_DEPENDS "${SW_CRT_SPIRV}"
+		COMPILE_OPTIONS "--embed-dir=${SW_SHADER_DIR}")
+	target_include_directories(sw_crt_vulkan PUBLIC linux)
+	target_link_libraries(sw_crt_vulkan PUBLIC sw_crt Vulkan::Vulkan)
+	sw_set_warnings(sw_crt_vulkan)
+
 	# the window, drawing, input and sound of the programs with a client
 	sw_add_module(sw_platform_gui
 		vid_common.c $<TARGET_OBJECTS:sw_crt>
 		linux/sys_linux_gui.c linux/vid_vulkan.c
 		linux/in_evdev.c linux/snd_pipewire.c
 		linux/window.c linux/in_linux.c
-		$<TARGET_OBJECTS:sw_present_spirv> ${SW_WINDOW_SOURCES})
+		$<TARGET_OBJECTS:sw_present_spirv> $<TARGET_OBJECTS:sw_crt_vulkan> ${SW_WINDOW_SOURCES})
 	target_include_directories(sw_platform_gui PRIVATE . linux "${SW_PROTOCOL_DIR}")
 	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_posix
 		Vulkan::Vulkan PkgConfig::SW_PIPEWIRE ${SW_WINDOW_LIBRARIES})

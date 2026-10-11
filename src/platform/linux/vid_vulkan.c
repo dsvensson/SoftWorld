@@ -45,6 +45,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //
 // The swapchain is SDR (10-bit, sRGB), or on an HDR display PQ in BT.2020 (HDR10).
 // Which one follows the compositor's preferred image description for the window.
+//
+// With vid_shader_crt the frame is drawn at its own size and shown through the
+// CRT shader's passes (crt_vulkan.c), made when it's turned on and freed when
+// it's turned off.
 
 #include "args.h"
 #include "cmd.h"
@@ -52,6 +56,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "sys.h"
 #include "sound.h"
 #include "present_spirv.h"
+#include "crt_vulkan.h"
 #include "window.h"
 
 #include <math.h>
@@ -64,7 +69,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define VID_PACE_NS		100000000ull	// the longest the pace waits for the display
 #define VID_ACQUIRES	(VID_SLOTS + 1)	// acquire semaphores, used in turn
 #define VID_MAX_IMAGES	8
-#define VID_PIPELINES	4				// pipelines made, one a swapchain format
+#define VID_PIPELINES	5				// pipelines made, one a swapchain format, and the CRT shader's frame
 
 typedef struct
 {
@@ -136,6 +141,9 @@ static bool		vid_outputknown;			// the output mode has been reported
 static uint32_t	vid_colorserial = ~0u;		// the preferred description last checked
 static float	vid_hdrwanted = -1;			// vid_hdr when the output was last checked
 static float	vid_paperwhite = 1, vid_peak = 1;	// PQ's, in reference whites
+
+static bool				vid_crton;		// the CRT shader's passes are made
+static vid_crt_frame_t	vid_crtframe;
 
 static void VID_SetScale (void);
 
@@ -1096,6 +1104,53 @@ static void VID_RecordCopies (VkCommandBuffer commands, vid_layer_t *view, vid_l
 	}, NULL);
 }
 
+// the CRT shader's passes made for vid_shader_crt 1, freed for 0; a GPU that
+// can't have them turns it off
+static void VID_SetCRT (void)
+{
+	vkDeviceWaitIdle (vk_device);
+	if (vid_crton)
+	{
+		CRT_Vulkan_Shutdown ();
+		vid_crton = false;
+		return;
+	}
+	vid_crton = CRT_Vulkan_Init (vk_gpu, vk_device, vk_queue, vk_family, VID_SLOTS);
+	if (!vid_crton)
+		Cvar_Set ("vid_shader_crt", "0");
+}
+
+/*
+================
+VID_RecordCRT
+
+The frame through the CRT shader but its last pass: drawn as present.glsl
+shows it, at its own size and in SDR, then the passes
+================
+*/
+static void VID_RecordCRT (VkCommandBuffer commands, const vid_present_push_t *push, const vid_fit_t *fit, int slot,
+	float paperwhite)
+{
+	vid_fit_t			whole = {0, 0, (float)vid.width, (float)vid.height, 1, 1};
+	vid_present_push_t	original = *push;
+	vid_crt_params_t	params;
+	vid_crt_pass_t		passes[CRT_PASSES];
+	VkExtent2D			extent;
+
+	VID_FillConstants (&original.constants, &whole, VID_OUTPUT_SDR, 1, 1);
+	CRT_Vulkan_BeginOriginal (commands, &extent);
+	vkCmdBindPipeline (commands, VK_PIPELINE_BIND_POINT_GRAPHICS, VID_Pipeline (VK_FORMAT_R8G8B8A8_UNORM));
+	vkCmdPushConstants (commands, vk_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(original), &original);
+	vkCmdDraw (commands, 3, 1, 0, 0);
+	CRT_Vulkan_EndOriginal (commands);
+
+	VID_CRT_BeginFrame (&vid_crtframe, Sys_DoubleTime ());
+	VID_CRT_FillParams (&params);
+	VID_CRT_FillPasses (passes, &vid_crtframe, (int)vid.width, (int)vid.height, (int)fit->width, (int)fit->height,
+		vid_output, paperwhite);
+	CRT_Vulkan_RecordPasses (commands, slot, &params, passes, vid_crtframe.parity);
+}
+
 /*
 ================
 VID_Update
@@ -1116,6 +1171,7 @@ void VID_Update (void)
 	float				paperwhite, peak;
 	uint64_t			pace;
 	vid_layer_t			*view, *layer2d;
+	bool				crt;
 
 	if (!vid_initialized || Minimized)
 		return;
@@ -1160,6 +1216,17 @@ void VID_Update (void)
 	view = &vid_views[slot];
 	layer2d = &vid_huds[hud];
 	fit = VID_Fit (client_width, client_height);
+
+	// the CRT shader made when it's turned on, freed when it's turned off; its
+	// images made again for another size once no frame in flight reads them
+	if (VID_CRT_Active () != vid_crton)
+		VID_SetCRT ();
+	crt = vid_crton && fit.width >= 1 && fit.height >= 1;
+	if (crt && CRT_Vulkan_SizeChanged ((int)vid.width, (int)vid.height, (int)fit.width, (int)fit.height))
+	{
+		VID_WaitFrame (vk_serial);
+		CRT_Vulkan_SetSize ((int)vid.width, (int)vid.height, (int)fit.width, (int)fit.height);
+	}
 	paperwhite = vid_output == VID_OUTPUT_PQ ? vid_paperwhite : 1;
 	peak = vid_output == VID_OUTPUT_PQ ? vid_peak : 1;
 	VID_FillConstants (&push.constants, &fit, vid_output, paperwhite, peak);
@@ -1177,6 +1244,8 @@ void VID_Update (void)
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
 	});
 	VID_RecordCopies (commands, view, layer2d, (VkDeviceSize)vid.rowpixels * vid.height * sizeof(pixel_t));
+	if (crt)
+		VID_RecordCRT (commands, &push, &fit, slot, paperwhite);
 	VID_Barrier (commands, NULL, &(VkImageMemoryBarrier2){
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
 		.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -1201,11 +1270,17 @@ void VID_Update (void)
 			.clearValue = {.color = {{0, 0, 0, 1}}},
 		},
 	});
-	vkCmdBindPipeline (commands, VK_PIPELINE_BIND_POINT_GRAPHICS, VID_Pipeline (vk_format));
-	vkCmdSetViewport (commands, 0, 1, &(VkViewport){fit.x, fit.y, fit.width, fit.height, 0, 1});
-	vkCmdSetScissor (commands, 0, 1, &(VkRect2D){{0, 0}, vk_extent});
-	vkCmdPushConstants (commands, vk_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
-	vkCmdDraw (commands, 3, 1, 0, 0);
+	if (crt)
+		CRT_Vulkan_RecordLast (commands, vk_format, &(VkViewport){fit.x, fit.y, fit.width, fit.height, 0, 1},
+			&(VkRect2D){{0, 0}, vk_extent});
+	else
+	{
+		vkCmdBindPipeline (commands, VK_PIPELINE_BIND_POINT_GRAPHICS, VID_Pipeline (vk_format));
+		vkCmdSetViewport (commands, 0, 1, &(VkViewport){fit.x, fit.y, fit.width, fit.height, 0, 1});
+		vkCmdSetScissor (commands, 0, 1, &(VkRect2D){{0, 0}, vk_extent});
+		vkCmdPushConstants (commands, vk_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+		vkCmdDraw (commands, 3, 1, 0, 0);
+	}
 	vkCmdEndRendering (commands);
 	VID_Barrier (commands, NULL, &(VkImageMemoryBarrier2){
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -1388,6 +1463,9 @@ void VID_Shutdown (void)
 	vid_initialized = false;
 
 	vkDeviceWaitIdle (vk_device);
+	if (vid_crton)
+		CRT_Vulkan_Shutdown ();
+	vid_crton = false;
 	for (i = 0 ; i < VID_SLOTS ; i++)
 		VID_FreeLayer (&vid_views[i]);
 	for (i = 0 ; i < 2 ; i++)
