@@ -190,18 +190,15 @@ void(float x, float y) SB_Tabs =
 	}
 };
 
-// on the console's background (out of a game), else on ezQuake's fade: its
-// window min (640, w) - 8 wide, its tabs, a line, the page, what is over it
+// on what the other menus lie on (Backdrop_Draw): its window min (640, w) - 8
+// wide, its tabs, a line, the page, what is over it
 void(vector size) SB_Draw =
 {
 	float	x, y, w, h;
 
 	sb_vw = size_x;
 	sb_vh = size_y;
-	if (clientstate () == 2)
-		drawfill ('0 0 0', size, '0 0 0', 0.7, 0);
-	else
-		Backdrop_Draw (size);
+	Backdrop_Draw (size);
 	SB_Update ();
 
 	w = min (640, sb_vw) - 8;
