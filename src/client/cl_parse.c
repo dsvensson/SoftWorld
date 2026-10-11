@@ -1389,6 +1389,11 @@ static void CL_UpdateUserinfo (void)
 /*
 ==============
 CL_SetInfo
+
+A player's userinfo key; one of a slot past ours is passed by, as FTE's
+client passes them: FTE's server sends the slot just past a client's
+players too (its SV_SendUserinfoChange checks with > for >=), on a server
+of more than 32
 ==============
 */
 static void CL_SetInfo (void)
@@ -1399,15 +1404,17 @@ static void CL_SetInfo (void)
 	char value[MAX_MSGLEN];
 
 	slot = MSG_ReadByte ();
-	if (slot >= MAX_CLIENTS)
-		Host_EndGame ("CL_ParseServerMessage: svc_setinfo > MAX_SCOREBOARD");
-
-	player = &cl.players[slot];
-
 	strncpy (key, MSG_ReadString(), sizeof(key) - 1);
 	key[sizeof(key) - 1] = 0;
 	strncpy (value, MSG_ReadString(), sizeof(value) - 1);
 	value[sizeof(value) - 1] = 0;
+
+	if (slot >= MAX_CLIENTS)
+	{
+		Con_DPrintf ("SETINFO of slot %i, past the players': %s=%s\n", slot, key, value);
+		return;
+	}
+	player = &cl.players[slot];
 
 	Con_DPrintf("SETINFO %s: %s=%s\n", player->name, key, value);
 
