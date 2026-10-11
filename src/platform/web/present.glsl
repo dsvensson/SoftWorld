@@ -34,11 +34,13 @@ layout(std140) uniform Present
 
 out vec2 v_uv;
 
+uniform float u_upright;	// 1: the frame's top in the first row, a framebuffer's for the CRT shader
+
 // A single triangle that covers the viewport, its top at the top as on the other systems.
 void main ()
 {
 	vec2 uv = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
-	gl_Position = vec4(uv * vec2(2.0, -2.0) + vec2(-1.0, 1.0), 0.0, 1.0);
+	gl_Position = vec4(uv.x * 2.0 - 1.0, u_upright > 0.5 ? uv.y * 2.0 - 1.0 : 1.0 - uv.y * 2.0, 0.0, 1.0);
 	v_uv = uv;
 }
 

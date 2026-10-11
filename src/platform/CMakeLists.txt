@@ -240,9 +240,10 @@ elseif(EMSCRIPTEN)
 	set(SW_WEB_LIBRARIES sys_web.js fs_web.js vid_webgl.js in_web.js snd_webaudio.js net_ws_web.js)
 	sw_add_module(sw_platform_gui
 		vid_common.c $<TARGET_OBJECTS:sw_crt>
-		web/sys_web_gui.c web/vid_webgl.c web/present_glsl.c web/in_web.c web/in_gamepad_web.c
+		web/sys_web_gui.c web/vid_webgl.c web/present_glsl.c web/crt_glsl.c web/in_web.c web/in_gamepad_web.c
 		web/snd_webaudio.c web/net_ws_web.c)
 	set_source_files_properties(web/present_glsl.c PROPERTIES OBJECT_DEPENDS "${SW_WEB_DIR}/present.glsl")
+	set_source_files_properties(web/crt_glsl.c PROPERTIES OBJECT_DEPENDS "${SW_CRT_DIR}/crt.glsl;${SW_CRT_INCLUDES}")
 	target_include_directories(sw_platform_gui PRIVATE . web)
 	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_posix)
 

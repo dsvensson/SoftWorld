@@ -28,19 +28,26 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // without, frames run as they are due, one drawn when the GPU has finished the
 // last, on a canvas shown as soon as it is drawn where the browser allows
 // (desynchronized), as the other systems present without waiting.
+//
+// With vid_shader_crt the frame is shown through the CRT shader's passes
+// (vid_crt.h), which vid_webgl.js draws, made when it's turned on and freed
+// when it's turned off.
 
 #include "args.h"
 #include "cmd.h"
 #include "mem.h"
 #include "print.h"
+#include "q_string.h"
 #include "sound.h"
 #include "sys.h"
 #include "vid_common.h"
+#include "vid_crt.h"
 #include "web_local.h"
 
 #include <string.h>
 
 extern const char	vid_present_glsl[];	// present_glsl.c
+extern const char	vid_crt_glsl[], vid_crt_core[], vid_crt_params[];	// crt_glsl.c
 
 // vid_webgl.js
 bool	web_vid_init (const char *source, bool desync);
@@ -50,7 +57,14 @@ void	web_vid_renderer (char *buf, int size);
 bool	web_vid_settextures (int width, int height);
 void	web_vid_clientsize (int *width, int *height);
 bool	web_vid_present (const pixel_t *view, const hudpixel_t *hud, bool huddirty, unsigned rowpixels,
-			const vid_present_constants_t *constants, int x, int y, int width, int height, bool paced);
+			const vid_present_constants_t *constants, int x, int y, int width, int height, bool paced,
+			const vid_present_constants_t *crtconstants, const byte *crtparams, const vid_crt_pass_t *crtpasses,
+			const int *crttable);
+bool	web_vid_crt_init (const char *glsl, const char *core, const char *params, const char *names, int mipspass,
+			int paramssize);
+void	web_vid_crt_texture (int texture, int width, int height, bool half, bool linear, int levels, bool feedback,
+			const byte *pixels);
+void	web_vid_crt_free (void);
 int		web_vid_fullscreen (bool on);
 void	web_vid_settitle (const char *text);
 void	web_vid_focus (void);
@@ -65,7 +79,16 @@ static bool			vid_hudpending;		// the 2D changed since it was last copied
 static bool			vid_fullscreen;
 static char			vid_gpuname[256];
 
+static bool				vid_crton;		// the CRT shader's passes are made
+static vid_crt_frame_t	vid_crtframe;
+static int				vid_crtsizes[4];	// the source's and viewport's sizes its textures have
+
+// vid_webgl.js draws the frame into the shader's texture 0
+static_assert (CRT_ORIGINAL == 0, "CRT_ORIGINAL is vid_webgl.js's first texture");
+
 static void VID_SetScale (void);
+static void VID_SetCRT (void);
+static bool VID_PresentCRT (const vid_fit_t *fit);
 
 /*
 ===============================================================================
@@ -180,6 +203,7 @@ void VID_Update (void)
 	vid_present_constants_t	constants;
 	vid_fit_t				fit;
 	char					why[512];
+	bool					presented;
 
 	if (!vid_initialized || Minimized)
 		return;
@@ -201,9 +225,18 @@ void VID_Update (void)
 	}
 
 	fit = VID_Fit (client_width, client_height);
-	VID_FillConstants (&constants, &fit, VID_OUTPUT_SDR, 1, 1);
-	if (web_vid_present (vid_view, vid_hud, vid.huddirty || vid_hudpending, vid.rowpixels, &constants,
-			(int)fit.x, (int)fit.y, (int)fit.width, (int)fit.height, VID_Vsync ()))
+	// the CRT shader made when it's turned on, freed when it's turned off
+	if (VID_CRT_Active () != vid_crton)
+		VID_SetCRT ();
+	if (vid_crton)
+		presented = fit.width >= 1 && fit.height >= 1 && VID_PresentCRT (&fit);
+	else
+	{
+		VID_FillConstants (&constants, &fit, VID_OUTPUT_SDR, 1, 1);
+		presented = web_vid_present (vid_view, vid_hud, vid.huddirty || vid_hudpending, vid.rowpixels, &constants,
+			(int)fit.x, (int)fit.y, (int)fit.width, (int)fit.height, VID_Vsync (), NULL, NULL, NULL, NULL);
+	}
+	if (presented)
 		vid_hudpending = false;
 	else if (vid.huddirty)
 		vid_hudpending = true;
@@ -212,6 +245,124 @@ void VID_Update (void)
 	// the canvas was resized, or the video settings changed
 	if (VID_NeedsResize (client_width, client_height))
 		VID_SetScale ();
+}
+
+/*
+===============================================================================
+
+THE CRT SHADER
+
+===============================================================================
+*/
+
+// the CRT shader's passes made for vid_shader_crt 1, freed for 0; a page that
+// can't have them turns it off
+static void VID_SetCRT (void)
+{
+	char	names[256] = "", why[512];
+	byte	*pixels;
+	int		i, w, h;
+
+	if (vid_crton)
+	{
+		web_vid_crt_free ();
+		vid_crton = false;
+		return;
+	}
+	for (i = 0 ; i < CRT_PASSES ; i++)
+	{
+		if (i)
+			Q_strncatz (names, ",", sizeof(names));
+		Q_strncatz (names, vid_crt_passes[i].name, sizeof(names));
+	}
+	if (!web_vid_crt_init (vid_crt_glsl, vid_crt_core, vid_crt_params, names, CRT_PASS_PREPASS,
+			(int)VID_CRT_PARAMS_SIZE))
+	{
+		web_vid_error (why, sizeof(why));
+		Con_Printf ("The CRT shader couldn't be made: %s\n", why);
+		Cvar_Set ("vid_shader_crt", "0");
+		return;
+	}
+	for (i = 0 ; i < 4 ; i++)
+	{
+		pixels = VID_CRT_LoadLUT (i, &w, &h);
+		if (!pixels)
+		{
+			Con_Printf ("The CRT shader: LUT %d is broken\n", i + 1);
+			web_vid_crt_free ();
+			Cvar_Set ("vid_shader_crt", "0");
+			return;
+		}
+		web_vid_crt_texture (CRT_LUT1 + i, w, h, false, true, 1, false, pixels);
+		Mem_Free (pixels);
+	}
+	memset (vid_crtsizes, 0, sizeof(vid_crtsizes));
+	vid_crton = true;
+}
+
+// the shader's textures for a frame of source pixels shown in a viewport of view pixels
+static void VID_SizeCRT (int sourcewidth, int sourceheight, int viewwidth, int viewheight)
+{
+	const vid_crt_texture_t	*t;
+	int						i, w, h;
+
+	if (vid_crtsizes[0] == sourcewidth && vid_crtsizes[1] == sourceheight && vid_crtsizes[2] == viewwidth
+		&& vid_crtsizes[3] == viewheight)
+		return;
+	for (i = 0 ; i < CRT_TEXTURES ; i++)
+	{
+		t = &vid_crt_textures[i];
+		if (t->size == CRT_SIZE_LUT)
+			continue;
+		VID_CRT_TextureSize (i, sourcewidth, sourceheight, viewwidth, viewheight, &w, &h);
+		web_vid_crt_texture (i, w, h, t->format == CRT_RGBA16F, t->linear, t->mips ? VID_CRT_MipLevels (w, h) : 1,
+			t->feedback, NULL);
+	}
+	vid_crtsizes[0] = sourcewidth;
+	vid_crtsizes[1] = sourceheight;
+	vid_crtsizes[2] = viewwidth;
+	vid_crtsizes[3] = viewheight;
+}
+
+/*
+================
+VID_PresentCRT
+
+The frame through the CRT shader: drawn as present.glsl shows it, at its own
+size, then its passes, the last on the canvas at the fit
+================
+*/
+static bool VID_PresentCRT (const vid_fit_t *fit)
+{
+	static byte				params[VID_CRT_PARAMS_SIZE];
+	vid_fit_t				whole = {0, 0, (float)vid.width, (float)vid.height, 1, 1};
+	vid_present_constants_t	constants;
+	vid_crt_pass_t			passes[CRT_PASSES];
+	vid_crt_frame_t			frame = vid_crtframe;
+	int						table[CRT_PASSES][8], i, j;
+	const vid_crt_pass_info_t	*pass;
+
+	VID_SizeCRT ((int)vid.width, (int)vid.height, (int)fit->width, (int)fit->height);
+	VID_FillConstants (&constants, &whole, VID_OUTPUT_SDR, 1, 1);
+	VID_CRT_BeginFrame (&frame, Sys_DoubleTime ());
+	VID_CRT_FillParams ((vid_crt_params_t *)params);
+	VID_CRT_FillPasses (passes, &frame, (int)vid.width, (int)vid.height, (int)fit->width, (int)fit->height,
+		VID_OUTPUT_SDR, 1);
+	// what each pass draws in and reads this frame
+	for (i = 0 ; i < CRT_PASSES ; i++)
+	{
+		pass = &vid_crt_passes[i];
+		table[i][0] = pass->output == CRT_SCREEN ? -1 : VID_CRT_Physical (pass->output, frame.parity);
+		for (j = 0 ; j < CRT_MAX_INPUTS ; j++)
+			table[i][j + 1] = j < pass->numinputs ? VID_CRT_Physical (pass->inputs[j], frame.parity) : -1;
+	}
+	if (!web_vid_present (vid_view, vid_hud, vid.huddirty || vid_hudpending, vid.rowpixels, &constants,
+			(int)fit->x, (int)fit->y, (int)fit->width, (int)fit->height, VID_Vsync (), &constants, params, passes,
+			&table[0][0]))
+		return false;
+	// the feedback textures change places with the frame drawn
+	vid_crtframe = frame;
+	return true;
 }
 
 /*
@@ -264,6 +415,9 @@ void VID_Shutdown (void)
 	if (!vid_initialized)
 		return;
 	vid_initialized = false;
+	if (vid_crton)
+		web_vid_crt_free ();
+	vid_crton = false;
 	VID_FreeLayers ();
 	vid.buffer = NULL;
 	vid.hud = NULL;

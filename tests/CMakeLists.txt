@@ -206,7 +206,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 # test_present_webgl draws the web's present.glsl with WebGL 2 as vid_webgl.c
-# does, and compares what it shows with VID_FrameToRGB; test_sound_web plays a
+# does, and compares what it shows with VID_FrameToRGB, and the CRT shader's
+# passes after it; test_sound_web plays a
 # wave through the sound's AudioWorklet and checks what it plays. They run in a
 # browser: browser_test.mjs serves each and runs it in a headless Chrome of its
 # own (drawing in software, SwiftShader; sound playing without a gesture,
@@ -219,8 +220,11 @@ if(EMSCRIPTEN AND SW_CHROME AND CMAKE_CROSSCOMPILING_EMULATOR)
 	set(SW_WEB_SOURCE "${PROJECT_SOURCE_DIR}/src/platform/web")
 
 	sw_add_program(test_present_webgl test_present_webgl.c
-		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c" "${SW_WEB_SOURCE}/present_glsl.c" $<TARGET_OBJECTS:sw_crt>)
+		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c" "${SW_WEB_SOURCE}/present_glsl.c" $<TARGET_OBJECTS:sw_crt>
+		"${SW_WEB_SOURCE}/crt_glsl.c")
 	set_source_files_properties("${SW_WEB_SOURCE}/present_glsl.c" PROPERTIES OBJECT_DEPENDS "${SW_WEB_SOURCE}/present.glsl")
+	set_source_files_properties("${SW_WEB_SOURCE}/crt_glsl.c" PROPERTIES OBJECT_DEPENDS
+		"${PROJECT_SOURCE_DIR}/src/platform/crt/crt.glsl;${PROJECT_SOURCE_DIR}/src/platform/crt/crt_core.inc;${PROJECT_SOURCE_DIR}/src/platform/crt/crt_params.h")
 	target_include_directories(test_present_webgl PRIVATE
 		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/renderer")
 	target_link_libraries(test_present_webgl PRIVATE sw_common)
