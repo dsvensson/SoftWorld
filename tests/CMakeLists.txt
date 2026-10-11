@@ -29,6 +29,11 @@ sw_add_program(test_msg test_msg.c)
 target_link_libraries(test_msg PRIVATE sw_common)
 add_test(NAME msg COMMAND test_msg)
 
+# test_cvar sets variables with and without a range (cvar.c).
+sw_add_program(test_cvar test_cvar.c)
+target_link_libraries(test_cvar PRIVATE sw_common)
+add_test(NAME cvar COMMAND test_cvar)
+
 # test_md4 checks the map checksum's MD4 against RFC 1320's digests.
 sw_add_program(test_md4 test_md4.c)
 target_link_libraries(test_md4 PRIVATE sw_common)

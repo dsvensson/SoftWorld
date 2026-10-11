@@ -43,6 +43,13 @@ cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true,
 	.values = (const cvar_value_t[]){{"0", "Whole multiples, letterboxed"},
 		{"1", "Filling the window"}, {0}}};
 
+A variable whose value has a range has .min and .max, max over min: a value
+past it is set to its nearer end, and the console says so. Its default must
+be in it.
+
+cvar_t	vid_scale = {.name = "vid_scale", .string = "1", .archive = true,
+	.description = "Render pixels per pixel of the 320x200 layout.", .min = 0, .max = 4};
+
 Cvars must be registered before use, or they will have a 0 value instead of the float interpretation of the string.  Generally, all cvar_t declarations should be registered in the apropriate init function before any console commands are executed:
 Cvar_RegisterVariable (&host_framerate);
 
@@ -82,6 +89,7 @@ typedef struct cvar_s
 	bool noreset;		// the engine sets it, not the player: cfg_reset leaves it
 	const char	*description;		// what it does, for the console
 	const cvar_value_t	*values;	// what each value does, ended by {0}; or NULL
+	float	min, max;				// the range Cvar_Set holds the value to, if max is over min
 	char	*defaultstring;			// the string it was registered with
 	char	*userstring;			// the player's own while C code reads another (Cvar_Override), else NULL
 	float	value;
@@ -93,6 +101,7 @@ void 	Cvar_RegisterVariable (cvar_t *variable);
 // archive elements set.
 
 void 	Cvar_Set (char *var_name, char *value);
+// a value past the variable's range (min, max) is set to its nearer end
 
 // called when a userinfo or serverinfo cvar changes; a listen server has both
 typedef void (*cvar_info_hook_t) (char *name, char *value);

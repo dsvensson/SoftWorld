@@ -23,13 +23,15 @@ static cvar_t	cl_attract_gamedirs = {.name = "cl_attract_gamedirs", .string = "i
 static cvar_t	cl_attract_time = {.name = "cl_attract_time", .string = "12", .archive = true,
 	.description = "Seconds attract mode (cl_attract) shows each map."};
 static cvar_t	cl_attract_fov = {.name = "cl_attract_fov", .string = "110", .archive = true,
-	.description = "Attract mode's (cl_attract) field of view, in place of fov's, 10 to 170."};
+	.description = "Attract mode's (cl_attract) field of view, in place of fov's, 10 to 170.", .min = 10, .max = 170};
 static cvar_t	cl_attract_wateralpha = {.name = "cl_attract_wateralpha", .string = "0.65", .archive = true,
-	.description = "How opaque attract mode (cl_attract) draws water, 0 to 1, in place of r_wateralpha."};
+	.description = "How opaque attract mode (cl_attract) draws water, 0 to 1, in place of r_wateralpha.",
+	.min = 0, .max = 1};
 static cvar_t	cl_attract_slimealpha = {.name = "cl_attract_slimealpha", .string = "0.6", .archive = true,
-	.description = "How opaque attract mode (cl_attract) draws slime, 0 to 1, in place of r_slimealpha."};
+	.description = "How opaque attract mode (cl_attract) draws slime, 0 to 1, in place of r_slimealpha.",
+	.min = 0, .max = 1};
 static cvar_t	cl_attract_volume = {.name = "cl_attract_volume", .string = "0.05", .archive = true,
-	.description = "Attract mode's (cl_attract) sound volume, 0 to 1, in place of volume's."};
+	.description = "Attract mode's (cl_attract) sound volume, 0 to 1, in place of volume's.", .min = 0, .max = 1};
 
 // What attract mode draws and plays with, whatever the player's settings
 // are: its own, or else the variable's default. A setting that changes how
@@ -38,16 +40,15 @@ static const struct
 {
 	const char	*name;
 	cvar_t		*own;			// NULL: the default
-	float		min, max;		// own's bounds
 } attract_look[] = {
-	{.name = "fov", .own = &cl_attract_fov, .min = 10, .max = 170},
-	{.name = "r_wateralpha", .own = &cl_attract_wateralpha, .min = 0, .max = 1},
-	{.name = "r_slimealpha", .own = &cl_attract_slimealpha, .min = 0, .max = 1},
+	{.name = "fov", .own = &cl_attract_fov},
+	{.name = "r_wateralpha", .own = &cl_attract_wateralpha},
+	{.name = "r_slimealpha", .own = &cl_attract_slimealpha},
 	{.name = "r_lavaalpha"},
 	{.name = "r_telealpha"},
 	{.name = "d_mipcap"},
 	{.name = "d_mipscale"},
-	{.name = "volume", .own = &cl_attract_volume, .min = 0, .max = 1},
+	{.name = "volume", .own = &cl_attract_volume},
 };
 
 #define	ATTRACT_FADE		0.5		// seconds to black, and from it
@@ -509,7 +510,6 @@ static void CL_AttractLook (bool on)
 {
 	cvar_t	*var;
 	char	value[32];
-	float	v;
 	int		i;
 
 	for (i = 0 ; i < (int)(sizeof(attract_look) / sizeof(attract_look[0])) ; i++)
@@ -522,9 +522,8 @@ static void CL_AttractLook (bool on)
 			Cvar_Override (var, var->defaultstring);
 		else
 		{
-			v = attract_look[i].own->value;
-			v = v < attract_look[i].min ? attract_look[i].min : v > attract_look[i].max ? attract_look[i].max : v;
-			snprintf (value, sizeof(value), "%g", (double)v);
+			// in its range, as Cvar_Set holds it
+			snprintf (value, sizeof(value), "%g", (double)attract_look[i].own->value);
 			Cvar_Override (var, value);
 		}
 	}

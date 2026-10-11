@@ -174,6 +174,34 @@ static void Cvar_InfoChanged (cvar_t *var, char *value)
 		cvar_serverinfo_hook (var->name, value);
 }
 
+// the variable has a range (min, max)
+static bool Cvar_HasRange (const cvar_t *var)
+{
+	return var->max > var->min;
+}
+
+/*
+============
+Cvar_InRange
+
+value, or if it is past the variable's range its nearer end, in buf, which
+the console tells
+============
+*/
+static char *Cvar_InRange (const cvar_t *var, char *value, char *buf, size_t size)
+{
+	float	v;
+
+	if (!Cvar_HasRange (var))
+		return value;
+	v = Q_atof (value);
+	if (v >= var->min && v <= var->max)
+		return value;
+	snprintf (buf, size, "%g", v < var->min ? var->min : var->max);
+	Con_Printf ("%s is %g to %g: set to %s\n", var->name, var->min, var->max, buf);
+	return buf;
+}
+
 /*
 ============
 Cvar_Set
@@ -185,13 +213,15 @@ void Cvar_Set (char *var_name, char *value)
 {
 	cvar_t	*var;
 	char	**set;
-	
+	char	inrange[32];
+
 	var = Cvar_FindVar (var_name);
 	if (!var)
 	{	// there is an error in C code if this happens
 		Con_Printf ("Cvar_Set: variable %s not found\n", var_name);
 		return;
 	}
+	value = Cvar_InRange (var, value, inrange, sizeof(inrange));
 
 	if (!var->userstring)
 		Cvar_InfoChanged (var, value);
@@ -278,7 +308,10 @@ void Cvar_RegisterVariable (cvar_t *variable)
 		Sys_Error ("Cvar_RegisterVariable: %s is defined twice", variable->name);
 	if (Cmd_Exists (variable->name))
 		Sys_Error ("Cvar_RegisterVariable: %s is a command", variable->name);
-		
+	if (Cvar_HasRange (variable)
+		&& (Q_atof (variable->string) < variable->min || Q_atof (variable->string) > variable->max))
+		Sys_Error ("Cvar_RegisterVariable: %s's default is out of its range", variable->name);
+
 // link the variable in
 	variable->next = cvar_vars;
 	cvar_vars = variable;
@@ -302,8 +335,9 @@ cvar_t *Cvar_List (void)
 ============
 Cvar_Describe
 
-What a variable does, what its values do, and its default and current values,
-as ezQuake shows them: the values and their heading in the other charset
+What a variable does, what its values do or their range, and its default and
+current values, as ezQuake shows them: the values and their heading in the
+other charset
 ============
 */
 static void Cvar_Describe (cvar_t *v)
@@ -318,7 +352,9 @@ static void Cvar_Describe (cvar_t *v)
 		for (val = v->values ; val->value ; val++)
 			Con_Printf ("  ^a%s^a - %s\n", val->value, val->meaning);
 	}
-	if (v->description || v->values)
+	if (Cvar_HasRange (v))
+		Con_Printf ("\n^arange^a\n  %g to %g\n", v->min, v->max);
+	if (v->description || v->values || Cvar_HasRange (v))
 		Con_Printf ("\n");
 	Con_Printf ("%s : default value is \"%s\"\n", v->name, v->defaultstring);
 	Con_Printf ("%*s current value is \"%s\"\n", (int)strlen (v->name) + 2, "", Cvar_UserString (v));

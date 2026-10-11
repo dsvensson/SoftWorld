@@ -257,7 +257,7 @@ Worth knowing:
 
 | | |
 |---|---|
-| `-scale n`, `vid_scale` | render at 320×200 times n (1, the default, is 320×200 itself); 0 picks the largest that fits the window |
+| `-scale n`, `vid_scale` | render at 320×200 times n, `vid_scale` up to 4 (1, the default, is 320×200 itself); 0 picks the largest that fits the window |
 | `vid_widescreen`, `vid_crt`, `vid_scalemode` | wider view (hor+), the status bar in its middle; CRT pixel aspect; the frame filling the window, sharp bilinear (0 whole multiples of it, letterboxed). All three 1 by default |
 | `r_lightmode` | 1 linear light in RGB, brighter than white where it is (the default); 0 lighting as Quake had it |
 | `r_litwater` | liquids lit by their lightmaps in a map whose light tool lit them, as Quakespasm, FTE and ezQuake light them (1, the default); 0 unlit, as Quake drew them |

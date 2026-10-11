@@ -27,10 +27,11 @@ bool VID_Vsync (void)
 {
 	return vid_vsync.value && !vid_unpaced;
 }
-// render pixels per pixel of the 320x200 layout; 0 is the most the window holds
+// render pixels per pixel of the 320x200 layout; 0 is the most the window holds,
+// which a larger scale is better served by
 static cvar_t	vid_scale = {.name = "vid_scale", .string = "1", .archive = true,
-	.description = "Render pixels per pixel of the 320x200 layout, up to 16; 0 is the most the window holds. "
-		"-scale overrides it."};
+	.description = "Render pixels per pixel of the 320x200 layout, up to 4; 0 is the most the window holds. "
+		"-scale overrides it.", .min = 0, .max = 4};
 // pixels 1.2 times as tall as wide, as 320x200 was shown on 4:3 screens
 static cvar_t	vid_crt = {.name = "vid_crt", .string = "1", .archive = true,
 	.description = "Shows pixels 1.2 times as tall as wide, as 320x200 was shown on 4:3 screens.",
