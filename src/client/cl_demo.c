@@ -674,7 +674,13 @@ void CL_Record_f (void)
 	MSG_WriteLong (&buf, cl.servercount);
 	MSG_WriteString (&buf, gamedirfile);
 
-	if (cl.spectator)
+	if (cls.fteext2 & FTE_PEXT2_MAXPLAYERS)
+	{	// the player slots, one seat (128 for a spectator) and its slot
+		MSG_WriteByte (&buf, cl.maxplayers);
+		MSG_WriteByte (&buf, cl.spectator ? 1 | 128 : 1);
+		MSG_WriteByte (&buf, cl.playernum);
+	}
+	else if (cl.spectator)
 		MSG_WriteByte (&buf, cl.playernum | 128);
 	else
 		MSG_WriteByte (&buf, cl.playernum);
@@ -775,7 +781,7 @@ void CL_Record_f (void)
 
 // send current status of all other players
 
-	for (i = 0; i < MAX_CLIENTS; i++) {
+	for (i = 0; i < cl.maxplayers; i++) {
 		player = cl.players + i;
 
 		MSG_WriteByte (&buf, svc_updatefrags);

@@ -32,7 +32,7 @@ static struct predicted_player {
 	int flags;
 	bool active;
 	vec3_t origin;	// predicted origin
-} predicted_players[MAX_CLIENTS];
+} predicted_players[MAX_PLAYERS];
 
 //============================================================
 
@@ -864,9 +864,9 @@ static const entity_state_t *CL_FrameEntityAt (const frame_t *frame, int index)
 // the next entity of a frame, a player or one of the rest
 static entity_state_t *CL_NextFrameEntity (frame_t *frame, int number)
 {
-	if (number <= MAX_CLIENTS)
+	if (number <= cl.maxplayers)
 	{
-		if (frame->numplayerents == MAX_CLIENTS)
+		if (frame->numplayerents == MAX_PLAYERS)
 			Host_EndGame ("svc_fte_updateentities: entity %i twice", number);
 		return &frame->playerents[frame->numplayerents++];
 	}
@@ -1170,7 +1170,7 @@ static void CL_LinkPacketEntities (void)
 		ent->alpha = s1->alpha;
 	
 		// set colormap
-		if (s1->colormap && (s1->colormap < MAX_CLIENTS) 
+		if (s1->colormap && (s1->colormap <= cl.maxplayers) 
 			&& !strcmp(ent->model->name,"progs/player.mdl") )
 		{
 			ent->translate = cl.players[s1->colormap-1].translate;
@@ -1518,7 +1518,7 @@ void CL_ParsePlayerinfo (void)
 	int			i;
 
 	num = MSG_ReadByte ();
-	if (num >= MAX_CLIENTS)
+	if (num >= cl.maxplayers)
 		Host_EndGame ("CL_ParsePlayerinfo: bad num %i", num);
 	if (cls.mvdplayback)
 	{
@@ -1747,7 +1747,7 @@ static void CL_LinkPlayers (void)
 
 	frame = &cl.frames[cl.parsecount&UPDATE_MASK];
 
-	for (j=0, info=cl.players, state=frame->playerstate ; j < MAX_CLIENTS 
+	for (j=0, info=cl.players, state=frame->playerstate ; j < cl.maxplayers 
 		; j++, info++, state++)
 	{
 		if (state->messagenum != cl.parsecount)
@@ -1920,7 +1920,7 @@ void CL_SetUpPlayerPrediction(bool dopred)
 	frame = &cl.frames[cl.parsecount&UPDATE_MASK];
 
 	for (j=0, pplayer = predicted_players, state=frame->playerstate; 
-		j < MAX_CLIENTS;
+		j < cl.maxplayers;
 		j++, pplayer++, state++) {
 
 		pplayer->active = false;
@@ -1985,7 +1985,7 @@ void CL_SetSolidPlayers (int playernum)
 
 	pent = cl.pmove.physents + cl.pmove.numphysent;
 
-	for (j=0, pplayer = predicted_players; j < MAX_CLIENTS && cl.pmove.numphysent < MAX_PHYSENTS; j++, pplayer++) {
+	for (j=0, pplayer = predicted_players; j < cl.maxplayers && cl.pmove.numphysent < MAX_PHYSENTS; j++, pplayer++) {
 
 		if (!pplayer->active)
 			continue;	// not present this frame

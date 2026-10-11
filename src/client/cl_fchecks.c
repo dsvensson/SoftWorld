@@ -79,7 +79,7 @@ static bool CL_FCheckMatch (const char *line, const char *request)
 	size_t		len;
 	int			i, offset = -1, state;
 
-	for (i = 0 ; i < MAX_CLIENTS && offset < 0 ; i++)
+	for (i = 0 ; i < cl.maxplayers && offset < 0 ; i++)
 	{
 		if (!cl.players[i].name[0])
 			continue;

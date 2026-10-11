@@ -583,7 +583,8 @@ static void CL_ParseServerData (void)
 	char	*str;
 	int protover;
 	unsigned	fteext2;
-	
+	int		slots, seats;
+
 	Con_DPrintf ("Serverdata packet received.\n");
 	// the next map's serverinfo brings it back
 	CSQC_Shutdown ();
@@ -640,11 +641,25 @@ static void CL_ParseServerData (void)
 	COM_Gamedir(str);
 	FS_FlushGamedir ();		// the last level's models and sounds are done with
 
+	cl.maxplayers = MAX_CLIENTS;
 	if (cls.mvdplayback)
-	{	// an MVD: the server's clock when it began; the watcher is the last slot
+	{	// an MVD: FTE's has its player slots, which an MVD's here must hold;
+		// the server's clock when it began; the watcher is the last slot
+		if ((cls.fteext2 & FTE_PEXT2_MAXPLAYERS) && (slots = MSG_ReadByte ()) > MAX_CLIENTS)
+			Host_EndGame ("The recording has %i player slots, more than an MVD's %i", slots, MAX_CLIENTS);
 		cl.mvd_server_time = MSG_ReadFloat ();
 		cl.playernum = MAX_CLIENTS - 1;
 		cl.spectator = true;
+	}
+	else if (cls.fteext2 & FTE_PEXT2_MAXPLAYERS)
+	{	// FTE's: the player slots, the seats (128 for a spectator) and each
+		// one's slot; one seat, as no other is asked for
+		cl.maxplayers = MSG_ReadByte ();
+		seats = MSG_ReadByte ();
+		cl.spectator = (seats & 128) != 0;
+		cl.playernum = MSG_ReadByte ();
+		if ((seats & 127) != 1 || cl.playernum >= cl.maxplayers)
+			Host_EndGame ("Bad serverdata: player %i of %i slots, %i seats", cl.playernum, cl.maxplayers, seats & 127);
 	}
 	else
 	{
@@ -1326,8 +1341,8 @@ static void CL_NewTranslation (int slot)
 	player_info_t	*player;
 	char s[512];
 
-	if (slot > MAX_CLIENTS)
-		Sys_Error ("CL_NewTranslation: slot > MAX_CLIENTS");
+	if (slot >= MAX_PLAYERS)
+		Sys_Error ("CL_NewTranslation: slot >= MAX_PLAYERS");
 
 	player = &cl.players[slot];
 
@@ -1376,7 +1391,7 @@ static void CL_UpdateUserinfo (void)
 	player_info_t	*player;
 
 	slot = MSG_ReadByte ();
-	if (slot >= MAX_CLIENTS)
+	if (slot >= cl.maxplayers)
 		Host_EndGame ("CL_ParseServerMessage: svc_updateuserinfo > MAX_SCOREBOARD");
 
 	player = &cl.players[slot];
@@ -1409,7 +1424,7 @@ static void CL_SetInfo (void)
 	strncpy (value, MSG_ReadString(), sizeof(value) - 1);
 	value[sizeof(value) - 1] = 0;
 
-	if (slot >= MAX_CLIENTS)
+	if (slot >= cl.maxplayers)
 	{
 		Con_DPrintf ("SETINFO of slot %i, past the players': %s=%s\n", slot, key, value);
 		return;
@@ -1526,7 +1541,7 @@ static void CL_MuzzleFlash (void)
 	if (i < 1 || i >= MAX_EDICTS || CL_MVDQuiet ())
 		return;
 
-	if (i <= MAX_CLIENTS)
+	if (i <= cl.maxplayers)
 	{
 		pl = &cl.frames[cl.parsecountmod].playerstate[i-1];
 		dl = CL_AllocDlight (i);
@@ -1608,7 +1623,7 @@ static int CL_ChatNameLength (const char *s)
 	const char	*sender;
 	int			i, len, msglen = (int)strlen (s);
 
-	for (i=0 ; i<MAX_CLIENTS ; i++)
+	for (i=0 ; i<cl.maxplayers ; i++)
 	{
 		if (!cl.players[i].name[0])
 			continue;
@@ -1843,21 +1858,21 @@ void CL_ParseServerMessage (void)
 		
 		case svc_updatefrags:
 			i = MSG_ReadByte ();
-			if (i >= MAX_CLIENTS)
+			if (i >= cl.maxplayers)
 				Host_EndGame ("CL_ParseServerMessage: svc_updatefrags > MAX_SCOREBOARD");
 			cl.players[i].frags = MSG_ReadShort ();
 			break;			
 
 		case svc_updateping:
 			i = MSG_ReadByte ();
-			if (i >= MAX_CLIENTS)
+			if (i >= cl.maxplayers)
 				Host_EndGame ("CL_ParseServerMessage: svc_updateping > MAX_SCOREBOARD");
 			cl.players[i].ping = MSG_ReadShort ();
 			break;
 			
 		case svc_updatepl:
 			i = MSG_ReadByte ();
-			if (i >= MAX_CLIENTS)
+			if (i >= cl.maxplayers)
 				Host_EndGame ("CL_ParseServerMessage: svc_updatepl > MAX_SCOREBOARD");
 			cl.players[i].pl = (byte)MSG_ReadByte ();
 			break;
@@ -1865,7 +1880,7 @@ void CL_ParseServerMessage (void)
 		case svc_updateentertime:
 		// time is sent over as seconds ago
 			i = MSG_ReadByte ();
-			if (i >= MAX_CLIENTS)
+			if (i >= cl.maxplayers)
 				Host_EndGame ("CL_ParseServerMessage: svc_updateentertime > MAX_SCOREBOARD");
 			cl.players[i].entertime = (float)(CL_ScoreClock () - MSG_ReadFloat ());
 			break;

@@ -182,7 +182,7 @@ static const char *CS_ServerKey (const char *key)
 		return cls.fteext ? "QuakeWorld FTE" : cl.z_ext ? "QuakeWorld ZQuake" : "QuakeWorld";
 	if (!strcmp (key, "maxplayers"))
 	{
-		snprintf (text, sizeof(text), "%i", MAX_CLIENTS);
+		snprintf (text, sizeof(text), "%i", cl.maxplayers);
 		return text;
 	}
 	return Info_ValueForKey (cl.serverinfo, (char *)key);
@@ -210,7 +210,7 @@ static const char *CS_PlayerKey (int pnum, const char *key)
 	static char		text[64];
 	player_info_t	*p;
 
-	if (pnum < 0 || pnum >= MAX_CLIENTS)
+	if (pnum < 0 || pnum >= cl.maxplayers)
 		return "";
 	if (!strcmp (key, "viewentity"))
 	{
@@ -1034,7 +1034,7 @@ static bool CS_RenderEntity (qc_ent_t e, entity_t *ent)
 
 	// a player's colors, as the client gives its own players them
 	colormap = QC_FloatToInt (CS_EntFloat (e, csqc.f.colormap));
-	if (colormap > 0 && colormap <= MAX_CLIENTS && !strcmp (model->name, "progs/player.mdl"))
+	if (colormap > 0 && colormap <= cl.maxplayers && !strcmp (model->name, "progs/player.mdl"))
 	{
 		ent->translate = cl.players[colormap-1].translate;
 		ent->palette = cl.players[colormap-1].palette;
@@ -2109,7 +2109,7 @@ bool CSQC_Init (bool anycsqc, const char *csprogsname, unsigned checksum, size_t
 	CSQC_SetFloat ("deathmatch", (float)atoi (Info_ValueForKey (cl.serverinfo, "deathmatch")));
 	CSQC_SetFloat ("coop", !atoi (Info_ValueForKey (cl.serverinfo, "deathmatch"))
 		&& atoi (Info_ValueForKey (cl.serverinfo, "maxclients")) > 1 ? 1.0f : 0.0f);
-	CSQC_SetFloat ("maxclients", MAX_CLIENTS);
+	CSQC_SetFloat ("maxclients", (float)cl.maxplayers);
 	CSQC_SetFrameGlobals ();
 
 	args[0] = QC_ValFloat (CSQC_API_VERSION);

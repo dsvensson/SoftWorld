@@ -142,6 +142,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define	FTE_PEXT2_VOICECHAT			0x00000002	// svc_fte_voicechat
 #define	FTE_PEXT2_REPLACEMENTDELTAS	0x00000008	// svc_fte_updateentities: each entity's changes, resent when lost
+#define	FTE_PEXT2_MAXPLAYERS		0x00000010	// up to MAX_PLAYERS players: svc_serverdata says how many slots
 
 // the extensions this program speaks: CL_ as a client, SV_ as a server
 // (the server's CSQC is the csprogs it offers and QuakeC's stats: no entities of CSQC's)
@@ -150,7 +151,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 	FTE_PEXT_256PACKETENTITIES | FTE_PEXT_CHUNKEDDOWNLOADS | FTE_PEXT_CSQC | FTE_PEXT_TE_BULLET)
 #define	CL_FTE_EXTENSIONS	SV_FTE_EXTENSIONS
 #define	SV_FTE2_EXTENSIONS	FTE_PEXT2_REPLACEMENTDELTAS
-#define	CL_FTE2_EXTENSIONS	SV_FTE2_EXTENSIONS
+#define	CL_FTE2_EXTENSIONS	(SV_FTE2_EXTENSIONS | FTE_PEXT2_MAXPLAYERS)
 #define	SV_MVD1_EXTENSIONS	(MVD_PEXT1_FLOATCOORDS | MVD_PEXT1_HIGHLAGTELEPORT)
 #define	CL_MVD1_EXTENSIONS	SV_MVD1_EXTENSIONS
 
@@ -564,6 +565,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #define	MAX_CLIENTS		32
+// the players a client can be shown: FTE's servers have up to 255 for a client
+// that asks for them (FTE_PEXT2_MAXPLAYERS); QuakeWorld's, this program's
+// server and MVDs have MAX_CLIENTS
+#define	MAX_PLAYERS		255
 
 #define	UPDATE_BACKUP	64	// copies of entity_state_t to keep buffered
 							// must be power of two

@@ -123,13 +123,13 @@ typedef struct
 
 	// received from server
 	double		receivedtime;	// time message was received, or -1
-	player_state_t	playerstate[MAX_CLIENTS];	// message received that reflects performing
+	player_state_t	playerstate[MAX_PLAYERS];	// message received that reflects performing
 							// the usercmd
 	cl_entities_t	packet_entities;
 	bool	invalid;		// true if the packet_entities delta was invalid
 	// FTE's replacement deltas: the players as entities, by number, the
 	// base of the next update with packet_entities
-	entity_state_t	playerents[MAX_CLIENTS];
+	entity_state_t	playerents[MAX_PLAYERS];
 	int				numplayerents;
 } frame_t;
 
@@ -357,7 +357,8 @@ typedef struct
 	entity_t	viewent;		// weapon model
 
 // all player information
-	player_info_t	players[MAX_CLIENTS];
+	player_info_t	players[MAX_PLAYERS];
+	int			maxplayers;		// the server's player slots: MAX_CLIENTS, or FTE_PEXT2_MAXPLAYERS' up to MAX_PLAYERS
 
 	int			cmdtime_msec;	// sum of the msec of every command sent
 	bool		onground;		// predicted

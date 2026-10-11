@@ -348,7 +348,7 @@ static void Sbar_DrawNum (int x, int y, int num, int digits, int color)
 
 //ZOID: this should be MAX_CLIENTS, not MAX_SCOREBOARD!!
 //int		fragsort[MAX_SCOREBOARD];
-static int		fragsort[MAX_CLIENTS];
+static int		fragsort[MAX_PLAYERS];
 static int		scoreboardlines;
 typedef struct {
 	char team[16+1];
@@ -356,8 +356,8 @@ typedef struct {
 	int players;
 	int plow, phigh, ptotal;
 } team_t;
-static team_t teams[MAX_CLIENTS];
-static int teamsort[MAX_CLIENTS];
+static team_t teams[MAX_PLAYERS];
+static int teamsort[MAX_PLAYERS];
 static int scoreboardteams;
 
 /*
@@ -371,7 +371,7 @@ static void Sbar_SortFrags (bool includespec)
 		
 // sort by frags
 	scoreboardlines = 0;
-	for (i=0 ; i<MAX_CLIENTS ; i++)
+	for (i=0 ; i<cl.maxplayers ; i++)
 	{
 		if (cl.players[i].name[0] &&
 			(!cl.players[i].spectator || includespec))
@@ -409,10 +409,10 @@ static void Sbar_SortTeams (void)
 
 // sort the teams
 	memset(teams, 0, sizeof(teams));
-	for (i = 0; i < MAX_CLIENTS; i++)
+	for (i = 0; i < MAX_PLAYERS; i++)
 		teams[i].plow = 999;
 
-	for (i = 0; i < MAX_CLIENTS; i++) {
+	for (i = 0; i < cl.maxplayers; i++) {
 		s = &cl.players[i];
 		if (!s->name[0])
 			continue;

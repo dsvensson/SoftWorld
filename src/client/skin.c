@@ -215,7 +215,7 @@ void Skin_NextDownload (void)
 	cls.downloadtype = dl_skin;
 
 	for ( 
-		; cls.downloadnumber != MAX_CLIENTS
+		; cls.downloadnumber < cl.maxplayers
 		; cls.downloadnumber++)
 	{
 		sc = &cl.players[cls.downloadnumber];
@@ -231,7 +231,7 @@ void Skin_NextDownload (void)
 	cls.downloadtype = dl_none;
 
 	// now load them in for real
-	for (i=0 ; i<MAX_CLIENTS ; i++)
+	for (i=0 ; i<cl.maxplayers ; i++)
 	{
 		sc = &cl.players[i];
 		if (!sc->name[0])
