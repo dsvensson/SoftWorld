@@ -32,15 +32,15 @@ static cvar_t	vid_scale = {.name = "vid_scale", .string = "1", .archive = true,
 	.description = "Render pixels per pixel of the 320x200 layout, up to 16; 0 is the most the window holds. "
 		"-scale overrides it."};
 // pixels 1.2 times as tall as wide, as 320x200 was shown on 4:3 screens
-static cvar_t	vid_crt = {.name = "vid_crt", .string = "0", .archive = true,
+static cvar_t	vid_crt = {.name = "vid_crt", .string = "1", .archive = true,
 	.description = "Shows pixels 1.2 times as tall as wide, as 320x200 was shown on 4:3 screens.",
 	.values = (const cvar_value_t[]){{"0", "Square pixels"}, {"1", "Pixels 1.2 times as tall as wide"}, {0}}};
 // the layout is as wide as the window instead of 320, and sees more to the sides
-static cvar_t	vid_widescreen = {.name = "vid_widescreen", .string = "0", .archive = true,
+static cvar_t	vid_widescreen = {.name = "vid_widescreen", .string = "1", .archive = true,
 	.description = "Makes the layout as wide as the window instead of 320, seeing more to the sides.",
 	.values = (const cvar_value_t[]){{"0", "320 wide"}, {"1", "As wide as the window"}, {0}}};
 // 0: whole multiples of the render size, letterboxed; 1: fill the window, sharp bilinear
-static cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true,
+static cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "1", .archive = true,
 	.description = "How the frame is fitted to the window.",
 	.values = (const cvar_value_t[]){{"0", "Whole multiples of the render size, letterboxed"},
 		{"1", "Filling the window, sharp bilinear"}, {0}}};
