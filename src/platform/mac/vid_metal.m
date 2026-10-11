@@ -35,6 +35,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // extended linear sRGB half floats, 1.0 being SDR white as the system shows it.
 // Which one is decided again when the window moves to another display or the
 // displays change.
+//
+// With vid_shader_crt the frame is drawn at its own size and shown through the
+// CRT shader's passes (crt_metal.m), made when it's turned on and freed when
+// it's turned off.
 
 #import <AppKit/AppKit.h>
 #import <Metal/Metal.h>
@@ -46,6 +50,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "sys.h"
 #include "sound.h"
 #include "vid_common.h"
+#include "crt_metal.h"
 #include "mac_local.h"
 
 #include <math.h>
@@ -88,6 +93,9 @@ static id<MTLResidencySet>			mtl_residency;
 static id<MTLSharedEvent>			mtl_event;		// signaled with each frame's serial when it is done
 static uint64_t						mtl_serial;		// the last frame committed
 static id<MTLBuffer>				mtl_constants;	// vid_present_constants_t, a slot's each
+static id<MTLLibrary>				mtl_library;	// present.metal's
+static id<MTL4Compiler>				mtl_compiler;
+static id<MTLRenderPipelineState>	mtl_crtpipeline;	// present.metal into the CRT shader's frame
 
 static vid_layer_t	vid_views[VID_SLOTS];	// the 3D view
 static vid_layer_t	vid_huds[2];			// the 2D
@@ -108,6 +116,8 @@ static id<NSObject>			vid_activity;	// what the system is told the program is do
 static NSActivityOptions	vid_activityoptions;
 
 static bool		vid_outputdirty = true;		// recheck the display: moved, or displays changed
+static bool				vid_crton;			// the CRT shader's passes are made
+static vid_crt_frame_t	vid_crtframe;
 static bool		vid_hdroutput;				// the drawables are extended linear
 static bool		vid_outputknown;			// the output mode has been reported
 static float	vid_hdrwanted = -1;			// vid_hdr when the display was last checked
@@ -504,8 +514,6 @@ static void VID_CreateDevice (void)
 {
 	MTL4ArgumentTableDescriptor	*table = [MTL4ArgumentTableDescriptor new];
 	MTLResidencySetDescriptor	*residency = [MTLResidencySetDescriptor new];
-	id<MTL4Compiler>			compiler;
-	id<MTLLibrary>				library;
 	dispatch_data_t				data;
 	NSError						*error = nil;
 	int							i;
@@ -528,12 +536,12 @@ static void VID_CreateDevice (void)
 
 	// the shaders, compiled with the program; the array stays where it is
 	data = dispatch_data_create (vid_present_metallib, vid_present_metallib_size, NULL, ^{});
-	library = [mtl_device newLibraryWithData:data error:&error];
-	VID_Check (library, error, "Loading the shaders");
-	compiler = [mtl_device newCompilerWithDescriptor:[MTL4CompilerDescriptor new] error:&error];
-	VID_Check (compiler, error, "newCompilerWithDescriptor");
-	mtl_sdrpipeline = VID_CreatePipeline (compiler, library, MTLPixelFormatBGR10A2Unorm);
-	mtl_hdrpipeline = VID_CreatePipeline (compiler, library, MTLPixelFormatRGBA16Float);
+	mtl_library = [mtl_device newLibraryWithData:data error:&error];
+	VID_Check (mtl_library, error, "Loading the shaders");
+	mtl_compiler = [mtl_device newCompilerWithDescriptor:[MTL4CompilerDescriptor new] error:&error];
+	VID_Check (mtl_compiler, error, "newCompilerWithDescriptor");
+	mtl_sdrpipeline = VID_CreatePipeline (mtl_compiler, mtl_library, MTLPixelFormatBGR10A2Unorm);
+	mtl_hdrpipeline = VID_CreatePipeline (mtl_compiler, mtl_library, MTLPixelFormatRGBA16Float);
 
 	table.maxBufferBindCount = 1;
 	table.maxTextureBindCount = 2;
@@ -691,6 +699,56 @@ static bool VID_Presentable (void)
 	return now - vid_acquiretime > 0.9 / (fps > 0 ? fps : 60);
 }
 
+// the CRT shader's passes made for vid_shader_crt 1, freed for 0; a GPU that
+// can't have them turns it off
+static void VID_SetCRT (void)
+{
+	VID_WaitFrame (mtl_serial);
+	if (vid_crton)
+	{
+		CRT_Metal_Shutdown ();
+		mtl_crtpipeline = nil;
+		vid_crton = false;
+		return;
+	}
+	vid_crton = CRT_Metal_Init (mtl_device, mtl_residency, VID_SLOTS);
+	if (vid_crton)
+		mtl_crtpipeline = VID_CreatePipeline (mtl_compiler, mtl_library, MTLPixelFormatRGBA8Unorm);
+	else
+		Cvar_Set ("vid_shader_crt", "0");
+}
+
+/*
+================
+VID_EncodeCRT
+
+The frame through the CRT shader but its last pass: drawn as present.metal
+shows it, at its own size and in SDR (constants), then the passes
+================
+*/
+static void VID_EncodeCRT (id<MTL4CommandBuffer> commands, int slot, int hud, const vid_fit_t *fit, bool hdr,
+	float paperwhite)
+{
+	id<MTL4RenderCommandEncoder>	encoder;
+	vid_crt_params_t				params;
+	vid_crt_pass_t					passes[CRT_PASSES];
+
+	encoder = CRT_Metal_BeginOriginal (commands);
+	[encoder setRenderPipelineState:mtl_crtpipeline];
+	[mtl_arguments setTexture:vid_views[slot].texture.gpuResourceID atIndex:0];
+	[mtl_arguments setTexture:vid_huds[hud].texture.gpuResourceID atIndex:1];
+	[mtl_arguments setAddress:mtl_constants.gpuAddress + VID_CONSTANTS * slot atIndex:0];
+	[encoder setArgumentTable:mtl_arguments atStages:MTLRenderStageFragment];
+	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+	[encoder endEncoding];
+
+	VID_CRT_BeginFrame (&vid_crtframe, Sys_DoubleTime ());
+	VID_CRT_FillParams (&params);
+	VID_CRT_FillPasses (passes, &vid_crtframe, (int)vid.width, (int)vid.height, (int)fit->width, (int)fit->height,
+		hdr ? VID_OUTPUT_LINEAR : VID_OUTPUT_SDR, paperwhite);
+	CRT_Metal_EncodePasses (commands, slot, &params, passes, vid_crtframe.parity);
+}
+
 /*
 ================
 VID_Update
@@ -708,7 +766,7 @@ void VID_Update (void)
 	vid_present_constants_t			*constants;
 	vid_fit_t						fit;
 	int								slot = vid_slot, hud;
-	bool							hdr;
+	bool							hdr, crt;
 	float							paperwhite, peak;
 
 	if (!vid_initialized || Minimized)
@@ -747,13 +805,30 @@ void VID_Update (void)
 			peak = (float)vid_window.screen.maximumExtendedDynamicRangeColorComponentValue;
 		fit = VID_Fit (client_width, client_height);
 		constants = (vid_present_constants_t *)((byte *)mtl_constants.contents + VID_CONSTANTS * slot);
-		VID_FillConstants (constants, &fit, hdr ? VID_OUTPUT_LINEAR : VID_OUTPUT_SDR, paperwhite,
-			fmaxf (peak, paperwhite));
+
+		// the CRT shader made when it's turned on, freed when it's turned off; its
+		// textures made again for another size once no frame in flight reads them
+		if (VID_CRT_Active () != vid_crton)
+			VID_SetCRT ();
+		crt = vid_crton && fit.width >= 1 && fit.height >= 1;
+		if (crt && CRT_Metal_SizeChanged ((int)vid.width, (int)vid.height, (int)fit.width, (int)fit.height))
+		{
+			VID_WaitFrame (mtl_serial);
+			CRT_Metal_SetSize ((int)vid.width, (int)vid.height, (int)fit.width, (int)fit.height);
+		}
+		if (crt)
+			VID_FillConstants (constants, &(vid_fit_t){0, 0, (float)vid.width, (float)vid.height, 1, 1},
+				VID_OUTPUT_SDR, 1, 1);
+		else
+			VID_FillConstants (constants, &fit, hdr ? VID_OUTPUT_LINEAR : VID_OUTPUT_SDR, paperwhite,
+				fmaxf (peak, paperwhite));
 
 		// the slot's last frame is done: its buffer wasn't handed out before
 		commands = mtl_commands[slot];
 		[mtl_allocators[slot] reset];
 		[commands beginCommandBufferWithAllocator:mtl_allocators[slot]];
+		if (crt)
+			VID_EncodeCRT (commands, slot, hud, &fit, hdr, paperwhite);
 
 		pass = [MTL4RenderPassDescriptor new];
 		pass.colorAttachments[0].texture = drawable.texture;
@@ -761,13 +836,19 @@ void VID_Update (void)
 		pass.colorAttachments[0].storeAction = MTLStoreActionStore;
 		pass.colorAttachments[0].clearColor = MTLClearColorMake (0, 0, 0, 1);
 		encoder = [commands renderCommandEncoderWithDescriptor:pass];
-		[encoder setRenderPipelineState:hdr ? mtl_hdrpipeline : mtl_sdrpipeline];
-		[encoder setViewport:(MTLViewport){vid_safex + fit.x, vid_safey + fit.y, fit.width, fit.height, 0, 1}];
-		[mtl_arguments setTexture:vid_views[slot].texture.gpuResourceID atIndex:0];
-		[mtl_arguments setTexture:vid_huds[hud].texture.gpuResourceID atIndex:1];
-		[mtl_arguments setAddress:mtl_constants.gpuAddress + VID_CONSTANTS * slot atIndex:0];
-		[encoder setArgumentTable:mtl_arguments atStages:MTLRenderStageFragment];
-		[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+		if (crt)
+			CRT_Metal_EncodeLast (encoder, drawable.texture.pixelFormat,
+				(MTLViewport){vid_safex + fit.x, vid_safey + fit.y, fit.width, fit.height, 0, 1});
+		else
+		{
+			[encoder setRenderPipelineState:hdr ? mtl_hdrpipeline : mtl_sdrpipeline];
+			[encoder setViewport:(MTLViewport){vid_safex + fit.x, vid_safey + fit.y, fit.width, fit.height, 0, 1}];
+			[mtl_arguments setTexture:vid_views[slot].texture.gpuResourceID atIndex:0];
+			[mtl_arguments setTexture:vid_huds[hud].texture.gpuResourceID atIndex:1];
+			[mtl_arguments setAddress:mtl_constants.gpuAddress + VID_CONSTANTS * slot atIndex:0];
+			[encoder setArgumentTable:mtl_arguments atStages:MTLRenderStageFragment];
+			[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+		}
 		[encoder endEncoding];
 		[commands endCommandBuffer];
 
@@ -862,6 +943,10 @@ void VID_Shutdown (void)
 	vid_initialized = false;
 
 	VID_WaitFrame (mtl_serial);
+	if (vid_crton)
+		CRT_Metal_Shutdown ();
+	vid_crton = false;
+	mtl_crtpipeline = nil;
 	for (i = 0 ; i < VID_SLOTS ; i++)
 		VID_FreeLayer (&vid_views[i]);
 	for (i = 0 ; i < 2 ; i++)

@@ -21,7 +21,7 @@ else()
 	set(SW_METAL_ENV "DEVELOPER_DIR=${SW_XCODE_DEVELOPER_DIR}")
 endif()
 
-# sw_compile_metal(<output metallib> <metal file>)
+# sw_compile_metal(<output metallib> <metal file> [<included file>...])
 function(sw_compile_metal out_lib metal)
 	add_custom_command(
 		OUTPUT "${out_lib}"
@@ -29,6 +29,7 @@ function(sw_compile_metal out_lib metal)
 			xcrun -sdk macosx metal -std=metal4.0 -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}
 			-fmetal-math-mode=safe -Werror -o "${out_lib}" "${metal}"
 		MAIN_DEPENDENCY "${metal}"
+		DEPENDS ${ARGN}
 		COMMENT "Compiling ${metal}"
 		VERBATIM)
 endfunction()

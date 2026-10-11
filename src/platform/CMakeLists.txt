@@ -164,11 +164,21 @@ elseif(APPLE)
 		COMPILE_OPTIONS "--embed-dir=${SW_SHADER_DIR}")
 	sw_set_warnings(sw_present_metallib)
 
+	# the CRT shader's, and its passes in Metal 4 (crt_metal.m)
+	sw_compile_metal("${SW_SHADER_DIR}/crt.metallib" "${SW_CRT_DIR}/crt.metal" ${SW_CRT_INCLUDES})
+	add_library(sw_crt_metal OBJECT mac/crt_metallib.c mac/crt_metal.m "${SW_SHADER_DIR}/crt.metallib")
+	set_source_files_properties(mac/crt_metallib.c PROPERTIES
+		OBJECT_DEPENDS "${SW_SHADER_DIR}/crt.metallib"
+		COMPILE_OPTIONS "--embed-dir=${SW_SHADER_DIR}")
+	target_include_directories(sw_crt_metal PUBLIC mac)
+	target_link_libraries(sw_crt_metal PUBLIC sw_crt)
+	sw_set_warnings(sw_crt_metal)
+
 	# the window, drawing, input and sound of the programs with a client
 	sw_add_module(sw_platform_gui
 		vid_common.c $<TARGET_OBJECTS:sw_crt>
 		mac/sys_mac_gui.m mac/vid_metal.m mac/in_mac.m mac/in_gamepad_mac.m mac/snd_coreaudio.c
-		$<TARGET_OBJECTS:sw_present_metallib>)
+		$<TARGET_OBJECTS:sw_present_metallib> $<TARGET_OBJECTS:sw_crt_metal>)
 	target_include_directories(sw_platform_gui PRIVATE . mac)
 	target_link_libraries(sw_platform_gui PUBLIC sw_client sw_simd sw_platform_posix
 		"-framework AppKit" "-framework Metal" "-framework QuartzCore" "-framework AudioToolbox"

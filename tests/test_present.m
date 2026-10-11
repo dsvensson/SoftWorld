@@ -23,11 +23,20 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // with and without gamma and a view blend; and in HDR, SDR white at paper white,
 // the brightest light rolled off below the peak, and the 2D at paper white.
 // Without a GPU with Metal 4 it is skipped.
+//
+// And the CRT shader's passes (crt_metal.m) after the frame, as vid_metal.m
+// encodes them: with its own oimage 1 each pixel is the frame's as drawn at its
+// own size, within 1 of VID_FrameToRGB, and in extended linear light at paper
+// white; at its defaults, three frames of a frame white in its top left quarter
+// are finite and brightest there; and PrePass's mip chain, crt_spd's in one
+// dispatch or two (a frame 5000 across), is each level's texels the average of
+// the four they cover in the level before, within 1.
 
 #import <Metal/Metal.h>
 
 #include "cvar.h"
 #include "vid_common.h"
+#include "crt_metal.h"
 
 #include <math.h>
 #include <stdarg.h>
@@ -111,6 +120,13 @@ static void Check (id object, NSError *error, const char *what)
 		Sys_Error ("%s failed%s%s", what, error ? ": " : "", error ? error.localizedDescription.UTF8String : "");
 }
 
+#define CRT_WIDTH	500		// the CRT shader's defaults' target, 2.5 times the frame
+#define CRT_HEIGHT	300
+
+static id<MTLRenderPipelineState>	originalpipeline;	// present.metal into CRT_ORIGINAL, RGBA8
+static id<MTLTexture>				crttarget;			// float, CRT_WIDTH x CRT_HEIGHT
+static id<MTLBuffer>				levelbuf;			// a level of PrePass, read back
+
 // false if there is no GPU to test on
 static bool Setup (void)
 {
@@ -146,6 +162,9 @@ static bool Setup (void)
 	desc.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA32Float;
 	pipeline = [compiler newRenderPipelineStateWithDescriptor:desc compilerTaskOptions:nil error:&error];
 	Check (pipeline, error, "newRenderPipelineStateWithDescriptor");
+	desc.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA8Unorm;
+	originalpipeline = [compiler newRenderPipelineStateWithDescriptor:desc compilerTaskOptions:nil error:&error];
+	Check (originalpipeline, error, "newRenderPipelineStateWithDescriptor");
 
 	table.maxBufferBindCount = 1;
 	table.maxTextureBindCount = 2;
@@ -174,10 +193,14 @@ static bool Setup (void)
 	tdesc.storageMode = MTLStorageModeShared;
 	tdesc.usage = MTLTextureUsageRenderTarget;
 	target = [device newTextureWithDescriptor:tdesc];
+	tdesc.width = CRT_WIDTH;
+	tdesc.height = CRT_HEIGHT;
+	crttarget = [device newTextureWithDescriptor:tdesc];
+	levelbuf = [device newBufferWithLength:5000 * 40 * 4 options:MTLResourceStorageModeShared];
 
 	residency = [device newResidencySetWithDescriptor:[MTLResidencySetDescriptor new] error:&error];
 	Check (residency, error, "newResidencySetWithDescriptor");
-	for (id<MTLAllocation> a in @[framebuf, hudbuf, constants, frametex, hudtex, target])
+	for (id<MTLAllocation> a in @[framebuf, hudbuf, constants, frametex, hudtex, target, crttarget, levelbuf])
 		[residency addAllocation:a];
 	[residency commit];
 	[queue addResidencySet:residency];
@@ -317,6 +340,263 @@ static void TestHDR (void)
 	Expect ("HDR without headroom, bright red: green", out[9], 0.5f, 1.0f);
 }
 
+/*
+===============================================================================
+
+THE CRT SHADER
+
+===============================================================================
+*/
+
+static void Commit (void)
+{
+	id<MTL4CommandBuffer>	list[1] = {commands};
+
+	[commands endCommandBuffer];
+	[queue commit:list count:1];
+	[queue signalEvent:event value:++serial];
+	if (![event waitUntilSignaledValue:serial timeoutMS:5000])
+		Sys_Error ("the GPU didn't finish");
+}
+
+/*
+================
+DrawCRT
+
+The frame through the CRT shader's passes into width x height of the target, as
+vid_metal.m encodes them: as present.metal shows it at its own size, in SDR,
+into CRT_ORIGINAL, then the passes for a frame of sourcewidth x sourceheight,
+the last in the target's encoder; a frame of 60 Hz after the last
+================
+*/
+static void DrawCRT (const vid_crt_params_t *params, bool hdr, float paperwhite, int sourcewidth, int sourceheight,
+	int width, int height, float *out)
+{
+	static vid_crt_frame_t			crtframe;
+	static double					time = 1;
+	vid_fit_t						whole = {0, 0, WIDTH, HEIGHT, 1, 1};
+	vid_crt_pass_t					passes[CRT_PASSES];
+	MTL4RenderPassDescriptor		*pass = [MTL4RenderPassDescriptor new];
+	id<MTL4RenderCommandEncoder>	encoder;
+
+	if (CRT_Metal_SizeChanged (sourcewidth, sourceheight, width, height))
+		CRT_Metal_SetSize (sourcewidth, sourceheight, width, height);
+	VID_FillConstants (constants.contents, &whole, VID_OUTPUT_SDR, 1, 1);
+	time += 1 / 60.0;
+	VID_CRT_BeginFrame (&crtframe, time);
+	VID_CRT_FillPasses (passes, &crtframe, sourcewidth, sourceheight, width, height,
+		hdr ? VID_OUTPUT_LINEAR : VID_OUTPUT_SDR, paperwhite);
+
+	[allocator reset];
+	[commands beginCommandBufferWithAllocator:allocator];
+	encoder = CRT_Metal_BeginOriginal (commands);
+	[encoder setRenderPipelineState:originalpipeline];
+	[arguments setTexture:frametex.gpuResourceID atIndex:0];
+	[arguments setTexture:hudtex.gpuResourceID atIndex:1];
+	[arguments setAddress:constants.gpuAddress atIndex:0];
+	[encoder setArgumentTable:arguments atStages:MTLRenderStageFragment];
+	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+	[encoder endEncoding];
+	CRT_Metal_EncodePasses (commands, 0, params, passes, crtframe.parity);
+
+	pass.colorAttachments[0].texture = crttarget;
+	pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+	pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+	encoder = [commands renderCommandEncoderWithDescriptor:pass];
+	CRT_Metal_EncodeLast (encoder, MTLPixelFormatRGBA32Float, (MTLViewport){0, 0, width, height, 0, 1});
+	[encoder endEncoding];
+	Commit ();
+
+	[crttarget getBytes:out bytesPerRow:(NSUInteger)width * 16 fromRegion:MTLRegionMake2D (0, 0,
+		(NSUInteger)width, (NSUInteger)height) mipmapLevel:0];
+}
+
+static double SrgbToLinear (double c)
+{
+	return c <= 0.04045 ? c / 12.92 : pow ((c + 0.055) / 1.055, 2.4);
+}
+
+// with oimage 1, the frame as it is: in SDR within 1 of VID_FrameToRGB, in
+// extended linear light that at paper white
+static void TestCRTOriginal (void)
+{
+	static float		out[WIDTH * HEIGHT * 4];
+	static byte			rgb[WIDTH * HEIGHT * 3];
+	vid_crt_params_t	params;
+	double				want, worsthdr = 0;
+	int					i, c, d, worst = 0, off = 0, offhdr = 0;
+
+	VID_CRT_FillParams (&params);
+	params.oimage = 1;
+	Fill ();
+	VID_SetPresent (&(vid_present_t){.blend = {0.5f, 0.2f, 0.1f, 0.3f}, .gamma = 0.8f});
+
+	DrawCRT (&params, false, 1, WIDTH, HEIGHT, WIDTH, HEIGHT, out);
+	VID_FrameToRGB (rgb, true);
+	for (i = 0 ; i < WIDTH * HEIGHT ; i++)
+		for (c = 0 ; c < 3 ; c++)
+		{
+			d = abs ((int)lroundf (out[i * 4 + c] * 255) - rgb[i * 3 + c]);
+			if (d > worst)
+				worst = d;
+			if (d > 1 && off++ < 5)
+				printf ("CRT original: pixel %d channel %d is %.1f, VID_FrameToRGB %d\n", i, c, out[i * 4 + c] * 255,
+					rgb[i * 3 + c]);
+		}
+	printf ("CRT, the original image: at most %d from VID_FrameToRGB, %d channels over 1\n", worst, off);
+
+	DrawCRT (&params, true, 2, WIDTH, HEIGHT, WIDTH, HEIGHT, out);
+	for (i = 0 ; i < WIDTH * HEIGHT ; i++)
+		for (c = 0 ; c < 3 ; c++)
+		{
+			want = 2 * SrgbToLinear (rgb[i * 3 + c] / 255.0);
+			if (fabs (out[i * 4 + c] - want) > worsthdr)
+				worsthdr = fabs (out[i * 4 + c] - want);
+			if (fabs (out[i * 4 + c] - want) > 0.02 && offhdr++ < 5)
+				printf ("CRT original, extended linear: pixel %d channel %d is %.4f, not %.4f\n", i, c, out[i * 4 + c],
+					want);
+		}
+	printf ("CRT, the original image in light at paper white 2: at most %.4f off, %d channels over 0.02\n", worsthdr,
+		offhdr);
+	VID_SetPresent (&(vid_present_t){.gamma = 1});
+	if (off || offhdr)
+		failures++;
+}
+
+// at the defaults, a frame white in its top left quarter: three frames, every
+// value finite, and the quarter four times as bright as the one across from it
+static void TestCRTDefaults (void)
+{
+	static float		out[CRT_WIDTH * CRT_HEIGHT * 4];
+	pixel_t				*frame = framebuf.contents;
+	vid_crt_params_t	params;
+	double				topleft = 0, bottomright = 0;
+	float				v;
+	int					x, y, i, bad = 0;
+
+	VID_CRT_FillParams (&params);
+	memset (hudbuf.contents, 0, hudbuf.length);
+	for (y = 0 ; y < HEIGHT ; y++)
+		for (x = 0 ; x < WIDTH ; x++)
+			frame[y * vid.rowpixels + x] = x < WIDTH / 2 && y < HEIGHT / 2
+				? RGB30 (RGB30_WHITE, RGB30_WHITE, RGB30_WHITE) : RGB30 (0, 0, 0);
+	for (i = 0 ; i < 3 ; i++)
+		DrawCRT (&params, false, 1, WIDTH, HEIGHT, CRT_WIDTH, CRT_HEIGHT, out);
+	for (y = 0 ; y < CRT_HEIGHT ; y++)
+		for (x = 0 ; x < CRT_WIDTH ; x++)
+			for (i = 0 ; i < 3 ; i++)
+			{
+				v = out[(y * CRT_WIDTH + x) * 4 + i];
+				if (!isfinite (v) || v < 0 || v > 1.001f)
+				{
+					if (bad++ < 5)
+						printf ("CRT defaults: pixel %d,%d channel %d is %f\n", x, y, i, v);
+					continue;
+				}
+				if (x < CRT_WIDTH / 2 && y < CRT_HEIGHT / 2)
+					topleft += v;
+				else if (x >= CRT_WIDTH / 2 && y >= CRT_HEIGHT / 2)
+					bottomright += v;
+			}
+	topleft /= CRT_WIDTH / 2 * CRT_HEIGHT / 2 * 3;
+	bottomright /= CRT_WIDTH / 2 * CRT_HEIGHT / 2 * 3;
+	printf ("CRT, defaults, 3 frames: %d values not in 0 to 1, the white quarter %.3f, the black one %.3f\n", bad,
+		topleft, bottomright);
+	// the glow and bloom light the black quarter a little
+	if (bad || topleft < 0.3 || bottomright > topleft / 4)
+		failures++;
+}
+
+// a level of PrePass, RGBA as floats, and its size
+static float *ReadLevel (int level, int *width, int *height)
+{
+	id<MTLTexture>					texture = CRT_Metal_Texture (CRT_PREPASS);
+	id<MTL4ComputeCommandEncoder>	encoder;
+	float							*pixels;
+	int								i;
+
+	*width = (int)texture.width >> level > 1 ? (int)texture.width >> level : 1;
+	*height = (int)texture.height >> level > 1 ? (int)texture.height >> level : 1;
+	[allocator reset];
+	[commands beginCommandBufferWithAllocator:allocator];
+	encoder = [commands computeCommandEncoder];
+	[encoder barrierAfterQueueStages:MTLStageFragment | MTLStageDispatch beforeStages:MTLStageBlit
+		visibilityOptions:MTL4VisibilityOptionDevice];
+	[encoder copyFromTexture:texture sourceSlice:0 sourceLevel:(NSUInteger)level sourceOrigin:MTLOriginMake (0, 0, 0)
+		sourceSize:MTLSizeMake ((NSUInteger)*width, (NSUInteger)*height, 1) toBuffer:levelbuf destinationOffset:0
+		destinationBytesPerRow:(NSUInteger)*width * 4 destinationBytesPerImage:(NSUInteger)*width * (NSUInteger)*height * 4];
+	[encoder endEncoding];
+	Commit ();
+	pixels = malloc ((size_t)*width * (size_t)*height * 16);
+	for (i = 0 ; i < *width * *height * 4 ; i++)
+		pixels[i] = ((const byte *)levelbuf.contents)[i] / 255.0f;
+	return pixels;
+}
+
+/*
+================
+TestMips
+
+PrePass's mip chain against the average of the level before's four texels a
+texel covers (what lies past an edge of a level 1 across, the texel there),
+reduced from its top level as read back, unrounded
+================
+*/
+static void TestMips (const char *what)
+{
+	float	*ref, *next, *level, want, got;
+	int		levels = (int)CRT_Metal_Texture (CRT_PREPASS).mipmapLevelCount;
+	int		w, h, nw, nh, l, x, y, c, x1, y1, d, worst = 0, off = 0;
+
+	ref = ReadLevel (0, &w, &h);
+	for (l = 1 ; l < levels ; l++)
+	{
+		level = ReadLevel (l, &nw, &nh);
+		next = malloc ((size_t)nw * (size_t)nh * 16);
+		for (y = 0 ; y < nh ; y++)
+			for (x = 0 ; x < nw ; x++)
+				for (c = 0 ; c < 4 ; c++)
+				{
+					x1 = 2 * x + 1 < w ? 2 * x + 1 : w - 1;
+					y1 = 2 * y + 1 < h ? 2 * y + 1 : h - 1;
+					want = (ref[(2 * y * w + 2 * x) * 4 + c] + ref[(2 * y * w + x1) * 4 + c]
+						+ ref[(y1 * w + 2 * x) * 4 + c] + ref[(y1 * w + x1) * 4 + c]) * 0.25f;
+					got = level[(y * nw + x) * 4 + c];
+					next[(y * nw + x) * 4 + c] = want;
+					d = abs ((int)lroundf (want * 255) - (int)lroundf (got * 255));
+					if (d > worst)
+						worst = d;
+					if (d > 1 && off++ < 5)
+						printf ("%s: level %d texel %d,%d channel %d is %.1f, not %.1f\n", what, l, x, y, c, got * 255,
+							want * 255);
+				}
+		free (level);
+		free (ref);
+		ref = next;
+		w = nw;
+		h = nh;
+	}
+	free (ref);
+	printf ("%s: %d levels, at most %d from the average of the texels they cover, %d channels over 1\n", what, levels,
+		worst, off);
+	if (off)
+		failures++;
+}
+
+static void TestCRT (void)
+{
+	static float		out[64 * 64 * 4];
+	vid_crt_params_t	params;
+
+	TestCRTOriginal ();
+	TestCRTDefaults ();
+	TestMips ("CRT mip chain, one dispatch");
+	// a frame 5000 across: 6 levels from its top, then the rest from the sixth
+	VID_CRT_FillParams (&params);
+	DrawCRT (&params, false, 1, 5000, 40, 64, 64, out);
+	TestMips ("CRT mip chain of 5000x40, two dispatches");
+}
+
 int main (void)
 {
 	@autoreleasepool
@@ -336,6 +616,15 @@ int main (void)
 
 		VID_SetPresent (&(vid_present_t){.gamma = 1});
 		TestHDR ();
+
+		VID_CRT_Register ();
+		if (!CRT_Metal_Init (device, residency, 1))
+		{
+			printf ("CRT: the shader's passes couldn't be made\n");
+			return 1;
+		}
+		TestCRT ();
+		CRT_Metal_Shutdown ();
 	}
 
 	if (failures)

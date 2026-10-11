@@ -156,14 +156,15 @@ endif()
 add_test(NAME workers COMMAND test_workers)
 
 # test_present draws present.metal with Metal 4 as vid_metal.m does, and compares
-# what it shows with VID_FrameToRGB. It needs a GPU with Metal 4, and without one
-# is skipped.
+# what it shows with VID_FrameToRGB, and the CRT shader's passes after it
+# (crt_metal.m), and their mip chain. It needs a GPU with Metal 4, and without
+# one is skipped.
 if(APPLE)
 	sw_add_program(test_present test_present.m
 		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c" $<TARGET_OBJECTS:sw_crt>
-		$<TARGET_OBJECTS:sw_present_metallib>)
+		$<TARGET_OBJECTS:sw_present_metallib> $<TARGET_OBJECTS:sw_crt_metal>)
 	target_include_directories(test_present PRIVATE
-		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/renderer")
+		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/platform/mac" "${PROJECT_SOURCE_DIR}/src/renderer")
 	# the file system's calls into the platform: only link-time optimisation
 	# (Release) leaves them out
 	target_link_libraries(test_present PRIVATE sw_platform_posix sw_common "-framework Metal"
