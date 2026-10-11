@@ -580,18 +580,28 @@ static bool SV_LoadGame (const char *arg)
 	memset (&load, 0, sizeof(load));
 	if (!SV_SaveName (arg, load.name, sizeof(load.name)))
 		return false;
-	if (!(file = FS_LoadFile (load.name, &size)))
+
+	// the game's save and its map, also while attract mode's game directory
+	// is the search path: the level comes up in the game's, with its progs
+	FS_UseChain (FS_GameDirChain ());
+	file = FS_LoadFile (load.name, &size);
+	f = NULL;
+	if (file && SV_ParseSaveHeader ((char *)file, &load))
+	{
+		snprintf (mapfile, sizeof(mapfile), "maps/%s.bsp", load.map);
+		COM_FOpenFile (mapfile, &f);
+	}
+	FS_UseChain (NULL);
+	if (!file)
 	{
 		Con_Printf ("ERROR: %s not found.\n", load.name);
 		return false;
 	}
-	if (!SV_ParseSaveHeader ((char *)file, &load))
-	{
+	if (!load.data)
+	{	// not a savegame, as its header said
 		Mem_Free (file);
 		return false;
 	}
-	snprintf (mapfile, sizeof(mapfile), "maps/%s.bsp", load.map);
-	COM_FOpenFile (mapfile, &f);
 	if (!f)
 	{
 		Con_Printf ("ERROR: %s's map, %s, isn't there.\n", load.name, mapfile);
@@ -661,14 +671,17 @@ bool SV_AutoLoad (void)
 ==================
 SV_CompleteSave
 
-The savegames under the search path, and the directories on the way
+The savegames under the game's search path, as a load reads them (also while
+attract mode's is the search path), and the directories on the way
 ==================
 */
 static void SV_CompleteSave (const char *partial, void (*add) (void *ctx, const char *candidate), void *ctx)
 {
 	static const char *const	extensions[] = {".sav", NULL};
 
+	FS_UseChain (FS_GameDirChain ());
 	FS_ListPaths (partial, extensions, add, ctx);
+	FS_UseChain (NULL);
 }
 
 void SV_InitSave (void)

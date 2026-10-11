@@ -585,6 +585,32 @@ static bool M_IsServer (void *ctx)
 	return !CL_Attracting () && menu_isserver (ctx);
 }
 
+// the menu's files are the game's, as its pictures are (Draw_LoadFile): read
+// through the game directory's search path, also while attract mode's is the
+// search path, so that its saves are the ones a load would load
+static void		*(*menu_fileopen) (void *ctx, const char *path, uint64_t *size);
+static bool		(*menu_filepack) (void *ctx, const char *path, char *pack, size_t size);
+
+static void *M_FileOpen (void *ctx, const char *path, uint64_t *size)
+{
+	void	*file;
+
+	FS_UseChain (FS_GameDirChain ());
+	file = menu_fileopen (ctx, path, size);
+	FS_UseChain (NULL);
+	return file;
+}
+
+static bool M_FilePack (void *ctx, const char *path, char *pack, size_t size)
+{
+	bool	found;
+
+	FS_UseChain (FS_GameDirChain ());
+	found = menu_filepack (ctx, path, pack, size);
+	FS_UseChain (NULL);
+	return found;
+}
+
 static bool M_ClientState (qcvm_t *vm)
 {
 	QC_ReturnFloat (vm, cls.state == ca_active || CL_Attracting () ? 2.0f : 1.0f);
@@ -888,6 +914,10 @@ void M_Init (void)
 	menu_isserver = menu.host.is_server;
 	menu.host.is_demo = M_IsDemo;
 	menu.host.is_server = M_IsServer;
+	menu_fileopen = menu.host.file_open;
+	menu_filepack = menu.host.file_pack;
+	menu.host.file_open = M_FileOpen;
+	menu.host.file_pack = M_FilePack;
 
 	menu.builtins = QC_BuiltinsStandard (QC_NUMBERING_MENU);
 	if (!menu.builtins)
