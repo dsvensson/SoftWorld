@@ -22,6 +22,29 @@ sw_set_warnings(sw_cpu_check)
 # (its Release builds); the game directory is one the player chooses
 option(SW_SANDBOX "The programs with a client run sandboxed, in a game directory the player chooses" ON)
 
+# guest(r)'s CRT shader as the backends run it (vid_crt.c), and its LUTs, TGA
+# files carried inside the programs (embed.cmake); the shaders are crt/'s
+set(SW_CRT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/crt")
+set(SW_CRT_SOURCES vid_crt.c)
+foreach(lut trinitron inv-trinitron nec ntsc)
+	string(REPLACE "-" "_" symbol "vid_crt_lut_${lut}")
+	set(out "${CMAKE_CURRENT_BINARY_DIR}/crt/${lut}-lut.c")
+	add_custom_command(OUTPUT "${out}"
+		COMMAND "${CMAKE_COMMAND}" "-DIN=${SW_CRT_DIR}/lut/${lut}-lut.tga" "-DOUT=${out}" "-DSYMBOL=${symbol}"
+			-P "${PROJECT_SOURCE_DIR}/cmake/embed.cmake"
+		DEPENDS "${SW_CRT_DIR}/lut/${lut}-lut.tga" "${PROJECT_SOURCE_DIR}/cmake/embed.cmake"
+		COMMENT "Building ${lut}-lut.tga in"
+		VERBATIM)
+	list(APPEND SW_CRT_SOURCES "${out}")
+endforeach()
+add_library(sw_crt OBJECT ${SW_CRT_SOURCES})
+target_include_directories(sw_crt PUBLIC .)
+target_link_libraries(sw_crt PUBLIC sw_common)
+sw_set_warnings(sw_crt)
+sw_set_arch(sw_crt)
+# what the shaders include
+set(SW_CRT_INCLUDES "${SW_CRT_DIR}/crt_core.inc" "${SW_CRT_DIR}/crt_params.h")
+
 # the services of macOS and Linux (posix/), over what each system has
 set(SW_POSIX_SOURCES
 	posix/sys_posix.c posix/sys_memory_posix.c posix/sys_workers_posix.c posix/net_udp_posix.c posix/net_tcp_posix.c)
@@ -50,12 +73,24 @@ if(WIN32)
 	file(MAKE_DIRECTORY "${SW_SHADER_DIR}")
 	sw_compile_hlsl("${SW_SHADER_DIR}/present_vs.h" "${CMAKE_CURRENT_SOURCE_DIR}/win/present.hlsl" vs_5_0 VSMain g_present_vs)
 	sw_compile_hlsl("${SW_SHADER_DIR}/present_ps.h" "${CMAKE_CURRENT_SOURCE_DIR}/win/present.hlsl" ps_5_0 PSMain g_present_ps)
+	# the CRT shader's: a vertex shader, a pixel shader a pass, and the mip chain's compute shader
+	set(SW_CRT_SHADERS "${SW_SHADER_DIR}/crt_vs.h" "${SW_SHADER_DIR}/crt_spd_cs.h")
+	sw_compile_hlsl("${SW_SHADER_DIR}/crt_vs.h" "${SW_CRT_DIR}/crt.hlsl" vs_5_0 VS_CRT g_crt_vs ${SW_CRT_INCLUDES})
+	sw_compile_hlsl("${SW_SHADER_DIR}/crt_spd_cs.h" "${SW_CRT_DIR}/crt_spd.hlsl" cs_5_0 CS_SPD g_crt_spd_cs)
+	foreach(pass afterglow prepass avglum linearize gauss_h gauss_v bloom_h bloom_v crt deconvergence)
+		string(SUBSTRING "${pass}" 0 1 first)
+		string(SUBSTRING "${pass}" 1 -1 rest)
+		string(TOUPPER "${first}" first)
+		sw_compile_hlsl("${SW_SHADER_DIR}/crt_${pass}_ps.h" "${SW_CRT_DIR}/crt.hlsl" ps_5_0 PS_${first}${rest}
+			g_crt_${pass}_ps ${SW_CRT_INCLUDES})
+		list(APPEND SW_CRT_SHADERS "${SW_SHADER_DIR}/crt_${pass}_ps.h")
+	endforeach()
 
 	# the window, drawing, input and sound of the programs with a client
 	sw_add_module(sw_platform_gui
-		vid_common.c
-		win/sys_win_gui.c win/vid_d3d11.c win/in_rawinput.c win/in_xinput.c win/snd_wasapi.c
-		"${SW_SHADER_DIR}/present_vs.h" "${SW_SHADER_DIR}/present_ps.h"
+		vid_common.c $<TARGET_OBJECTS:sw_crt>
+		win/sys_win_gui.c win/vid_d3d11.c win/crt_d3d11.c win/in_rawinput.c win/in_xinput.c win/snd_wasapi.c
+		"${SW_SHADER_DIR}/present_vs.h" "${SW_SHADER_DIR}/present_ps.h" ${SW_CRT_SHADERS}
 		# the AppContainer's launcher, but in Debug builds (a debugger sees the game)
 		$<IF:$<AND:$<BOOL:${SW_SANDBOX}>,$<NOT:$<CONFIG:Debug>>>,win/sys_win_sandbox.c,win/sys_win_nosandbox.c>)
 	target_include_directories(sw_platform_gui PRIVATE "${SW_SHADER_DIR}" . win)
@@ -131,7 +166,7 @@ elseif(APPLE)
 
 	# the window, drawing, input and sound of the programs with a client
 	sw_add_module(sw_platform_gui
-		vid_common.c
+		vid_common.c $<TARGET_OBJECTS:sw_crt>
 		mac/sys_mac_gui.m mac/vid_metal.m mac/in_mac.m mac/in_gamepad_mac.m mac/snd_coreaudio.c
 		$<TARGET_OBJECTS:sw_present_metallib>)
 	target_include_directories(sw_platform_gui PRIVATE . mac)
@@ -204,7 +239,7 @@ elseif(EMSCRIPTEN)
 	set(SW_WEB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/web")
 	set(SW_WEB_LIBRARIES sys_web.js fs_web.js vid_webgl.js in_web.js snd_webaudio.js net_ws_web.js)
 	sw_add_module(sw_platform_gui
-		vid_common.c
+		vid_common.c $<TARGET_OBJECTS:sw_crt>
 		web/sys_web_gui.c web/vid_webgl.c web/present_glsl.c web/in_web.c web/in_gamepad_web.c
 		web/snd_webaudio.c web/net_ws_web.c)
 	set_source_files_properties(web/present_glsl.c PROPERTIES OBJECT_DEPENDS "${SW_WEB_DIR}/present.glsl")
@@ -331,7 +366,7 @@ else()
 
 	# the window, drawing, input and sound of the programs with a client
 	sw_add_module(sw_platform_gui
-		vid_common.c
+		vid_common.c $<TARGET_OBJECTS:sw_crt>
 		linux/sys_linux_gui.c linux/vid_vulkan.c
 		linux/in_evdev.c linux/snd_pipewire.c
 		linux/window.c linux/in_linux.c

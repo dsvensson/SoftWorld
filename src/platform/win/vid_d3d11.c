@@ -17,6 +17,10 @@
 // The swapchain is SDR (B8G8R8A8) or, when the display the window is on runs in
 // HDR mode, scRGB (linear R16G16B16A16_FLOAT). Which one is decided again when
 // the window moves or the display settings change.
+//
+// With vid_shader_crt the frame is drawn at its own size and shown through the
+// CRT shader's passes (crt_d3d11.c), made when it's turned on and freed when
+// it's turned off.
 
 #include "args.h"
 #include "cmd.h"
@@ -28,6 +32,7 @@
 #include "sound.h"
 #include "vid_common.h"
 #include "vid_d3d11.h"
+#include "crt_d3d11.h"
 #include "win_local.h"
 
 #define COBJMACROS
@@ -94,6 +99,9 @@ static bool		vid_outputknown;		// the output mode has been reported
 static float	vid_hdrwanted = -1;		// vid_hdr when the display was last checked
 static float	vid_peaknits = 1000;	// the display's brightest white
 static float	vid_sdrwhitenits = 200;	// Windows' SDR content brightness on that display
+
+static bool				vid_crton;		// the CRT shader's passes are made
+static vid_crt_frame_t	vid_crtframe;
 
 static LRESULT CALLBACK MainWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 static void VID_SetScale (void);
@@ -698,6 +706,9 @@ void VID_Shutdown (void)
 
 	if (d3d_context)
 		ID3D11DeviceContext_ClearState (d3d_context);
+	if (vid_crton)
+		CRT_D3D11_Shutdown ();
+	vid_crton = false;
 	if (d3d_waitable)
 		CloseHandle (d3d_waitable);
 	d3d_waitable = NULL;
@@ -748,6 +759,72 @@ static void VID_SetScale (void)
 	vid.buffer = vid_views[vid_slot].data;
 	vid.hud = vid_huds[vid_hudshown ^ 1].data;
 	VID_SetFrame (&frame, vid_rowpixels);
+}
+
+// present.hlsl's draw of the layers into rtv at viewport
+static void VID_DrawLayers (ID3D11RenderTargetView *rtv, const D3D11_VIEWPORT *viewport,
+	ID3D11ShaderResourceView *layers[2], const d3d_present_t *constants)
+{
+	ID3D11DeviceContext_UpdateSubresource (d3d_context, (ID3D11Resource *)d3d_constants, 0, NULL, constants, 0, 0);
+	ID3D11DeviceContext_OMSetRenderTargets (d3d_context, 1, &rtv, NULL);
+	ID3D11DeviceContext_RSSetViewports (d3d_context, 1, viewport);
+	ID3D11DeviceContext_IASetPrimitiveTopology (d3d_context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	ID3D11DeviceContext_IASetInputLayout (d3d_context, NULL);
+	ID3D11DeviceContext_VSSetShader (d3d_context, d3d_vs, NULL, 0);
+	ID3D11DeviceContext_PSSetShader (d3d_context, d3d_ps, NULL, 0);
+	ID3D11DeviceContext_PSSetShaderResources (d3d_context, 0, 2, layers);
+	ID3D11DeviceContext_PSSetConstantBuffers (d3d_context, 0, 1, &d3d_constants);
+	ID3D11DeviceContext_Draw (d3d_context, 3, 0);
+	// unbound, so the next Map of a layer the shader read only waits for the GPU
+	ID3D11ShaderResourceView	*none[2] = {NULL, NULL};
+	ID3D11DeviceContext_PSSetShaderResources (d3d_context, 0, 2, none);
+}
+
+// the CRT shader's passes made for vid_shader_crt 1, freed for 0; a device
+// that can't have them turns it off
+static void VID_SetCRT (void)
+{
+	if (vid_crton)
+	{
+		CRT_D3D11_Shutdown ();
+		vid_crton = false;
+		return;
+	}
+	vid_crton = CRT_D3D11_Init (d3d_device);
+	if (!vid_crton)
+		Cvar_Set ("vid_shader_crt", "0");
+}
+
+/*
+================
+VID_DrawCRT
+
+The frame through the CRT shader: drawn as present.hlsl shows it, at its own
+size and in SDR, then its passes, the last into the viewport
+================
+*/
+static void VID_DrawCRT (ID3D11ShaderResourceView *layers[2], const vid_fit_t *fit, const D3D11_VIEWPORT *viewport)
+{
+	vid_fit_t			whole = {0, 0, (float)vid.width, (float)vid.height, 1, 1};
+	D3D11_VIEWPORT		frame = {.Width = (float)vid.width, .Height = (float)vid.height, .MaxDepth = 1.0f};
+	d3d_present_t		constants = {0};
+	vid_crt_params_t	params;
+	vid_crt_pass_t		passes[CRT_PASSES];
+
+	if (fit->width < 1 || fit->height < 1)
+		return;
+	CRT_D3D11_SetSize (d3d_context, (int)vid.width, (int)vid.height, (int)fit->width, (int)fit->height);
+
+	VID_FillConstants (&constants.c, &whole, VID_OUTPUT_SDR, 1, 1);
+	constants.rowpixels = vid_rowpixels;
+	VID_DrawLayers (CRT_D3D11_Original (), &frame, layers, &constants);
+
+	// the window's output: scRGB 1.0 is 80 nits
+	VID_CRT_BeginFrame (&vid_crtframe, Sys_DoubleTime ());
+	VID_CRT_FillParams (&params);
+	VID_CRT_FillPasses (passes, &vid_crtframe, (int)vid.width, (int)vid.height, (int)fit->width, (int)fit->height,
+		vid_hdroutput ? VID_OUTPUT_LINEAR : VID_OUTPUT_SDR, vid_hdroutput ? VID_PaperWhiteNits () / 80.0f : 1);
+	CRT_D3D11_Draw (d3d_context, d3d_rtv, viewport, &params, passes, vid_crtframe.parity);
 }
 
 /*
@@ -805,26 +882,22 @@ void VID_Update (void)
 		.MaxDepth = 1.0f,
 	};
 
-	// scRGB 1.0 is 80 nits
-	VID_FillConstants (&constants.c, &fit, vid_hdroutput ? VID_OUTPUT_LINEAR : VID_OUTPUT_SDR,
-		VID_PaperWhiteNits () / 80.0f, fmaxf (vid_peaknits, VID_PaperWhiteNits ()) / 80.0f);
-	constants.rowpixels = vid_rowpixels;
-	ID3D11DeviceContext_UpdateSubresource (d3d_context, (ID3D11Resource *)d3d_constants, 0, NULL, &constants, 0, 0);
+	// the CRT shader made when it's turned on, freed when it's turned off
+	if (VID_CRT_Active () != vid_crton)
+		VID_SetCRT ();
 
 	static const float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
 	ID3D11DeviceContext_ClearRenderTargetView (d3d_context, d3d_rtv, black);
-	ID3D11DeviceContext_OMSetRenderTargets (d3d_context, 1, &d3d_rtv, NULL);
-	ID3D11DeviceContext_RSSetViewports (d3d_context, 1, &viewport);
-	ID3D11DeviceContext_IASetPrimitiveTopology (d3d_context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	ID3D11DeviceContext_IASetInputLayout (d3d_context, NULL);
-	ID3D11DeviceContext_VSSetShader (d3d_context, d3d_vs, NULL, 0);
-	ID3D11DeviceContext_PSSetShader (d3d_context, d3d_ps, NULL, 0);
-	ID3D11DeviceContext_PSSetShaderResources (d3d_context, 0, 2, layers);
-	ID3D11DeviceContext_PSSetConstantBuffers (d3d_context, 0, 1, &d3d_constants);
-	ID3D11DeviceContext_Draw (d3d_context, 3, 0);
-	// unbound, so the next Map of a layer the shader read only waits for the GPU
-	ID3D11ShaderResourceView	*none[2] = {NULL, NULL};
-	ID3D11DeviceContext_PSSetShaderResources (d3d_context, 0, 2, none);
+	if (vid_crton)
+		VID_DrawCRT (layers, &fit, &viewport);
+	else
+	{
+		// scRGB 1.0 is 80 nits
+		VID_FillConstants (&constants.c, &fit, vid_hdroutput ? VID_OUTPUT_LINEAR : VID_OUTPUT_SDR,
+			VID_PaperWhiteNits () / 80.0f, fmaxf (vid_peaknits, VID_PaperWhiteNits ()) / 80.0f);
+		constants.rowpixels = vid_rowpixels;
+		VID_DrawLayers (d3d_rtv, &viewport, layers, &constants);
+	}
 
 	if (!interval && d3d_allow_tearing)
 		flags |= DXGI_PRESENT_ALLOW_TEARING;

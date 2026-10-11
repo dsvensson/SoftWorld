@@ -1,8 +1,8 @@
-# cmake -DIN=<progs.dat> -DOUT=<file.c> -DSYMBOL=<name> -P embed.cmake
+# cmake -DIN=<file> -DOUT=<file.c> -DSYMBOL=<name> -P embed.cmake
 #
-# A compiled QuakeC program as a C array, SYMBOL and SYMBOL_size: the
+# A file as a C array, SYMBOL and SYMBOL_size: a compiled QuakeC program, the
 # program's own copy, used when the game directory has none (qwprogs.dat in
-# progs.h, menu.dat in menu.h).
+# progs.h, menu.dat in menu.h), or the CRT shader's LUTs (vid_crt.c).
 
 get_filename_component(name "${IN}" NAME)
 file(READ "${IN}" hex HEX)

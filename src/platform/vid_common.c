@@ -7,6 +7,7 @@
 #include "q_string.h"
 #include "render.h"
 #include "vid_common.h"
+#include "vid_crt.h"
 
 #include <math.h>
 
@@ -68,6 +69,7 @@ int VID_RegisterCommon (void)
 	int		scale = 2;
 	int		i;
 
+	VID_CRT_Register ();
 	Cvar_RegisterVariable (&vid_vsync);
 	Cvar_RegisterVariable (&vid_scale);
 	Cvar_RegisterVariable (&vid_pixel_height);

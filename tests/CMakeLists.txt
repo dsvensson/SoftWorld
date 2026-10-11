@@ -160,7 +160,7 @@ add_test(NAME workers COMMAND test_workers)
 # is skipped.
 if(APPLE)
 	sw_add_program(test_present test_present.m
-		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c"
+		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c" $<TARGET_OBJECTS:sw_crt>
 		$<TARGET_OBJECTS:sw_present_metallib>)
 	target_include_directories(test_present PRIVATE
 		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/renderer")
@@ -174,10 +174,12 @@ endif()
 
 # test_present_d3d11 draws present.hlsl with Direct3D 11 as vid_d3d11.c does, and
 # compares what it shows with VID_FrameToRGB, and its HDR with what it should be;
-# on the GPU, else WARP.
+# and the CRT shader's passes after it (crt_d3d11.c), and their mip chain; on the
+# GPU, else WARP.
 if(WIN32)
 	sw_add_program(test_present_d3d11 test_present_d3d11.c
-		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c")
+		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c" $<TARGET_OBJECTS:sw_crt>
+		"${PROJECT_SOURCE_DIR}/src/platform/win/crt_d3d11.c")
 	add_dependencies(test_present_d3d11 sw_platform_gui)	# the shaders' headers
 	target_include_directories(test_present_d3d11 PRIVATE
 		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/platform/win"
@@ -193,7 +195,7 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	find_package(Vulkan 1.3 REQUIRED)
 	sw_add_program(test_present_vulkan test_present_vulkan.c
-		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c"
+		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c" $<TARGET_OBJECTS:sw_crt>
 		$<TARGET_OBJECTS:sw_present_spirv>)
 	target_include_directories(test_present_vulkan PRIVATE
 		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/platform/linux"
@@ -217,7 +219,7 @@ if(EMSCRIPTEN AND SW_CHROME AND CMAKE_CROSSCOMPILING_EMULATOR)
 	set(SW_WEB_SOURCE "${PROJECT_SOURCE_DIR}/src/platform/web")
 
 	sw_add_program(test_present_webgl test_present_webgl.c
-		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c" "${SW_WEB_SOURCE}/present_glsl.c")
+		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c" "${SW_WEB_SOURCE}/present_glsl.c" $<TARGET_OBJECTS:sw_crt>)
 	set_source_files_properties("${SW_WEB_SOURCE}/present_glsl.c" PROPERTIES OBJECT_DEPENDS "${SW_WEB_SOURCE}/present.glsl")
 	target_include_directories(test_present_webgl PRIVATE
 		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/renderer")
