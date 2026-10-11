@@ -757,6 +757,7 @@ int Cam_ViewEntity (void);		// whose eyes the view is: their entity, 0 for a fre
 bool Cam_DrawViewModel(void);
 bool Cam_DrawPlayer(int playernum);
 void Cam_Track(usercmd_t *cmd);
+void Cam_View (void);			// a spectator's camera, every frame drawn, after the prediction
 void Cam_FinishMove(usercmd_t *cmd);
 void Cam_Reset(void);
 void CL_InitCam(void);

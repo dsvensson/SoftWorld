@@ -46,7 +46,7 @@ static cvar_t cl_hightrack = {.name = "cl_hightrack", .string = "0",
 	.description = "As a spectator following players, follows the top fragger, switching when another passes them.",
 	.values = (const cvar_value_t[]){{"0", "Jump picks who to follow"}, {"1", "The top fragger"}, {0}}};
 
-static cvar_t cl_chasecam = {.name = "cl_chasecam", .string = "0",
+static cvar_t cl_chasecam = {.name = "cl_chasecam", .string = "1",
 	.description = "As a spectator following a player, sees through their eyes instead of from a camera nearby.",
 	.values = (const cvar_value_t[]){{"0", "From a spot nearby, looking at them"},
 		{"1", "Through their eyes, their weapon shown"}, {0}}};
@@ -358,7 +358,11 @@ void Cam_Track(usercmd_t *cmd)
 	player = frame->playerstate + spec_track;
 	self = frame->playerstate + cl.playernum;
 
-	if (!locked || !Cam_IsVisible(player, desired_position)) {
+	// through their eyes there's no spot nearby to find, which in a tight
+	// place there may not be
+	if (cl_chasecam.value)
+		locked = true;
+	else if (!locked || !Cam_IsVisible(player, desired_position)) {
 		if (!locked || host.realtime - cam_lastviewtime > 0.1) {
 			if (!InitFlyby(self, player, true))
 				InitFlyby(self, player, false);
@@ -384,7 +388,6 @@ void Cam_Track(usercmd_t *cmd)
 			// move there locally immediately
 			VectorCopy(desired_position, self->origin);
 		}
-		self->weaponframe = player->weaponframe;
 
 	} else {
 		// Ok, move to our desired position and set our angles to view
@@ -406,6 +409,46 @@ void Cam_Track(usercmd_t *cmd)
 		vectoangles(vec, cl.viewangles);
 		cl.viewangles[0] = -cl.viewangles[0];
 	}
+}
+
+/*
+==============
+Cam_View
+
+A spectator following a player sees from the camera every frame drawn,
+after the prediction: through the player's eyes, as an MVD's player is
+seen (CL_MVDView), or from the spot nearby looking at them. Cam_Track moves
+the spectator there only when a command is made; frames from the server
+arriving in between have the spectator where the server last had them, and
+the mouse turns the view, so the view flickered back to there.
+==============
+*/
+void Cam_View (void)
+{
+	player_state_t	*player;
+	vec3_t			vec;
+
+	if (!cl.spectator || !autocam || !locked || cl.intermission || cls.state != ca_active || cls.mvdplayback)
+		return;
+	player = &cl.frames[cls.netchan.incoming_sequence & UPDATE_MASK].playerstate[spec_track];
+	if (player->messagenum != cl.parsecount)
+		return;		// not in the latest frame: the server hasn't followed them yet
+
+	if (cl_chasecam.value)
+	{
+		VectorCopy (player->origin, cl.simorg);
+		VectorCopy (player->viewangles, cl.simangles);
+	}
+	else
+	{
+		VectorCopy (desired_position, cl.simorg);
+		VectorSubtract (player->origin, desired_position, vec);
+		vectoangles (vec, cl.simangles);
+		cl.simangles[0] = -cl.simangles[0];
+	}
+	VectorCopy (vec3_origin, cl.simvel);
+	cl.onground = false;
+	cl.crouch = 0;
 }
 
 

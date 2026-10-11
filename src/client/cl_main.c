@@ -1939,6 +1939,7 @@ void CL_Frame (void)
 	if (repredict)
 		CL_SetUpPlayerPrediction(false);	// other players, without prediction
 	CL_PredictMove (repredict);
+	Cam_View ();
 	if (repredict)
 		CL_SetUpPlayerPrediction(true);		// other players, predicted
 	repredict = false;

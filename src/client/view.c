@@ -89,6 +89,7 @@ static frame_t		*view_frame;
 static framelerp_t	view_frames;		// the weapon's frames (r_lerpframes)
 static struct model_s	*view_model;	// and whose they are
 static int			view_player;
+static int			view_slot;			// whose state the view is of
 static player_state_t		*view_message;
 
 /*
@@ -716,9 +717,9 @@ static void V_CalcRefdef (void)
 	// the weapon's frames blend, but not another weapon's into it, nor
 	// another player's in an MVD
 	CL_FrameArrived (&view_frames, view_message->weaponframe,
-		view->model != view_model || cl.viewplayer != view_player);
+		view->model != view_model || view_slot != view_player);
 	view_model = view->model;
-	view_player = cl.viewplayer;
+	view_player = view_slot;
 	CL_FrameBlend (&view_frames, view);
 	view->translate = NULL;
 	view->palette = NULL;
@@ -788,8 +789,13 @@ cl.simangles[ROLL] = 0;	// FIXME @@@
 		return false;
 
 	view_frame = &cl.frames[cls.netchan.incoming_sequence & UPDATE_MASK];
-	// an MVD's player followed, as last sent
-	view_message = cls.mvdplayback ? &cl.mvd_prev[cl.viewplayer] : &view_frame->playerstate[cl.playernum];
+	// an MVD's player followed, as last sent; the player a spectator follows
+	// through their eyes (Cam_ViewEntity); else the player's own
+	if (cls.mvdplayback)
+		view_slot = cl.viewplayer;
+	else
+		view_slot = Cam_ViewEntity () > 0 ? Cam_ViewEntity () - 1 : cl.playernum;
+	view_message = cls.mvdplayback ? &cl.mvd_prev[view_slot] : &view_frame->playerstate[view_slot];
 
 	DropPunchAngle ();
 	if (cl.intermission)
