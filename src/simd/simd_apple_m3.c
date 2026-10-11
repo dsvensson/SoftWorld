@@ -252,6 +252,39 @@ void Simd_M3_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint
 	}
 }
 
+// Simd_M3_TurbSpan's stepping, the light read where s and t are
+void Simd_M3_TurbSpanLit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
+	const int *turb, int u, int v, int count)
+{
+	m3_stepper_t	st;
+	m3_batch_t		b;
+	int				first, n, k, pixels, s, t, ls, lt, sstep, tstep, sturb, tturb, shift = 16 + lit->shift;
+
+	Simd_M3_SpanStart (&st, map, u, v, count, 4);
+	for (first = 0 ; first < st.subdivisions ; first += n)
+	{
+		n = st.subdivisions - first < 4 ? st.subdivisions - first : 4;
+		Simd_M3_SpanBatch (&st, first, n, &b);
+		for (k = 0 ; k < n ; k++)
+		{
+			pixels = count - ((first + k) << 4) < 16 ? count - ((first + k) << 4) : 16;
+			ls = b.sstart[k];
+			lt = b.tstart[k];
+			s = (ls + lit->soffset) & ((128 << 16) - 1);
+			t = (lt + lit->toffset) & ((128 << 16) - 1);
+			sstep = b.sstep[k];
+			tstep = b.tstep[k];
+			for ( ; pixels > 0 ; pixels--, s += sstep, t += tstep, ls += sstep, lt += tstep)
+			{
+				sturb = ((s + turb[(t >> 16) & 127]) >> 16) & 63;
+				tturb = ((t + turb[(s >> 16) & 127]) >> 16) & 63;
+				*dest++ = Simd_TurbLitTexel (lit, (tturb << 6) + sturb,
+					lit->light[(lt >> shift) * lit->width + (ls >> shift)]);
+			}
+		}
+	}
+}
+
 /*
 ===============================================================================
 

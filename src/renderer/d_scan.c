@@ -140,10 +140,11 @@ simd_texmap_t D_SpanTexmap (void)
 Turbulent8
 
 The spans of a liquid, mapped as map says from its 64x64 texture, or from
-a TGA file's texels in its place
+a TGA file's texels in its place, or lit as lit says
 =============
 */
-void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture, const pixel_t *texels)
+void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture, const pixel_t *texels,
+	const simd_turblight_t *lit)
 {
 	const int		*turb = sintable + ((int)(r_scene.time*SPEED)&(CYCLE-1));
 	pixel_t			*dest;
@@ -151,7 +152,9 @@ void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture, 
 	do
 	{
 		dest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
-		if (texels)
+		if (lit)
+			simd_turbspan_lit (dest, map, lit, turb, pspan->u, pspan->v, pspan->count);
+		else if (texels)
 			simd_turbspan_rgb30 (dest, map, texels, turb, pspan->u, pspan->v, pspan->count);
 		else
 			simd_turbspan (dest, map, texture, d_pal30_unlit, turb, pspan->u, pspan->v, pspan->count);
@@ -194,6 +197,7 @@ void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb)
 		.map = D_SpanTexmap (),
 		.block = cacheblock, .blockwidth = cachewidth,
 		.turb = turb ? d_turbsource : NULL, .turb30 = turb ? d_turbsource30 : NULL,
+		.lit = turb ? d_turblight : (simd_turblight_t){0},
 		.turbtab = sintable + ((int)(r_scene.time*SPEED)&(CYCLE-1)),
 		.alpha = alpha,
 	};
@@ -222,7 +226,9 @@ void D_BlendSpan (const d_blendmap_t *map, int u, int v, int count)
 	pixel_t	*row = D_BlendRow (count);
 	float	zi;
 
-	if (map->turb30)
+	if (map->lit.light)
+		simd_turbspan_lit (row, &map->map, &map->lit, map->turbtab, u, v, count);
+	else if (map->turb30)
 		simd_turbspan_rgb30 (row, &map->map, map->turb30, map->turbtab, u, v, count);
 	else if (map->turb)
 		simd_turbspan (row, &map->map, map->turb, d_pal30_unlit, map->turbtab, u, v, count);

@@ -191,6 +191,35 @@ void Simd_Scalar_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const 
 	} while (st.count > 0);
 }
 
+void Simd_Scalar_TurbSpanLit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
+	const int *turb, int u, int v, int count)
+{
+	scalar_stepper_t	st;
+	int					n, s0, t0, s, t, ls, lt, sstep, tstep, sturb, tturb, shift = 16 + lit->shift;
+	uint32_t			light;
+
+	Simd_Scalar_SpanStart (&st, map, u, v, count, 4);
+	do
+	{
+		// the light where s and t are, the wave and the texels where the
+		// texture is, stepped in copies as in Simd_Scalar_TexSpan
+		n = Simd_Scalar_SpanNext (&st, &s0, &t0);
+		ls = s0;
+		lt = t0;
+		s = (s0 + lit->soffset) & ((128 << 16) - 1);
+		t = (t0 + lit->toffset) & ((128 << 16) - 1);
+		sstep = st.sstep;
+		tstep = st.tstep;
+		for ( ; n > 0 ; n--, s += sstep, t += tstep, ls += sstep, lt += tstep)
+		{
+			sturb = ((s + turb[(t >> 16) & 127]) >> 16) & 63;
+			tturb = ((t + turb[(s >> 16) & 127]) >> 16) & 63;
+			light = lit->light[(lt >> shift) * lit->width + (ls >> shift)];
+			*dest++ = Simd_TurbLitTexel (lit, (tturb << 6) + sturb, light);
+		}
+	} while (st.count > 0);
+}
+
 void Simd_Scalar_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 	int light, int step, int count)
 {

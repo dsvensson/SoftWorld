@@ -283,6 +283,83 @@ void Simd_V4_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src
 	}
 }
 
+// Simd_V4_TurbSpan's subdivisions, each with the light where its s and t are,
+// the texels lit in the vector
+void Simd_V4_TurbSpanLit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
+	const int *turb, int u, int v, int count)
+{
+	v4_stepper_t	st;
+	v4_batch_t		b;
+	int				first, n, p, k, pixels;
+	__mmask16		lanes;
+	__m128i			shift = _mm_cvtsi32_si128 (16 + lit->shift), cshift;
+	__m512i			lane = Simd_V4_Iota ();
+	__m512i			cycle = _mm512_set1_epi32 (127), size = _mm512_set1_epi32 (63);
+	__m512i			wrap = _mm512_set1_epi32 ((128 << 16) - 1);
+	__m512i			soffset = _mm512_set1_epi32 (lit->soffset), toffset = _mm512_set1_epi32 (lit->toffset);
+	__m512i			width = _mm512_set1_epi32 (lit->width), channel = _mm512_set1_epi32 (1023);
+	__m512i			gs = _mm512_set1_epi32 (lit->glowscale);
+	__m512i			which, sstep, tstep, ls, lt, s, t, sturb, tturb, texel, light, pix, gl, out, c, f;
+
+	Simd_V4_SpanStart (&st, map, u, v, count, 4);
+	for (first = 0 ; first < st.subdivisions ; first += n, dest += pixels)
+	{
+		n = st.subdivisions - first < 16 ? st.subdivisions - first : 16;
+		b = Simd_V4_SpanBatch (&st, first, n);
+		pixels = count - (first << 4) < (n << 4) ? count - (first << 4) : n << 4;
+		for (p = 0 ; p < pixels ; p += 16)
+		{
+			// the light's s and t as they are, the wave's from where the
+			// texture tiles, wrapped to its cycle
+			which = _mm512_set1_epi32 (p >> 4);
+			sstep = _mm512_mullo_epi32 (lane, _mm512_permutexvar_epi32 (which, b.sstep));
+			tstep = _mm512_mullo_epi32 (lane, _mm512_permutexvar_epi32 (which, b.tstep));
+			ls = _mm512_permutexvar_epi32 (which, b.sstart);
+			lt = _mm512_permutexvar_epi32 (which, b.tstart);
+			s = _mm512_add_epi32 (_mm512_and_si512 (_mm512_add_epi32 (ls, soffset), wrap), sstep);
+			t = _mm512_add_epi32 (_mm512_and_si512 (_mm512_add_epi32 (lt, toffset), wrap), tstep);
+			ls = _mm512_add_epi32 (ls, sstep);
+			lt = _mm512_add_epi32 (lt, tstep);
+			lanes = Simd_V4_Lanes (pixels - p);
+
+			sturb = _mm512_i32gather_epi32 (_mm512_and_si512 (_mm512_srai_epi32 (t, 16), cycle), turb, 4);
+			tturb = _mm512_i32gather_epi32 (_mm512_and_si512 (_mm512_srai_epi32 (s, 16), cycle), turb, 4);
+			sturb = _mm512_and_si512 (_mm512_srai_epi32 (_mm512_add_epi32 (s, sturb), 16), size);
+			tturb = _mm512_and_si512 (_mm512_srai_epi32 (_mm512_add_epi32 (t, tturb), 16), size);
+			texel = _mm512_add_epi32 (_mm512_slli_epi32 (tturb, 6), sturb);
+			light = _mm512_mask_i32gather_epi32 (_mm512_setzero_si512 (), lanes, _mm512_add_epi32 (
+				_mm512_mullo_epi32 (_mm512_sra_epi32 (lt, shift), width), _mm512_sra_epi32 (ls, shift)), lit->light, 4);
+
+			if (lit->colormap)
+			{
+				// 32 bit loads of the 8 bit texels, hence the 3 readable bytes after src
+				texel = _mm512_and_si512 (_mm512_mask_i32gather_epi32 (_mm512_setzero_si512 (), lanes, texel,
+					lit->src, 1), _mm512_set1_epi32 (0xFF));
+				out = _mm512_mask_i32gather_epi32 (_mm512_setzero_si512 (), lanes, _mm512_add_epi32 (light, texel),
+					lit->colormap, 4);
+			}
+			else
+			{
+				pix = _mm512_mask_i32gather_epi32 (_mm512_setzero_si512 (), lanes, texel, lit->texels, 4);
+				gl = lit->glow ? _mm512_mask_i32gather_epi32 (_mm512_setzero_si512 (), lanes, texel, lit->glow, 4)
+					: _mm512_setzero_si512 ();
+				out = _mm512_setzero_si512 ();
+				for (k = 0 ; k < 3 ; k++)
+				{
+					cshift = _mm_cvtsi32_si128 (10 * k);
+					c = _mm512_srli_epi32 (_mm512_mullo_epi32 (_mm512_and_si512 (_mm512_srl_epi32 (pix, cshift), channel),
+						_mm512_and_si512 (_mm512_srl_epi32 (light, cshift), channel)), 9);
+					f = _mm512_srli_epi32 (_mm512_mullo_epi32 (_mm512_and_si512 (_mm512_srl_epi32 (gl, cshift), channel),
+						gs), 15);
+					c = _mm512_min_epu32 (_mm512_max_epu32 (c, f), channel);
+					out = _mm512_or_si512 (out, _mm512_sll_epi32 (c, cshift));
+				}
+			}
+			_mm512_mask_storeu_epi32 (dest + p, lanes, out);
+		}
+	}
+}
+
 void Simd_V4_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 	int light, int step, int count)
 {
@@ -651,6 +728,7 @@ void Simd_V4_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint
 {
 	Simd_Scalar_TurbSpanRGB30 (dest, map, src, turb, u, v, count);
 }
+
 
 void Simd_V4_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
 	const int light[3], const int step[3], int count)

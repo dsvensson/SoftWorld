@@ -32,12 +32,40 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define SIMD_INLINE	static inline __attribute__((always_inline))
 #endif
 
+// a lit liquid's texel (its offset in the 64x64 texture) in light, as
+// simd_turbspan_lit lights it, for the kernels that light a pixel at a time
+SIMD_INLINE uint32_t Simd_TurbLitTexel (const simd_turblight_t *lit, int texel, uint32_t light)
+{
+	uint32_t	p, g, out;
+	unsigned	c, f;
+	int			k;
+
+	if (lit->colormap)
+		return lit->colormap[light + lit->src[texel]];
+	p = lit->texels[texel];
+	g = lit->glow ? lit->glow[texel] : 0;
+	out = 0;
+	for (k = 0 ; k < 3 ; k++)
+	{
+		c = (((p >> (10 * k)) & 1023) * ((light >> (10 * k)) & 1023)) >> 9;
+		f = (((g >> (10 * k)) & 1023) * (unsigned)lit->glowscale) >> 15;
+		if (c < f)
+			c = f;
+		if (c > 1023)
+			c = 1023;
+		out |= c << (10 * k);
+	}
+	return out;
+}
+
 void	Simd_Scalar_ZSpan (float *dest, int count, float zi, float step);
 void	Simd_Scalar_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src, int srcwidth,
 			int u, int v, int count);
 void	Simd_Scalar_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
 			const int *turb, int u, int v, int count);
 void	Simd_Scalar_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+			const int *turb, int u, int v, int count);
+void	Simd_Scalar_TurbSpanLit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
 			const int *turb, int u, int v, int count);
 void	Simd_Scalar_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 			int light, int step, int count);
@@ -65,6 +93,8 @@ void	Simd_V4_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src
 			const int *turb, int u, int v, int count);
 void	Simd_V4_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
 			const int *turb, int u, int v, int count);
+void	Simd_V4_TurbSpanLit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
+			const int *turb, int u, int v, int count);
 void	Simd_V4_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 			int light, int step, int count);
 void	Simd_V4_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette,
@@ -91,6 +121,8 @@ void	Simd_V3_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src
 			const int *turb, int u, int v, int count);
 void	Simd_V3_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
 			const int *turb, int u, int v, int count);
+void	Simd_V3_TurbSpanLit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
+			const int *turb, int u, int v, int count);
 void	Simd_V3_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 			int light, int step, int count);
 void	Simd_V3_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette,
@@ -116,6 +148,8 @@ void	Simd_M3_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *
 void	Simd_M3_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
 			const int *turb, int u, int v, int count);
 void	Simd_M3_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+			const int *turb, int u, int v, int count);
+void	Simd_M3_TurbSpanLit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
 			const int *turb, int u, int v, int count);
 void	Simd_M3_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 			int light, int step, int count);

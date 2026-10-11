@@ -260,7 +260,8 @@ Worth knowing:
 | `-scale n`, `vid_scale` | render at 320×200 times n (1, the default, is 320×200 itself); 0 picks the largest that fits the window |
 | `vid_widescreen`, `vid_crt` | wider view (hor+), the status bar in its middle; CRT pixel aspect |
 | `r_lightmode` | 1 linear light in RGB, brighter than white where it is (the default); 0 lighting as Quake had it |
-| `r_fullbright_scale`, `r_dlight_scale` | in `r_lightmode 1`, fullbright colors no darker than their color times this (1.5), on walls and models and where light doesn't reach: particles (fire too), sprites, liquids, the sky; dynamic lights' light on surfaces times `r_dlight_scale` |
+| `r_litwater` | liquids lit by their lightmaps in a map whose light tool lit them, as Quakespasm, FTE and ezQuake light them (1, the default); 0 unlit, as Quake drew them |
+| `r_fullbright_scale`, `r_dlight_scale` | in `r_lightmode 1`, fullbright colors no darker than their color times this (1.5), on walls and models and where light doesn't reach: particles (fire too), sprites, unlit liquids, the sky; dynamic lights' light on surfaces times `r_dlight_scale` |
 | `r_externaltextures` | TGA files in `textures/<map>/` or `textures/` in place of the map's textures, truecolor (1, the default); walls take them in `r_lightmode 1` |
 | `r_skybox` | a skybox in place of the sky's texture: `<name>rt.tga` and the other five faces in `env/` or `gfx/env/`; empty (the default) for the one the map's worldspawn names |
 | `r_fog`, `r_fog_usemap`, `r_skyfog` | fog: the map's, from its worldspawn's `fog` key (`r_fog_usemap 0` leaves it out), with `r_fog`'s over it, as FTE's `fog` command takes it (`"density red green blue"`; 0 is no fog); how far the sky takes the fog's color |

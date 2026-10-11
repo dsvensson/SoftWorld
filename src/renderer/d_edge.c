@@ -85,16 +85,29 @@ A face's texture mapping at a mip level into map, seen with the view's right,
 up and forward vectors in its model's space from transformed_org (the view's
 origin in the face's model, transformed); map's 1/z is left as it is. Any
 thread may.
+
+An unlit liquid's texture tiles without end, as Quake mapped it: from 8192
+texels before its texture coordinates' origin, a multiple of the wave's
+cycle, for 16384, so s and t never run out. A lit one is mapped from its
+lightmap's corner, where its light block is, and the texture and the wave
+read with that corner added back (D_TurbLight).
 ==============
 */
 static void D_FaceTexmap (simd_texmap_t *map, const msurface_t *pface, int mip, const vec3_t transformed_org,
 	const vec3_t right, const vec3_t up, const vec3_t forward)
 {
+	static const int	turbmins[2] = {-8192, -8192}, turbextents[2] = {16384, 16384};
+	const int	*texturemins = pface->texturemins, *extents = pface->extents;
 	float		mipscale;
 	vec3_t		p_temp1;
 	vec3_t		p_saxis, p_taxis;
 	float		t;
 
+	if ((pface->flags & SURF_DRAWTURB) && !R_LitLiquid (pface))
+	{
+		texturemins = turbmins;
+		extents = turbextents;
+	}
 	mipscale = 1.0f / (float)(1 << mip);
 
 	p_saxis[0] = DotProduct (pface->texinfo->vecs[0], right);
@@ -125,17 +138,55 @@ static void D_FaceTexmap (simd_texmap_t *map, const msurface_t *pface, int mip, 
 	// the terms are 16.16 texture coordinates and can pass 32 bits (texture
 	// coordinates beyond +-32768); their sum is relative to the surface
 	map->sadjust = (fixed16_t)(((int64_t)(DotProduct (p_temp1, p_saxis) * 0x10000 + 0.5)) -
-			(((int64_t)pface->texturemins[0] * 0x10000) >> mip)
+			(((int64_t)texturemins[0] * 0x10000) >> mip)
 			+ pface->texinfo->vecs[0][3]*t);
 	map->tadjust = (fixed16_t)(((int64_t)(DotProduct (p_temp1, p_taxis) * 0x10000 + 0.5)) -
-			(((int64_t)pface->texturemins[1] * 0x10000) >> mip)
+			(((int64_t)texturemins[1] * 0x10000) >> mip)
 			+ pface->texinfo->vecs[1][3]*t);
 
 //
 // -1 (-epsilon) so we never wander off the edge of the texture
 //
-	map->sextent = ((pface->extents[0] << 16) >> mip) - 1;
-	map->textent = ((pface->extents[1] << 16) >> mip) - 1;
+	map->sextent = ((extents[0] << 16) >> mip) - 1;
+	map->textent = ((extents[1] << 16) >> mip) - 1;
+}
+
+/*
+==============
+D_TurbLight
+
+How a lit liquid is lit (simd_turbspan_lit), by its light block at a mip
+level: the colormap's light of its texels in r_lightmode 0, else their colors'
+==============
+*/
+static simd_turblight_t D_TurbLight (const msurface_t *pface, const surfcache_t *cache, int mip)
+{
+	texture_t			*tx = pface->texinfo->texture;
+	simd_turblight_t	lit = {
+		.light = cache->data, .width = (int)cache->width, .shift = mip,
+		// the texture's tiling, as an unlit liquid's mapping has it
+		.soffset = (pface->texturemins[0] & 127) << 16, .toffset = (pface->texturemins[1] & 127) << 16,
+	};
+
+	if (!r_lightmode.value)
+	{
+		lit.colormap = d_cm30;
+		lit.src = (byte *)tx + tx->offsets[0];
+	}
+	else if (R_TextureOverride (tx, 0))
+	{
+		// a TGA file's texels, as the file has them, and their fullbright light
+		lit.texels = tx->rgb[1];
+		lit.glow = tx->glow[0];
+		lit.glowscale = d_glowscale;
+	}
+	else
+	{
+		lit.texels = tx->pixels[0];
+		lit.glow = tx->pixelglow[0];
+		lit.glowscale = d_glowscale;
+	}
+	return lit;
 }
 
 
@@ -195,10 +246,17 @@ void D_DrawTranslucentFace (msurface_t *surf, const vec3_t transformed_org, emit
 	float nearzi, int alpha)
 {
 	surfcache_t	*cache;
+	int			mip;
 
 	VectorCopy (transformed_org, transformed_modelorg);
 	if (surf->flags & SURF_DRAWTURB)
 	{
+		d_turblight = (simd_turblight_t){0};
+		if (R_LitLiquid (surf))
+		{
+			mip = D_SurfaceMipLevel (surf, D_MipLevelForScale (nearzi * scale_for_mip * surf->texinfo->mipadjust));
+			d_turblight = D_TurbLight (surf, D_CacheSurface (surf, mip), mip);
+		}
 		miplevel = 0;
 		d_turbsource = (byte *)surf->texinfo->texture + surf->texinfo->texture->offsets[0];
 		d_turbsource30 = R_TextureOverride (surf->texinfo->texture, 0);
@@ -240,6 +298,7 @@ typedef enum
 	DS_SKY,
 	DS_SKYBOX,
 	DS_TURB,			// a liquid, from its texture
+	DS_LITTURB,			// a lit one, by its light block too
 	DS_CACHED			// from its surface cache block
 } dsdraw_t;
 
@@ -251,9 +310,9 @@ typedef struct
 	simd_texmap_t	map;			// the texture mapping, and the 1/z of all
 	const byte		*turb;			// DS_TURB: the 64x64 texture,
 	const pixel_t	*turb30;		// or a TGA file's texels in its place
-	msurface_t		*face;			// DS_CACHED: the surface, its entity,
+	msurface_t		*face;			// DS_CACHED, DS_LITTURB: the surface, its entity,
 	entity_t		*entity;
-	int				miplevel;		// mip level and block
+	int				miplevel;		// mip level and block (a lit liquid's of its light)
 	surfcache_t		*cache;
 	bool			build;			// the block is drawn first, as buildsurf says
 	drawsurf_t		buildsurf;
@@ -334,10 +393,18 @@ static void D_PrepareJob (dsjob_t *job, surf_t *s)
 
 	if (s->flags & SURF_DRAWTURB)
 	{
+		// the texture's own size, and a lit liquid's light at its mip level
 		mip = 0;
 		job->draw = DS_TURB;
 		job->turb = (byte *)pface->texinfo->texture + pface->texinfo->texture->offsets[0];
 		job->turb30 = R_TextureOverride (pface->texinfo->texture, 0);
+		if (R_LitLiquid (pface))
+		{
+			job->draw = DS_LITTURB;
+			job->face = pface;
+			job->miplevel = D_SurfaceMipLevel (pface,
+				D_MipLevelForScale (s->nearzi * scale_for_mip * pface->texinfo->mipadjust));
+		}
 	}
 	else
 	{
@@ -384,7 +451,14 @@ static void D_DrawJobSpans (const dsjob_t *job, espan_t *spans)
 		D_DrawSkyboxScans (spans);
 		break;
 	case DS_TURB:
-		Turbulent8 (spans, &job->map, job->turb, job->turb30);
+		Turbulent8 (spans, &job->map, job->turb, job->turb30, NULL);
+		break;
+	case DS_LITTURB:
+		{
+			simd_turblight_t	lit = D_TurbLight (job->face, job->cache, job->miplevel);
+
+			Turbulent8 (spans, &job->map, NULL, NULL, &lit);
+		}
 		break;
 	case DS_CACHED:
 		D_DrawSpans (spans, &job->map, job->cache->data, (int)job->cache->width);
@@ -597,7 +671,7 @@ void D_DrawSurfaces (rband_t *bands, int numbands)
 	for (i=0 ; i<d_numjobs ; i++)
 	{
 		job = &d_jobs[i];
-		if (job->draw != DS_CACHED)
+		if (job->draw != DS_CACHED && job->draw != DS_LITTURB)
 			continue;
 		currententity = job->entity;		// its texture's animation
 		while ((prep = D_PrepareCacheSurface (job->face, job->miplevel, &job->cache, &job->buildsurf)) == CACHE_TAKEN)

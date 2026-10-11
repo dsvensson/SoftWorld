@@ -982,15 +982,20 @@ static bool CalcSurfaceExtents (msurface_t *s, double mins[2], double maxs[2])
 /*
 =================
 Mod_LoadFaces
+
+A map whose light tool lit its liquids, as some liquid without TEX_SPECIAL
+has a lightmap, has those without TEX_SPECIAL lit, as Quakespasm has them: a
+dark one without a lightmap too. Other maps' liquids get no light.
 =================
 */
 static bool Mod_LoadFaces (void)
 {
 	bspface_t	*in;
 	msurface_t	*out;
-	int			i, count, surfnum;
+	int			count, surfnum;
 	double		texmins[2], texmaxs[2];
 	facelumps_t	lumps;
+	bool		litliquids = false;
 
 	in = BSP_Faces (mod_bsp, &count);
 	if (!in)
@@ -1044,11 +1049,7 @@ static bool Mod_LoadFaces (void)
 				out->flags |= SURF_SLIME;
 			else if (!Q_strncasecmp (out->texinfo->texture->name, "*tele", 5))
 				out->flags |= SURF_TELE;
-			for (i=0 ; i<2 ; i++)
-			{
-				out->extents[i] = 16384;
-				out->texturemins[i] = -8192;
-			}
+			litliquids |= !(out->texinfo->flags & TEX_SPECIAL) && out->samples;
 			continue;
 		}
 
@@ -1059,6 +1060,15 @@ static bool Mod_LoadFaces (void)
 			out->flags |= SURF_NOTEXELS;
 	}
 	Mem_Free (in);
+
+	if (litliquids)
+	{
+		Con_DPrintf ("%s has lit liquids\n", loadmodel->name);
+		for (surfnum=0, out=loadmodel->surfaces ; surfnum<count ; surfnum++, out++)
+			if ((out->flags & SURF_DRAWTURB) && !(out->texinfo->flags & TEX_SPECIAL)
+				&& out->extents[0] && out->extents[1])
+				out->flags |= SURF_LITLIQUID;
+	}
 	return true;
 }
 

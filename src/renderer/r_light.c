@@ -183,7 +183,7 @@ static int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end, vec3_t 
 	surf = r_scene.worldmodel->surfaces + node->firstsurface;
 	for (i=0 ; i<(int)node->numsurfaces ; i++, surf++)
 	{
-		if (surf->flags & SURF_DRAWTILED)
+		if ((surf->flags & SURF_DRAWTILED) && !R_LitLiquid (surf))
 			continue;	// no lightmaps
 
 		tex = surf->texinfo;

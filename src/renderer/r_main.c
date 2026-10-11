@@ -148,12 +148,18 @@ static cvar_t	r_dlight_color = {.name = "r_dlight_color", .string = "1", .archiv
 // fullbrights' light, and dynamic lights' on surfaces, times these
 static cvar_t	r_fullbright_scale = {.name = "r_fullbright_scale", .string = "1.5", .archive = true,
 	.description = "How bright fullbright colors are at the least, times their color, in r_lightmode 1, on "
-		"what light reaches and what it doesn't (particles, sprites, liquids, the sky); 0 or less is 1."};
+		"what light reaches and what it doesn't (particles, sprites, unlit liquids, the sky); 0 or less is 1."};
 cvar_t	r_dlight_scale = {.name = "r_dlight_scale", .string = "1", .archive = true,
 	.description = "Multiplies dynamic lights' light on surfaces, in r_lightmode 1; 0 is none."};
 static cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1",
 	.description = "Draws the entities: models, sprites and brush models.",
 	.values = (const cvar_value_t[]){{"0", "The world alone"}, {"1", "The entities too"}, {0}}};
+
+// liquids lit by their lightmaps, where the map's light tool lit them
+cvar_t	r_litwater = {.name = "r_litwater", .string = "1", .archive = true,
+	.description = "Lights liquids by their lightmaps, in a map whose light tool lit them.",
+	.values = (const cvar_value_t[]){{"0", "Liquids as Quake drew them, unlit"}, {"1", "Lit, where the map lit them"},
+		{0}}};
 
 // how opaque liquids are drawn, 0 .. 1; seeing through them needs a map whose
 // visibility was built for it
@@ -314,6 +320,7 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_dlight_scale);
 	Cvar_RegisterVariable (&r_fullbright);
 	Cvar_RegisterVariable (&r_drawentities);
+	Cvar_RegisterVariable (&r_litwater);
 	Cvar_RegisterVariable (&r_wateralpha);
 	Cvar_RegisterVariable (&r_lavaalpha);
 	Cvar_RegisterVariable (&r_slimealpha);

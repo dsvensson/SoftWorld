@@ -251,6 +251,80 @@ void Simd_V3_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src
 	}
 }
 
+// 8 texels lit in RGB, as Simd_TurbLitTexel lights them
+static inline __m256i Simd_V3_TurbLitRGB (__m256i pix, __m256i gl, __m256i light, int glowscale)
+{
+	const __m256i	channel = _mm256_set1_epi32 (1023), gs = _mm256_set1_epi32 (glowscale);
+	__m256i			out = _mm256_setzero_si256 (), c, f;
+	__m128i			shift;
+	int				k;
+
+	for (k = 0 ; k < 3 ; k++)
+	{
+		shift = _mm_cvtsi32_si128 (10 * k);
+		c = _mm256_srli_epi32 (_mm256_mullo_epi32 (_mm256_and_si256 (_mm256_srl_epi32 (pix, shift), channel),
+			_mm256_and_si256 (_mm256_srl_epi32 (light, shift), channel)), 9);
+		f = _mm256_srli_epi32 (_mm256_mullo_epi32 (_mm256_and_si256 (_mm256_srl_epi32 (gl, shift), channel), gs), 15);
+		c = _mm256_min_epu32 (_mm256_max_epu32 (c, f), channel);
+		out = _mm256_or_si256 (out, _mm256_sll_epi32 (c, shift));
+	}
+	return out;
+}
+
+// Simd_V3_TurbSpan's stepping, with the light where s and t are: the lookups
+// a pixel at a time, RGB light in lanes
+void Simd_V3_TurbSpanLit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
+	const int *turb, int u, int v, int count)
+{
+	v3_stepper_t	st;
+	v3_batch_t		b;
+	uint32_t		light[16] = {0}, pix[16] = {0}, gl[16] = {0};	// lanes past a subdivision's pixels not stored
+	int				first, n, k, j, h, pixels, s, t, ls, lt, sstep, tstep, sturb, tturb, texel, shift = 16 + lit->shift;
+
+	Simd_V3_SpanStart (&st, map, u, v, count, 4);
+	for (first = 0 ; first < st.subdivisions ; first += n)
+	{
+		n = st.subdivisions - first < 8 ? st.subdivisions - first : 8;
+		Simd_V3_SpanBatch (&st, first, n, &b);
+		for (k = 0 ; k < n ; k++, dest += pixels)
+		{
+			pixels = count - ((first + k) << 4) < 16 ? count - ((first + k) << 4) : 16;
+			ls = b.sstart[k];
+			lt = b.tstart[k];
+			s = (ls + lit->soffset) & ((128 << 16) - 1);
+			t = (lt + lit->toffset) & ((128 << 16) - 1);
+			sstep = b.sstep[k];
+			tstep = b.tstep[k];
+			if (lit->colormap)
+			{
+				// lookups all of it
+				for (j = 0 ; j < pixels ; j++, s += sstep, t += tstep, ls += sstep, lt += tstep)
+				{
+					sturb = ((s + turb[(t >> 16) & 127]) >> 16) & 63;
+					tturb = ((t + turb[(s >> 16) & 127]) >> 16) & 63;
+					dest[j] = lit->colormap[lit->light[(lt >> shift) * lit->width + (ls >> shift)]
+						+ lit->src[(tturb << 6) + sturb]];
+				}
+				continue;
+			}
+			for (j = 0 ; j < pixels ; j++, s += sstep, t += tstep, ls += sstep, lt += tstep)
+			{
+				sturb = ((s + turb[(t >> 16) & 127]) >> 16) & 63;
+				tturb = ((t + turb[(s >> 16) & 127]) >> 16) & 63;
+				texel = (tturb << 6) + sturb;
+				pix[j] = lit->texels[texel];
+				if (lit->glow)
+					gl[j] = lit->glow[texel];
+				light[j] = lit->light[(lt >> shift) * lit->width + (ls >> shift)];
+			}
+			for (h = 0 ; h < pixels ; h += 8)
+				Simd_V3_Store (dest + h, Simd_V3_TurbLitRGB (_mm256_loadu_si256 ((const __m256i *)(pix + h)),
+					_mm256_loadu_si256 ((const __m256i *)(gl + h)), _mm256_loadu_si256 ((const __m256i *)(light + h)),
+					lit->glowscale), pixels - h);
+		}
+	}
+}
+
 /*
 ===============================================================================
 

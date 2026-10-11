@@ -511,6 +511,77 @@ static const byte *R_KeepLight (void)
 	return changed;
 }
 
+/*
+===============
+R_DrawLightBlock
+
+A lit liquid's block: the light of each texel of the mip level, as a wall's
+block lights its texels (R_DrawSurfaceBlock, R_DrawSurfaceBlockRGB), for the
+liquid's texels to take as they move over it (simd_turbspan_lit). The
+colormap's row times 256 in r_lightmode 0, else each channel's light as
+RGB30, 512 being 1.0. changed is as R_KeepLight returns it.
+===============
+*/
+static void R_DrawLightBlock (const byte *changed)
+{
+	int				shift = r_lightshift - r_drawsurf.surfmip, size = 1 << shift;
+	int				channels = r_lightmode.value ? 3 : 1, w = r_lightgrid[0];
+	int				u, v, i, j, c, l;
+	int				left[3], right[3], leftstep[3], rightstep[3], step[3];
+	const unsigned	*lp;
+	const byte		*cc;
+	pixel_t			*dest, out;
+
+	for (v = 0 ; v < r_drawsurf.surfheight >> shift ; v++)
+	{
+		for (u = 0 ; u < r_drawsurf.surfwidth >> shift ; u++)
+		{
+			// as R_BlockUnchanged: its corners' light is the light kept
+			cc = changed ? changed + v * w + u : NULL;
+			if (cc && !(cc[0] | cc[1] | cc[w] | cc[w + 1]))
+				continue;
+
+			r_texels += size * size;
+			lp = (channels == 3 ? blocklights_rgb : blocklights) + (v * w + u) * channels;
+			for (c = 0 ; c < channels ; c++)
+			{
+				left[c] = (int)lp[c];
+				right[c] = (int)lp[channels + c];
+				leftstep[c] = ((int)lp[w * channels + c] - left[c]) >> shift;
+				rightstep[c] = ((int)lp[(w + 1) * channels + c] - right[c]) >> shift;
+			}
+
+			dest = r_drawsurf.surfdat + (v << shift) * r_drawsurf.rowpixels + (u << shift);
+			for (i = 0 ; i < size ; i++, dest += r_drawsurf.rowpixels)
+			{
+				// the right texel gets right, each one left of it step more
+				for (c = 0 ; c < channels ; c++)
+					step[c] = (left[c] - right[c]) >> shift;
+				for (j = 0 ; j < size ; j++)
+				{
+					if (channels == 1)
+					{
+						dest[j] = (pixel_t)((right[0] + (size - 1 - j) * step[0]) & 0xFF00);
+						continue;
+					}
+					out = 0;
+					for (c = 0 ; c < 3 ; c++)
+					{
+						l = (right[c] + (size - 1 - j) * step[c]) >> 6;
+						out |= (pixel_t)(l < 0 ? 0 : (l > 1023 ? 1023 : l)) << (10 * c);
+					}
+					dest[j] = out;
+				}
+				for (c = 0 ; c < channels ; c++)
+				{
+					right[c] += rightstep[c];
+					left[c] += leftstep[c];
+				}
+			}
+		}
+	}
+}
+
 int R_DrawSurface (void)
 {
 	const byte		*basetptr;
@@ -529,6 +600,13 @@ int R_DrawSurface (void)
 		R_BuildLightMap ();
 	changed = R_KeepLight ();
 	r_texels = 0;
+
+	// a lit liquid's block holds its light alone
+	if (r_drawsurf.surf->flags & SURF_DRAWTURB)
+	{
+		R_DrawLightBlock (changed);
+		return r_texels;
+	}
 
 	surfrowpixels = r_drawsurf.rowpixels;
 

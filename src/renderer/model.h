@@ -86,8 +86,9 @@ typedef struct texture_s
 	pixel_t		*glow[MIPLEVELS];		// their fullbright light, NULL for none
 	// the map's own texels as pixels, for walls in r_lightmode 1: mip levels
 	// averaged in linear light, the fullbright light apart from the colors, so
-	// a small light fades with its share of a texel rather than going out.
-	// NULL for skies and liquids; pixelglow NULL without fullbright colors.
+	// a small light fades with its share of a texel rather than going out. A
+	// liquid's are 64x64 with no mip levels, for lit liquids; NULL for skies.
+	// pixelglow NULL without fullbright colors.
 	pixel_t		*pixels[MIPLEVELS];
 	pixel_t		*pixelglow[MIPLEVELS];
 } texture_t;
@@ -104,6 +105,7 @@ typedef struct texture_s
 #define SURF_SLIME			0x200		// r_*alpha
 #define SURF_TELE			0x400
 #define	SURF_NOTEXELS		0x800		// its texture spans nothing one way: no cache block, not drawn
+#define	SURF_LITLIQUID		0x1000		// a liquid its map has lit (R_LitLiquid)
 
 typedef struct
 {

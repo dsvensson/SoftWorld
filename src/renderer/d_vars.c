@@ -41,6 +41,7 @@ fixed16_t	sadjust, tadjust, bbextents, bbextentt;
 pixel_t			*cacheblock;
 byte			*d_turbsource;
 const pixel_t	*d_turbsource30;
+simd_turblight_t	d_turblight;
 int				cachewidth;
 pixel_t			*d_viewbuffer;
 float			*d_pzbuffer;

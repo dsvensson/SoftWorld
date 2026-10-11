@@ -137,6 +137,42 @@ static void R_AllocMips (pixel_t *mips[MIPLEVELS], int width, int height, struct
 
 /*
 ===============
+R_BuildLiquidPixels
+
+A liquid's texels as pixels, 64x64 as the turbulent span drawers read them,
+each fullbright one in pixelglow too: what a lit liquid is drawn from in
+r_lightmode 1
+===============
+*/
+static void R_BuildLiquidPixels (texture_t *tx, struct arena_s *arena)
+{
+	const byte	*index = (const byte *)tx + tx->offsets[0];
+	int			x, y, width = (int)tx->width, height = (int)tx->height;
+	bool		bright = false;
+	byte		texel;
+
+	tx->pixels[0] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
+	for (y = 0 ; y < LIQUID_SIZE ; y++)
+		for (x = 0 ; x < LIQUID_SIZE ; x++)
+		{
+			texel = index[y * height / LIQUID_SIZE * width + x * width / LIQUID_SIZE];
+			tx->pixels[0][y * LIQUID_SIZE + x] = d_pal30[texel];
+			bright |= d_fullbright[texel];
+		}
+	if (!bright)
+		return;
+
+	tx->pixelglow[0] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
+	for (y = 0 ; y < LIQUID_SIZE ; y++)
+		for (x = 0 ; x < LIQUID_SIZE ; x++)
+		{
+			texel = index[y * height / LIQUID_SIZE * width + x * width / LIQUID_SIZE];
+			tx->pixelglow[0][y * LIQUID_SIZE + x] = d_fullbright[texel] ? d_pal30[texel] : 0;
+		}
+}
+
+/*
+===============
 R_BuildTexturePixels
 
 The map's texels of a wall's texture as pixels (texture_t pixels), each
@@ -149,8 +185,13 @@ void R_BuildTexturePixels (texture_t *tx, struct arena_s *arena)
 	int			i, width = (int)tx->width, height = (int)tx->height;
 	bool		fence = tx->name[0] == '{', bright = false;
 
-	if (tx->name[0] == '*' || !Q_strncmp (tx->name, "sky", 3))
-		return;		// drawn from their bytes
+	if (!Q_strncmp (tx->name, "sky", 3))
+		return;		// drawn from its bytes
+	if (tx->name[0] == '*')
+	{
+		R_BuildLiquidPixels (tx, arena);
+		return;
+	}
 
 	R_AllocMips (tx->pixels, width, height, arena);
 	for (i = 0 ; i < width * height ; i++)

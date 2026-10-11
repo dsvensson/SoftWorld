@@ -226,10 +226,18 @@ void R_SetFaceLightmap (model_t *mod, msurface_t *surf, const bspface_t *face, c
 #define LIGHT_MAX		(15 * LIGHT_ONE)
 
 extern cvar_t	r_lightmode;
+extern cvar_t	r_litwater;
 extern cvar_t	r_dlight_scale;		// dynamic lights' light times this
 extern cvar_t	r_lerpframes;
 extern cvar_t	r_lerpmuzzlehack;
 void R_DlightColor (const dlight_t *dl, float color[3]);
+
+// a liquid drawn lit, by its lightmap: its map lit its liquids, and r_litwater
+// has them lit
+static inline bool R_LitLiquid (const msurface_t *surf)
+{
+	return (surf->flags & SURF_LITLIQUID) && r_litwater.value;
+}
 
 // a value as an int, saturated at the int's range (NaN 0), as ARM converts:
 // a sliver of a triangle has steps past it, whose plain conversion C leaves

@@ -45,6 +45,12 @@ void simd_turbspan_rgb30 (uint32_t *dest, const simd_texmap_t *map, const uint32
 	Simd_Scalar_TurbSpanRGB30 (dest, map, src, turb, u, v, count);
 }
 
+void simd_turbspan_lit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
+	const int *turb, int u, int v, int count)
+{
+	Simd_Scalar_TurbSpanLit (dest, map, lit, turb, u, v, count);
+}
+
 void simd_litrow_colormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 	int light, int step, int count)
 {

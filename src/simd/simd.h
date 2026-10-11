@@ -58,6 +58,30 @@ void	simd_turbspan (uint32_t *dest, const simd_texmap_t *map, const byte *src, c
 void	simd_turbspan_rgb30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
 			const int *turb, int u, int v, int count);
 
+// how a lit liquid is lit, for simd_turbspan_lit: its light, a value a texel
+// of mip level shift, width values a row, read where s and t fall; the wave and
+// the texels are read at s + soffset and t + toffset (16.16, multiples of 1 <<
+// 16), where its texture tiles from
+typedef struct
+{
+	const uint32_t	*light;
+	int				width, shift;
+	int				soffset, toffset;
+	// the texel lit through colormap: colormap[light + src's texel] of the 64x64
+	// 8 bit src, with 3 bytes readable after it
+	const uint32_t	*colormap;
+	const byte		*src;
+	// else, colormap NULL: each channel of a 64x64 RGB30 texel times the light's
+	// (RGB30, 512 being 1.0) >> 9, at least the same channel of glow (RGB30, NULL
+	// for none) times glowscale >> 15, at most 1023
+	const uint32_t	*texels, *glow;
+	int				glowscale;
+} simd_turblight_t;
+
+// simd_turbspan's stepping and wave, the texel lit as lit says
+void	simd_turbspan_lit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
+			const int *turb, int u, int v, int count);
+
 // a row of a surface lit through a colormap: texel j (0 .. count-1) gets
 // light + (count - 1 - j) * step, and becomes colormap[(light & 0xFF00) + texel]
 void	simd_litrow_colormap (uint32_t *dest, const byte *src, const uint32_t *colormap,

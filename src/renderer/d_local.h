@@ -77,8 +77,10 @@ extern fixed16_t	bbextents, bbextentt;
 simd_texmap_t D_SpanTexmap (void);		// of the current surface, from the d_ gradients
 void D_DrawSpans (espan_t *pspan, const simd_texmap_t *map, const pixel_t *block, int blockwidth);
 void D_DrawZSpans (espan_t *pspan, const simd_texmap_t *map);
-// texels, if not NULL, are a TGA file's 64x64 in place of texture's
-void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture, const pixel_t *texels);
+// texels, if not NULL, are a TGA file's 64x64 in place of texture's; a lit
+// liquid is lit as lit says, from the textures it names
+void Turbulent8 (espan_t *pspan, const simd_texmap_t *map, const byte *texture, const pixel_t *texels,
+	const simd_turblight_t *lit);
 int D_SurfaceMipLevel (msurface_t *surface, int miplevel);
 
 void D_DrawSkyScans (espan_t *pspan);
@@ -86,6 +88,7 @@ void D_DrawSkyboxScans (espan_t *pspan);
 
 extern byte		*d_turbsource;	// the 64x64 texture of a turbulent surface
 extern const pixel_t	*d_turbsource30;	// a TGA file's texels in its place, or NULL
+extern simd_turblight_t	d_turblight;	// how it is lit, light NULL for unlit
 
 extern void (*prealspandrawer)(void);
 surfcache_t	*D_CacheSurface (msurface_t *surface, int miplevel);
@@ -201,7 +204,8 @@ typedef struct
 void D_FenceSpan (const d_fencemap_t *map, int u, int v, int count);
 
 // a translucent surface's mapping, as D_BlendSpan blends a span of it: from
-// its cache block, or a liquid's texture (turb, or turb30 for a TGA's)
+// its cache block, or a liquid's texture (turb, or turb30 for a TGA's), or a
+// lit liquid's as lit says
 typedef struct
 {
 	simd_texmap_t	map;
@@ -209,6 +213,7 @@ typedef struct
 	int				blockwidth;
 	const byte		*turb;
 	const pixel_t	*turb30;
+	simd_turblight_t	lit;		// light NULL for an unlit liquid
 	const int		*turbtab;
 	int				alpha;
 } d_blendmap_t;

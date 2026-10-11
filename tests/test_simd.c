@@ -291,6 +291,60 @@ static void TestTurbSpanRGB30 (void)
 	}
 }
 
+// lit liquids: through a colormap and in RGB, with and without glow, the light
+// a block of up to 1024 texels a side at mip levels 0 to 3
+static void TestTurbSpanLit (void)
+{
+	static byte			src[64 * 64 + 3];
+	static uint32_t		texels[64 * 64], glow[64 * 64], colormap[64 * 256], light[256 * 256], a[600], b[600];
+	static int			turb[256];
+	simd_turblight_t	lit;
+	simd_texmap_t		map;
+	int					r, i, count, u, v, width, height;
+
+	for (i = 0 ; i < (int)sizeof(src) ; i++)
+		src[i] = (byte)Rand ();
+	for (i = 0 ; i < 64 * 64 ; i++)
+	{
+		texels[i] = Rand () & 0x3FFFFFFF;
+		glow[i] = (Rand () & 3) ? 0 : Rand () & 0x3FFFFFFF;
+	}
+	for (i = 0 ; i < 64 * 256 ; i++)
+		colormap[i] = Rand ();
+	for (i = 0 ; i < 256 ; i++)
+		turb[i] = RandRange (0, 16 << 16);
+	for (r = 0 ; r < ROUNDS ; r++)
+	{
+		lit = (simd_turblight_t){.shift = RandRange (0, 3), .soffset = RandRange (0, 7) << 20,
+			.toffset = RandRange (0, 7) << 20, .glowscale = RandRange (0, 2 * 32768)};
+		width = RandRange (1, 256);
+		height = RandRange (1, 256);
+		map = RandTexmap (width << lit.shift, height << lit.shift);
+		lit.width = width;
+		for (i = 0 ; i < width * height ; i++)
+			light[i] = (r & 1) ? (uint32_t)RandRange (0, 63) << 8 : Rand () & 0x3FFFFFFF;
+		lit.light = light;
+		if (r & 1)
+		{
+			lit.colormap = colormap;
+			lit.src = src;
+		}
+		else
+		{
+			lit.texels = texels;
+			lit.glow = (r & 2) ? glow : NULL;
+		}
+		count = RandRange (1, 600);
+		u = RandRange (0, 2047 - count);
+		v = RandRange (0, 2047);
+		memset (a, 0, sizeof(a));
+		memset (b, 0, sizeof(b));
+		Simd_Scalar_TurbSpanLit (a, &map, &lit, turb + (r & 127), u, v, count);
+		TESTED (TurbSpanLit) (b, &map, &lit, turb + (r & 127), u, v, count);
+		Check ("TurbSpanLit", r, !memcmp (a, b, sizeof(a)));
+	}
+}
+
 static void TestLitRowColormap (void)
 {
 	static uint32_t	colormap[64 * 256];
@@ -488,6 +542,7 @@ int main (void)
 	TestTexSpan ();
 	TestTurbSpan ();
 	TestTurbSpanRGB30 ();
+	TestTurbSpanLit ();
 	TestLitRowColormap ();
 	TestLitRowRGB ();
 	TestLitRowRGB30 ();
