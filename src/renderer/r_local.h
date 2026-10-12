@@ -120,6 +120,7 @@ byte	*R_LoadTGA (const char *path, int *width, int *height);
 pixel_t	R_RGBA8Pixel (const byte *rgba);
 void	R_ImagePixels (const byte *rgba, int w, int h, pixel_t *out, int outw, int outh, bool cutout);
 pixel_t	R_AveragePixels (const pixel_t *p, int n);
+pixel_t	R_SaturatePixel (pixel_t p, float s);
 
 // r_partimage.c and r_partdraw.c: scripted particles
 #define	PART_LEVELS	12
@@ -136,31 +137,38 @@ typedef struct
 const partimage_t	*R_PartImage (int index);
 void	R_DrawPartScene (void);		// r_scene.particles, into the view
 
-// r_textures.c: TGA files in place of a map's textures, and r_max_size
+// r_textures.c: TGA files in place of a map's textures, and the world's as
+// r_max_size and r_saturation_world have them
 extern cvar_t	r_externaltextures;
-extern cvar_t	r_max_size;
+extern const pixel_t	*r_worldcolormap;	// d_cm30 as r_saturation_world has it
 void R_TexturesInit (void);
 void R_LoadTextureOverride (texture_t *tx, const char *modelname, struct arena_s *arena);
 void R_BuildTexturePixels (texture_t *tx, struct arena_s *arena);
 void R_LightLiquids (void);		// after d_unlitfloors or d_glowscale changed
 void R_LightModelLiquids (model_t *mod);	// one model's, loaded as they changed
-void R_CheckMaxSize (void);		// each frame, before the world is drawn
+void R_CheckWorldTextures (void);	// each frame, before the world is drawn
 
-// the texels to draw tx with in place of its own, or NULL: r_max_size's, else
-// a TGA file's
+// the texels to draw tx with in place of its own, or NULL: the world's custom
+// ones, else a TGA file's
 static inline const pixel_t *R_TextureOverride (const texture_t *tx, int mip)
 {
-	if (tx->small)
-		return tx->smallrgb[mip];
+	if (tx->custom)
+		return tx->customrgb[mip];
 	return r_externaltextures.value ? tx->rgb[mip] : NULL;
 }
 
 // their fullbright light, NULL for none
 static inline const pixel_t *R_TextureOverrideGlow (const texture_t *tx, int mip)
 {
-	if (tx->small)
-		return tx->smallglow[mip];
+	if (tx->custom)
+		return tx->customglow[mip];
 	return r_externaltextures.value ? tx->glow[mip] : NULL;
+}
+
+// the colormap tx's palette indices are lit through in r_lightmode 0
+static inline const pixel_t *R_TextureColormap (const texture_t *tx)
+{
+	return tx->custom ? r_worldcolormap : d_cm30;
 }
 
 // r_worldspawn.c: what the map's worldspawn entity says
@@ -229,6 +237,7 @@ void R_EntityModelView (const entity_t *ent, vec3_t org, vec3_t right, vec3_t up
 
 void R_LightDataInit (void);
 void R_LoadLightData (model_t *mod, bspfile_t *bsp);
+void R_CheckLightSaturation (void);	// each frame, before the world is drawn
 void R_FindFaceLumps (bspfile_t *bsp, int numfaces, facelumps_t *lumps);
 void R_SetFaceLightmap (model_t *mod, msurface_t *surf, const bspface_t *face, const facelumps_t *lumps,
 	int facenum, const double texmins[2], const double texmaxs[2]);

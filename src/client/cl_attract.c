@@ -49,6 +49,8 @@ static const struct
 	{.name = "d_mipcap"},
 	{.name = "d_mipscale"},
 	{.name = "r_max_size"},
+	{.name = "r_saturation_world"},
+	{.name = "r_saturation_lightmaps"},
 	{.name = "volume", .own = &cl_attract_volume},
 };
 

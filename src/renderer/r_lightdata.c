@@ -38,10 +38,57 @@ static cvar_t	r_lit_normalize = {.name = "r_lit_normalize", .string = "1", .arch
 	.values = (const cvar_value_t[]){{"0", "As stored"},
 		{"1", "Each sample's brightest channel the mono light's"}, {0}}};
 
+static cvar_t	r_saturation_lightmaps = {.name = "r_saturation_lightmaps", .string = "1", .archive = true,
+	.min = 0, .max = 1,
+	.description = "How much of its color the world's colored light keeps, its doors' and lifts' too, in r_lightmode 1: "
+		"1 all of it, 0 none, white light. The light models take from the world loses its color with it; "
+		"dynamic lights and attract mode keep theirs."};
+
 void R_LightDataInit (void)
 {
 	Cvar_RegisterVariable (&r_loadlit);
 	Cvar_RegisterVariable (&r_lit_normalize);
+	Cvar_RegisterVariable (&r_saturation_lightmaps);
+}
+
+/*
+=================
+R_CheckLightSaturation
+
+The world's colored light samples as r_saturation_lightmaps has them, again
+whenever it changes: in place, where the faces and the light of the models
+read them, each gray of the way to the gray of its luminance (Rec. 709's,
+of linear light), from the map's own kept aside
+=================
+*/
+void R_CheckLightSaturation (void)
+{
+	model_t			*world = r_scene.worldmodel;
+	float			gray = 1 - r_saturation_lightmaps.value, y;
+	size_t			i, n;
+	int				c;
+	const unsigned short	*in;
+
+	if (!world || world->type != mod_brush || !world->lightrgb || world->lightgray == gray)
+		return;
+	n = (size_t)world->lightsamples * 3;
+	if (!world->lightrgbsource)
+	{
+		world->lightrgbsource = Arena_Alloc (world->arena, n * sizeof(*world->lightrgbsource));
+		memcpy (world->lightrgbsource, world->lightrgb, n * sizeof(*world->lightrgbsource));
+	}
+	world->lightgray = gray;
+	if (gray <= 0)
+		memcpy (world->lightrgb, world->lightrgbsource, n * sizeof(*world->lightrgb));
+	else
+		for (i = 0 ; i < n ; i += 3)
+		{
+			in = world->lightrgbsource + i;
+			y = gray * (0.2126f * in[0] + 0.7152f * in[1] + 0.0722f * in[2]);
+			for (c = 0 ; c < 3 ; c++)
+				world->lightrgb[i + c] = (unsigned short)(y + (1 - gray) * in[c] + 0.5f);
+		}
+	D_FlushCaches ();
 }
 
 //

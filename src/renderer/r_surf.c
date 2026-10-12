@@ -40,6 +40,7 @@ static thread_local const byte		*r_source, *r_sourcemax;
 static thread_local int				r_texelbytes;			// of a texel of r_source: 1, or a pixel's
 static thread_local const pixel_t	*r_rgbsource;			// r_source's pixels, NULL for palette indices
 static thread_local const pixel_t	*r_glowsource;			// their fullbright light, NULL for none
+static thread_local const pixel_t	*r_colormap;			// palette indices are lit through (R_TextureColormap)
 static thread_local int				r_texels;		// drawn of the surface
 
 static void R_DrawSurfaceBlock (void);
@@ -613,9 +614,9 @@ int R_DrawSurface (void)
 	mt = r_drawsurf.texture;
 
 	// in r_lightmode 1 the texels are pixels (a pixel each where the colormap's
-	// are a byte): r_max_size's or a TGA file's in place of the texture's own,
-	// or its own with their fullbright light apart, with mip levels made in
-	// linear light
+	// are a byte): the world's custom ones (r_max_size, r_saturation_world) or
+	// a TGA file's in place of the texture's own, or its own with their
+	// fullbright light apart, with mip levels made in linear light
 	r_rgbsource = r_glowsource = NULL;
 	if (r_lightmode.value)
 	{
@@ -628,6 +629,7 @@ int R_DrawSurface (void)
 		}
 	}
 	r_texelbytes = r_rgbsource ? (int)sizeof(pixel_t) : 1;
+	r_colormap = R_TextureColormap (mt);
 	r_source = r_rgbsource ? (const byte *)r_rgbsource : (byte *)mt + mt->offsets[r_drawsurf.surfmip];
 	
 // the fractional light values should range from 0 to (VID_GRADES - 1) << 16
@@ -749,7 +751,7 @@ static void R_DrawSurfaceBlock (void)
 			lightstep = lighttemp >> shift;
 
 			// the right texel gets lightright, each one left of it lightstep more
-			simd_litrow_colormap (prowdest, psource, d_cm30, lightright, lightstep, blocksize);
+			simd_litrow_colormap (prowdest, psource, r_colormap, lightright, lightstep, blocksize);
 
 			psource += sourcetstep;
 			lightright += lightrightstep;

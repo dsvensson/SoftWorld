@@ -91,15 +91,16 @@ typedef struct texture_s
 	// pixelglow NULL without fullbright colors.
 	pixel_t		*pixels[MIPLEVELS];
 	pixel_t		*pixelglow[MIPLEVELS];
-	// r_max_size's texels, drawn in place of the above while small is set
-	// (R_CheckMaxSize): the TGA file's or the map's, halved as ezQuake halves
-	// its textures for gl_max_size and averaged in linear light, laid out as rgb
+	// the world's texels as r_max_size and r_saturation_world have them, drawn
+	// in place of the above while custom is set (R_CheckWorldTextures): the TGA
+	// file's or the map's, halved as ezQuake halves its textures for
+	// gl_max_size, averaged in linear light, and desaturated; laid out as rgb
 	// and glow. Made from the model's arena the first time the texture is
-	// reduced, and kept; smallglow NULL until a reduction has fullbright light,
-	// all 0 for one without.
-	bool		small;
-	pixel_t		*smallrgb[MIPLEVELS];
-	pixel_t		*smallglow[MIPLEVELS];
+	// custom, and kept; customglow NULL until it has fullbright light, all 0
+	// for one without.
+	bool		custom;
+	pixel_t		*customrgb[MIPLEVELS];
+	pixel_t		*customglow[MIPLEVELS];
 } texture_t;
 
 
@@ -397,8 +398,12 @@ typedef struct model_s
 	int			numtextures;
 	texture_t	**textures;
 	texture_t	*skytexture;	// the last named sky*, made the sky at R_NewMap
-	int			maxsize;		// the r_max_size its textures are reduced for, 0 none (R_CheckMaxSize)
-	bool		maxsizefiles;	// and from TGA files where there are (r_externaltextures)
+	// what its textures are drawn as (R_CheckWorldTextures): halved for this
+	// r_max_size (0 none), this much grayer (1 - r_saturation_world), from TGA
+	// files where there are (r_externaltextures)
+	int			texmaxsize;
+	float		texgray;
+	bool		texfiles;
 
 	byte		*visdata;
 	int			vissize;
@@ -412,6 +417,11 @@ typedef struct model_s
 	byte		*lightdata;		// mono, 128 is 1.0
 	int			lightsamples;
 	unsigned short	*lightrgb;	// 3 per sample, 2048 is 1.0; NULL without colored light
+	// the samples as the map has them while lightrgb holds them this much
+	// grayer (1 - r_saturation_lightmaps, R_CheckLightSaturation); NULL until
+	// they first are
+	unsigned short	*lightrgbsource;
+	float		lightgray;
 	char		*entities;
 
 //

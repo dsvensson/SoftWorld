@@ -121,6 +121,30 @@ pixel_t R_AveragePixels (const pixel_t *p, int n)
 
 /*
 ===============
+R_SaturatePixel
+
+A pixel's color s of the way to it from the gray of its luminance, Rec.
+709's of its linear light; its top bits kept
+===============
+*/
+pixel_t R_SaturatePixel (pixel_t p, float s)
+{
+	float	c[3], y, v;
+	int		i;
+
+	for (i = 0 ; i < 3 ; i++)
+	{
+		v = (float)((p >> (10 * i)) & 1023);
+		v *= v;
+		c[i] = v * v;
+	}
+	y = (1 - s) * (0.2126f * c[0] + 0.7152f * c[1] + 0.0722f * c[2]);
+	return (p & 0xc0000000u) | RGB30 (R_LightChannel (y + s * c[0]), R_LightChannel (y + s * c[1]),
+		R_LightChannel (y + s * c[2]));
+}
+
+/*
+===============
 R_ImagePixels
 
 A w x h RGBA image as outw x outh pixels, each the average in linear light of

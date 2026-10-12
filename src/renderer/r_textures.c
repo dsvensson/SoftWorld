@@ -33,7 +33,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // liquid's, which light doesn't reach, is drawn no darker than that.
 //
 // r_max_size halves the world's textures as ezQuake's gl_max_size does,
-// averaging in linear light, drawn as a file's are.
+// averaging in linear light, and r_saturation_world takes their color away;
+// they are drawn as a file's are, and lit through a colormap as gray in
+// r_lightmode 0.
 
 #include "r_local.h"
 
@@ -45,16 +47,28 @@ cvar_t	r_externaltextures = {.name = "r_externaltextures", .string = "1", .archi
 		"<name>_glow.tga. They are read as the map loads; walls are drawn with them in r_lightmode 1.",
 	.values = (const cvar_value_t[]){{"0", "The map's own"}, {"1", "The files'"}, {0}}};
 
-cvar_t	r_max_size = {.name = "r_max_size", .string = "0", .archive = true, .min = 0, .max = 4096,
+static cvar_t	r_max_size = {.name = "r_max_size", .string = "0", .archive = true, .min = 0, .max = 4096,
 	.description = "The most texels a side the world's textures are drawn with, its doors' and lifts' too, as "
 		"ezQuake's gl_max_size: a larger one is halved until it fits, each texel the average of four in linear "
 		"light, so 1 draws a wall in its texture's average color. Walls take it in r_lightmode 1, liquids in "
 		"either; fences, the sky, other brush models, models and attract mode are drawn as they are. 0 is no limit."};
 
+static cvar_t	r_saturation_world = {.name = "r_saturation_world", .string = "1", .archive = true, .min = 0, .max = 1,
+	.description = "How much of their color the world's textures keep, its doors' and lifts' too, its liquids' and "
+		"fences': 1 all of it, 0 none, a gray world under whatever color its light has (r_saturation_lightmaps). "
+		"The sky, other brush models, models and attract mode keep theirs."};
+
+// d_cm30 with r_saturation_world's color: the colormap the world's textures
+// are lit through in r_lightmode 0
+const pixel_t	*r_worldcolormap = d_cm30;
+static pixel_t	r_graycolormap[VID_GRADES * 256];
+static float	r_colormapgray;		// 1 - the r_saturation_world it has
+
 void R_TexturesInit (void)
 {
 	Cvar_RegisterVariable (&r_externaltextures);
 	Cvar_RegisterVariable (&r_max_size);
+	Cvar_RegisterVariable (&r_saturation_world);
 }
 
 // the directory of a model's textures in textures/: a map's name, or bmodels
@@ -230,7 +244,8 @@ R_LightLiquid
 
 A liquid's texels as drawn (rgb[0]) from its file's (rgb[1]): in r_lightmode 1
 its fullbright light (glow[0]) times r_fullbright_scale is their floor, as the
-palette's fullbrights have theirs (d_pal30_unlit); r_max_size's the same
+palette's fullbrights have theirs (d_pal30_unlit); the world's custom ones the
+same
 ===============
 */
 static void R_LightLiquidTexels (pixel_t *drawn, const pixel_t *texels, const pixel_t *glow)
@@ -255,8 +270,8 @@ static void R_LightLiquid (texture_t *tx)
 		return;
 	if (tx->rgb[1])
 		R_LightLiquidTexels (tx->rgb[0], tx->rgb[1], tx->glow[0]);
-	if (tx->smallrgb[1])
-		R_LightLiquidTexels (tx->smallrgb[0], tx->smallrgb[1], tx->smallglow[0]);
+	if (tx->customrgb[1])
+		R_LightLiquidTexels (tx->customrgb[0], tx->customrgb[1], tx->customglow[0]);
 }
 
 // the liquids loaded, after r_fullbright_scale or r_lightmode changed
@@ -564,96 +579,143 @@ static void R_SmallTexels (pixel_t *pix, int w, int h, int size, pixel_t **out, 
 
 /*
 ===============
-R_ReduceTexture
+R_CustomTexture
 
-One of the world's textures as r_max_size has it at size (tx->small): its TGA
-file's texels where files has them drawn and it has one, else the map's,
-halved until no side is larger than size. Not where it is no larger already,
-or size is 0; nor fences and the sky, which ezQuake leaves as they are
+One of the world's textures as r_max_size and r_saturation_world have it
+(tx->custom): its TGA file's texels where files has them drawn and it has one,
+else the map's, halved until no side is larger than size, then gray of the
+way to the gray of their luminance. As it is drawn without them where it is no
+larger than size already, or size is 0, and gray is 0; the sky is drawn as it
+is, and fences aren't halved, which ezQuake leaves as they are
 (gl_scaleAlphaTextures 0).
 ===============
 */
-static void R_ReduceTexture (texture_t *tx, const char *dir, int size, bool files, struct arena_s *arena)
+static void R_CustomTexture (texture_t *tx, const char *dir, int size, bool files, float gray,
+	struct arena_s *arena)
 {
-	int		width = (int)tx->width, height = (int)tx->height, w, h, gw, gh, mip, mips, outw, outh;
-	bool	liquid = tx->name[0] == '*';
-	pixel_t	*pix, *glow;
+	int		width = (int)tx->width, height = (int)tx->height, w, h, gw, gh, mip, mips, outw, outh, i, n;
+	bool	liquid = tx->name[0] == '*', halve, file;
+	pixel_t	*pix, *glow, **out;
 
-	tx->small = false;
-	if (!size || (width <= size && height <= size) || tx->name[0] == '{' || !Q_strncmp (tx->name, "sky", 3))
+	tx->custom = false;
+	halve = size && (width > size || height > size) && tx->name[0] != '{';
+	if ((!halve && gray <= 0) || !Q_strncmp (tx->name, "sky", 3))
 		return;
 
-	if (!files || !tx->rgb[0] || !R_FileImages (tx, dir, &pix, &w, &h, &glow, &gw, &gh))
-	{
-		R_IndexImages ((const byte *)tx + tx->offsets[0], width * height, &pix, &glow);
-		w = gw = width;
-		h = gh = height;
-	}
-
 	// laid out as rgb and glow: a wall's four mip levels, a liquid's 64x64
-	// texels at smallrgb[1], lit into smallrgb[0]
+	// texels at customrgb[1], lit into customrgb[0]
 	mips = liquid ? 1 : MIPLEVELS;
 	outw = liquid ? LIQUID_SIZE : width;
 	outh = liquid ? LIQUID_SIZE : height;
-	if (!tx->smallrgb[0])
+	if (!tx->customrgb[0])
 	{
 		if (liquid)
 		{
-			tx->smallrgb[0] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
-			tx->smallrgb[1] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
+			tx->customrgb[0] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
+			tx->customrgb[1] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
 		}
 		else
-			R_AllocMips (tx->smallrgb, width, height, arena);
+			R_AllocMips (tx->customrgb, width, height, arena);
 	}
-	if (glow && !tx->smallglow[0])
+	out = liquid ? tx->customrgb + 1 : tx->customrgb;
+
+	// halved from the texels at their size, or as they are drawn without
+	file = files && tx->rgb[0];
+	pix = glow = NULL;
+	gw = gh = 0;
+	if (halve)
 	{
-		if (liquid)
-			tx->smallglow[0] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
-		else
-			R_AllocMips (tx->smallglow, width, height, arena);
+		if (!file || !R_FileImages (tx, dir, &pix, &w, &h, &glow, &gw, &gh))
+		{
+			R_IndexImages ((const byte *)tx + tx->offsets[0], width * height, &pix, &glow);
+			w = gw = width;
+			h = gh = height;
+		}
+		R_SmallTexels (pix, w, h, size, out, mips, outw, outh);
+		Mem_Free (pix);
+	}
+	else
+	{
+		for (mip = 0 ; mip < mips ; mip++)
+			memcpy (out[mip], !file ? tx->pixels[mip] : tx->rgb[mip + liquid],
+				(size_t)(outw >> mip) * (outh >> mip) * sizeof(pixel_t));
+		glow = file ? tx->glow[0] : tx->pixelglow[0];
 	}
 
-	R_SmallTexels (pix, w, h, size, liquid ? tx->smallrgb + 1 : tx->smallrgb, mips, outw, outh);
-	Mem_Free (pix);
-	if (glow)
+	// their fullbright light the same, all 0 where there is none
+	if (glow && !tx->customglow[0])
 	{
-		R_SmallTexels (glow, gw, gh, size, tx->smallglow, mips, outw, outh);
+		if (liquid)
+			tx->customglow[0] = Arena_Alloc (arena, LIQUID_SIZE * LIQUID_SIZE * sizeof(pixel_t));
+		else
+			R_AllocMips (tx->customglow, width, height, arena);
+	}
+	for (mip = 0 ; mip < mips && tx->customglow[0] ; mip++)
+	{
+		n = (outw >> mip) * (outh >> mip);
+		if (!glow)
+			memset (tx->customglow[mip], 0, (size_t)n * sizeof(pixel_t));
+		else if (!halve)
+			memcpy (tx->customglow[mip], file ? tx->glow[mip] : tx->pixelglow[mip], (size_t)n * sizeof(pixel_t));
+	}
+	if (glow && halve)
+	{
+		R_SmallTexels (glow, gw, gh, size, tx->customglow, mips, outw, outh);
 		Mem_Free (glow);
 	}
-	else if (tx->smallglow[0])
+
+	if (gray > 0)
 		for (mip = 0 ; mip < mips ; mip++)
-			memset (tx->smallglow[mip], 0, (size_t)(outw >> mip) * (outh >> mip) * sizeof(pixel_t));
+		{
+			n = (outw >> mip) * (outh >> mip);
+			for (i = 0 ; i < n ; i++)
+				out[mip][i] = R_SaturatePixel (out[mip][i], 1 - gray);
+			for (i = 0 ; i < n && tx->customglow[0] ; i++)
+				tx->customglow[mip][i] = R_SaturatePixel (tx->customglow[mip][i], 1 - gray);
+		}
 	if (liquid)
-		R_LightLiquidTexels (tx->smallrgb[0], tx->smallrgb[1], tx->smallglow[0]);
-	tx->small = true;
+		R_LightLiquidTexels (tx->customrgb[0], tx->customrgb[1], tx->customglow[0]);
+	tx->custom = true;
 }
 
 /*
 ===============
-R_CheckMaxSize
+R_CheckWorldTextures
 
-The world's textures, its doors' and lifts' with them, reduced for
-r_max_size, and again when it or r_externaltextures changes, as ezQuake
-reloads its textures for gl_max_size. Other brush models' aren't, as
-ezQuake's gl_scaleModelTextures 0 leaves them.
+The world's textures, its doors' and lifts' with them, as r_max_size and
+r_saturation_world have them, again whenever they or r_externaltextures
+change, as ezQuake reloads its textures for gl_max_size. Other brush models'
+are drawn as they are, as ezQuake's gl_scaleModelTextures 0 leaves them.
 ===============
 */
-void R_CheckMaxSize (void)
+void R_CheckWorldTextures (void)
 {
 	model_t	*world = r_scene.worldmodel;
 	int		size = (int)r_max_size.value, i;
+	float	gray = 1 - r_saturation_world.value;
 	bool	files = r_externaltextures.value != 0;
 	char	dir[MAX_QPATH];
 
 	if (size < 0)
 		size = 0;
-	if (!world || world->type != mod_brush || (world->maxsize == size && (!size || world->maxsizefiles == files)))
+	if (gray != r_colormapgray)
+	{
+		r_colormapgray = gray;
+		for (i = 0 ; i < VID_GRADES * 256 && gray > 0 ; i++)
+			r_graycolormap[i] = R_SaturatePixel (d_cm30[i], 1 - gray);
+		r_worldcolormap = gray > 0 ? r_graycolormap : d_cm30;
+		D_FlushCaches ();
+	}
+
+	if (!world || world->type != mod_brush || (world->texmaxsize == size && world->texgray == gray
+		&& ((!size && gray <= 0) || world->texfiles == files)))
 		return;
-	world->maxsize = size;
-	world->maxsizefiles = files;
+	world->texmaxsize = size;
+	world->texgray = gray;
+	world->texfiles = files;
 	R_TextureDir (world->name, dir, sizeof(dir));
 	for (i = 0 ; i < world->numtextures ; i++)
 		if (world->textures[i])
-			R_ReduceTexture (world->textures[i], dir, size, files, world->arena);
+			R_CustomTexture (world->textures[i], dir, size, files, gray, world->arena);
 	D_FlushCaches ();
 }

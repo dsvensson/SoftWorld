@@ -1277,7 +1277,8 @@ void R_RenderView (void)
 		r_time1 = (float)Sys_DoubleTime ();
 
 	R_CheckLightSettings ();
-	R_CheckMaxSize ();
+	R_CheckWorldTextures ();
+	R_CheckLightSaturation ();
 	R_CheckSkybox (false);
 	R_SetupFog ();
 	R_CheckThreads ();
