@@ -233,6 +233,12 @@ void Simd_M3_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *
 	Simd_Scalar_TexSpan (dest, map, src, srcwidth, u, v, count);
 }
 
+// spans of fewer than 32 pixels are the scalar kernel's, which steps one
+// subdivision at a time faster than this does four, the division of each
+// alongside the pixels of the one before; longer ones take the four's
+// division in lanes ahead of the pixels. Both draw the same.
+#define M3_TURB_SCALAR	32
+
 void Simd_M3_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
 	const int *turb, int u, int v, int count)
 {
@@ -240,6 +246,11 @@ void Simd_M3_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src
 	m3_batch_t		b;
 	int				first, n, k, pixels, s, t, sstep, tstep, sturb, tturb;
 
+	if (count < M3_TURB_SCALAR)
+	{
+		Simd_Scalar_TurbSpan (dest, map, src, palette, turb, u, v, count);
+		return;
+	}
 	Simd_M3_SpanStart (&st, map, u, v, count, 4);
 	for (first = 0 ; first < st.subdivisions ; first += n)
 	{
@@ -270,6 +281,11 @@ void Simd_M3_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint
 	m3_batch_t		b;
 	int				first, n, k, pixels, s, t, sstep, tstep, sturb, tturb;
 
+	if (count < M3_TURB_SCALAR)
+	{
+		Simd_Scalar_TurbSpanRGB30 (dest, map, src, turb, u, v, count);
+		return;
+	}
 	Simd_M3_SpanStart (&st, map, u, v, count, 4);
 	for (first = 0 ; first < st.subdivisions ; first += n)
 	{
@@ -292,14 +308,66 @@ void Simd_M3_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint
 	}
 }
 
-// Simd_M3_TurbSpan's stepping, the light read where s and t are
+// four words in lanes, put together a pair at a time
+SIMD_INLINE uint32x4_t Simd_M3_Pairs (uint32_t a, uint32_t b, uint32_t c, uint32_t d)
+{
+	return vreinterpretq_u32_u64 (vcombine_u64 (vcreate_u64 (a | (uint64_t)b << 32), vcreate_u64 (c | (uint64_t)d << 32)));
+}
+
+// four RGB30 texels of a lit liquid in their light, with their glow, as
+// Simd_TurbLitTexel lights them
+SIMD_INLINE uint32x4_t Simd_M3_TurbLit4 (uint32x4_t p, uint32x4_t g, uint32x4_t l, uint32x4_t gs)
+{
+	const uint32x4_t	channel = vdupq_n_u32 (1023);
+	uint32x4_t			out = vdupq_n_u32 (0), c, f;
+	int					k;
+
+	for (k = 0 ; k < 3 ; k++)
+	{
+		const int32x4_t	down = vdupq_n_s32 (-10 * k);
+
+		c = vmulq_u32 (vandq_u32 (vshlq_u32 (p, down), channel), vandq_u32 (vshlq_u32 (l, down), channel));
+		f = vmulq_u32 (vandq_u32 (vshlq_u32 (g, down), channel), gs);
+		c = vminq_u32 (vmaxq_u32 (vshrq_n_u32 (c, 9), vshrq_n_u32 (f, 15)), channel);
+		out = vorrq_u32 (out, vshlq_u32 (c, vdupq_n_s32 (10 * k)));
+	}
+	return out;
+}
+
+// a pixel of a lit liquid: its texel in the 64x64 texture, and its light
+SIMD_INLINE int Simd_M3_TurbLitAt (const simd_turblight_t *lit, const int *turb, int shift, int s, int t,
+	int ls, int lt, uint32_t *light)
+{
+	int		sturb = ((s + turb[(t >> 16) & 127]) >> 16) & 63;
+	int		tturb = ((t + turb[(s >> 16) & 127]) >> 16) & 63;
+
+	*light = lit->light[(lt >> shift) * lit->width + (ls >> shift)];
+	return (tturb << 6) + sturb;
+}
+
+// Simd_M3_TurbSpan's stepping, the light read where s and t are; in RGB, four
+// pixels at a time: their texels and light looked up as four chains of their
+// own, put together in lanes a pair at a time, and lit in the lanes. Through
+// the colormap, spans of fewer than 32 pixels are the scalar kernel's, as
+// Simd_M3_TurbSpan's are; in RGB, of fewer than 8.
+#define M3_TURBLIT_SCALAR	8
+
 void Simd_M3_TurbSpanLit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
 	const int *turb, int u, int v, int count)
 {
-	m3_stepper_t	st;
-	m3_batch_t		b;
-	int				first, n, k, pixels, s, t, ls, lt, sstep, tstep, sturb, tturb, shift = 16 + lit->shift;
+	const uint32x4_t	gs = vdupq_n_u32 ((uint32_t)lit->glowscale);
+	const uint32_t		*texels = lit->texels, *glow = lit->glow;
+	m3_stepper_t		st;
+	m3_batch_t			b;
+	uint32_t			l0, l1, l2, l3;
+	uint32x4_t			g;
+	int					first, n, k, pixels, s, t, ls, lt, sstep, tstep, x0, x1, x2, x3, shift = 16 + lit->shift;
 
+	if (count < (lit->colormap ? M3_TURB_SCALAR : M3_TURBLIT_SCALAR))
+	{
+		Simd_Scalar_TurbSpanLit (dest, map, lit, turb, u, v, count);
+		return;
+	}
 	Simd_M3_SpanStart (&st, map, u, v, count, 4);
 	for (first = 0 ; first < st.subdivisions ; first += n)
 	{
@@ -314,12 +382,26 @@ void Simd_M3_TurbSpanLit (uint32_t *dest, const simd_texmap_t *map, const simd_t
 			t = (lt + lit->toffset) & ((128 << 16) - 1);
 			sstep = b.sstep[k];
 			tstep = b.tstep[k];
+			for ( ; pixels >= 4 && !lit->colormap ; pixels -= 4, dest += 4)
+			{
+				x0 = Simd_M3_TurbLitAt (lit, turb, shift, s, t, ls, lt, &l0);
+				x1 = Simd_M3_TurbLitAt (lit, turb, shift, s + sstep, t + tstep, ls + sstep, lt + tstep, &l1);
+				x2 = Simd_M3_TurbLitAt (lit, turb, shift, s + 2 * sstep, t + 2 * tstep, ls + 2 * sstep,
+					lt + 2 * tstep, &l2);
+				x3 = Simd_M3_TurbLitAt (lit, turb, shift, s + 3 * sstep, t + 3 * tstep, ls + 3 * sstep,
+					lt + 3 * tstep, &l3);
+				g = glow ? Simd_M3_Pairs (glow[x0], glow[x1], glow[x2], glow[x3]) : vdupq_n_u32 (0);
+				vst1q_u32 (dest, Simd_M3_TurbLit4 (Simd_M3_Pairs (texels[x0], texels[x1], texels[x2], texels[x3]),
+					g, Simd_M3_Pairs (l0, l1, l2, l3), gs));
+				s += 4 * sstep;
+				t += 4 * tstep;
+				ls += 4 * sstep;
+				lt += 4 * tstep;
+			}
 			for ( ; pixels > 0 ; pixels--, s += sstep, t += tstep, ls += sstep, lt += tstep)
 			{
-				sturb = ((s + turb[(t >> 16) & 127]) >> 16) & 63;
-				tturb = ((t + turb[(s >> 16) & 127]) >> 16) & 63;
-				*dest++ = Simd_TurbLitTexel (lit, (tturb << 6) + sturb,
-					lit->light[(lt >> shift) * lit->width + (ls >> shift)]);
+				x0 = Simd_M3_TurbLitAt (lit, turb, shift, s, t, ls, lt, &l0);
+				*dest++ = Simd_TurbLitTexel (lit, x0, l0);
 			}
 		}
 	}
@@ -426,12 +508,6 @@ MODELS
 
 ===============================================================================
 */
-
-// four words in lanes, put together a pair at a time
-SIMD_INLINE uint32x4_t Simd_M3_Pairs (uint32_t a, uint32_t b, uint32_t c, uint32_t d)
-{
-	return vreinterpretq_u32_u64 (vcombine_u64 (vcreate_u64 (a | (uint64_t)b << 32), vcreate_u64 (c | (uint64_t)d << 32)));
-}
 
 // four pixels at a time, the skin's, remap's, palette's and floor's entries
 // loaded into the lanes and the pixels in front blended into the row and the z
