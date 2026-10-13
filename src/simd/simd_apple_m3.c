@@ -204,29 +204,14 @@ SIMD_INLINE void Simd_M3_SpanBatch (m3_stepper_t *st, int first, int n, m3_batch
 	st->t = vgetq_lane_s32 (tn, 3);
 }
 
+// the scalar kernel, built with the rest, ran half as fast again as this did
+// with its stepping four subdivisions at a time in lanes: a pixel is a texel
+// loaded and stored, which lanes don't speed, and the scalar stepping's
+// division for a subdivision overlaps the pixels of the one before
 void Simd_M3_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src, int srcwidth,
 	int u, int v, int count)
 {
-	m3_stepper_t	st;
-	m3_batch_t		b;
-	int				first, n, k, pixels, s, t, sstep, tstep;
-
-	Simd_M3_SpanStart (&st, map, u, v, count, 3);
-	for (first = 0 ; first < st.subdivisions ; first += n)
-	{
-		n = st.subdivisions - first < 4 ? st.subdivisions - first : 4;
-		Simd_M3_SpanBatch (&st, first, n, &b);
-		for (k = 0 ; k < n ; k++)
-		{
-			pixels = count - ((first + k) << 3) < 8 ? count - ((first + k) << 3) : 8;
-			s = b.sstart[k];
-			t = b.tstart[k];
-			sstep = b.sstep[k];
-			tstep = b.tstep[k];
-			for ( ; pixels > 0 ; pixels--, s += sstep, t += tstep)
-				*dest++ = src[(s >> 16) + (t >> 16) * srcwidth];
-		}
-	}
+	Simd_Scalar_TexSpan (dest, map, src, srcwidth, u, v, count);
 }
 
 void Simd_M3_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
