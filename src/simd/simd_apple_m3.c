@@ -427,6 +427,16 @@ MODELS
 ===============================================================================
 */
 
+// four words in lanes, put together a pair at a time
+SIMD_INLINE uint32x4_t Simd_M3_Pairs (uint32_t a, uint32_t b, uint32_t c, uint32_t d)
+{
+	return vreinterpretq_u32_u64 (vcombine_u64 (vcreate_u64 (a | (uint64_t)b << 32), vcreate_u64 (c | (uint64_t)d << 32)));
+}
+
+// four pixels at a time, the skin's, remap's, palette's and floor's entries
+// loaded into the lanes and the pixels in front blended into the row and the z
+// buffer whole; the last few (a span of fewer than four is all of them) the
+// scalar kernel's, which steps on from where the four left off as they did
 void Simd_M3_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,
 	int light, int zi, int count, const simd_aliasmap_t *map)
 {
@@ -438,80 +448,60 @@ void Simd_M3_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac,
 	const int32x4_t		whole = vmulq_s32 (lane, vdupq_n_s32 (map->stepwhole));
 	const int32x4_t		skinwidth = vdupq_n_s32 (map->skinwidth);
 	const int32x4_t		full = vdupq_n_s32 (255 << 6);
-	float32x4_t			z;
-	uint32x4_t			visible, color, pal, fl, level;
-	int32x4_t			s, t, l, texel;
-	uint32_t			vis[4], out[4], p[4], f[4], idx[4];
-	int32_t				at[4], lights[4];
-	float				zs[4];
-	int					i, k, n, snext, tnext;
+	const uint32x4_t	hole = vdupq_n_u32 (255);
+	float32x4_t			z, zb;
+	uint32x4_t			visible, texel, color, pal, fl, level;
+	int32x4_t			s, t, l;
+	int					i, k, snext, tnext;
 
-	for (i = 0 ; i < count ; i += 4)
+	for (i = 0 ; i + 4 <= count ; i += 4)
 	{
-		n = count - i < 4 ? count - i : 4;
 		z = vmulq_f32 (vcvtq_f32_s32 (vaddq_s32 (vdupq_n_s32 (zi), zistep)), vdupq_n_f32 (1.0f / 2147483648.0f));
-		if (n == 4)
-			visible = vcgeq_f32 (z, vld1q_f32 (zbuf + i));
-		else
-		{
-			float	zb[4] = {0, 0, 0, 0};
-
-			memcpy (zb, zbuf + i, (size_t)n * sizeof(float));
-			visible = vcgeq_f32 (z, vld1q_f32 (zb));
-			vst1q_u32 (vis, visible);
-			for (k = n ; k < 4 ; k++)
-				vis[k] = 0;
-			visible = vld1q_u32 (vis);
-		}
-
+		zb = vld1q_f32 (zbuf + i);
+		visible = vcgeq_f32 (z, zb);
 		if (vmaxvq_u32 (visible))
 		{
 			// each pixel's texel: the whole steps and the carries of both fractions
+			// (whole steps back are behind tex); the four lookups each pixel
+			// takes, the skin's, remap's and then palette's and floor's, are
+			// four chains of their own, put together in lanes after
 			s = vaddq_s32 (vdupq_n_s32 (sfrac), sstep);
 			t = vaddq_s32 (vdupq_n_s32 (tfrac), tstep);
-			texel = vaddq_s32 (whole, vmlaq_s32 (vshrq_n_s32 (s, 16), vshrq_n_s32 (t, 16), skinwidth));
-			l = vaddq_s32 (vdupq_n_s32 (light), lightstep);
-			vst1q_u32 (vis, visible);
-			vst1q_s32 (at, texel);
-			vst1q_s32 (lights, l);
-			vst1q_f32 (zs, z);
-			if (map->holey)
-				for (k = 0 ; k < n ; k++)
-					if (tex[at[k]] == 255)
-						vis[k] = 0;
+			{
+				int32x4_t	at = vaddq_s32 (whole, vmlaq_s32 (vshrq_n_s32 (s, 16), vshrq_n_s32 (t, 16), skinwidth));
+				uint32_t	t0 = tex[vgetq_lane_s32 (at, 0)], t1 = tex[vgetq_lane_s32 (at, 1)];
+				uint32_t	t2 = tex[vgetq_lane_s32 (at, 2)], t3 = tex[vgetq_lane_s32 (at, 3)];
+				uint32_t	r0 = map->remap[t0], r1 = map->remap[t1], r2 = map->remap[t2], r3 = map->remap[t3];
 
-			if (map->colormap)
-			{
-				for (k = 0 ; k < n ; k++)
-					if (vis[k])
-					{
-						dest[i + k] = map->colormap[map->remap[tex[at[k]]] + (lights[k] & 0xFF00)];
-						zbuf[i + k] = zs[k];
-					}
-			}
-			else
-			{
-				for (k = 0 ; k < 4 ; k++)
+				texel = Simd_M3_Pairs (t0, t1, t2, t3);
+				if (map->colormap)
 				{
-					idx[k] = k < n && vis[k] ? map->remap[tex[at[k]]] : 0;
-					p[k] = map->palette[idx[k]];
-					f[k] = map->floor[idx[k]];
+					// each pixel's light, as the lanes have it: four steps a group
+					const uint32_t	*cm = map->colormap;
+					unsigned		ul = (unsigned)light, us = (unsigned)map->lightstep;
+
+					color = Simd_M3_Pairs (cm[r0 + (ul & 0xFF00)], cm[r1 + ((ul + us) & 0xFF00)],
+						cm[r2 + ((ul + 2 * us) & 0xFF00)], cm[r3 + ((ul + 3 * us) & 0xFF00)]);
 				}
-				pal = vld1q_u32 (p);
-				fl = vld1q_u32 (f);
+				else
+				{
+					pal = Simd_M3_Pairs (map->palette[r0], map->palette[r1], map->palette[r2], map->palette[r3]);
+					fl = Simd_M3_Pairs (map->floor[r0], map->floor[r1], map->floor[r2], map->floor[r3]);
+				}
+			}
+			if (map->holey)
+				visible = vbicq_u32 (visible, vceqq_u32 (texel, hole));
+			if (!map->colormap)
+			{
+				l = vaddq_s32 (vdupq_n_s32 (light), lightstep);
 				level = vbicq_u32 (vreinterpretq_u32_s32 (vsubq_s32 (full, l)), vcgeq_s32 (l, full));
 				color = vdupq_n_u32 (0);
 				for (k = 0 ; k < 3 ; k++)
 					color = Simd_M3_LitChannel (color, pal, fl,
 						vshrq_n_u32 (vmulq_u32 (level, vdupq_n_u32 (map->tint[k])), 6), k);
-				vst1q_u32 (out, color);
-				for (k = 0 ; k < n ; k++)
-					if (vis[k])
-					{
-						dest[i + k] = out[k];
-						zbuf[i + k] = zs[k];
-					}
 			}
+			vst1q_u32 (dest + i, vbslq_u32 (visible, color, vld1q_u32 (dest + i)));
+			vst1q_f32 (zbuf + i, vbslq_f32 (visible, z, zb));
 		}
 
 		// four pixels on
@@ -523,6 +513,8 @@ void Simd_M3_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac,
 		sfrac = snext & 0xFFFF;
 		tfrac = tnext & 0xFFFF;
 	}
+	if (i < count)
+		Simd_Scalar_AliasSpan (dest + i, zbuf + i, tex, sfrac, tfrac, light, zi, count - i, map);
 }
 
 /*
