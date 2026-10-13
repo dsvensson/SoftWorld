@@ -52,7 +52,8 @@ bool	ActiveApp, Minimized;
 #define SYS_WAKE_EVENT	1	// the subtype of the event the kqueue posts
 
 static int		sys_woken;			// what the kqueue had (SYS_WAIT_*), since the last wait
-static bool		sys_wakeposted;		// a wake event is in the queue
+static bool		sys_wakeposted;		// a wake event is in the queue, or was until something but
+									// us took it: false again whenever the queue is seen empty
 
 @interface SWApplicationDelegate : NSObject <NSApplicationDelegate>
 @end
@@ -185,6 +186,10 @@ void Sys_SendKeyEvents (void)
 			[NSApp sendEvent:event];
 		}
 	}
+	// the queue is empty, so no wake event is in it, whatever took the last:
+	// left set, the kqueue would never post another, and every wait would
+	// run on to its date
+	sys_wakeposted = false;
 }
 
 // the kqueue has something: note what, and wake the wait for an event
@@ -251,6 +256,7 @@ bool Sys_WaitEvents (double until)
 				inMode:NSDefaultRunLoopMode dequeue:NO];
 			if (!event)
 			{
+				sys_wakeposted = false;		// nothing came: no wake event is in the queue
 				early = false;
 				break;
 			}
