@@ -38,6 +38,25 @@ static inline int32x4_t Simd_M3_Iota (void)
 	return vld1q_s32 (iota);
 }
 
+// four table entries, by four bytes
+SIMD_INLINE uint32x4_t Simd_M3_LookupBytes (const uint32_t *table, const byte *idx)
+{
+	uint32x4_t	v = vld1q_dup_u32 (table + idx[0]);
+
+	v = vld1q_lane_u32 (table + idx[1], v, 1);
+	v = vld1q_lane_u32 (table + idx[2], v, 2);
+	return vld1q_lane_u32 (table + idx[3], v, 3);
+}
+
+// four bytes, zero extended to 32 bit lanes
+SIMD_INLINE uint32x4_t Simd_M3_Widen (const byte *src)
+{
+	uint32_t	t;
+
+	memcpy (&t, src, 4);
+	return vmovl_u16 (vget_low_u16 (vmovl_u8 (vreinterpret_u8_u32 (vdup_n_u32 (t)))));
+}
+
 // sixteen at a time from four running indices, then four, then the last four
 // again ending on the last pixel (the same values where they overlap)
 void Simd_M3_ZSpan (float *dest, int count, float zi, float step)
@@ -339,39 +358,13 @@ static inline uint32x4_t Simd_M3_LitChannel (uint32x4_t out, uint32x4_t pal, uin
 	return vorrq_u32 (out, vshlq_u32 (c, vdupq_n_s32 (10 * k)));
 }
 
+// two lookups a texel are most of it: with the light in lanes and the
+// palette's and floor's entries loaded into them, a lane or a pair at a time,
+// it ran no faster than the scalar kernel built with the rest
 void Simd_M3_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette,
 	const uint32_t *floor, const int light[3], const int step[3], int count)
 {
-	uint32_t	p[4], f[4], o[4];
-	uint32x4_t	pal, fl, out;
-	int32x4_t	rev, l;
-	int			j, k;
-
-	for (j = 0 ; j < count ; j += 4)
-	{
-		for (k = 0 ; k < 4 ; k++)
-		{
-			p[k] = j + k < count ? palette[src[j + k]] : 0;
-			f[k] = j + k < count ? floor[src[j + k]] : 0;
-		}
-		pal = vld1q_u32 (p);
-		fl = vld1q_u32 (f);
-		rev = vsubq_s32 (vdupq_n_s32 (count - 1 - j), Simd_M3_Iota ());
-		out = vdupq_n_u32 (0);
-		for (k = 0 ; k < 3 ; k++)
-		{
-			l = vmaxq_s32 (vmlaq_s32 (vdupq_n_s32 (light[k]), rev, vdupq_n_s32 (step[k])), vdupq_n_s32 (0));
-			out = Simd_M3_LitChannel (out, pal, fl, vreinterpretq_u32_s32 (l), k);
-		}
-		if (j + 4 <= count)
-			vst1q_u32 (dest + j, out);
-		else
-		{
-			vst1q_u32 (o, out);
-			for (k = 0 ; j + k < count ; k++)
-				dest[j + k] = o[k];
-		}
-	}
+	Simd_Scalar_LitRowRGB (dest, src, palette, floor, light, step, count);
 }
 
 // channel k of 4 colors lit as Simd_M3_LitChannel lights them, the floor the
@@ -393,44 +386,37 @@ void Simd_M3_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *g
 	const int light[3], const int step[3], int count)
 {
 	const uint32x4_t	gs = vdupq_n_u32 ((uint32_t)glowscale);
-	uint32_t			p[4], g[4], o[4];
+	int32x4_t			l[3], st[3], rev;
 	uint32x4_t			pix, gl, out;
-	int32x4_t			rev, l;
 	int					j, k;
 
-	for (j = 0 ; j < count ; j += 4)
+	if (count < 4)
 	{
-		if (j + 4 <= count)
-		{
-			pix = vld1q_u32 (src + j);
-			gl = glow ? vld1q_u32 (glow + j) : vdupq_n_u32 (0);
-		}
-		else
-		{
-			for (k = 0 ; k < 4 ; k++)
-			{
-				p[k] = j + k < count ? src[j + k] : 0;
-				g[k] = j + k < count && glow ? glow[j + k] : 0;
-			}
-			pix = vld1q_u32 (p);
-			gl = vld1q_u32 (g);
-		}
-		rev = vsubq_s32 (vdupq_n_s32 (count - 1 - j), Simd_M3_Iota ());
+		Simd_Scalar_LitRowRGB30 (dest, src, glow, glowscale, light, step, count);
+		return;
+	}
+	// the light in registers: the stores to dest could be to it, as far as the
+	// compiler knows, and it would be read again every four texels
+	for (k = 0 ; k < 3 ; k++)
+	{
+		l[k] = vdupq_n_s32 (light[k]);
+		st[k] = vdupq_n_s32 (step[k]);
+	}
+	rev = vsubq_s32 (vdupq_n_s32 (count - 1), Simd_M3_Iota ());
+	for (j = 0 ; j + 4 <= count ; j += 4, rev = vsubq_s32 (rev, vdupq_n_s32 (4)))
+	{
+		pix = vld1q_u32 (src + j);
+		gl = glow ? vld1q_u32 (glow + j) : vdupq_n_u32 (0);
 		out = vdupq_n_u32 (0);
 		for (k = 0 ; k < 3 ; k++)
-		{
-			l = vmaxq_s32 (vmlaq_s32 (vdupq_n_s32 (light[k]), rev, vdupq_n_s32 (step[k])), vdupq_n_s32 (0));
-			out = Simd_M3_GlowChannel (out, pix, gl, gs, vreinterpretq_u32_s32 (l), k);
-		}
-		if (j + 4 <= count)
-			vst1q_u32 (dest + j, out);
-		else
-		{
-			vst1q_u32 (o, out);
-			for (k = 0 ; j + k < count ; k++)
-				dest[j + k] = o[k];
-		}
+			out = Simd_M3_GlowChannel (out, pix, gl, gs,
+				vreinterpretq_u32_s32 (vmaxq_s32 (vmlaq_s32 (l[k], rev, st[k]), vdupq_n_s32 (0))), k);
+		vst1q_u32 (dest + j, out);
 	}
+	// the last few: a texel's light goes by how far it is from the row's end,
+	// so they are lit the same as a row of their own
+	if (j < count)
+		Simd_Scalar_LitRowRGB30 (dest + j, src + j, glow ? glow + j : NULL, glowscale, light, step, count - j);
 }
 
 /*
@@ -784,25 +770,6 @@ void Simd_M3_FogSpan (uint32_t *dest, const float *zbuf, float zi, float step, i
 		vst1q_u32 (pb, Simd_M3_Fog4 (vld1q_u32 (pb), z, fog));
 		memcpy (dest + i, pb, (size_t)n * 4);
 	}
-}
-
-// four table entries, by four bytes
-SIMD_INLINE uint32x4_t Simd_M3_LookupBytes (const uint32_t *table, const byte *idx)
-{
-	uint32x4_t	v = vld1q_dup_u32 (table + idx[0]);
-
-	v = vld1q_lane_u32 (table + idx[1], v, 1);
-	v = vld1q_lane_u32 (table + idx[2], v, 2);
-	return vld1q_lane_u32 (table + idx[3], v, 3);
-}
-
-// four bytes, zero extended to 32 bit lanes
-SIMD_INLINE uint32x4_t Simd_M3_Widen (const byte *src)
-{
-	uint32_t	t;
-
-	memcpy (&t, src, 4);
-	return vmovl_u16 (vget_low_u16 (vmovl_u8 (vreinterpret_u8_u32 (vdup_n_u32 (t)))));
 }
 
 // the bytes of a vector of four colors that make each of its vectors with
