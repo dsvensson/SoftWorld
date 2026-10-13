@@ -28,8 +28,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //
 // The main loop is the game's, as on Windows; events are taken from the queue
 // between frames. The wait for the next frame is AppKit's wait for an event,
-// with the kqueue (sockets, and the timer that ends the wait) as a run loop
-// source that posts an event when it has something.
+// with the kqueue (sockets, the timer that ends the wait, Sys_Wake) watched on
+// a thread of its own that posts an event when it has something.
 
 #import <AppKit/AppKit.h>
 
@@ -43,17 +43,19 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mac_local.h"
 
 #include <errno.h>
+#include <poll.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 bool	ActiveApp, Minimized;
 
-#define SYS_WAKE_EVENT	1	// the subtype of the event the kqueue posts
+#define SYS_WAKE_EVENT	1	// the subtype of the event the kqueue's watch posts
 
-static int		sys_woken;			// what the kqueue had (SYS_WAIT_*), since the last wait
-static bool		sys_wakeposted;		// a wake event is in the queue, or was until something but
-									// us took it: false again whenever the queue is seen empty
+static int					sys_woken;			// what the kqueue had (SYS_WAIT_*), since the last wait
+static dispatch_semaphore_t	sys_rewatch;		// the kqueue was read: watch it again
+static _Atomic bool			sys_watchposted;	// the watch posted its event, and waits for the read
 
 @interface SWApplicationDelegate : NSObject <NSApplicationDelegate>
 @end
@@ -177,50 +179,63 @@ void Sys_SendKeyEvents (void)
 				inMode:NSDefaultRunLoopMode dequeue:YES]))
 		{
 			if (event.type == NSEventTypeApplicationDefined && event.subtype == SYS_WAKE_EVENT)
-			{
-				sys_wakeposted = false;
-				continue;
-			}
+				continue;		// what it woke for, the wait reads from the kqueue
 			if (IN_HandleEvent (event))
 				continue;
 			[NSApp sendEvent:event];
 		}
 	}
-	// the queue is empty, so no wake event is in it, whatever took the last:
-	// left set, the kqueue would never post another, and every wait would
-	// run on to its date
-	sys_wakeposted = false;
 }
 
-// the kqueue has something: note what, and wake the wait for an event
-static void Sys_QueueReady (CFFileDescriptorRef descriptor, CFOptionFlags flags, void *info)
+// the kqueue read, on the main thread: its watch goes on
+static int Sys_ReadWatchedQueue (void)
 {
-	(void)flags;
-	(void)info;
-	sys_woken |= Sys_ReadWaitQueue (false);
-	CFFileDescriptorEnableCallBacks (descriptor, kCFFileDescriptorReadCallBack);
+	int		what = Sys_ReadWaitQueue (false);
 
-	if (!sys_wakeposted)
-	{
-		[NSApp postEvent:[NSEvent otherEventWithType:NSEventTypeApplicationDefined location:NSZeroPoint
-			modifierFlags:0 timestamp:0 windowNumber:0 context:nil subtype:SYS_WAKE_EVENT data1:0 data2:0]
-			atStart:YES];
-		sys_wakeposted = true;
-	}
+	if (atomic_exchange (&sys_watchposted, false))
+		dispatch_semaphore_signal (sys_rewatch);
+	return what;
 }
 
+/*
+================
+Sys_WatchWaitQueue
+
+A thread polls the kqueue, which is readable while it holds events and isn't
+read by the poll, and posts an event for the wait when it has something; then
+waits until the main thread has read it, and polls again, at once if it holds
+more. AppKit's own watch of a descriptor (CFFileDescriptor) stopped calling
+back now and then and stayed stopped: the timer's event sat in the kqueue, and
+every wait ran on to its date, 50 milliseconds late.
+================
+*/
 static void Sys_WatchWaitQueue (void)
 {
-	CFFileDescriptorRef	descriptor;
-	CFRunLoopSourceRef	source;
+	int			queue = Sys_WaitQueue ();
+	NSThread	*thread;
 
-	descriptor = CFFileDescriptorCreate (NULL, Sys_WaitQueue (), false, Sys_QueueReady, NULL);
-	if (!descriptor)
-		Sys_Error ("Couldn't watch the kqueue");
-	CFFileDescriptorEnableCallBacks (descriptor, kCFFileDescriptorReadCallBack);
-	source = CFFileDescriptorCreateRunLoopSource (NULL, descriptor, 0);
-	CFRunLoopAddSource (CFRunLoopGetMain (), source, kCFRunLoopCommonModes);
-	CFRelease (source);
+	sys_rewatch = dispatch_semaphore_create (0);
+	thread = [[NSThread alloc] initWithBlock:^{
+		struct pollfd	watch = {.fd = queue, .events = POLLIN};
+
+		for (;;)
+		{
+			watch.revents = 0;
+			if (poll (&watch, 1, -1) <= 0)
+				continue;		// a signal
+			atomic_store (&sys_watchposted, true);
+			@autoreleasepool
+			{
+				[NSApp postEvent:[NSEvent otherEventWithType:NSEventTypeApplicationDefined location:NSZeroPoint
+					modifierFlags:0 timestamp:0 windowNumber:0 context:nil subtype:SYS_WAKE_EVENT data1:0 data2:0]
+					atStart:YES];
+			}
+			dispatch_semaphore_wait (sys_rewatch, DISPATCH_TIME_FOREVER);
+		}
+	}];
+	thread.qualityOfService = NSQualityOfServiceUserInteractive;
+	thread.name = @"SoftWorld wait queue";
+	[thread start];
 }
 
 /*
@@ -237,7 +252,7 @@ bool Sys_WaitEvents (double until)
 	NSEvent	*event;
 	bool	early;
 
-	sys_woken |= Sys_ReadWaitQueue (false);
+	sys_woken |= Sys_ReadWatchedQueue ();
 	if (sys_woken & (SYS_WAIT_FD | SYS_WAIT_SIGNAL))
 	{
 		sys_woken = 0;
@@ -250,13 +265,12 @@ bool Sys_WaitEvents (double until)
 	{
 		@autoreleasepool
 		{
-			// the timer ends the wait; the date only if the kqueue couldn't
+			// the timer ends the wait; the date only if its wake never came
 			event = [NSApp nextEventMatchingMask:NSEventMaskAny
 				untilDate:[NSDate dateWithTimeIntervalSinceNow:until - Sys_DoubleTime () + 0.05]
 				inMode:NSDefaultRunLoopMode dequeue:NO];
 			if (!event)
 			{
-				sys_wakeposted = false;		// nothing came: no wake event is in the queue
 				early = false;
 				break;
 			}
@@ -267,8 +281,8 @@ bool Sys_WaitEvents (double until)
 			}
 			[NSApp nextEventMatchingMask:NSEventMaskApplicationDefined untilDate:[NSDate distantPast]
 				inMode:NSDefaultRunLoopMode dequeue:YES];
-			sys_wakeposted = false;
 		}
+		sys_woken |= Sys_ReadWatchedQueue ();
 		if (sys_woken & (SYS_WAIT_FD | SYS_WAIT_SIGNAL))
 		{
 			early = true;
@@ -279,7 +293,7 @@ bool Sys_WaitEvents (double until)
 			early = false;
 			break;
 		}
-		// the kqueue had nothing new: wait on
+		// the kqueue had nothing new (a wake for what the last read had): wait on
 	}
 	if (!(sys_woken & SYS_WAIT_TIMER))
 		Sys_ClearWaitTimer ();
