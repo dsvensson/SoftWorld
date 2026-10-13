@@ -517,6 +517,40 @@ void Simd_M3_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac,
 		Simd_Scalar_AliasSpan (dest + i, zbuf + i, tex, sfrac, tfrac, light, zi, count - i, map);
 }
 
+// the first n (1 to 3) of four words in lanes, the rest 0: a span's last few,
+// where a whole vector would read past it
+SIMD_INLINE uint32x4_t Simd_M3_LoadFew (const uint32_t *p, int n)
+{
+	uint32x4_t	v = vld1q_lane_u32 (p, vdupq_n_u32 (0), 0);
+
+	if (n > 1)
+		v = vld1q_lane_u32 (p + 1, v, 1);
+	if (n > 2)
+		v = vld1q_lane_u32 (p + 2, v, 2);
+	return v;
+}
+
+SIMD_INLINE float32x4_t Simd_M3_LoadFewF (const float *p, int n)
+{
+	float32x4_t	v = vld1q_lane_f32 (p, vdupq_n_f32 (0), 0);
+
+	if (n > 1)
+		v = vld1q_lane_f32 (p + 1, v, 1);
+	if (n > 2)
+		v = vld1q_lane_f32 (p + 2, v, 2);
+	return v;
+}
+
+// the first n (1 to 3) lanes stored
+SIMD_INLINE void Simd_M3_StoreFew (uint32_t *p, uint32x4_t v, int n)
+{
+	vst1q_lane_u32 (p, v, 0);
+	if (n > 1)
+		vst1q_lane_u32 (p + 1, v, 1);
+	if (n > 2)
+		vst1q_lane_u32 (p + 2, v, 2);
+}
+
 /*
 ===============================================================================
 
@@ -563,43 +597,24 @@ void Simd_M3_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, 
 	const float32x4_t	a = vdupq_n_f32 ((float)alpha), ia = vdupq_n_f32 ((float)(256 - alpha));
 	const uint32x4_t	cutout = vdupq_n_u32 (0x80000000u);
 	int32x4_t			idx = Simd_M3_Iota ();
-	uint32x4_t			s, d, m;
-	uint32_t			sb[4], db[4];
-	float				zb[4];
+	uint32x4_t			s, m;
 	int					i, n;
 
 	for (i = 0 ; i < count ; i += 4, idx = vaddq_s32 (idx, vdupq_n_s32 (4)))
 	{
+		// the last few a lane at a time; the lanes past them are stored nowhere
 		n = count - i < 4 ? count - i : 4;
-		if (n == 4)
-		{
-			s = vld1q_u32 (src + i);
-			m = vceqq_u32 (vandq_u32 (s, cutout), vdupq_n_u32 (0));
-			if (zbuf)
-				m = vandq_u32 (m, vcleq_f32 (vld1q_f32 (zbuf + i),
-					vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep))));
-			if (!vmaxvq_u32 (m))
-				continue;
-			d = vld1q_u32 (dest + i);
-			vst1q_u32 (dest + i, Simd_M3_Blend4 (s, d, m, a, ia));
-			continue;
-		}
-
-		// the last few, through buffers; the lanes past them blend nothing
-		memset (sb, 0xFF, sizeof(sb));
-		memset (db, 0, sizeof(db));
-		memset (zb, 0, sizeof(zb));
-		memcpy (sb, src + i, (size_t)n * 4);
-		memcpy (db, dest + i, (size_t)n * 4);
-		if (zbuf)
-			memcpy (zb, zbuf + i, (size_t)n * 4);
-		s = vld1q_u32 (sb);
+		s = n == 4 ? vld1q_u32 (src + i) : Simd_M3_LoadFew (src + i, n);
 		m = vceqq_u32 (vandq_u32 (s, cutout), vdupq_n_u32 (0));
 		if (zbuf)
-			m = vandq_u32 (m, vcleq_f32 (vld1q_f32 (zb), vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep))));
-		d = vld1q_u32 (db);
-		vst1q_u32 (db, Simd_M3_Blend4 (s, d, m, a, ia));
-		memcpy (dest + i, db, (size_t)n * 4);
+			m = vandq_u32 (m, vcleq_f32 (n == 4 ? vld1q_f32 (zbuf + i) : Simd_M3_LoadFewF (zbuf + i, n),
+				vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep))));
+		if (!vmaxvq_u32 (m))
+			continue;
+		if (n == 4)
+			vst1q_u32 (dest + i, Simd_M3_Blend4 (s, vld1q_u32 (dest + i), m, a, ia));
+		else
+			Simd_M3_StoreFew (dest + i, Simd_M3_Blend4 (s, Simd_M3_LoadFew (dest + i, n), m, a, ia), n);
 	}
 }
 
@@ -619,70 +634,38 @@ static inline uint32x4_t Simd_M3_PartChannel (uint32x4_t d, float32x4_t s, float
 	return vshlq_u32 (vminq_u32 (c, mask), vdupq_n_s32 (shift));
 }
 
-// four pixels from their light added and multiplied; lanes whose mask is
-// clear keep dest's
-static inline uint32x4_t Simd_M3_Part4 (uint32x4_t d, uint32x4_t m, const float *const s[3],
-	const float *const mul[3])
-{
-	uint32x4_t	out = vorrq_u32 (Simd_M3_PartChannel (d, vld1q_f32 (s[0]), vld1q_f32 (mul[0]), 0),
-		vorrq_u32 (Simd_M3_PartChannel (d, vld1q_f32 (s[1]), vld1q_f32 (mul[1]), 10),
-		Simd_M3_PartChannel (d, vld1q_f32 (s[2]), vld1q_f32 (mul[2]), 20)));
-
-	return vbslq_u32 (m, out, d);
-}
-
 void Simd_M3_PartSpan (uint32_t *dest, const float *zbuf, float zi, float step,
 	const float *const src[3], const float *const mul[3], int count)
 {
 	const float32x4_t	vzi = vdupq_n_f32 (zi), vstep = vdupq_n_f32 (step);
 	int32x4_t			idx = Simd_M3_Iota ();
-	uint32x4_t			d, m;
-	uint32_t			db[4];
-	float				zb[4], sb[3][4], mb[3][4];
-	const float			*s4[3], *m4[3];
+	float32x4_t			sv[3], mv[3];
+	uint32x4_t			d, m, out;
 	int					i, c, n;
 
 	for (i = 0 ; i < count ; i += 4, idx = vaddq_s32 (idx, vdupq_n_s32 (4)))
 	{
+		// the last few a lane at a time; the lanes past them are stored nowhere
 		n = count - i < 4 ? count - i : 4;
-		if (n == 4)
-		{
-			m = vdupq_n_u32 (0xFFFFFFFFu);
-			if (zbuf)
-				m = vcleq_f32 (vld1q_f32 (zbuf + i), vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep)));
-			if (!vmaxvq_u32 (m))
-				continue;
-			for (c = 0 ; c < 3 ; c++)
-			{
-				s4[c] = src[c] + i;
-				m4[c] = mul[c] + i;
-			}
-			d = vld1q_u32 (dest + i);
-			vst1q_u32 (dest + i, Simd_M3_Part4 (d, m, s4, m4));
-			continue;
-		}
-
-		// the last few, through buffers; the lanes past them change nothing
-		memset (db, 0, sizeof(db));
-		memset (zb, 0, sizeof(zb));
-		memset (sb, 0, sizeof(sb));
-		memset (mb, 0, sizeof(mb));
-		memcpy (db, dest + i, (size_t)n * 4);
-		if (zbuf)
-			memcpy (zb, zbuf + i, (size_t)n * 4);
-		for (c = 0 ; c < 3 ; c++)
-		{
-			memcpy (sb[c], src[c] + i, (size_t)n * 4);
-			memcpy (mb[c], mul[c] + i, (size_t)n * 4);
-			s4[c] = sb[c];
-			m4[c] = mb[c];
-		}
 		m = vdupq_n_u32 (0xFFFFFFFFu);
 		if (zbuf)
-			m = vcleq_f32 (vld1q_f32 (zb), vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep)));
-		d = vld1q_u32 (db);
-		vst1q_u32 (db, Simd_M3_Part4 (d, m, s4, m4));
-		memcpy (dest + i, db, (size_t)n * 4);
+			m = vcleq_f32 (n == 4 ? vld1q_f32 (zbuf + i) : Simd_M3_LoadFewF (zbuf + i, n),
+				vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep)));
+		if (!vmaxvq_u32 (m))
+			continue;
+		for (c = 0 ; c < 3 ; c++)
+		{
+			sv[c] = n == 4 ? vld1q_f32 (src[c] + i) : Simd_M3_LoadFewF (src[c] + i, n);
+			mv[c] = n == 4 ? vld1q_f32 (mul[c] + i) : Simd_M3_LoadFewF (mul[c] + i, n);
+		}
+		d = n == 4 ? vld1q_u32 (dest + i) : Simd_M3_LoadFew (dest + i, n);
+		out = vorrq_u32 (Simd_M3_PartChannel (d, sv[0], mv[0], 0),
+			vorrq_u32 (Simd_M3_PartChannel (d, sv[1], mv[1], 10), Simd_M3_PartChannel (d, sv[2], mv[2], 20)));
+		out = vbslq_u32 (m, out, d);
+		if (n == 4)
+			vst1q_u32 (dest + i, out);
+		else
+			Simd_M3_StoreFew (dest + i, out, n);
 	}
 }
 
@@ -707,19 +690,17 @@ static inline uint32x4_t Simd_M3_Fog4 (uint32x4_t p, float32x4_t z, const simd_f
 {
 	const int32x4_t		base = vdupq_n_s32 (fog->base), last = vdupq_n_s32 (fog->size - 1);
 	const float32x4_t	full = vdupq_n_f32 (256.0f);
+	const uint32_t		*bits = (const uint32_t *)fog->table;	// strict aliasing is off
 	int32x4_t			e;
 	float32x4_t			a, ia;
-	float				ab[4];
 	uint32x4_t			out;
 
 	// the table's entries by the bits of 1/z, negative ones the first
 	e = vsubq_s32 (vshrq_n_s32 (vreinterpretq_s32_f32 (z), SIMD_FOG_SHIFT), base);
 	e = vminq_s32 (vmaxq_s32 (e, vdupq_n_s32 (0)), last);
-	ab[0] = fog->table[vgetq_lane_s32 (e, 0)];
-	ab[1] = fog->table[vgetq_lane_s32 (e, 1)];
-	ab[2] = fog->table[vgetq_lane_s32 (e, 2)];
-	ab[3] = fog->table[vgetq_lane_s32 (e, 3)];
-	a = vbslq_f32 (vtstq_u32 (p, vdupq_n_u32 (0x40000000u)), vdupq_n_f32 (fog->sky), vld1q_f32 (ab));
+	a = vreinterpretq_f32_u32 (Simd_M3_Pairs (bits[vgetq_lane_s32 (e, 0)], bits[vgetq_lane_s32 (e, 1)],
+		bits[vgetq_lane_s32 (e, 2)], bits[vgetq_lane_s32 (e, 3)]));
+	a = vbslq_f32 (vtstq_u32 (p, vdupq_n_u32 (0x40000000u)), vdupq_n_f32 (fog->sky), a);
 	ia = vsubq_f32 (full, a);
 
 	out = vorrq_u32 (Simd_M3_FogChannel (p, vdupq_n_f32 (fog->color[0]), a, ia, 0),
@@ -734,33 +715,19 @@ void Simd_M3_FogSpan (uint32_t *dest, const float *zbuf, float zi, float step, i
 	const float32x4_t	vzi = vdupq_n_f32 (zi), vstep = vdupq_n_f32 (step);
 	int32x4_t			idx = Simd_M3_Iota ();
 	float32x4_t			z;
-	uint32_t			pb[4];
-	float				zb[4];
 	int					i, n;
 
-	for (i = 0 ; i < count ; i += 4, idx = vaddq_s32 (idx, vdupq_n_s32 (4)))
+	for (i = 0 ; i + 4 <= count ; i += 4, idx = vaddq_s32 (idx, vdupq_n_s32 (4)))
 	{
-		n = count - i < 4 ? count - i : 4;
-		if (n == 4)
-		{
-			z = zbuf ? vld1q_f32 (zbuf + i) : vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep));
-			vst1q_u32 (dest + i, Simd_M3_Fog4 (vld1q_u32 (dest + i), z, fog));
-			continue;
-		}
-
-		// the last few through buffers; the lanes past them are left as they are
-		memset (pb, 0xFF, sizeof(pb));
-		memcpy (pb, dest + i, (size_t)n * 4);
-		if (zbuf)
-		{
-			memset (zb, 0, sizeof(zb));
-			memcpy (zb, zbuf + i, (size_t)n * 4);
-			z = vld1q_f32 (zb);
-		}
-		else
-			z = vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep));
-		vst1q_u32 (pb, Simd_M3_Fog4 (vld1q_u32 (pb), z, fog));
-		memcpy (dest + i, pb, (size_t)n * 4);
+		z = zbuf ? vld1q_f32 (zbuf + i) : vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep));
+		vst1q_u32 (dest + i, Simd_M3_Fog4 (vld1q_u32 (dest + i), z, fog));
+	}
+	// the last few a lane at a time; the lanes past them are stored nowhere
+	if (i < count)
+	{
+		n = count - i;
+		z = zbuf ? Simd_M3_LoadFewF (zbuf + i, n) : vaddq_f32 (vzi, vmulq_f32 (vcvtq_f32_s32 (idx), vstep));
+		Simd_M3_StoreFew (dest + i, Simd_M3_Fog4 (Simd_M3_LoadFew (dest + i, n), z, fog), n);
 	}
 }
 
