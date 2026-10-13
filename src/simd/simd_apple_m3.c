@@ -38,10 +38,46 @@ static inline int32x4_t Simd_M3_Iota (void)
 	return vld1q_s32 (iota);
 }
 
-// the compiler vectorizes the scalar kernel as well as this could be
+// sixteen at a time from four running indices, then four, then the last four
+// again ending on the last pixel (the same values where they overlap)
 void Simd_M3_ZSpan (float *dest, int count, float zi, float step)
 {
-	Simd_Scalar_ZSpan (dest, count, zi, step);
+	const float32x4_t	vzi = vdupq_n_f32 (zi), vstep = vdupq_n_f32 (step);
+	const float32x4_t	four = vdupq_n_f32 (4), sixteen = vdupq_n_f32 (16);
+	float32x4_t			i0, i1, i2, i3;		// whole numbers, exact
+	int					i;
+
+	if (count < 4)
+	{
+		for (i = 0 ; i < count ; i++)
+			dest[i] = zi + (float)i * step;
+		return;
+	}
+	i0 = vcvtq_f32_s32 (Simd_M3_Iota ());
+	i1 = vaddq_f32 (i0, four);
+	i2 = vaddq_f32 (i1, four);
+	i3 = vaddq_f32 (i2, four);
+	for (i = 0 ; i + 16 <= count ; i += 16)
+	{
+		vst1q_f32 (dest + i, vaddq_f32 (vzi, vmulq_f32 (i0, vstep)));
+		vst1q_f32 (dest + i + 4, vaddq_f32 (vzi, vmulq_f32 (i1, vstep)));
+		vst1q_f32 (dest + i + 8, vaddq_f32 (vzi, vmulq_f32 (i2, vstep)));
+		vst1q_f32 (dest + i + 12, vaddq_f32 (vzi, vmulq_f32 (i3, vstep)));
+		i0 = vaddq_f32 (i0, sixteen);
+		i1 = vaddq_f32 (i1, sixteen);
+		i2 = vaddq_f32 (i2, sixteen);
+		i3 = vaddq_f32 (i3, sixteen);
+	}
+	for ( ; i + 4 <= count ; i += 4)
+	{
+		vst1q_f32 (dest + i, vaddq_f32 (vzi, vmulq_f32 (i0, vstep)));
+		i0 = vaddq_f32 (i0, four);
+	}
+	if (i < count)
+	{
+		i0 = vaddq_f32 (vcvtq_f32_s32 (Simd_M3_Iota ()), vdupq_n_f32 ((float)(count - 4)));
+		vst1q_f32 (dest + count - 4, vaddq_f32 (vzi, vmulq_f32 (i0, vstep)));
+	}
 }
 
 /*
@@ -293,7 +329,9 @@ LIGHTING
 ===============================================================================
 */
 
-// the lookups are all of it: lanes don't help
+// the lookups are all of it: with the index arithmetic in lanes and the
+// entries loaded straight into them, it ran no faster than the scalar kernel
+// built with the rest (link-time optimization), and rows of two ran slower
 void Simd_M3_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
 	int light, int step, int count)
 {
@@ -763,11 +801,120 @@ void Simd_M3_FogSpan (uint32_t *dest, const float *zbuf, float zi, float step, i
 	}
 }
 
-// the lookups and stores are all of it, and the compiler widens the stores
+// four table entries, by four bytes
+SIMD_INLINE uint32x4_t Simd_M3_LookupBytes (const uint32_t *table, const byte *idx)
+{
+	uint32x4_t	v = vld1q_dup_u32 (table + idx[0]);
+
+	v = vld1q_lane_u32 (table + idx[1], v, 1);
+	v = vld1q_lane_u32 (table + idx[2], v, 2);
+	return vld1q_lane_u32 (table + idx[3], v, 3);
+}
+
+// four bytes, zero extended to 32 bit lanes
+SIMD_INLINE uint32x4_t Simd_M3_Widen (const byte *src)
+{
+	uint32_t	t;
+
+	memcpy (&t, src, 4);
+	return vmovl_u16 (vget_low_u16 (vmovl_u8 (vreinterpret_u8_u32 (vdup_n_u32 (t)))));
+}
+
+// the bytes of a vector of four colors that make each of its vectors with
+// every color repeated scale times, for vqtbl1q_u8
+static const uint8_t	expand_tbl[5][4][16] = {
+	[1] = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}},
+	[2] = {{0, 1, 2, 3, 0, 1, 2, 3, 4, 5, 6, 7, 4, 5, 6, 7},
+		{8, 9, 10, 11, 8, 9, 10, 11, 12, 13, 14, 15, 12, 13, 14, 15}},
+	[3] = {{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 4, 5, 6, 7},
+		{4, 5, 6, 7, 4, 5, 6, 7, 8, 9, 10, 11, 8, 9, 10, 11},
+		{8, 9, 10, 11, 12, 13, 14, 15, 12, 13, 14, 15, 12, 13, 14, 15}},
+	[4] = {{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3},
+		{4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7},
+		{8, 9, 10, 11, 8, 9, 10, 11, 8, 9, 10, 11, 8, 9, 10, 11},
+		{12, 13, 14, 15, 12, 13, 14, 15, 12, 13, 14, 15, 12, 13, 14, 15}},
+};
+
+SIMD_INLINE uint32x4_t Simd_M3_Repeat (uint32x4_t v, uint8x16_t tbl)
+{
+	return vreinterpretq_u32_u8 (vqtbl1q_u8 (vreinterpretq_u8_u32 (v), tbl));
+}
+
+// four texels at a time, with scale a constant where it is inlined: their
+// colors repeated in place and stored whole, or blended with what is there
+// around transparent ones
+SIMD_INLINE void Simd_M3_Expand8Scaled (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
+	const int scale, int transparent)
+{
+	uint8x16_t	tbl[4];
+	uint32x4_t	colors, skip, o;
+	uint32_t	*d;
+	int			i, q, k;
+
+	for (q = 0 ; q < scale ; q++)
+		tbl[q] = vld1q_u8 (expand_tbl[scale][q]);
+	for (i = 0 ; i + 4 <= count ; i += 4)
+	{
+		d = dest + (size_t)i * scale;
+		colors = Simd_M3_LookupBytes (palette, src + i);
+		if (transparent < 0)
+		{
+			for (q = 0 ; q < scale ; q++)
+				vst1q_u32 (d + 4 * q, scale == 1 ? colors : Simd_M3_Repeat (colors, tbl[q]));
+			continue;
+		}
+		skip = vceqq_u32 (Simd_M3_Widen (src + i), vdupq_n_u32 ((uint32_t)transparent));
+		if (vminvq_u32 (skip))
+			continue;		// all four skipped
+		if (!vmaxvq_u32 (skip))
+		{
+			for (q = 0 ; q < scale ; q++)
+				vst1q_u32 (d + 4 * q, scale == 1 ? colors : Simd_M3_Repeat (colors, tbl[q]));
+			continue;
+		}
+		for (q = 0 ; q < scale ; q++)
+		{
+			o = vld1q_u32 (d + 4 * q);
+			if (scale == 1)
+				o = vbslq_u32 (skip, o, colors);
+			else
+				o = vbslq_u32 (Simd_M3_Repeat (skip, tbl[q]), o, Simd_M3_Repeat (colors, tbl[q]));
+			vst1q_u32 (d + 4 * q, o);
+		}
+	}
+	for ( ; i < count ; i++)
+	{
+		if (src[i] == transparent)
+			continue;
+		d = dest + (size_t)i * scale;
+		for (k = 0 ; k < scale ; k++)
+			d[k] = palette[src[i]];
+	}
+}
+
+// scales 1 to 4; at more, each texel is a whole vector or more of one color,
+// and the compiler vectorizes the scalar kernel's fills as well as this could
 void Simd_M3_Expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
 	int scale, int transparent)
 {
-	Simd_Scalar_Expand8 (dest, src, palette, count, scale, transparent);
+	switch (scale)
+	{
+	case 1:
+		Simd_M3_Expand8Scaled (dest, src, palette, count, 1, transparent);
+		break;
+	case 2:
+		Simd_M3_Expand8Scaled (dest, src, palette, count, 2, transparent);
+		break;
+	case 3:
+		Simd_M3_Expand8Scaled (dest, src, palette, count, 3, transparent);
+		break;
+	case 4:
+		Simd_M3_Expand8Scaled (dest, src, palette, count, 4, transparent);
+		break;
+	default:
+		Simd_Scalar_Expand8 (dest, src, palette, count, scale, transparent);
+		break;
+	}
 }
 
 // libc's copy is as fast as anything here on Apple silicon
