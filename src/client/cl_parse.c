@@ -450,8 +450,19 @@ static void Sound_NextDownload (void)
 		cl.sound_precache[i] = S_PrecacheSound (cl.sound_name[i]);
 	}
 
-	// done with sounds, request models now
+	// done with sounds, the models now: the list that came while the sounds
+	// were downloaded (FTE's), the rest of it on its way, or asked for
+	cl.soundsdone = true;
 	memset (cl.model_precache, 0, sizeof(cl.model_precache));
+	if (cl.modellistdone)
+	{
+		cls.downloadnumber = 0;
+		cls.downloadtype = dl_model;
+		Model_NextDownload ();
+		return;
+	}
+	if (cl.modellistbegun)
+		return;
 	cl.playerindex = -1;
 	cl.spikeindex = -1;
 	cl.flagindex = -1;
@@ -813,6 +824,7 @@ static void CL_ParseModellist (bool shortstart)
 
 // precache models and note certain default indexes
 	nummodels = shortstart ? MSG_ReadShort () & 0xffff : MSG_ReadByte ();
+	cl.modellistbegun = true;
 
 	for (;;)
 	{
@@ -837,6 +849,10 @@ static void CL_ParseModellist (bool shortstart)
 		return;
 	}
 
+	// models looked for once the sounds are in (Sound_NextDownload)
+	cl.modellistdone = true;
+	if (!cl.soundsdone)
+		return;
 	cls.downloadnumber = 0;
 	cls.downloadtype = dl_model;
 	Model_NextDownload ();

@@ -330,6 +330,12 @@ typedef struct
 	char		model_name[MAX_MODELS][MAX_QPATH];
 	char		sound_name[MAX_SOUNDS][MAX_QPATH];
 	char		particle_name[MAX_PARTICLE_PRECACHE][MAX_QPATH];	// svc_fte_precache's effects
+	// FTE's servers send the model list after the sound list without waiting
+	// to be asked (PEXT2_REPLACEMENTDELTAS): its models are looked for once the
+	// sounds are in
+	bool		soundsdone;			// the sounds are in (or downloaded)
+	bool		modellistbegun;		// the model list began to come
+	bool		modellistdone;		// all of it came
 
 	struct model_s		*model_precache[MAX_MODELS];
 
