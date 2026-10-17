@@ -20,8 +20,10 @@ server runs NetQuake's single player too.
   replacement deltas for levels of up to 32768 entities and 2048 sounds, chunked downloads, …),
   mvdsv's player movement and its `pm_` keys. WebSocket next to UDP: servers take browsers'
   clients on TCP at their port, as FTE's do. WebRTC to FTE's servers, through their brokers.
-- **Demos:** QWD and MVD playback, MVD seeking (`demo_jump`), QTV (`qtvplay`), item timers.
-  Servers stream their game to QTV's viewers at their port, as mvdsv's do.
+- **Demos:** QWD and MVD playback, from a file or a URL as it downloads, gzipped or not; MVD
+  seeking (`demo_jump`), QTV (`qtvplay`), item timers. Servers stream their game to QTV's
+  viewers at their port, as mvdsv's do. The menu lists the demos recorded, and
+  hub.quakeworld.nu's games, whose demos it plays.
 - **QuakeC:** a hardened VM with FTE's opcodes and builtins, multiprogs and threads; FTE's
   client-side QuakeC (CSQC), enough for KTX's weapon prediction.
 - **Single player:** NetQuake's `progs.dat` (id1's episodes, mods' games) on the program's own
@@ -50,6 +52,8 @@ You need Windows 10 or 11 on x64, and:
 - mbedTLS 3, for the server browser's HTTPS: WebRTC's (below) where it is in, else the one
   CMake finds, else configuring fetches mbedTLS 3.6.7 and builds it into `deps` once (a
   minute or so), as it does fteqcc.
+- zlib, for gzip (the hub's demos are `.mvd.gz`): a static one CMake finds, else configuring
+  fetches zlib 1.3.1 and builds it into `deps` once (seconds).
 
 Build from a Visual Studio developer prompt (x64):
 
@@ -88,7 +92,8 @@ You need a Mac with Apple silicon on macOS 26 or later (Metal 4), and:
   `xcodebuild -downloadComponent MetalToolchain`. The Command Line Tools alone don't have it;
   the build finds Xcode's at `/Applications/Xcode.app` (`SW_XCODE_DEVELOPER_DIR` if elsewhere).
 - CMake 3.28 or later and Ninja (Homebrew's, for example).
-- fteqcc or git, and mbedTLS or a configure that builds it, as on Windows.
+- fteqcc or git, and mbedTLS and a static zlib or a configure that builds them, as on Windows
+  (the SDK's zlib is a shared one).
 
 ```
 cmake --preset macos-m3
@@ -119,7 +124,8 @@ for the window) or an X11 desktop, a GPU with Vulkan 1.3, and:
   libXss. On Arch:
   `pacman -S cmake ninja gcc vulkan-headers vulkan-icd-loader glslang wayland
   wayland-protocols libxkbcommon libpipewire libx11 libxi libxss`.
-- fteqcc or git, and mbedTLS or a configure that builds it, as on Windows.
+- fteqcc or git, and mbedTLS and a static zlib or a configure that builds them, as on Windows
+  (a distribution's is often shared only, as Arch's is).
 
 ```
 cmake --preset linux-v4
@@ -162,7 +168,8 @@ cmake --build --preset web
 ctest --preset web
 ```
 
-`web-debug` builds Debug. The tests run in node, Emscripten's, and with Chrome `test_present_webgl`
+zlib is Emscripten's port, fetched and built by the first build that needs it. `web-debug`
+builds Debug. The tests run in node, Emscripten's, and with Chrome `test_present_webgl`
 and `test_sound_web` in it, headless (emrun): the shader drawn with WebGL 2 and compared with what
 screenshots make, and sound played through its AudioWorklet. The build is WebAssembly with the
 scalar kernels, and worker threads in the page as on the systems (`r_threads`).
@@ -193,6 +200,7 @@ softworld -basedir C:\quake +deathmatch 1 +map dm4
 softworld -basedir C:\quake +maxclients 1 +map start
 softworld -basedir C:\quake +connect qw.example.com
 softworld -basedir C:\quake +playdemo mydemo.mvd
+softworld -basedir C:\quake +playdemo https://d.quake.world/1a6/1a64a1937de40e16e85ab928f77bf34bdfba7b949ca42374be1de463af49f6d0.mvd.gz
 softworld -basedir C:\quake +qtvplay 1@qtv.example.com:27599
 softworld-server -basedir C:\quake -port 27500 +map dm4
 ```
@@ -349,10 +357,23 @@ viewer joining starts from where the game was a second or less before that. A le
 on in the same stream. The game is written once, however many watch; a viewer too slow for it is
 dropped rather than waited for. 64 watch at most: a relay in front serves more.
 
-### Server browser
+### Demos
 
-Multiplayer in the menu (and `menu_multiplayer`, F5's, or `menu_slist`) is a server browser that
-looks and works as ezQuake's: its Servers, Sources, Players and Options pages, the info of a server
+`playdemo` (and `timedemo`) plays a `.qwd` or an `.mvd` through the search path, or from an
+http(s) URL as it downloads; either may be gzipped (`.mvd.gz`), and is unpacked as it is read.
+An MVD on disk is read whole and seeks (`demo_jump`); a downloading one plays as it comes, as a
+QTV stream does, and seeks from where it is once it has all come. A download that fails plays
+what came and says why.
+
+### Multiplayer
+
+Multiplayer in the menu (and `menu_multiplayer`, F5's) is a menu of the server browser
+(`menu_slist`), the demos recorded here (`menu_demos`) and hub.quakeworld.nu's games
+(`menu_hub`); Escape from each goes back to it.
+
+#### Server browser
+
+The server browser looks and works as ezQuake's: its Servers, Sources, Players and Options pages, the info of a server
 (Enter: its players and serverinfo; Q there watches its game through QTV), its keys (typing
 searches the names, Alt+1–8 sorts, Ctrl+2–8 shows columns, Space scans again, Ctrl+J joins, Ctrl+O
 watches, Ctrl+C copies the address, Ins adds a server) and its `sb_*` cvars, with ezQuake's
@@ -372,6 +393,25 @@ last time's servers in `qw/sb/servers.txt`, and those added by hand (`addserver 
 `qw/sb/unbound.txt`. A url source is read over HTTP or HTTPS: its certificate is checked against the
 roots the system trusts (on Linux the bundle `SSL_CERT_FILE` names, else the distribution's). The
 page's list is empty: a browser has no UDP to ask servers with.
+
+#### Demos
+
+Demos lists the demos of the game's search path and its `demos` directory (`.qwd`, `.mvd`, and
+their `.gz`), newest first, as qualia's does: their names, sizes and how long ago they were
+written. Its keys are the browser's: typing searches the names (Backspace clears it), Space scans
+again, Ctrl+C copies a name, and Enter plays the demo.
+
+#### Hub
+
+Hub lists the games of [hub.quakeworld.nu](https://hub.quakeworld.nu/games/), as its games page
+does, through its API (`hub_api_url`, a Supabase table, asked with the site's own key,
+`hub_api_key`): newest first, a page of as many as the screen holds (PgUp and PgDn page), each
+with its day or today's time, its players or teams, its map and mode where there is room, and its
+score, hidden until `s` shows it (`hub_showscores`). Above the list are the page's filters: the
+mode and how long ago (`hub_mode`, `hub_timeframe`; Left and Right change them), and fields for
+players, teams, the map, the matchtag and the server; Tab goes through them. Enter plays the
+game's demo from where the hub keeps it (`hub_demo_url`), as it downloads, and `c` copies its
+URL.
 
 ### In a browser
 
@@ -421,6 +461,10 @@ QTV comes over WebSocket too: a SoftWorld server's at its port, `qtvplay ws://ho
 `websockify 27600 127.0.0.1:27599`, then `qtvplay 1@ws://host:27600`.TCP delays what comes
 after a packet lost until it comes again, which UDP doesn't. The page's own server takes only
 its own client.
+
+The page's GETs (the Hub's games, `playdemo` of a URL) are the browser's `fetch()`, from sites
+that let other pages read them (CORS's headers), as the hub's API and its demos do. A map a demo
+needs that the site's Quake directory hasn't isn't fetched in a page.
 
 On Windows the sandbox's firewall rule lets TCP in with UDP since the WebSocket port came; a
 rule made before lets UDP alone in, until `softworld -sandbox-network`, run once as an
@@ -510,7 +554,9 @@ compiled into `menu.dat` and carried in the client. It runs as FTE runs menu Qua
 with the 2D builtins drawn 1:1 in the layout's pixels (text tinted, fills blended), its images
 made with `r_readimage` and `r_uploadimage` (the console's background with the version, and the
 fade, made again when the layout's width changes), FTE's hostcache builtins over the server
-browser's list, and SoftWorld's own builtins (`isfullscreen`, the list's sources). A `menu.dat` in the game
+browser's list, FTE's search builtins over the search path's files, and SoftWorld's own builtins
+(`isfullscreen`, the list's sources, a file's age, GETs that run while it polls them, `webget`,
+with qcvm's JSON to read what they bring). A `menu.dat` in the game
 directory runs instead; one that fails gives way to the built-in one. `menu_restart` loads it
 again, `menu_builtins` lists the builtins it calls that the client lacks, and `quit` asks
 through it (`quit force` doesn't). It has what FTE's guest engines need (files, sound it makes
