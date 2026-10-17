@@ -19,10 +19,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // net_http.c -- GETs over HTTP or HTTPS (net_http.h)
 //
-// A GET as HTTP/1.0 has it (the body to the connection's end, no chunks to put
-// together), a Host for the name's servers, the caller's request lines after
-// (an API's key), and redirects followed, from http:// to https:// too. The
-// last answer's head is told before its body, which is handed on as it comes. TLS is mbedTLS's
+// A GET as HTTP/1.1 (nginx gives a gzip, gzip_static's too, only to that), the
+// connection closed after it: the body to its Content-Length, to its last
+// chunk (Transfer-Encoding: chunked, put back together), or else to the
+// connection's end. A Host for the name's servers, the caller's request lines
+// after (an API's key, Accept-Encoding), and redirects followed, from http://
+// to https:// too. The last answer's head is told before its body, which is
+// handed on as it comes, in the encoding it was sent in. TLS is mbedTLS's
 // (the one a program has, WebRTC's where it is in), the server's certificate
 // checked against the roots the system trusts and the name asked for (SNI).
 // TLS 1.2 at most: 1.3 needs mbedTLS's PSA key store, which isn't safe from
@@ -44,6 +47,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <mbedtls/ssl.h>
 #include <mbedtls/x509_crt.h>
 
+#include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -338,6 +342,21 @@ THE GET
 
 typedef enum { GET_GOT, GET_REDIRECTED, GET_FAILED } httpgot_t;
 
+enum { CHUNK_SIZE, CHUNK_DATA, CHUNK_DATAEND, CHUNK_TRAILER };
+
+// an answer's body as it comes off the connection
+typedef struct
+{
+	long long	total;			// its length, -1 where it isn't given (chunked's)
+	long long	got;			// of it handed on
+	bool		ended;			// all of it came: its length, or its last chunk
+	bool		chunked;		// HTTP/1.1's chunks, put back together
+	int			stage;			// CHUNK_*
+	long long	left;			// of a chunk's data, still to come
+	char		line[64];		// the start of a size or trailer line
+	size_t		linelength;		// all of it
+} httpbody_state_t;
+
 // what a GET asks, and who takes the answer
 typedef struct
 {
@@ -376,6 +395,87 @@ static size_t HTTP_ReadHead (http_t *h, const httpurl_t *u, double timeout, char
 	}
 }
 
+// a line of the chunks ended: its size, the end of its data, or a trailer;
+// false where it isn't one
+static bool HTTP_ChunkLine (httpbody_state_t *b)
+{
+	size_t	n = b->linelength < sizeof(b->line) ? b->linelength : sizeof(b->line) - 1;
+	char	*end;
+
+	if (n && b->line[n - 1] == '\r')
+		n--;
+	b->line[n] = 0;
+	switch (b->stage)
+	{
+	case CHUNK_SIZE:		// hex digits, and maybe ;extensions
+		if (b->linelength >= sizeof(b->line))
+			return false;
+		b->left = strtoll (b->line, &end, 16);
+		if (end == b->line || b->left < 0 || (*end && *end != ';' && *end != ' ' && *end != '\t'))
+			return false;
+		b->stage = b->left ? CHUNK_DATA : CHUNK_TRAILER;
+		break;
+	case CHUNK_DATAEND:		// the empty rest of a data's line
+		if (n)
+			return false;
+		b->stage = CHUNK_SIZE;
+		break;
+	default:				// trailers until an empty line
+		b->ended = !n;
+		break;
+	}
+	b->linelength = 0;
+	return true;
+}
+
+// what came of the body, handed to the request's body: as it is, or put back
+// together from its chunks; false where body stopped it (why is body's to
+// say), or with why in error where the chunks are corrupt
+static bool HTTP_Body (httpbody_state_t *b, const httprequest_t *r, const char *data, size_t length,
+	const char *host, char *error, size_t errorsize)
+{
+	size_t	n;
+
+	if (!b->chunked)
+	{
+		if (b->total >= 0 && (long long)length > b->total - b->got)
+			length = (size_t)(b->total - b->got);		// what follows it is no part of it
+		b->got += (long long)length;
+		b->ended = b->total >= 0 && b->got == b->total;
+		return !length || r->body (r->ctx, data, length, b->total);
+	}
+	while (length && !b->ended)
+	{
+		if (b->stage == CHUNK_DATA)
+		{
+			n = (long long)length < b->left ? length : (size_t)b->left;
+			if (!r->body (r->ctx, data, n, -1))
+				return false;
+			b->got += (long long)n;
+			b->left -= (long long)n;
+			data += n;
+			length -= n;
+			if (!b->left)
+				b->stage = CHUNK_DATAEND;
+			continue;
+		}
+		if (*data != '\n')
+		{
+			if (b->linelength < sizeof(b->line))
+				b->line[b->linelength] = *data;
+			b->linelength++;
+		}
+		else if (!HTTP_ChunkLine (b))
+		{
+			snprintf (error, errorsize, "%s's chunks are corrupt", host);
+			return false;
+		}
+		data++;
+		length--;
+	}
+	return true;
+}
+
 // one GET of the URL: its body handed to the request's body, or where it moved
 // to (in location)
 static httpgot_t HTTP_Fetch (const httpurl_t *u, const httprequest_t *r, char *location, size_t locationsize,
@@ -387,7 +487,7 @@ static httpgot_t HTTP_Fetch (const httpurl_t *u, const httprequest_t *r, char *l
 	char		buf[16384];
 	double		timeout = r->timeout;
 	size_t		have, headlength;
-	long long	total = -1, got;
+	httpbody_state_t	b = {.total = -1};
 	int			n, status;
 	bool		refused;
 
@@ -413,7 +513,7 @@ static httpgot_t HTTP_Fetch (const httpurl_t *u, const httprequest_t *r, char *l
 	snprintf (hostport, sizeof(hostport), strchr (u->host, ':') ? "[%s]" : "%s", u->host);
 	if (u->port != (u->tls ? 443 : 80))
 		snprintf (hostport + strlen (hostport), sizeof(hostport) - strlen (hostport), ":%i", u->port);
-	snprintf (request, sizeof(request), "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: SoftWorld/%4.2f\r\n"
+	snprintf (request, sizeof(request), "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: SoftWorld/%4.2f\r\n"
 		"Accept: */*\r\nConnection: close\r\n%s\r\n", u->path, hostport, VERSION, r->headers ? r->headers : "");
 	if (!HTTP_Write (&h, request, strlen (request)))
 	{
@@ -446,14 +546,21 @@ static httpgot_t HTTP_Fetch (const httpurl_t *u, const httprequest_t *r, char *l
 		snprintf (error, errorsize, "%s answered %i", u->host, status);
 		goto failed;
 	}
-	if (HTTP_HeaderValue (head, "Content-Length", value, sizeof(value)))
-		total = atoll (value);
+	// chunks, whatever length is given besides; else the length given
+	if (HTTP_HeaderValue (head, "Transfer-Encoding", value, sizeof(value)))
+	{
+		for (n = 0 ; value[n] ; n++)
+			value[n] = (char)tolower ((unsigned char)value[n]);
+		b.chunked = strstr (value, "chunked") != NULL;
+	}
+	if (!b.chunked && HTTP_HeaderValue (head, "Content-Length", value, sizeof(value)))
+		b.total = atoll (value);
+	b.ended = b.total == 0;
 
-	// the body: what came with the head, then the rest to the connection's end
-	got = (long long)(have - headlength);
-	if (got && !r->body (r->ctx, head + headlength, (size_t)got, total))
-		goto failed;		// why is body's to say
-	for (;;)
+	// the body: what came with the head, then the rest, to its end
+	if (!HTTP_Body (&b, r, head + headlength, have - headlength, u->host, error, errorsize))
+		goto failed;
+	while (!b.ended)
 	{
 		h.deadline = Sys_DoubleTime () + timeout;
 		n = HTTP_ReadSome (&h, buf, sizeof(buf));
@@ -464,8 +571,7 @@ static httpgot_t HTTP_Fetch (const httpurl_t *u, const httprequest_t *r, char *l
 			snprintf (error, errorsize, "%s stopped answering", u->host);
 			goto failed;
 		}
-		got += n;
-		if (!r->body (r->ctx, buf, (size_t)n, total))
+		if (!HTTP_Body (&b, r, buf, (size_t)n, u->host, error, errorsize))
 			goto failed;
 	}
 	HTTP_Hangup (&h);
@@ -474,7 +580,7 @@ static httpgot_t HTTP_Fetch (const httpurl_t *u, const httprequest_t *r, char *l
 		snprintf (error, errorsize, "%s answered %i", u->host, status);
 		return GET_FAILED;
 	}
-	if (total >= 0 && got < total)
+	if (!b.ended && (b.chunked || b.total >= 0))
 	{
 		snprintf (error, errorsize, "%s's answer was cut short", u->host);
 		return GET_FAILED;

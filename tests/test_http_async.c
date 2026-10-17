@@ -22,8 +22,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // polls: the request's lines sent, the answer's status and headers read back,
 // a body that comes in two pieces, a 206 an answer, a 404's body read though it
 // fails, a header that isn't one, a port no one listens on, one closed while
-// it runs; and VFS_OpenURL's file, with a gzip unpacked over it, and failed by
-// a 404 without its body
+// it runs; HTTP/1.1's chunks put back together, cut short and corrupt, and an
+// answer's end without the connection's; a gzip given only to an HTTP/1.1 GET
+// that takes it (nginx's gzip_static), as it was sent; and VFS_OpenURL's file,
+// with a gzip unpacked over it, and failed by a 404 without its body
 
 #include "args.h"
 #include "host.h"
@@ -92,6 +94,7 @@ Served from the test's thread as it polls
 static tcplisten_t	*listen_;
 static int			listenport;
 static tcpsocket_t	*held;			// /slow's, kept open
+static tcpsocket_t	*kept;			// an answer's that is all there, kept open after
 static char			*text;			// TEXTSIZE bytes of text
 static byte			*gz;			// them as a gzip
 static size_t		gzsize;
@@ -160,6 +163,50 @@ static void Serve (void)
 		SendAll (c, gz, (int)gzsize / 2);
 		Wait (0.05);
 		SendAll (c, gz + gzsize / 2, (int)(gzsize - gzsize / 2));
+	}
+	else if (!strncmp (request, "GET /chunked ", 13))
+	{	// a size line and a chunk's end split between pieces, an extension and
+		// a trailer, and the connection kept open after
+		static const char	first[] = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5;ext=1\r\nfirst\r\n1";
+		static const char	rest[] = "\r\n,\r\n6\r\nsecond\r\n0\r\nX-Trailer: t\r\n\r\n";
+
+		SendAll (c, first, (int)strlen (first));
+		Wait (0.05);
+		SendAll (c, rest, (int)strlen (rest));
+		kept = c;
+		return;
+	}
+	else if (!strncmp (request, "GET /cutchunks ", 15))
+	{
+		snprintf (head, sizeof(head), "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nfirst\r\n");
+		SendAll (c, head, (int)strlen (head));
+	}
+	else if (!strncmp (request, "GET /badchunks ", 15))
+	{
+		snprintf (head, sizeof(head), "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\nfirst\r\n0\r\n\r\n");
+		SendAll (c, head, (int)strlen (head));
+	}
+	else if (!strncmp (request, "GET /kept ", 10))
+	{	// all of its length, and the connection kept open after
+		snprintf (head, sizeof(head), "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello");
+		SendAll (c, head, (int)strlen (head));
+		kept = c;
+		return;
+	}
+	else if (!strncmp (request, "GET /static ", 12))
+	{	// gzip_static's: only the gzip, to an HTTP/1.1 GET that takes it
+		if (!strstr (request, " HTTP/1.1\r\n") || !strstr (request, "\r\nAccept-Encoding: gzip\r\n"))
+		{
+			snprintf (head, sizeof(head), "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
+			SendAll (c, head, (int)strlen (head));
+		}
+		else
+		{
+			snprintf (head, sizeof(head), "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: %i\r\n\r\n",
+				(int)gzsize);
+			SendAll (c, head, (int)strlen (head));
+			SendAll (c, gz, (int)gzsize);
+		}
 	}
 	else if (!strncmp (request, "GET /slow ", 10))
 	{	// its head and a little, and then nothing while it is held
@@ -269,6 +316,62 @@ static void TestRefused (void)
 	HTTP_Close (f);
 }
 
+// the GET's end once its body is all there, the connection still open
+static void TestChunks (void)
+{
+	httpfetch_t	*f = HTTP_Start (URL ("/chunked"), NULL);
+	double		start = Sys_DoubleTime ();
+	char		body[256];
+
+	CHECK (Finish (f, body, sizeof(body)) == 12);
+	CHECK (HTTP_State (f) == HTTP_DONE && !strcmp (body, "first,second"));
+	CHECK (Sys_DoubleTime () - start < 3);
+	HTTP_Close (f);
+	if (kept)
+		TCP_Close (kept);
+	kept = NULL;
+
+	f = HTTP_Start (URL ("/cutchunks"), NULL);
+	Finish (f, body, sizeof(body));
+	CHECK (HTTP_State (f) == HTTP_FAILED && strstr (HTTP_Error (f), "cut short"));
+	HTTP_Close (f);
+
+	f = HTTP_Start (URL ("/badchunks"), NULL);
+	Finish (f, body, sizeof(body));
+	CHECK (HTTP_State (f) == HTTP_FAILED && strstr (HTTP_Error (f), "corrupt"));
+	HTTP_Close (f);
+
+	f = HTTP_Start (URL ("/kept"), NULL);
+	start = Sys_DoubleTime ();
+	CHECK (Finish (f, body, sizeof(body)) == 5);
+	CHECK (HTTP_State (f) == HTTP_DONE && !strcmp (body, "hello"));
+	CHECK (Sys_DoubleTime () - start < 3);
+	HTTP_Close (f);
+	if (kept)
+		TCP_Close (kept);
+	kept = NULL;
+}
+
+// a gzip asked for comes as it was sent, Content-Encoding telling; not asked
+// for, there is none (gzip_static's 404)
+static void TestEncoded (void)
+{
+	httpfetch_t	*f = HTTP_Start (URL ("/static"), "Accept-Encoding: gzip");
+	char		*out = Mem_Alloc (TEXTSIZE + 1), value[32];
+
+	CHECK (Finish (f, out, TEXTSIZE + 1) == gzsize && !memcmp (out, gz, gzsize));
+	CHECK (HTTP_State (f) == HTTP_DONE);
+	CHECK (HTTP_ResponseHeader (f, "Content-Encoding", value, sizeof(value)) && !strcmp (value, "gzip"));
+	CHECK (HTTP_Length (f) == (long long)gzsize);
+	HTTP_Close (f);
+
+	f = HTTP_Start (URL ("/static"), NULL);
+	Finish (f, out, TEXTSIZE + 1);
+	CHECK (HTTP_State (f) == HTTP_FAILED && HTTP_Status (f) == 404);
+	HTTP_Close (f);
+	Mem_Free (out);
+}
+
 static void TestNobody (void)
 {
 	tcplisten_t	*l;
@@ -372,6 +475,8 @@ int main (void)
 
 	TestAnswer ();
 	TestRefused ();
+	TestChunks ();
+	TestEncoded ();
 	TestNobody ();
 	TestClosed ();
 	TestFile ();
