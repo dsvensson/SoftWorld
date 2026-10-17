@@ -44,8 +44,9 @@ cvar_t	vid_scalemode = {.name = "vid_scalemode", .string = "0", .archive = true,
 		{"1", "Filling the window"}, {0}}};
 
 A variable whose value has a range has .min and .max, max over min: a value
-past it is set to its nearer end, and the console says so. Its default must
-be in it.
+past it is set to its nearer end, and the console says so; each number of a
+value of several (a color's red, green and blue) is held to it. Its default
+must be in it.
 
 cvar_t	vid_scale = {.name = "vid_scale", .string = "1", .archive = true,
 	.description = "Render pixels per pixel of the 320x200 layout.", .min = 0, .max = 4};

@@ -206,17 +206,17 @@ void D_PolysetDraw (void)
 ================
 D_AliasPixel
 
-A skin texel lit: through the colormap row of its light, or with
-r_lightmode 1 its color times the light in the light's color. light is
-(255 - level) << 6, level 128 being 1.0.
+A skin texel lit: through the colormap row of its light (a flat color's
+has one color in every row), or with r_lightmode 1 its color times the
+light in the light's color. light is (255 - level) << 6, level 128 being 1.0.
 ================
 */
 static inline pixel_t D_AliasPixel (int index, int light)
 {
 	unsigned	level;
 
-	if (!r_affinetridesc.rgblight)
-		return d_cm30[index + (light & 0xFF00)];
+	if (r_affinetridesc.colormap)
+		return r_affinetridesc.colormap[index + (light & 0xFF00)];
 	level = light < (255 << 6) ? (unsigned)((255 << 6) - light) : 0;	// 8192 is 1.0
 	return R_LitColor (r_affinetridesc.palette[index], d_pal30_floor[index], (level * r_affinetridesc.tint[0]) >> 6,
 		(level * r_affinetridesc.tint[1]) >> 6, (level * r_affinetridesc.tint[2]) >> 6);
@@ -725,7 +725,7 @@ static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 		.stepwhole = a_ststepxwhole, .sfracstep = a_sstepxfrac, .tfracstep = a_tstepxfrac,
 		.skinwidth = r_affinetridesc.skinwidth,
 		.remap = r_affinetridesc.skinremap,
-		.colormap = r_affinetridesc.rgblight ? NULL : d_cm30,
+		.colormap = r_affinetridesc.colormap,
 		.palette = r_affinetridesc.palette, .floor = d_pal30_floor,
 		.tint = {r_affinetridesc.tint[0], r_affinetridesc.tint[1], r_affinetridesc.tint[2]},
 		.holey = r_affinetridesc.holey,

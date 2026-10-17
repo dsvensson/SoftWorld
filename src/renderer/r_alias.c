@@ -884,6 +884,12 @@ void R_AliasDrawModel (alight_t *plighting)
 		r_affinetridesc.skinremap = currententity->translate ? currententity->translate : r_identityremap;
 		r_affinetridesc.palette = d_pal30;
 	}
+	// a model all in one color (r_team_color, r_enemy_color), whatever its
+	// texels and their light: a colormap of that color alone
+	if (currententity->flat)
+		r_affinetridesc.colormap = currententity->flat;
+	else
+		r_affinetridesc.colormap = r_affinetridesc.rgblight ? NULL : d_cm30;
 
 	if (currententity != r_scene.viewent)
 		r_aliaszmul = 1;

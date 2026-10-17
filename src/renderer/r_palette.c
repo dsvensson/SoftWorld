@@ -70,6 +70,11 @@ pixel_t R_ColorPixel (int r, int g, int b)
 		R_LightCode (R_SrgbToLinear (b / 255.0)));
 }
 
+pixel_t R_LightPixel (const float light[3])
+{
+	return RGB30 (R_LightCode (light[0]), R_LightCode (light[1]), R_LightCode (light[2]));
+}
+
 /*
 ===============
 R_InitPalette

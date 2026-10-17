@@ -76,6 +76,8 @@ typedef struct
 	const byte			*skinremap;		// player colors, or r_identityremap
 	const pixel_t		*palette;		// RGB lighting: the player's colors, or d_pal30
 	bool				rgblight;		// r_lightmode 1
+	const pixel_t		*colormap;		// texels lit through it: d_cm30, or the entity's flat color;
+										// NULL for RGB lighting
 	unsigned			tint[3];		// the light's color, 8.8 with the brightest 1.0
 	bool				holey;			// skin index 255 is a hole (MF_HOLEY)
 } affinetridesc_t;

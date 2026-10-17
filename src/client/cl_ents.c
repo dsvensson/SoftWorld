@@ -25,6 +25,7 @@ extern	cvar_t	cl_predict_players;
 extern	cvar_t	cl_predict_players2;
 extern	cvar_t	r_drawvweps;
 extern	cvar_t	r_rocketlight, r_rocketlight_color;
+extern	cvar_t	r_team_color, r_enemy_color;
 extern	cvar_t	cl_deadbodyfilter, cl_gibfilter, cl_r2g;
 extern	cvar_t	cl_solid_players;
 
@@ -99,6 +100,66 @@ static void CL_RocketLightColor (float color[3])
 		color[0] = color[1] = color[2] = 1;
 	for (i = 0 ; i < 3 ; i++)
 		color[i] = color[i] > 0 ? color[i] < 4 ? color[i] : 4 : 0;
+}
+
+/*
+===============
+CL_FlatColormap
+
+r_team_color or r_enemy_color as a colormap of its color alone, in every
+light level's row for every texel; NULL while it isn't numbers (empty, the
+default). colormap is the cvar's own, made again when the color changes.
+===============
+*/
+static const pixel_t *CL_FlatColormap (const cvar_t *var, pixel_t *colormap, pixel_t *made)
+{
+	float	light[3];
+	pixel_t	p;
+	int		i, n;
+
+	n = sscanf (var->string, "%f %f %f", &light[0], &light[1], &light[2]);
+	if (n == 1)
+		light[1] = light[2] = light[0];
+	else if (n != 3)
+		return NULL;
+	for (i = 0 ; i < 3 ; i++)
+		light[i] = light[i] > 0 ? light[i] < 2 ? light[i] : 2 : 0;
+	p = R_LightPixel (light);
+	if (p != *made)
+	{
+		for (i = 0 ; i < VID_GRADES * 256 ; i++)
+			colormap[i] = p;
+		*made = p;
+	}
+	return colormap;
+}
+
+/*
+===============
+CL_PlayerFlat
+
+The one color player j's model is drawn in, unlit, in place of its skin:
+r_team_color's for the team of the player whose side the game is seen from
+(the player, or the one a spectator or demo follows; any team outside
+teamplay is theirs alone), r_enemy_color's for the others. NULL for the skin:
+the cvar empty, or a free camera, which is on no one's side.
+===============
+*/
+static const pixel_t *CL_PlayerFlat (int j)
+{
+	static pixel_t	colormaps[2][VID_GRADES * 256];
+	static pixel_t	made[2] = {0xffffffffu, 0xffffffffu};		// no pixel has the top bit
+	int				me = cl.spectator || cls.mvdplayback ? Cam_TrackNum () : cl.playernum;
+	bool			team;
+
+	if (me < 0 || me >= cl.maxplayers || j < 0 || j >= cl.maxplayers)
+		return NULL;
+	team = j == me || (atoi (Info_ValueForKey (cl.serverinfo, "teamplay"))
+		&& !strcmp (Info_ValueForKey (cl.players[j].userinfo, "team"),
+			Info_ValueForKey (cl.players[me].userinfo, "team")));
+	if (team)
+		return CL_FlatColormap (&r_team_color, colormaps[0], &made[0]);
+	return CL_FlatColormap (&r_enemy_color, colormaps[1], &made[1]);
 }
 
 /*
@@ -1176,12 +1237,14 @@ static void CL_LinkPacketEntities (void)
 			ent->translate = cl.players[s1->colormap-1].translate;
 			ent->palette = cl.players[s1->colormap-1].palette;
 			ent->skin = Skin_ForPlayer (&cl.players[s1->colormap-1]);
+			ent->flat = CL_PlayerFlat (s1->colormap-1);		// a dead body too
 		}
 		else
 		{
 			ent->translate = NULL;
 			ent->palette = NULL;
 			ent->skin = NULL;
+			ent->flat = NULL;
 		}
 
 		// set skin
@@ -1365,6 +1428,7 @@ static void CL_LinkProjectiles (void)
 		ent->translate = NULL;
 		ent->palette = NULL;
 		ent->skin = NULL;
+		ent->flat = NULL;
 		VectorCopy (pr->origin, ent->origin);
 		VectorCopy (pr->angles, ent->angles);
 	}
@@ -1704,6 +1768,7 @@ static void CL_AddVWep (entity_t *ent, int vw_index)
 			ent->translate = NULL;
 			ent->palette = NULL;
 			ent->skin = NULL;
+			ent->flat = NULL;
 		}
 		return;
 	}
@@ -1718,6 +1783,7 @@ static void CL_AddVWep (entity_t *ent, int vw_index)
 	e->translate = NULL;
 	e->palette = NULL;
 	e->skin = NULL;
+	e->flat = NULL;
 }
 
 /*
@@ -1790,9 +1856,15 @@ static void CL_LinkPlayers (void)
 		ent->translate = info->translate;
 		ent->palette = info->palette;
 		if (state->modelindex == cl.playerindex)
+		{
 			ent->skin = Skin_ForPlayer (info);		// use custom skin
+			ent->flat = CL_PlayerFlat (j);
+		}
 		else
+		{	// eyes.mdl (the ring) is left as it is
 			ent->skin = NULL;
+			ent->flat = NULL;
+		}
 
 		// an MVD's players where the recording has them at the moment played
 		VectorCopy (state->origin, origin);

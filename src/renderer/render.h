@@ -73,6 +73,8 @@ typedef struct entity_s
 	float					backlerp;		// how much of oldframe is drawn: 0 none, 1 all
 	const byte				*translate;		// player colors: a palette index remap, NULL for none
 	const pixel_t			*palette;		// and as the palette in them, for RGB lighting
+	const pixel_t			*flat;			// a colormap of one color (r_team_color, r_enemy_color):
+											// the model all in it, unlit; NULL for its skin
 	int						skinnum;		// for Alias models
 	byte					alpha;			// FTE: 0 and 255 are opaque, else alpha * 254
 
@@ -178,6 +180,7 @@ void	R_ProfCount (profn_t what, int n);
 // palette.lmp and colormap.lmp, before any drawing
 void R_InitPalette (const byte *palette, const byte *colormap);
 pixel_t R_ColorPixel (int r, int g, int b);		// an sRGB color as a pixel (vid.h)
+pixel_t R_LightPixel (const float light[3]);	// linear light as a pixel: 1 white, more brighter
 void R_InitTextures (void);
 void R_RenderView (void);		// must set r_refdef first
 void R_ViewChanged (vrect_t *vrect, float aspect);

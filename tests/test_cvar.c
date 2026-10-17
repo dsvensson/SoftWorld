@@ -79,6 +79,7 @@ static void Printed (const char *msg)
 static cvar_t	ranged = {.name = "test_ranged", .string = "1", .min = 0, .max = 4};
 static cvar_t	negative = {.name = "test_negative", .string = "-0.5", .min = -1, .max = 0};
 static cvar_t	unranged = {.name = "test_unranged", .string = "1"};
+static cvar_t	color = {.name = "test_color", .string = "", .min = 0, .max = 2};	// as r_team_color
 
 // set to value, var is want and the console told told ("" for nothing)
 static void Check (cvar_t *var, char *value, const char *want, const char *told)
@@ -99,6 +100,7 @@ int main (void)
 	Cvar_RegisterVariable (&ranged);
 	Cvar_RegisterVariable (&negative);
 	Cvar_RegisterVariable (&unranged);
+	Cvar_RegisterVariable (&color);
 
 	Check (&ranged, "2", "2", "");
 	Check (&ranged, "2.5", "2.5", "");
@@ -111,6 +113,15 @@ int main (void)
 	Check (&negative, "0.25", "0", "test_negative is -1 to 0: set to 0\n");
 	Check (&unranged, "9", "9", "");
 	Check (&unranged, "-1", "-1", "");
+
+	// each number of a color held to the range
+	Check (&color, "0 1.5 0.25", "0 1.5 0.25", "");
+	Check (&color, "3 0 0", "2 0 0", "test_color is 0 to 2: set to 2 0 0\n");
+	Check (&color, "0 3 0", "0 2 0", "test_color is 0 to 2: set to 0 2 0\n");
+	Check (&color, "-1 0.5 9", "0 0.5 2", "test_color is 0 to 2: set to 0 0.5 2\n");
+	Check (&color, "  0   3 ", "0 2", "test_color is 0 to 2: set to 0 2\n");
+	Check (&color, "3", "2", "test_color is 0 to 2: set to 2\n");
+	Check (&color, "", "", "");
 
 	// as C code sets one
 	printed[0] = 0;

@@ -116,6 +116,18 @@ cvar_t	r_rocketlight_color = {.name = "r_rocketlight_color", .string = "0.703 0.
 		"more brighter, up to 4. By default ezQuake's (90 60 7 where its white is 128). Its color in r_lightmode 1 "
 		"with r_dlight_color 1, its brightness with r_dlight_color 0."};
 
+// players' models all in one color in place of their skins (cl_ents.c)
+cvar_t	r_team_color = {.name = "r_team_color", .string = "", .archive = true,
+	.description = "Draws your teammates' models all in one color in place of their skins, unlit: red, green and "
+		"blue as light, 0 to 2 each, 1 1 1 being white and more brighter than white; one number is a grey. Empty "
+		"(the default) leaves their skins. Your team is the one of the player whose side you see the game from "
+		"(you, or the player a demo or spectating follows), in a teamplay game; a free camera sees no one's.",
+	.min = 0, .max = 2};
+cvar_t	r_enemy_color = {.name = "r_enemy_color", .string = "", .archive = true,
+	.description = "Draws the models of the players not on your team (all the others outside teamplay) all in one "
+		"color in place of their skins, unlit, as r_team_color does your teammates'. Empty (the default) leaves "
+		"their skins.", .min = 0, .max = 2};
+
 // FTE's names and values: what isn't drawn, and rockets drawn as grenades
 cvar_t	cl_deadbodyfilter = {.name = "cl_deadbodyfilter", .string = "0", .archive = true,
 	.description = "Hides dead players' bodies.",
@@ -1442,6 +1454,8 @@ static void CL_InitLocal (void)
 	Cvar_RegisterVariable (&r_drawvweps);
 	Cvar_RegisterVariable (&r_rocketlight);
 	Cvar_RegisterVariable (&r_rocketlight_color);
+	Cvar_RegisterVariable (&r_team_color);
+	Cvar_RegisterVariable (&r_enemy_color);
 	Cvar_RegisterVariable (&cl_deadbodyfilter);
 	Cvar_RegisterVariable (&cl_gibfilter);
 	Cvar_RegisterVariable (&cl_r2g);

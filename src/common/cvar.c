@@ -182,22 +182,58 @@ static bool Cvar_HasRange (const cvar_t *var)
 
 /*
 ============
+Cvar_HoldToRange
+
+value in buf with each of its words, numbers, held to the variable's range:
+one past it is its nearer end, the rest as they were (a color's three numbers
+each; an empty value is 0). False, buf unset, when none is past it or what
+it holds doesn't fit.
+============
+*/
+static bool Cvar_HoldToRange (const cvar_t *var, const char *value, char *buf, size_t size)
+{
+	const char	*s = value, *word;
+	size_t		len = 0;
+	float		v;
+	bool		past = false, first;
+	int			n;
+
+	for (first = true ; ; first = false)
+	{
+		while (*s == ' ' || *s == '\t')
+			s++;
+		if (!*s && !first)
+			break;
+		word = s;
+		while (*s && *s != ' ' && *s != '\t')
+			s++;
+		v = Q_atof (word);		// to the word's end
+		if (v < var->min || v > var->max)
+		{
+			past = true;
+			n = snprintf (buf + len, size - len, "%s%g", first ? "" : " ", v < var->min ? var->min : var->max);
+		}
+		else
+			n = snprintf (buf + len, size - len, "%s%.*s", first ? "" : " ", (int)(s - word), word);
+		if (n < 0 || (size_t)n >= size - len)
+			return false;
+		len += (size_t)n;
+	}
+	return past;
+}
+
+/*
+============
 Cvar_InRange
 
-value, or if it is past the variable's range its nearer end, in buf, which
-the console tells
+value, or if a number of it is past the variable's range that held to it
+(Cvar_HoldToRange) in buf, which the console tells
 ============
 */
 static char *Cvar_InRange (const cvar_t *var, char *value, char *buf, size_t size)
 {
-	float	v;
-
-	if (!Cvar_HasRange (var))
+	if (!Cvar_HasRange (var) || !Cvar_HoldToRange (var, value, buf, size))
 		return value;
-	v = Q_atof (value);
-	if (v >= var->min && v <= var->max)
-		return value;
-	snprintf (buf, size, "%g", v < var->min ? var->min : var->max);
 	Con_Printf ("%s is %g to %g: set to %s\n", var->name, var->min, var->max, buf);
 	return buf;
 }
@@ -213,7 +249,7 @@ void Cvar_Set (char *var_name, char *value)
 {
 	cvar_t	*var;
 	char	**set;
-	char	inrange[32];
+	char	inrange[256];
 
 	var = Cvar_FindVar (var_name);
 	if (!var)
@@ -308,8 +344,7 @@ void Cvar_RegisterVariable (cvar_t *variable)
 		Sys_Error ("Cvar_RegisterVariable: %s is defined twice", variable->name);
 	if (Cmd_Exists (variable->name))
 		Sys_Error ("Cvar_RegisterVariable: %s is a command", variable->name);
-	if (Cvar_HasRange (variable)
-		&& (Q_atof (variable->string) < variable->min || Q_atof (variable->string) > variable->max))
+	if (Cvar_HasRange (variable) && Cvar_HoldToRange (variable, variable->string, value, sizeof(value)))
 		Sys_Error ("Cvar_RegisterVariable: %s's default is out of its range", variable->name);
 
 // link the variable in
