@@ -1,5 +1,6 @@
 // vid_webgl.js -- the page's side of vid_webgl.c: the canvas's WebGL 2 context,
-// the present shader, and the two integer textures the frame is copied to
+// the present shader, and the two integer textures the frame is copied to; or
+// in HDR, WebGPU's context (vid_webgpu.js)
 //
 // A frame is drawn by copying the layers from the page's memory into their
 // textures (the 2D only when it changed) and drawing a triangle over the
@@ -15,11 +16,16 @@
 // cleared only when the canvas or the viewport change. A clear at each frame,
 // the browser's or ours, was on the screen now and then: the view flickered
 // black.
+//
+// A canvas of WebGL's can't show light brighter than SDR white, and one of
+// WebGPU's can't be desynchronized: with vsync on an HDR display (vid_hdr), the
+// canvas is WebGPU's, once its device is made, in place of WebGL's as for vsync.
 
 addToLibrary({
-	$WebVid__deps: ['$UTF8ToString', '$stringToUTF8'],
+	$WebVid__deps: ['$UTF8ToString', '$stringToUTF8', '$WebGpu'],
 	$WebVid: {
-		gl: null,
+		kind: 'webgl',			// the canvas's context: webgl, or webgpu
+		gl: null,				// WebGL's
 		canvas: null,
 		observer: null,
 		source: '',				// present.glsl
@@ -41,33 +47,46 @@ addToLibrary({
 		skipped: 0,
 		error: '',
 		renderer: '',
+		hdrquery: null,			// whether the display shows HDR
 		fullscreenPending: false,	// asked for without a gesture: the next click or key
 
-		// a context on a new canvas in the old one's place
-		create(desync) {
-			var old = document.getElementById('canvas'), canvas, gl, why = '';
+		// a context on a new canvas in the old one's place: WebGPU's, shown in
+		// HDR (gpu), else WebGL 2's; false if there is none
+		create(desync, gpu) {
+			var old = document.getElementById('canvas'), canvas, gl = null, why = '';
 
 			canvas = document.createElement('canvas');
 			canvas.id = 'canvas';
 			canvas.tabIndex = -1;
-			canvas.addEventListener('webglcontextcreationerror', (e) => why = e.statusMessage || '');
-			gl = canvas.getContext('webgl2', {alpha: false, depth: false, stencil: false, antialias: false,
-				premultipliedAlpha: false, preserveDrawingBuffer: desync, desynchronized: desync,
-				failIfMajorPerformanceCaveat: false});
-			if (!gl) {
-				WebVid.error = why || 'no WebGL 2 context';
-				return false;
+			if (gpu && !WebGpu.attach(canvas)) {
+				// WebGL's canvas from now on
+				WebGpu.state = 'failed';
+				console.warn(`WebGPU: ${WebGpu.error}`);
+				return WebVid.create(desync, false);
+			}
+			if (!gpu) {
+				canvas.addEventListener('webglcontextcreationerror', (e) => why = e.statusMessage || '');
+				gl = canvas.getContext('webgl2', {alpha: false, depth: false, stencil: false, antialias: false,
+					premultipliedAlpha: false, preserveDrawingBuffer: desync, desynchronized: desync,
+					failIfMajorPerformanceCaveat: false});
+				if (!gl) {
+					WebVid.error = why || 'no WebGL 2 context';
+					return false;
+				}
+			}
+			if (WebVid.kind == 'webgpu' && WebGpu.context && !gpu) {
+				WebGpu.context.unconfigure();
+				WebGpu.context = null;
 			}
 			if (old)
 				old.replaceWith(canvas);
 			WebVid.observer?.disconnect();
+			WebVid.kind = gpu ? 'webgpu' : 'webgl';
 			WebVid.gl = gl;
 			WebVid.canvas = canvas;
 			Module['canvas'] = canvas;
 			WebVid.desync = desync;
 			WebVid.fence = null;
-			canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
-			canvas.addEventListener('webglcontextrestored', () => WebVid.build());
 
 			// the size in device pixels, as the layout has it
 			var r = canvas.getBoundingClientRect();
@@ -90,7 +109,11 @@ addToLibrary({
 			catch (e) {
 				WebVid.observer.observe(canvas);
 			}
+			if (gpu)
+				return true;
 
+			canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
+			canvas.addEventListener('webglcontextrestored', () => WebVid.build());
 			var info = gl.getExtension('WEBGL_debug_renderer_info');
 			WebVid.renderer = (info && gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER);
 			return WebVid.build();
@@ -175,14 +198,42 @@ addToLibrary({
 		},
 	},
 
-	web_vid_init__deps: ['$WebVid'],
-	web_vid_init: (source, desync) => {
-		WebVid.source = UTF8ToString(source);
-		return WebVid.create(!!desync);
+	web_vid_init__deps: ['$WebVid', '$WebGpu'],
+	web_vid_init: (glsl, wgsl, desync) => {
+		WebVid.source = UTF8ToString(glsl);
+		WebGpu.source = UTF8ToString(wgsl);
+		return WebVid.create(!!desync, false);
 	},
 
-	web_vid_recreate__deps: ['$WebVid'],
-	web_vid_recreate: (desync) => WebVid.create(!!desync),
+	// the canvas for frames shown as soon as drawn (desync) or at the refresh,
+	// in HDR or not: in HDR WebGPU's, once its device is made, and WebGL's
+	// meanwhile or if it can't be; false if no canvas could be made
+	web_vid_configure__deps: ['$WebVid', '$WebGpu'],
+	web_vid_configure: (desync, hdr) => {
+		var gpu;
+
+		if (hdr && WebGpu.state == 'none')
+			WebGpu.start();
+		gpu = !!hdr && WebGpu.state == 'ready';
+		if (!!desync == WebVid.desync && gpu == (WebVid.kind == 'webgpu'))
+			return true;
+		return WebVid.create(!!desync, gpu);
+	},
+
+	// the display the page is on shows HDR, as the browser tells
+	web_vid_displayhdr__deps: ['$WebVid'],
+	web_vid_displayhdr: () => (WebVid.hdrquery ??= matchMedia('(dynamic-range: high)')).matches,
+
+	// the canvas is shown in HDR
+	web_vid_showshdr__deps: ['$WebVid'],
+	web_vid_showshdr: () => WebVid.kind == 'webgpu',
+
+	// WebGPU's device: 0 none, 1 being made, 2 made, 3 none to be had; why, in buf
+	web_vid_gpustate__deps: ['$WebGpu'],
+	web_vid_gpustate: (buf, size) => {
+		stringToUTF8(WebGpu.error, buf, size);
+		return ['none', 'starting', 'ready', 'failed'].indexOf(WebGpu.state);
+	},
 
 	web_vid_error__deps: ['$WebVid'],
 	web_vid_error: (buf, size) => stringToUTF8(WebVid.error, buf, size),
@@ -190,16 +241,29 @@ addToLibrary({
 	web_vid_renderer__deps: ['$WebVid'],
 	web_vid_renderer: (buf, size) => stringToUTF8(WebVid.renderer, buf, size),
 
-	// false if the frame is bigger than the GPU's textures may be
-	web_vid_settextures__deps: ['$WebVid'],
+	// false if the frame is bigger than the GPU's textures may be; WebGPU's are
+	// made as big, and WebGL's when its canvas is made again
+	web_vid_settextures__deps: ['$WebVid', '$WebGpu'],
 	web_vid_settextures: (width, height) => {
-		var max = WebVid.gl.getParameter(WebVid.gl.MAX_TEXTURE_SIZE);
+		var max;
 
-		if (width > max || height > max) {
-			WebVid.error = `the frame's ${width}x${height} is more than the GPU's ${max}x${max}`;
-			return false;
+		if (WebVid.kind == 'webgpu') {
+			if (!WebGpu.fits(width, height)) {
+				WebVid.error = WebGpu.error;
+				return false;
+			}
+			WebVid.width = width;
+			WebVid.height = height;
 		}
-		WebVid.textures(width, height);
+		else {
+			max = WebVid.gl.getParameter(WebVid.gl.MAX_TEXTURE_SIZE);
+			if (width > max || height > max) {
+				WebVid.error = `the frame's ${width}x${height} is more than the GPU's ${max}x${max}`;
+				return false;
+			}
+			WebVid.textures(width, height);
+		}
+		WebGpu.textures(width, height);
 		return true;
 	},
 
@@ -211,9 +275,27 @@ addToLibrary({
 
 	// draws the frame unless the last is still on the GPU (paced 0: no vsync);
 	// true if it did
-	web_vid_present__deps: ['$WebVid'],
+	web_vid_present__deps: ['$WebVid', '$WebGpu'],
 	web_vid_present: (view, hud, huddirty, rowpixels, constants, x, y, width, height, paced) => {
 		var gl = WebVid.gl, canvas = WebVid.canvas, now = performance.now(), layout;
+
+		// WebGPU's canvas: drawn whole each frame, its texture a new one
+		if (WebVid.kind == 'webgpu') {
+			if (!WebGpu.device)
+				return false;		// lost: WebGL's canvas at the next web_vid_configure
+			if (!paced && WebGpu.busy && now - WebVid.lastdraw < 100) {
+				WebVid.skipped++;
+				return false;
+			}
+			if (canvas.width != WebVid.cw || canvas.height != WebVid.ch) {
+				canvas.width = WebVid.cw;
+				canvas.height = WebVid.ch;
+			}
+			WebGpu.present(view, hud, huddirty, rowpixels, constants, x, y, width, height, paced);
+			WebVid.lastdraw = now;
+			WebVid.drawn++;
+			return true;
+		}
 
 		if (!gl || gl.isContextLost())
 			return false;
@@ -343,14 +425,16 @@ addToLibrary({
 
 	web_vid_focus: () => window.focus(),
 
-	web_vid_describe__deps: ['$WebVid'],
+	web_vid_describe__deps: ['$WebVid', '$WebGpu'],
 	web_vid_describe: (buf, size) => {
-		var gl = WebVid.gl, attrs = gl?.getContextAttributes();
+		var gl = WebVid.gl, attrs = gl?.getContextAttributes(), gpu = WebVid.kind == 'webgpu';
 
 		return stringToUTF8([
-			`GPU: ${WebVid.renderer}`,
+			gpu ? `GPU: ${WebGpu.adapter} (WebGPU)` : `GPU: ${WebVid.renderer} (WebGL 2)`,
 			`Canvas: ${WebVid.canvas.width}x${WebVid.canvas.height} device pixels, ${devicePixelRatio} a CSS pixel`,
-			`Shown: ${attrs?.desynchronized ? 'as soon as drawn (desynchronized)' : "at the browser's next refresh"}`,
+			`Shown: ${gpu ? "at the browser's next refresh, in HDR (extended sRGB)"
+				: attrs?.desynchronized ? 'as soon as drawn (desynchronized)' : "at the browser's next refresh"}`,
+			...(WebGpu.state == 'failed' ? [`WebGPU: ${WebGpu.error}`] : []),
 			`Frames: ${WebVid.drawn} drawn, ${WebVid.skipped} skipped while the GPU had the last`,
 		].join('\n'), buf, size);
 	},

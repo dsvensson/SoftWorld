@@ -28,6 +28,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // without, frames run as they are due, one drawn when the GPU has finished the
 // last, on a canvas shown as soon as it is drawn where the browser allows
 // (desynchronized), as the other systems present without waiting.
+//
+// With vsync on an HDR display, the frame is shown in HDR, on a canvas of
+// WebGPU's (vid_webgpu.js, present.wgsl), which can't be desynchronized; a
+// browser doesn't tell a page how bright the display goes, which
+// vid_hdr_headroom does.
 
 #include "args.h"
 #include "cmd.h"
@@ -41,10 +46,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <string.h>
 
 extern const char	vid_present_glsl[];	// present_glsl.c
+extern const char	vid_present_wgsl[];	// present_wgsl.c
 
 // vid_webgl.js
-bool	web_vid_init (const char *source, bool desync);
-bool	web_vid_recreate (bool desync);
+bool	web_vid_init (const char *glsl, const char *wgsl, bool desync);
+bool	web_vid_configure (bool desync, bool hdr);
+bool	web_vid_displayhdr (void);
+bool	web_vid_showshdr (void);
+int		web_vid_gpustate (char *buf, int size);
 void	web_vid_error (char *buf, int size);
 void	web_vid_renderer (char *buf, int size);
 bool	web_vid_settextures (int width, int height);
@@ -56,11 +65,23 @@ void	web_vid_settitle (const char *text);
 void	web_vid_focus (void);
 void	web_vid_describe (char *buf, int size);
 
+// WebGPU's device, as web_vid_gpustate tells
+enum { WEB_GPU_NONE, WEB_GPU_STARTING, WEB_GPU_READY, WEB_GPU_FAILED };
+
+// how many times SDR white the display's brightest white is: a browser shows
+// light up to it (Chrome's chrome://gpu has it, as HDR relative maximum
+// luminance), but doesn't tell a page
+static cvar_t	vid_hdr_headroom = {.name = "vid_hdr_headroom", .string = "1.5", .archive = true,
+	.description = "In HDR, how many times as bright as SDR white the display's brightest white is, which "
+		"light toward it is rolled off to. A browser doesn't tell a page: Chrome's chrome://gpu has it, as "
+		"HDR relative maximum luminance.", .min = 1, .max = 100};
+
 static bool			vid_initialized;
+static bool			vid_starting;		// VID_Init's frame, before the configuration has run
 static pixel_t		*vid_view;			// the layers, drawn into and copied from
 static hudpixel_t	*vid_hud;
 static int			client_width, client_height;	// the canvas, in device pixels
-static bool			vid_desync;			// the canvas is shown as soon as drawn (vid_vsync 0)
+static int			vid_output;			// VID_OUTPUT_SDR, or _EXTENDED on WebGPU's canvas
 static bool			vid_hudpending;		// the 2D changed since it was last copied
 static bool			vid_fullscreen;
 static char			vid_gpuname[256];
@@ -175,11 +196,84 @@ void VID_ShownLayers (const pixel_t **frame, const hudpixel_t **hud)
 	*hud = vid_hud;
 }
 
+static float VID_Headroom (void)
+{
+	return vid_hdr_headroom.value > 1 ? vid_hdr_headroom.value : 1;
+}
+
+/*
+================
+VID_CheckOutput
+
+The canvas for frames as they are to be shown: as soon as drawn without vsync,
+at the refresh with it, and then in HDR where vid_hdr and the display have it
+(WebGPU's canvas, once its device is made). The console is told the output as
+it changes, as on the other systems.
+================
+*/
+static void VID_CheckOutput (void)
+{
+	enum { TOLD_NONE, TOLD_HDR, TOLD_SDR, TOLD_NOCANVAS, TOLD_HDROFF, TOLD_DESYNC };
+	static int		told = TOLD_NONE;
+	static float	toldheadroom;
+	bool			displayhdr = web_vid_displayhdr (), hdr;
+	int				state, now;
+	char			why[256];
+
+	hdr = vid_hdr.value && vid_vsync.value && displayhdr;
+	if (!web_vid_configure (!vid_vsync.value, hdr))
+	{
+		web_vid_error (why, sizeof(why));
+		Sys_Error ("VID_Update: the canvas couldn't be made again: %s", why);
+	}
+	vid_output = web_vid_showshdr () ? VID_OUTPUT_EXTENDED : VID_OUTPUT_SDR;
+
+	why[0] = 0;
+	if (vid_output == VID_OUTPUT_EXTENDED)
+		now = TOLD_HDR;
+	else if (hdr)
+	{
+		state = web_vid_gpustate (why, sizeof(why));
+		if (state != WEB_GPU_FAILED)
+			return;		// the device on its way
+		now = TOLD_NOCANVAS;
+	}
+	else if (displayhdr && !vid_hdr.value)
+		now = TOLD_HDROFF;
+	else if (displayhdr)
+		now = TOLD_DESYNC;
+	else
+		now = TOLD_SDR;
+	if (vid_starting || (now == told && (now != TOLD_HDR || toldheadroom == VID_Headroom ())))
+		return;
+	told = now;
+	toldheadroom = VID_Headroom ();
+
+	switch (now)
+	{
+	case TOLD_HDR:
+		Con_Printf ("HDR output: SDR white as the system has it, the peak %g times as bright (vid_hdr_headroom)\n",
+			VID_Headroom ());
+		break;
+	case TOLD_NOCANVAS:
+		Con_Printf ("SDR output: WebGPU's HDR canvas can't be had: %s\n", why);
+		break;
+	case TOLD_HDROFF:
+		Con_Printf ("SDR output: vid_hdr is 0\n");
+		break;
+	case TOLD_DESYNC:
+		Con_Printf ("SDR output: vid_vsync is 0, and a canvas shown as soon as drawn shows SDR alone\n");
+		break;
+	default:
+		Con_Printf ("SDR output\n");
+		break;
+	}
+}
+
 void VID_Update (void)
 {
 	vid_present_constants_t	constants;
 	vid_fit_t				fit;
-	char					why[512];
 
 	if (!vid_initialized || Minimized)
 		return;
@@ -187,21 +281,9 @@ void VID_Update (void)
 	if (client_width <= 0 || client_height <= 0)
 		return;
 
-	// the canvas is shown as soon as drawn without vsync, at the refresh with
-	// it: a context made for the one or the other
-	if (!vid_vsync.value != vid_desync)
-	{
-		vid_desync = !vid_vsync.value;
-		if (!web_vid_recreate (vid_desync))
-		{
-			web_vid_error (why, sizeof(why));
-			Sys_Error ("VID_Update: the canvas couldn't be made again: %s", why);
-		}
-		vid_hudpending = true;
-	}
-
+	VID_CheckOutput ();
 	fit = VID_Fit (client_width, client_height);
-	VID_FillConstants (&constants, &fit, VID_OUTPUT_SDR, 1, 1);
+	VID_FillConstants (&constants, &fit, vid_output, 1, vid_output == VID_OUTPUT_EXTENDED ? VID_Headroom () : 1);
 	if (web_vid_present (vid_view, vid_hud, vid.huddirty || vid_hudpending, vid.rowpixels, &constants,
 			(int)fit.x, (int)fit.y, (int)fit.width, (int)fit.height, VID_Vsync ()))
 		vid_hudpending = false;
@@ -235,13 +317,14 @@ void VID_Init (void)
 	char	why[512];
 
 	VID_RegisterCommon ();
+	Cvar_RegisterVariable (&vid_hdr_headroom);
 	Cmd_AddCommand ("vid_fullscreen", VID_Fullscreen_f,
 		"Toggles fullscreen, the browser's, as Alt+Enter does.");
 	Cmd_AddCommand ("vid_info", VID_Info_f,
-		"Prints the GPU WebGL draws with, the canvas, whether it is shown as soon as drawn, and the frames drawn.");
+		"Prints the GPU the page draws with (WebGL 2, or WebGPU in HDR), the canvas, how it is shown, and the frames "
+		"drawn.");
 
-	vid_desync = !vid_vsync.value;
-	if (!web_vid_init (vid_present_glsl, vid_desync))
+	if (!web_vid_init (vid_present_glsl, vid_present_wgsl, !vid_vsync.value))
 	{
 		web_vid_error (why, sizeof(why));
 		Sys_Error ("SoftWorld needs WebGL 2: %s", why);
@@ -254,7 +337,10 @@ void VID_Init (void)
 	VID_SetScale ();
 	vid_initialized = true;
 
+	// the output told at the next frame, as the configuration has it
+	vid_starting = true;
 	VID_Update ();
+	vid_starting = false;
 	if (COM_CheckParm ("-fullscreen"))
 		VID_SetFullscreen (true);
 }

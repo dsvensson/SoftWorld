@@ -1,12 +1,13 @@
 // browser_test.mjs -- runs a test page (linked with --emrun) in a headless
 // Chrome of its own, for ctest:
 //
-//   node browser_test.mjs <chrome> <test.html> [seconds]
+//   node browser_test.mjs <chrome> <test.html> [seconds] [webgl | webgpu]
 //
 // The page's directory is served on localhost with the cross-origin isolation
 // its shared memory needs. Chrome runs with a profile of its own (a browser
-// apart from any other running), headless, drawing in software (SwiftShader),
-// with sound that plays without a gesture and is muted, and only that browser
+// apart from any other running), headless, drawing in software (SwiftShader):
+// WebGL 2 (the default), or WebGPU, which Chrome turns off where WebGL draws in
+// software. Sound plays without a gesture and is muted, and only that browser
 // is ended. What the page prints (emrun's reports) is printed in order, and
 // the page's exit code is this one's: 1 if it doesn't exit in time, 77 (skipped)
 // if Chrome doesn't run it.
@@ -17,7 +18,9 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 
-const [chrome, page, seconds = '60'] = process.argv.slice(2);
+const [chrome, page, seconds = '60', api = 'webgl'] = process.argv.slice(2);
+const software = api == 'webgpu' ? ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader']
+	: ['--use-angle=swiftshader'];
 const root = path.resolve(path.dirname(page));
 const types = {'.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm'};
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'softworld-test-'));
@@ -101,7 +104,7 @@ server.listen(0, '127.0.0.1', () => {
 	const url = `http://localhost:${server.address().port}/${encodeURIComponent(path.basename(page))}`;
 
 	browser = child_process.spawn(chrome, [`--user-data-dir=${profile}`, '--headless=new', '--no-first-run',
-		'--no-default-browser-check', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+		'--no-default-browser-check', ...software, '--enable-unsafe-swiftshader',
 		'--autoplay-policy=no-user-gesture-required', '--mute-audio', url],
 		{stdio: 'ignore', detached: process.platform != 'win32'});
 	browser.on('error', (err) => {

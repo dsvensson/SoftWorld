@@ -51,7 +51,8 @@ typedef struct
 vid_fit_t	VID_Fit (int clientwidth, int clientheight);
 
 // the constants of the present shaders (present.hlsl, present.metal,
-// present.glsl, and the web's present.glsl), laid out as they declare them
+// present.glsl, and the web's present.glsl and present.wgsl), laid out as they
+// declare them
 typedef struct
 {
 	float	blend[4];		// sRGB color, and how much of it covers the view
@@ -60,7 +61,7 @@ typedef struct
 	float	gamma;			// exponent applied to the view's light; 1 keeps it
 	float	contrast;		// the light as mid gray times (light / mid gray) to this
 	float	sharp;			// 0: integer scale, nearest texel; 1: sharp bilinear
-	float	hdr;			// the output: VID_OUTPUT_SDR, _LINEAR or _PQ
+	float	hdr;			// the output: VID_OUTPUT_*
 	float	paperwhite;		// output value of SDR white
 	float	peak;			// output value of the display's brightest white
 	float	pad[2];
@@ -68,10 +69,11 @@ typedef struct
 
 static_assert (sizeof(vid_present_constants_t) == 64, "the shaders' constants are 64 bytes");
 
-// what the shaders output: sRGB; linear light (scRGB, EDR); or that light as
-// PQ in BT.2020, 1 being 203 cd/m² (present.glsl alone). paperwhite and peak
-// are in the output's linear values.
-enum { VID_OUTPUT_SDR, VID_OUTPUT_LINEAR, VID_OUTPUT_PQ };
+// what the shaders output: sRGB; linear light (scRGB, EDR); that light as PQ
+// in BT.2020, 1 being 203 cd/m² (present.glsl alone); or that light in sRGB's
+// curve, on past 1 (a browser's extended sRGB canvas, present.wgsl alone).
+// paperwhite and peak are in the output's linear values.
+enum { VID_OUTPUT_SDR, VID_OUTPUT_LINEAR, VID_OUTPUT_PQ, VID_OUTPUT_EXTENDED };
 
 void	VID_FillConstants (vid_present_constants_t *constants, const vid_fit_t *fit, int output,
 			float paperwhite, float peak);

@@ -238,11 +238,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 # test_present_webgl draws the web's present.glsl with WebGL 2 as vid_webgl.c
-# does, and compares what it shows with VID_FrameToRGB; test_sound_web plays a
-# wave through the sound's AudioWorklet and checks what it plays. They run in a
-# browser: browser_test.mjs serves each and runs it in a headless Chrome of its
-# own (drawing in software, SwiftShader; sound playing without a gesture,
-# muted). Without Chrome they aren't made, and a Chrome that can't skips them.
+# does, and compares what it shows with VID_FrameToRGB; test_present_webgpu
+# draws present.wgsl with WebGPU as vid_webgpu.js does, and compares it with
+# VID_FrameToRGB and VID_FrameToPQ; test_sound_web plays a wave through the
+# sound's AudioWorklet and checks what it plays. They run in a browser:
+# browser_test.mjs serves each and runs it in a headless Chrome of its own
+# (drawing in software, SwiftShader; sound playing without a gesture, muted).
+# Without Chrome they aren't made, and a Chrome that can't skips them.
 if(EMSCRIPTEN)
 	find_program(SW_CHROME NAMES chrome google-chrome google-chrome-stable chromium chromium-browser "Google Chrome"
 		PATHS "C:/Program Files/Google/Chrome/Application" "/Applications/Google Chrome.app/Contents/MacOS")
@@ -257,6 +259,15 @@ if(EMSCRIPTEN AND SW_CHROME AND CMAKE_CROSSCOMPILING_EMULATOR)
 		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/renderer")
 	target_link_libraries(test_present_webgl PRIVATE sw_common)
 
+	# WebGPU reads back asynchronously, which the test waits for
+	sw_add_program(test_present_webgpu test_present_webgpu.c
+		"${PROJECT_SOURCE_DIR}/src/platform/vid_common.c" "${SW_WEB_SOURCE}/present_wgsl.c")
+	set_source_files_properties("${SW_WEB_SOURCE}/present_wgsl.c" PROPERTIES OBJECT_DEPENDS "${SW_WEB_SOURCE}/present.wgsl")
+	target_include_directories(test_present_webgpu PRIVATE
+		"${PROJECT_SOURCE_DIR}/src/platform" "${PROJECT_SOURCE_DIR}/src/renderer")
+	target_link_libraries(test_present_webgpu PRIVATE sw_common)
+	target_link_options(test_present_webgpu PRIVATE -sASYNCIFY)
+
 	sw_add_program(test_sound_web test_sound_web.c)
 	target_include_directories(test_sound_web PRIVATE
 		"${SW_WEB_SOURCE}" "${PROJECT_SOURCE_DIR}/src/platform/posix" "${PROJECT_SOURCE_DIR}/src/sound")
@@ -268,15 +279,19 @@ if(EMSCRIPTEN AND SW_CHROME AND CMAKE_CROSSCOMPILING_EMULATOR)
 
 	# pages, not node's: the libraries of the page's side, and emrun's reports
 	# of what they print and their exit (--emrun), which browser_test.mjs reads
-	set(SW_LIBRARY_present_webgl vid_webgl.js)
+	set(SW_LIBRARY_present_webgl vid_webgl.js vid_webgpu.js)
+	set(SW_LIBRARY_present_webgpu vid_webgpu.js)
 	set(SW_LIBRARY_sound_web snd_webaudio.js)
-	foreach(test present_webgl sound_web)
+	foreach(test present_webgl present_webgpu sound_web)
+		set(libraries "")
+		foreach(library ${SW_LIBRARY_${test}})
+			list(APPEND libraries "SHELL:--js-library ${SW_WEB_SOURCE}/${library}")
+		endforeach()
 		set_target_properties(test_${test} PROPERTIES SUFFIX ".html"
-			LINK_DEPENDS "${SW_WEB_SOURCE}/vid_webgl.js;${SW_WEB_SOURCE}/snd_webaudio.js")
-		target_link_options(test_${test} PRIVATE -sENVIRONMENT=web,worker -sNODERAWFS=0 --emrun
-			"SHELL:--js-library ${SW_WEB_SOURCE}/${SW_LIBRARY_${test}}")
+			LINK_DEPENDS "${SW_WEB_SOURCE}/vid_webgl.js;${SW_WEB_SOURCE}/vid_webgpu.js;${SW_WEB_SOURCE}/snd_webaudio.js")
+		target_link_options(test_${test} PRIVATE -sENVIRONMENT=web,worker -sNODERAWFS=0 --emrun ${libraries})
 		add_test(NAME ${test} COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${CMAKE_CURRENT_SOURCE_DIR}/browser_test.mjs"
-			"${SW_CHROME}" "$<TARGET_FILE:test_${test}>" 60)
+			"${SW_CHROME}" "$<TARGET_FILE:test_${test}>" 60 $<IF:$<STREQUAL:${test},present_webgpu>,webgpu,webgl>)
 		set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
 	endforeach()
 endif()

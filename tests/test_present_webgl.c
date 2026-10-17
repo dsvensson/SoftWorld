@@ -46,7 +46,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 extern const char	vid_present_glsl[];	// present_glsl.c
 
 // vid_webgl.js
-bool	web_vid_init (const char *source, bool desync);
+bool	web_vid_init (const char *glsl, const char *wgsl, bool desync);
 void	web_vid_error (char *buf, int size);
 void	web_vid_renderer (char *buf, int size);
 bool	web_vid_settextures (int width, int height);
@@ -219,7 +219,7 @@ int main (void)
 	vid.height = HEIGHT;
 	vid.rowpixels = WIDTH;
 
-	if (!web_vid_init (vid_present_glsl, false))
+	if (!web_vid_init (vid_present_glsl, "", false))
 	{
 		web_vid_error (text, sizeof(text));
 		printf ("present_webgl: no WebGL 2 (%s), skipped\n", text);
