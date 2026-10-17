@@ -24,9 +24,19 @@ if(NOT TARGET ZLIB::ZLIB)
 	sw_deps_prefix(sw_zlib_prefix zlib "${CMAKE_CURRENT_LIST_DIR}/zlib/CMakeLists.txt")
 	list(PREPEND CMAKE_PREFIX_PATH "${sw_zlib_prefix}")
 	sw_deps_forget("${sw_zlib_prefix}" ZLIB_INCLUDE_DIR ZLIB_LIBRARY_RELEASE ZLIB_LIBRARY_DEBUG)
+	# the headers and the library of one zlib: a search that found no static
+	# library kept the system's headers (its shared one's), which go once the
+	# prefix has its own
+	if(EXISTS "${sw_zlib_prefix}/include/zlib.h" AND DEFINED CACHE{ZLIB_INCLUDE_DIR}
+		AND NOT "$CACHE{ZLIB_INCLUDE_DIR}" STREQUAL "${sw_zlib_prefix}/include")
+		unset(ZLIB_INCLUDE_DIR CACHE)
+	endif()
 	find_package(ZLIB 1.2 QUIET)
 	if(NOT TARGET ZLIB::ZLIB)
 		sw_deps_build(zlib "zlib" "${CMAKE_CURRENT_LIST_DIR}/zlib" "${sw_zlib_prefix}")
+		unset(ZLIB_INCLUDE_DIR CACHE)
+		unset(ZLIB_LIBRARY_RELEASE CACHE)
+		unset(ZLIB_LIBRARY_DEBUG CACHE)
 		find_package(ZLIB 1.2 QUIET)
 		if(NOT TARGET ZLIB::ZLIB)
 			message(FATAL_ERROR "zlib: built into ${sw_zlib_prefix}, but not found there")

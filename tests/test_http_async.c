@@ -68,12 +68,15 @@ void Sys_Error (char *error, ...)
 	exit (1);
 }
 
+static udpsocket_t	*quiet;		// a socket nothing is sent to: a wait on it is a sleep
+
+// a sleep, as test_slist_loopback's: Sys_WaitUntil is the programs' (their events)
 static void Wait (double seconds)
 {
-	double	until = Sys_DoubleTime () + seconds;
+	double	until = Sys_DoubleTime () + seconds, left;
 
-	while (Sys_DoubleTime () < until)
-		Sys_WaitUntil (until, false);
+	while ((left = until - Sys_DoubleTime ()) > 0)
+		UDP_Wait (&quiet, 1, left);
 }
 
 /*
@@ -355,6 +358,10 @@ int main (void)
 	// interface has the firewall ask whether the test may listen
 	COM_InitArgv (3, (char *[]){"test", "-ip", "127.0.0.1"});
 	UDP_Init ();
+	quiet = UDP_OpenQuiet ();
+	CHECK (quiet != NULL);
+	if (!quiet)
+		return 1;
 	for (listenport = 27960 ; listenport < 28000 && !listen_ ; listenport++)
 		listen_ = TCP_Listen (listenport);
 	listenport--;
@@ -370,6 +377,7 @@ int main (void)
 	TestFile ();
 
 	TCP_CloseListen (listen_);
+	UDP_Close (quiet);
 	Mem_Free (text);
 	Mem_Free (gz);
 	if (failures)
