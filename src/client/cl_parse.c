@@ -355,8 +355,9 @@ static void Model_NextDownload (void)
 		else if (!strcmp (cl.model_name[i], "progs/eyes.mdl"))
 			CL_SetModelChecksum (cl.model_name[i], emodel_name);
 
-		// a recording plays without what it can't show, but not without its map
-		if (!cl.model_precache[i] && i != 1 && cls.demoplayback)
+		// a game or a recording goes on without what it can't show, its
+		// entities not drawn (FTE's warning), but not without its map
+		if (!cl.model_precache[i] && i != 1)
 		{
 			Con_Printf ("Can't show %s\n", cl.model_name[i]);
 			continue;
