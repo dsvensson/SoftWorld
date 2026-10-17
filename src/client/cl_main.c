@@ -1481,7 +1481,8 @@ static void CL_InitLocal (void)
 		"Reconnects to the server and records a demo from the start, to <name>.qwd. Usage: rerecord <name>");
 	Cmd_AddCommand ("stop", CL_Stop_f, "Stops recording a demo.");
 	Cmd_AddCommand ("playdemo", CL_PlayDemo_f,
-		"Plays a .qwd or .mvd demo; without an extension, .qwd is tried first. Usage: playdemo <name>");
+		"Plays a .qwd or .mvd demo, or an http(s) URL's as it downloads; a .gz is unpacked as it is read, and "
+		"without an extension .qwd is tried first. Usage: playdemo <name or URL>");
 	Cmd_AddCommand ("timedemo", CL_TimeDemo_f,
 		"Plays a demo as fast as it draws, then prints the frames a second. Usage: timedemo <name>");
 	Cmd_AddCommand ("benchdemo", CL_BenchDemo_f,
@@ -1888,6 +1889,7 @@ void CL_Frame (void)
 	Load_Poll ();		// what the loader's thread loaded since, put in place
 	CL_AttractFrame ();
 	CL_QTVFrame ();
+	CL_DemoSourceFrame ();
 	if (cls.mvdplayback)
 		CL_MVDAdvance ();
 	CL_ReadPackets ();

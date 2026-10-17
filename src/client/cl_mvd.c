@@ -76,7 +76,8 @@ static struct
 	size_t		size;
 	size_t		pos;			// the next block
 	size_t		capacity;		// a stream's buffer
-	bool		stream;			// QTV: a short block is one still arriving
+	bool		stream;			// QTV, a download: a short block is one still arriving
+	bool		keep;			// a download's: what was read stays, to play on as a file
 	bool		closed;			// the stream's connection closed
 	bool		held;			// the stream's cushion was held for this level
 	double		hold_until;
@@ -134,7 +135,7 @@ void CL_MVDStart (byte *data, size_t size)
 	mvd.data = data;
 	mvd.size = size;
 	mvd.capacity = size;
-	mvd.stream = false;
+	mvd.stream = mvd.keep = false;
 	mvd.pos = 0;
 	mvd.time = mvd.frame = 0;
 	mvd.started = false;
@@ -155,13 +156,15 @@ void CL_MVDStart (byte *data, size_t size)
 ==================
 CL_MVDStartStream / CL_MVDFeed / CL_MVDStreamClosed
 
-A QTV stream: played as it arrives, a block once all of it has
+A QTV stream or a download: played as it arrives, a block once all of it has;
+a download's kept whole, to play on as a file once it has all come
 ==================
 */
-void CL_MVDStartStream (void)
+void CL_MVDStartStream (bool keep)
 {
 	CL_MVDStart (NULL, 0);
 	mvd.stream = true;
+	mvd.keep = keep;
 	mvd.closed = false;
 	mvd.held = false;
 	mvd.hold_until = 0;
@@ -169,9 +172,9 @@ void CL_MVDStartStream (void)
 
 void CL_MVDFeed (const byte *bytes, int len)
 {
-	// what was read goes, now and then; never while a block is parsed, since
-	// this runs before they are read
-	if (mvd.pos > 64 * 1024)
+	// what was read goes, now and then (but a download's); never while a block
+	// is parsed, since this runs before they are read
+	if (!mvd.keep && mvd.pos > 64 * 1024)
 	{
 		memmove (mvd.data, mvd.data + mvd.pos, mvd.size - mvd.pos);
 		mvd.size -= mvd.pos;
@@ -189,6 +192,26 @@ void CL_MVDFeed (const byte *bytes, int len)
 void CL_MVDStreamClosed (void)
 {
 	mvd.closed = true;
+}
+
+static void MVD_Scan (void);
+
+/*
+==================
+CL_MVDStreamToFile
+
+A download kept whole has all come: it plays on as a file does, at
+demo_speed, seeking from here on (the level so far was played as it came,
+and isn't read again); a level going on now is read for its keyframes
+==================
+*/
+void CL_MVDStreamToFile (void)
+{
+	if (!mvd.keep || !mvd.stream)
+		return;
+	mvd.stream = false;
+	if (cls.state == ca_active && !cls.timedemo)
+		MVD_Scan ();
 }
 
 static void MVD_FreeKeys (void)

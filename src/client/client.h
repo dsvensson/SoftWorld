@@ -30,6 +30,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "protocol.h"
 #include "q_types.h"
 #include "render.h"
+#include "vfs.h"
 #include "vid.h"
 // client.h
 
@@ -215,7 +216,8 @@ typedef struct
 	bool	demoplayback;
 	bool	mvdplayback;		// the demo is an MVD (cl_mvd.c)
 	bool	timedemo;
-	FILE		*demofile;
+	FILE		*demofile;			// the one recorded
+	vfsfile_t	*demosource;		// the one played, a file or a download, while it is read (cl_demo.c)
 	float		td_lastframe;		// to meter out one message a frame
 	int			td_startframe;		// host_framecount at start
 	float		td_starttime;		// realtime at second frame of timedemo
@@ -506,6 +508,7 @@ void CL_Stop_f (void);
 void CL_Record_f (void);
 void CL_ReRecord_f (void);
 void CL_PlayDemo_f (void);
+void CL_DemoSourceFrame (void);		// once a frame, before the MVD is read: a download's bytes to it
 void CL_TimeDemo_f (void);
 void CL_BenchDemo_f (void);
 void CL_CompleteDemo (const char *partial, void (*add) (void *ctx, const char *candidate), void *ctx);
@@ -546,7 +549,8 @@ void CL_FlyMove (float move[3]);	// cl_input.c: the movement keys, for a flown c
 void CL_LerpMVDPlayers (void);		// cl_ents.c: aims the players' trails, once a frame
 bool CL_PlayerPlace (int slot, vec3_t origin, vec3_t angles);	// an MVD's player at the moment played
 void CL_MVDFixAngle (int slot);		// the player's view was set: no turn to it
-void CL_MVDStartStream (void);		// QTV: played as it arrives
+void CL_MVDStartStream (bool keep);	// QTV, a download: played as it arrives; kept, all of it stays
+void CL_MVDStreamToFile (void);		// a kept stream has all come: it plays on as a file
 void CL_MVDFeed (const byte *bytes, int len);
 void CL_MVDStreamClosed (void);
 void CL_MVDActive (void);			// the level went active: a file's is scanned for seeking

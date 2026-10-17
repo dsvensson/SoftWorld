@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "cl_local.h"
+#include "net_http.h"
 #include "png.h"
 
 static void CL_FinishTimeDemo (void);
@@ -93,9 +94,8 @@ void CL_StopPlayback (void)
 	if (!cls.demoplayback)
 		return;
 
-	if (cls.demofile)
-		fclose (cls.demofile);
-	cls.demofile = NULL;
+	VFS_Close (cls.demosource);
+	cls.demosource = NULL;
 	if (cls.mvdplayback)
 		CL_MVDStop ();
 	CL_QTVStop ();
@@ -184,13 +184,66 @@ static void CL_WriteDemoMessage (sizebuf_t *msg)
 	fflush (cls.demofile);
 }
 
-// a demo's next field, into out; at its end playback stops and this is false
+static long long	demo_record;	// where the record being read began
+
+// a demo's next field, into out; false when it hasn't all come yet (a
+// download's: the record is read again from its start later), or at the
+// demo's end, where playback stops
 static bool CL_DemoRead (void *out, size_t size)
 {
-	if (fread (out, size, 1, cls.demofile) == 1)
+	int		n, got = 0;
+
+	while (got < (int)size && (n = VFS_Read (cls.demosource, (byte *)out + got, (int)size - got)) > 0)
+		got += n;
+	if (got == (int)size)
 		return true;
+	switch (VFS_Status (cls.demosource))
+	{
+	case VFS_LIVE:
+		VFS_Seek (cls.demosource, demo_record);
+		return false;
+	case VFS_FAILED:
+		Con_Printf ("Demo: %s\n", VFS_Error (cls.demosource));
+		break;
+	default:
+		break;
+	}
 	CL_StopPlayback ();
 	return false;
+}
+
+// a download's next record has all come: its time, its kind and what follows;
+// a file's has, or is cut short where it ends
+static bool CL_DemoRecordCame (void)
+{
+	vfsfile_t	*f = cls.demosource;
+	long long	at = VFS_Tell (f);
+	bool		whole = false;
+	byte		c;
+	int			len;
+
+	if (VFS_Status (f) != VFS_LIVE)
+		return true;
+	if (VFS_Seek (f, at + 4) && VFS_Read (f, &c, 1) == 1)
+	{
+		switch (c)
+		{
+		case dem_cmd:
+			whole = VFS_Seek (f, at + 5 + (long long)sizeof(usercmd_t) + 12);
+			break;
+		case dem_read:
+			whole = VFS_Read (f, &len, 4) == 4 && (LittleLong (len) < 0 || VFS_Seek (f, at + 9 + LittleLong (len)));
+			break;
+		case dem_set:
+			whole = VFS_Seek (f, at + 13);
+			break;
+		default:	// corrupt: the read says so
+			whole = true;
+			break;
+		}
+	}
+	VFS_Seek (f, at);
+	return whole;
 }
 
 /*
@@ -208,6 +261,10 @@ static bool CL_GetDemoMessage (void)
 	byte	c;
 	usercmd_t *pcmd;
 
+	demo_record = VFS_Tell (cls.demosource);
+	if (!CL_DemoRecordCame ())
+		return 0;		// a download's, coming
+
 	// read the time from the packet
 	if (!CL_DemoRead (&demotime, sizeof(demotime)))
 		return 0;
@@ -220,8 +277,7 @@ static bool CL_GetDemoMessage (void)
 		else if (demotime > cls.td_lastframe) {
 			cls.td_lastframe = demotime;
 			// rewind back to time
-			fseek(cls.demofile, ftell(cls.demofile) - sizeof(demotime),
-					SEEK_SET);
+			VFS_Seek (cls.demosource, demo_record);
 			return 0;		// allready read this frame's message
 		}
 		if (!cls.td_starttime && cls.state == ca_active) {
@@ -234,13 +290,11 @@ static bool CL_GetDemoMessage (void)
 			// too far back
 			host.realtime = demotime - 1.0;
 			// rewind back to time
-			fseek(cls.demofile, ftell(cls.demofile) - sizeof(demotime),
-					SEEK_SET);
+			VFS_Seek (cls.demosource, demo_record);
 			return 0;
 		} else if (host.realtime < demotime) {
 			// rewind back to time
-			fseek(cls.demofile, ftell(cls.demofile) - sizeof(demotime),
-					SEEK_SET);
+			VFS_Seek (cls.demosource, demo_record);
 			return 0;		// don't need another message yet
 		}
 	} else
@@ -926,23 +980,51 @@ directories on the way to them
 */
 void CL_CompleteDemo (const char *partial, void (*add) (void *ctx, const char *candidate), void *ctx)
 {
-	static const char *const	extensions[] = {".qwd", ".mvd", NULL};
+	static const char *const	extensions[] = {".qwd", ".mvd", ".qwd.gz", ".mvd.gz", NULL};
 
 	FS_ListPaths (partial, extensions, add, ctx);
+}
+
+// a URL the demo is downloaded from as it plays
+static bool CL_DemoIsURL (const char *demo)
+{
+	return !Q_strncasecmp (demo, "http://", 7) || !Q_strncasecmp (demo, "https://", 8);
+}
+
+// an MVD by its name's extension, a .gz's taken off (and a URL's query): a URL
+// that isn't a .qwd is one too (the hub's)
+static bool CL_DemoIsMVD (const char *demo, bool url)
+{
+	char		base[MAX_OSPATH];
+	const char	*extension;
+	size_t		n = url ? strcspn (demo, "?#") : strlen (demo);
+
+	n = n < sizeof(base) ? n : sizeof(base) - 1;
+	memcpy (base, demo, n);
+	base[n] = 0;
+	if (n > 3 && !Q_strcasecmp (base + n - 3, ".gz"))
+		base[n - 3] = 0;
+	extension = CL_Extension (base);
+	if (!Q_strcasecmp (extension, ".qwd"))
+		return false;
+	return url || !Q_strcasecmp (extension, ".mvd");
 }
 
 /*
 ====================
 CL_PlayDemo_f
 
-play [demoname]
+play [demoname]: a file through the search path, or a URL's, played as it
+downloads; a .gz unpacked as it is read
 ====================
 */
 void CL_PlayDemo_f (void)
 {
-	char	demoname[256];
-	byte	*data;
-	int		size;
+	char		demoname[HTTP_MAXURL];
+	vfsfile_t	*f;
+	byte		*data;
+	size_t		size;
+	bool		url;
 
 	if (Cmd_Argc() != 2)
 	{
@@ -959,46 +1041,87 @@ void CL_PlayDemo_f (void)
 //
 // open the demo file
 //
-	// a name without an extension is a .qwd, else an .mvd
 	Q_strncpyz (demoname, Cmd_Argv(1), sizeof(demoname));
-	COM_DefaultExtension (demoname, ".qwd");
-	size = COM_FOpenFile (demoname, &cls.demofile);
-	if (!cls.demofile && !CL_Extension (Cmd_Argv(1))[0])
-	{
-		Q_strncpyz (demoname, Cmd_Argv(1), sizeof(demoname));
-		COM_DefaultExtension (demoname, ".mvd");
-		size = COM_FOpenFile (demoname, &cls.demofile);
+	url = CL_DemoIsURL (demoname);
+	if (url)
+		f = VFS_OpenURL (demoname);
+	else
+	{	// a name without an extension is a .qwd, else an .mvd
+		COM_DefaultExtension (demoname, ".qwd");
+		f = FS_OpenVFS (demoname);
+		if (!f && !CL_Extension (Cmd_Argv(1))[0])
+		{
+			Q_strncpyz (demoname, Cmd_Argv(1), sizeof(demoname));
+			COM_DefaultExtension (demoname, ".mvd");
+			f = FS_OpenVFS (demoname);
+		}
 	}
 
 	Con_Printf ("Playing demo from %s.\n", demoname);
-	if (!cls.demofile)
+	if (!f)
 	{
 		Con_Printf ("ERROR: couldn't open.\n");
 		cls.demonum = -1;		// stop demo loop
 		return;
 	}
+	f = VFS_OpenGunzip (f);
 
-	// an MVD is played from memory
-	if (!Q_strcasecmp (CL_Extension (demoname), ".mvd"))
+	// an MVD is played from memory: a file's all of it at once, a download's
+	// as it comes (CL_DemoSourceFrame)
+	if (CL_DemoIsMVD (demoname, url))
 	{
-		data = Mem_Alloc (size > 0 ? size : 1);
-		if ((int)fread (data, 1, size, cls.demofile) != size)
+		if (VFS_Status (f) == VFS_LIVE)
+			CL_MVDStartStream (true);
+		else
 		{
-			Con_Printf ("ERROR: couldn't read.\n");
-			Mem_Free (data);
-			fclose (cls.demofile);
-			cls.demofile = NULL;
-			return;
+			if (!(data = VFS_ReadAll (f, &size)))
+			{
+				Con_Printf ("ERROR: couldn't read: %s.\n", VFS_Error (f));
+				VFS_Close (f);
+				return;
+			}
+			VFS_Close (f);
+			f = NULL;
+			CL_MVDStart (data, size);
 		}
-		fclose (cls.demofile);
-		cls.demofile = NULL;
-		CL_MVDStart (data, (size_t)size);
 	}
 
+	cls.demosource = f;
 	cls.demoplayback = true;
 	cls.state = ca_demostart;
 	Netchan_Setup (&cls.netchan, cls.net_from, 0, NS_CLIENT);
 	host.realtime = 0;
+}
+
+/*
+====================
+CL_DemoSourceFrame
+
+Once a frame, before the MVD is read: what a downloading MVD brought since,
+to play; once it has all come, it plays on as a file does (seeking,
+demo_speed); one that failed plays what came
+====================
+*/
+void CL_DemoSourceFrame (void)
+{
+	byte		buf[16384];
+	vfsstatus_t	status;
+	int			n;
+
+	if (!cls.demosource || !cls.mvdplayback)
+		return;
+	while ((n = VFS_Read (cls.demosource, buf, sizeof(buf))) > 0)
+		CL_MVDFeed (buf, n);
+	status = VFS_Status (cls.demosource);
+	if (status == VFS_LIVE)
+		return;
+	if (status == VFS_FAILED)
+		Con_Printf ("Demo download: %s\n", VFS_Error (cls.demosource));
+	CL_MVDStreamClosed ();
+	if (status == VFS_ENDED)
+		CL_MVDStreamToFile ();
+	VFS_Close (cls.demosource);
+	cls.demosource = NULL;
 }
 
 /*

@@ -79,7 +79,7 @@ static void CL_QTVBegin (const byte *stream, int len)
 	cls.demoplayback = true;
 	cls.state = ca_demostart;
 	Netchan_Setup (&cls.netchan, cls.net_from, 0, NS_CLIENT);
-	CL_MVDStartStream ();
+	CL_MVDStartStream (false);
 	if (len > 0)
 		CL_MVDFeed (stream, len);
 	qtv.state = QTV_STREAM;
