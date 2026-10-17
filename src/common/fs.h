@@ -95,5 +95,8 @@ int		COM_FOpenFile (const char *filename, FILE **file);
 // COM_FOpenFile's file as a VFS, a pak's entry its slice of the pak; NULL if
 // it isn't found
 vfsfile_t	*FS_OpenVFS (const char *path);
+// the size and the time (seconds since 1970) of the file COM_FOpenFile would
+// open, a pak's entry the pak's time; false where the search path has none
+bool	FS_FileInfo (const char *path, long long *size, long long *mtime);
 void	COM_CreatePath (char *path);
 void	COM_Gamedir (char *dir);

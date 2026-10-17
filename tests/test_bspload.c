@@ -76,6 +76,13 @@ void Sys_Error (char *error, ...)
 // the rest is linked in but never called while loading maps
 int Sys_FileTime (char *path) { (void)path; return -1; }
 void Sys_mkdir (char *path) { (void)path; }
+bool Sys_FileInfo (const char *path, long long *size, long long *mtime)
+{
+	(void)path;
+	(void)size;
+	(void)mtime;
+	return false;
+}
 bool Sys_ListDir (const char *path, void (*entry) (void *ctx, const char *name, bool isdir), void *ctx)
 {
 	(void)path;

@@ -206,7 +206,12 @@ It is the checklist for the rest of CSQC.
   `getqueuedaudiotime` (sound QuakeC makes, kept whole and counted in its own frames),
   `setkeydest`, `getkeydest`, `setcursormode`, `getcursormode`, `keynumtostring`,
   `stringtokeynum`, `findkeysforcommand`, `getkeybind`, `setkeybind`, `clientstate` (2 only in
-  a game), `clipboard_set` (the clipboard, cliptype 0) and SoftWorld's `isfullscreen`. Its files
+  a game), `clipboard_set` (the clipboard, cliptype 0) and SoftWorld's `isfullscreen`. FTE's
+  `search_begin`, `search_end`, `search_getsize`, `search_getfilename`, `search_getfilesize` and
+  `search_getfilemtime` list the files of the game's search path a pattern names (`*` and `?`
+  within one directory, case aside, each file once and sorted by name unless flag 4 asks for
+  every copy; a pak's file has the pak's time), and SoftWorld's `search_getfileage` is a file's
+  age in seconds (`cl_search.c`). Its files
   (`fopen` and the rest) are FTE's sandbox in the game directory, and `addprogs` loads further
   progs from it (a launcher's games). Its heap is `pr_menu_memsize` (1g, address space committed
   as it is used; 16m on the web and 32-bit builds). Uploaded images are drawn at the size asked.

@@ -15,6 +15,21 @@ int Sys_FileTime (char *path)
 	return GetFileAttributesA (path) == INVALID_FILE_ATTRIBUTES ? -1 : 1;
 }
 
+bool Sys_FileInfo (const char *path, long long *size, long long *mtime)
+{
+	WIN32_FILE_ATTRIBUTE_DATA	data;
+	ULARGE_INTEGER				t;
+
+	if (!GetFileAttributesExA (path, GetFileExInfoStandard, &data) || (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+		return false;
+	*size = (long long)data.nFileSizeHigh << 32 | data.nFileSizeLow;
+	// 100 nanoseconds from 1601
+	t.LowPart = data.ftLastWriteTime.dwLowDateTime;
+	t.HighPart = data.ftLastWriteTime.dwHighDateTime;
+	*mtime = (long long)(t.QuadPart / 10000000) - 11644473600LL;
+	return true;
+}
+
 void Sys_mkdir (char *path)
 {
 	_mkdir (path);

@@ -58,6 +58,40 @@ int Q_strcasecmp (const char *s1, const char *s2)
 	return Q_strncasecmp (s1, s2, SIZE_MAX);
 }
 
+static int Q_GlobLower (int c)
+{
+	return c >= 'A' && c <= 'Z' ? c + 'a' - 'A' : c;
+}
+
+bool Q_GlobMatch (const char *pattern, const char *text)
+{
+	const char	*star = NULL, *resume = NULL;
+
+	while (*text)
+	{
+		if (*pattern == '*')
+		{
+			star = ++pattern;		// what follows it, matched from each place in turn
+			resume = text;
+			continue;
+		}
+		if (*pattern && (*pattern == '?' ? *text != '/' : Q_GlobLower (*pattern) == Q_GlobLower (*text)))
+		{
+			pattern++;
+			text++;
+			continue;
+		}
+		// the last star takes a character more, but never a '/'
+		if (!star || *resume == '/')
+			return false;
+		pattern = star;
+		text = ++resume;
+	}
+	while (*pattern == '*')
+		pattern++;
+	return !*pattern;
+}
+
 void Q_strncpyz (char *dest, const char *src, size_t size)
 {
 	size_t	len;

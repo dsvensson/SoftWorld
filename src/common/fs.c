@@ -514,6 +514,44 @@ vfsfile_t *FS_OpenVFS (const char *path)
 }
 
 /*
+===========
+FS_FileInfo
+
+The size and time of the file COM_FOpenFile would open, looked for as it
+looks: a pak's entry its own size and the pak's time
+===========
+*/
+bool FS_FileInfo (const char *path, long long *size, long long *mtime)
+{
+	searchpath_t	*search;
+	char			netpath[MAX_OSPATH];
+	long long		paksize;
+	int				i;
+
+	for (search = fs_thread_chain ? fs_thread_chain->paths : com_searchpaths ; search ; search = search->next)
+	{
+		if (search->pack)
+		{
+			for (i = 0 ; i < search->pack->numfiles ; i++)
+				if (!strcmp (search->pack->files[i].name, path))
+				{
+					*size = search->pack->files[i].filelen;
+					if (!Sys_FileInfo (search->pack->filename, &paksize, mtime))
+						*mtime = 0;
+					return true;
+				}
+			continue;
+		}
+		if (!static_registered && (strchr (path, '/') || strchr (path, '\\')))
+			continue;		// as COM_FOpenFile has it
+		if (Q_snprintfz (netpath, sizeof(netpath), "%s/%s", search->filename, path)
+			&& Sys_FileInfo (netpath, size, mtime))
+			return true;
+	}
+	return false;
+}
+
+/*
 ===============================================================================
 
 LISTING

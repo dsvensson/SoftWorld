@@ -20,6 +20,17 @@ int Sys_FileTime (char *path)
 	return stat (path, &st) ? -1 : 1;
 }
 
+bool Sys_FileInfo (const char *path, long long *size, long long *mtime)
+{
+	struct stat	st;
+
+	if (stat (path, &st) || S_ISDIR (st.st_mode))
+		return false;
+	*size = (long long)st.st_size;
+	*mtime = (long long)st.st_mtime;
+	return true;
+}
+
 void Sys_mkdir (char *path)
 {
 	mkdir (path, 0777);

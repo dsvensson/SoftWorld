@@ -59,6 +59,11 @@ bool	CLQC_ReturnText (qcvm_t *vm, const char *text);
 // when there is no room
 bool	SB_Builtins (qc_builtins_t *b);
 
+// FTE's search builtins over the search path's files, and SoftWorld's
+// search_getfileage (cl_search.c), into a host's; false when there is no room
+bool	Search_Builtins (qc_builtins_t *b);
+void	Search_Shutdown (void);		// the searches left open, gone
+
 // FTE's 2D builtins (drawpic, drawstring, ...), into a host's; false when
 // there is no room
 bool	CLQC_DrawBuiltins (qc_builtins_t *b);

@@ -39,6 +39,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 int		Q_strcasecmp (const char *s1, const char *s2);
 int		Q_strncasecmp (const char *s1, const char *s2, size_t n);
 
+// whether text matches pattern, case aside: '*' any characters and '?' one,
+// within a directory (neither matches a '/'), the rest themselves
+bool	Q_GlobMatch (const char *pattern, const char *text);
+
 // copies at most size-1 characters and always terminates dest
 void	Q_strncpyz (char *dest, const char *src, size_t size);
 

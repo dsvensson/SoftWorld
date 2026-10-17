@@ -31,6 +31,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 // returns 1 if the file exists, -1 if not
 int		Sys_FileTime (char *path);
+// a file's size in bytes, and when it was last written in seconds since 1970;
+// false where there is no such file (or it is a directory)
+bool	Sys_FileInfo (const char *path, long long *size, long long *mtime);
 void	Sys_mkdir (char *path);
 
 // each entry of a directory but . and ..: its name, and whether it is a

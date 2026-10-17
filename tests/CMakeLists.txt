@@ -132,6 +132,11 @@ sw_add_program(test_tga test_tga.c)
 target_link_libraries(test_tga PRIVATE sw_common)
 add_test(NAME tga COMMAND test_tga)
 
+# test_glob matches file names against patterns as the menu's searches do.
+sw_add_program(test_glob test_glob.c)
+target_link_libraries(test_glob PRIVATE sw_common)
+add_test(NAME glob COMMAND test_glob)
+
 # test_vfs reads the VFS's files: memory, a file's slice, and a gzip unpacked
 # over them, over a file that comes in pieces and over ones that stop short.
 sw_add_program(test_vfs test_vfs.c)

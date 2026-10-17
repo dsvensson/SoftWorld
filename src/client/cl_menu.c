@@ -705,6 +705,7 @@ LOADING
 static void M_Destroy (void)
 {
 	CLQC_RemoveCommands (&menu.qc);
+	Search_Shutdown ();
 	QC_Destroy (menu.qc.vm);
 	menu.qc.vm = NULL;
 	menu.qc.calls = 0;
@@ -925,7 +926,7 @@ void M_Init (void)
 	for (i = 0 ; i < sizeof(menu_builtins) / sizeof(menu_builtins[0]) ; i++)
 		if (!QC_BuiltinsSet (menu.builtins, menu_builtins[i].name, menu_builtins[i].func))
 			Sys_Error ("M_Init: out of memory");
-	if (!SB_Builtins (menu.builtins) || !CLQC_DrawBuiltins (menu.builtins))
+	if (!SB_Builtins (menu.builtins) || !Search_Builtins (menu.builtins) || !CLQC_DrawBuiltins (menu.builtins))
 		Sys_Error ("M_Init: out of memory");
 }
 
