@@ -295,6 +295,7 @@ Worth knowing:
 | `cl_idlefps` | frame rate cap while the window isn't the focus, 50 by default; 0 is `cl_maxfps`'s |
 | `cl_truelightning` | how far the lightning beam of the player whose view you see (yours, or the one a demo or spectating follows) turns toward the view, hiding its lag; 1, the default, all the way |
 | `+fire w1 [w2 ...]` | as ezQuake's: fires while held with the first of the weapons listed that you have, with ammo for a shot (`bind mouse1 "+fire 7 8 3 2"`) |
+| `+showscores`, `+showteamscores`, `scr_scoreboard_hidehud` | the scoreboard while held, the teams' over it with `+showteamscores` (Tab by default), centered across the screen; the rest of the HUD (the status bar, the crosshair, centered messages, the console's messages, the FPS counter, the item timers) hidden under it, 1 by default, 0 shown |
 | `cl_deadbodyfilter`, `cl_gibfilter`, `cl_r2g` | as FTE's, all off by default: dead players' bodies hidden (1 once they lie on the ground, 2 from the moment they die); gibs and blown-off heads hidden; rockets drawn as grenades, and unlike FTE's with a grenade's smoke trail too (their light kept) |
 | `cl_download_mapsrc` | where a map comes from that the server doesn't give (no downloads, or it doesn't have it) or a demo or QTV stream needs, as FTE's: `<url><map>.bsp`, over HTTP or HTTPS, with the download bar; maps.quakeworld.nu's `https://maps.quakeworld.nu/all/` by default, empty for none |
 | `demo_speed`, `pause` | MVD playback speed, and pause |

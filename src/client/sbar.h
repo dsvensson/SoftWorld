@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 void Sbar_Init (void);
 bool Sbar_ShowingScores (void);		// +showscores is held
+bool Sbar_ScoresOnly (void);		// the scoreboard held up, the rest of the HUD hidden under it
 bool Sbar_Below (bool full);		// it takes the lines below the view (full: viewsize 100 and over)
 void Sbar_WadPics (void);		// gfx.wad's pics again (W_LoadGameWad)
 

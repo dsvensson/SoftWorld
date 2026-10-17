@@ -47,6 +47,13 @@ static bool	sb_showscores;
 static bool	sb_showteamscores;
 static int	sbar_xofs;		// its left edge (Sbar_Draw)
 
+// the rest of the HUD hidden under the scoreboard held up (Sbar_ScoresOnly)
+static cvar_t	scr_scoreboard_hidehud = {.name = "scr_scoreboard_hidehud", .string = "1", .archive = true,
+	.description = "Hides the rest of the HUD while +showscores or +showteamscores holds the scoreboard up in a "
+		"deathmatch: the status bar, the crosshair, centered messages, the console's messages, the FPS counter, "
+		"the item timers and the net graph.",
+	.values = (const cvar_value_t[]){{"0", "Shown under the scoreboard"}, {"1", "Hidden"}, {0}}};
+
 
 static void Sbar_DeathmatchOverlay (int start);
 static void Sbar_TeamOverlay (void);
@@ -129,6 +136,8 @@ void Sbar_Init (void)
 	Cmd_AddCommand ("+showteamscores", Sbar_ShowTeamScores, "Shows the teams' scores while held (bind to a key).");
 	Cmd_AddCommand ("-showteamscores", Sbar_DontShowTeamScores,
 		"Hides the teams' scores (when the +showteamscores key is let go).");
+
+	Cvar_RegisterVariable (&scr_scoreboard_hidehud);
 }
 
 // gfx.wad's status bar pics, again when it changes
@@ -474,6 +483,21 @@ static bool Sbar_Deathmatch (void)
 	return !*dm || atoi (dm);
 }
 
+/*
+===============
+Sbar_ScoresOnly
+
+The scoreboard held up (+showscores, +showteamscores) in a deathmatch, alone:
+the rest of the HUD is hidden under it while scr_scoreboard_hidehud is set.
+Not where a CSQC draws the view or the status bar, which has its own
+===============
+*/
+bool Sbar_ScoresOnly (void)
+{
+	return scr_scoreboard_hidehud.value && (sb_showscores || sb_showteamscores) && cls.state == ca_active
+		&& !cl.intermission && Sbar_Deathmatch () && !CSQC_DrawsView () && !CSQC_DrawsHud ();
+}
+
 // hudstyle as ironwail bounds it, 0 to 3
 static int Sbar_HudStyle (void)
 {
@@ -512,6 +536,15 @@ static int Sbar_RightRoom (void)
 static bool Sbar_Headsup (void)
 {
 	return Sbar_HudStyle () == 3 && scr_viewsize.value >= 100;
+}
+
+// the scoreboard's left edge: its 320 wide layout centered across the screen,
+// as the status bar's (sbar_xofs); it stays at the top, as id's
+static int Sbar_OverlayLeft (void)
+{
+	int		x = ((int)vid.conwidth - 320) / 2;
+
+	return x > 0 ? x : 0;
 }
 
 // a backdrop (the bar's, the inventory's, the scores'): the classic and the
@@ -1071,7 +1104,7 @@ Sbar_Draw
 void Sbar_Draw (void)
 {
 	int		style;
-	bool	modern, headsup;
+	bool	modern, headsup, scoresonly;
 	char	st[512];
 
 	if (scr.con_current == vid.conheight)
@@ -1084,10 +1117,11 @@ void Sbar_Draw (void)
 	// id's NetQuake and ironwail's have theirs; id's QuakeWorld kept its at the
 	// left for the small scoreboard, which goes right of the bar where it fits
 	sbar_xofs = ((int)vid.conwidth - 320) / 2;
+	scoresonly = Sbar_ScoresOnly ();
 
 		
 // top line
-	if (scr.sb_lines > 24 && !modern)
+	if (scr.sb_lines > 24 && !modern && !scoresonly)
 	{
 		if (!cl.spectator || Cam_TrackNum () >= 0)
 			Sbar_DrawInventory ();
@@ -1096,7 +1130,7 @@ void Sbar_Draw (void)
 	}	
 
 // main area
-	if (scr.sb_lines > 0)
+	if (scr.sb_lines > 0 && !scoresonly)
 	{
 		if (cl.spectator) {
 			if (Cam_TrackNum () < 0) {
@@ -1135,7 +1169,7 @@ void Sbar_Draw (void)
 		Sbar_TeamOverlay();
 
 
-	if (scr.sb_lines > 0 && !modern)
+	if (scr.sb_lines > 0 && !modern && !scoresonly)
 		Sbar_MiniDeathmatchOverlay ();
 }
 
@@ -1159,6 +1193,7 @@ static void Sbar_TeamOverlay (void)
 	char			team[5];
 	team_t *tm;
 	int plow, phigh, pavg;
+	int				xofs;
 
 // request new ping times every two second
 	teamplay = atoi(Info_ValueForKey(cl.serverinfo, "teamplay"));
@@ -1169,11 +1204,12 @@ static void Sbar_TeamOverlay (void)
 	}
 
 
+	xofs = Sbar_OverlayLeft ();
 	pic = Draw_CachePic ("gfx/ranking.lmp");
-	Draw_Pic (160-pic->width/2, 0, pic);
+	Draw_Pic (xofs + 160-pic->width/2, 0, pic);
 
 	y = 24;
-	x = 36;
+	x = xofs + 36;
 	Draw_String(x, y, "low/avg/high team total players");
 	y += 8;
 //	Draw_String(x, y, "------------ ---- ----- -------");
@@ -1266,9 +1302,10 @@ static void Sbar_DeathmatchOverlay (int start)
 	teamplay = atoi(Info_ValueForKey(cl.serverinfo, "teamplay"));
 
 
+	x = Sbar_OverlayLeft ();
 	if (!start) {
 		pic = Draw_CachePic ("gfx/ranking.lmp");
-		Draw_Pic (160-pic->width/2, 0, pic);
+		Draw_Pic (x + 160-pic->width/2, 0, pic);
 	}
 
 // scores	
@@ -1283,7 +1320,7 @@ static void Sbar_DeathmatchOverlay (int start)
 		y = 24;
 	if (teamplay)
 	{
-		x = 4;
+		x += 4;
 //                            0    40 64   104   152  192 
 		Draw_String ( x , y, "ping pl time frags team name");
 		y += 8;
@@ -1293,7 +1330,7 @@ static void Sbar_DeathmatchOverlay (int start)
 	}
 	else
 	{
-		x = 16;
+		x += 16;
 //                            0    40 64   104   152
 		Draw_String ( x , y, "ping pl time frags name");
 		y += 8;

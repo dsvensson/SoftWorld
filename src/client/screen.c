@@ -231,8 +231,8 @@ static void SCR_CheckDrawCenterString (void)
 	
 	if (scr_centertime_off <= 0 && !cl.intermission)
 		return;
-	if (cls.key_dest != key_game)
-		return;
+	if (cls.key_dest != key_game || Sbar_ScoresOnly ())
+		return;		// its time runs out under the scoreboard too
 
 	SCR_DrawCenterString ();
 }
@@ -678,8 +678,11 @@ static void SCR_DrawConsole (void)
 	}
 	else
 	{
-		if ((cls.key_dest == key_game || cls.key_dest == key_message) && !CL_Attracting ())
-			Con_DrawNotify ();	// only draw notify in game
+		// only draw notify in game, not under the scoreboard held up; a
+		// chat being typed shows
+		if (((cls.key_dest == key_game && !Sbar_ScoresOnly ()) || cls.key_dest == key_message)
+			&& !CL_Attracting ())
+			Con_DrawNotify ();
 	}
 }
 
@@ -1201,7 +1204,7 @@ void SCR_UpdateScreen (void)
 	if (!CSQC_DrawView (&sbar))
 		V_RenderView ();
 	prof = R_ProfStart ();
-	if (r_netgraph.value && !CL_Attracting ())
+	if (r_netgraph.value && !CL_Attracting () && !Sbar_ScoresOnly ())
 		SCR_DrawNetGraph ();
 
 
@@ -1226,13 +1229,16 @@ void SCR_UpdateScreen (void)
 	}
 	else
 	{
-		SCR_DrawRam ();
-		SCR_DrawNet ();
-		SCR_DrawTurtle ();
-		SCR_DrawPause ();
-		SCR_DrawFPS ();
+		if (!Sbar_ScoresOnly ())
+		{	// the scoreboard held up hides the rest of the HUD
+			SCR_DrawRam ();
+			SCR_DrawNet ();
+			SCR_DrawTurtle ();
+			SCR_DrawPause ();
+			SCR_DrawFPS ();
+			CL_DrawItemTimers ();
+		}
 		SCR_CheckDrawCenterString ();
-		CL_DrawItemTimers ();
 		if (sbar && !CSQC_DrawHud ())
 			Sbar_Draw ();
 		else if (sbar && Sbar_ShowingScores ())
