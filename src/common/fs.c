@@ -496,6 +496,24 @@ int COM_FOpenFile (const char *filename, FILE **file)
 }
 
 /*
+===========
+FS_OpenVFS
+
+COM_FOpenFile's file as a VFS (vfs.h): a pak's entry its slice of the pak,
+from where COM_FOpenFile put the file
+===========
+*/
+vfsfile_t *FS_OpenVFS (const char *path)
+{
+	FILE	*f;
+	int		length = COM_FOpenFile (path, &f);
+
+	if (!f)
+		return NULL;
+	return VFS_OpenStdio (f, ftell (f), length);
+}
+
+/*
 ===============================================================================
 
 LISTING

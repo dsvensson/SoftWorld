@@ -150,13 +150,14 @@ jobs:
 
       # WebRTC's libraries (libdatachannel and mbedTLS, the HTTPS's too), which
       # configuring with SW_WEBRTC=ON builds into deps where the cache has none
-      # for what builds them (cmake/webrtc.cmake); kept once the programs build
+      # for what builds them (cmake/webrtc.cmake), and zlib where the system has
+      # no static one (cmake/zlib.cmake); kept once the programs build
       - name: WebRTC's libraries
         id: webrtc
         uses: actions/cache/restore@v6
         with:
           path: deps
-          key: webrtc-${{ matrix.preset }}-${{ hashFiles('cmake/deps.cmake', 'cmake/webrtc.cmake', 'cmake/webrtc/**', 'cmake/mbedtls.cmake', 'cmake/mbedtls/**') }}
+          key: webrtc-${{ matrix.preset }}-${{ hashFiles('cmake/deps.cmake', 'cmake/webrtc.cmake', 'cmake/webrtc/**', 'cmake/mbedtls.cmake', 'cmake/mbedtls/**', 'cmake/zlib.cmake', 'cmake/zlib/**') }}
 
       # MSVC, the Windows SDK's fxc and Ninja, from a Visual Studio developer shell
       # for the programs' architecture (VSARCH)
@@ -327,13 +328,14 @@ jobs:
 
       # WebRTC's libraries (libdatachannel and mbedTLS, the HTTPS's too), which
       # configuring with SW_WEBRTC=ON builds into deps where the cache has none
-      # for what builds them (cmake/webrtc.cmake); kept once the programs build
+      # for what builds them (cmake/webrtc.cmake), and zlib where the system has
+      # no static one (cmake/zlib.cmake); kept once the programs build
       - name: WebRTC's libraries
         id: webrtc
         uses: actions/cache/restore@v6
         with:
           path: deps
-          key: webrtc-${{ matrix.preset }}-${{ hashFiles('cmake/deps.cmake', 'cmake/webrtc.cmake', 'cmake/webrtc/**', 'cmake/mbedtls.cmake', 'cmake/mbedtls/**') }}
+          key: webrtc-${{ matrix.preset }}-${{ hashFiles('cmake/deps.cmake', 'cmake/webrtc.cmake', 'cmake/webrtc/**', 'cmake/mbedtls.cmake', 'cmake/mbedtls/**', 'cmake/zlib.cmake', 'cmake/zlib/**') }}
 
       - name: Build
         run: |

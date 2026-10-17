@@ -58,9 +58,10 @@ else()
 endif()
 
 # where what the build fetches and builds itself is installed (fteqcc,
-# WebRTC's libraries, mbedTLS), for later configures (and CI's caches) to find
+# WebRTC's libraries, mbedTLS, zlib), for later configures (and CI's caches) to
+# find
 set(SW_DEPS_DIR "${CMAKE_BINARY_DIR}/deps" CACHE PATH
-	"Where the build installs what it fetches and builds itself (fteqcc, SW_WEBRTC=ON's libraries, mbedTLS)")
+	"Where the build installs what it fetches and builds itself (fteqcc, SW_WEBRTC=ON's libraries, mbedTLS, zlib)")
 
 # WebRTC (rtc://) for the native programs: libdatachannel where there is one,
 # or built when asked (SW_WEBRTC), with the runtime library above
@@ -73,6 +74,9 @@ endif()
 if(NOT EMSCRIPTEN)
 	include(mbedtls)
 endif()
+
+# zlib for gzip (the hub's demos): found or built, a page's Emscripten's
+include(zlib)
 
 # fteqcc, found or built, and the QuakeC it compiles into the programs
 include(fteqcc)

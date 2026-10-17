@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // fs.h -- the file system: search paths, pack files and game directories
 
 #include "q_types.h"
+#include "vfs.h"
 
 #include <stdio.h>
 
@@ -91,5 +92,8 @@ fs_chain_t	*FS_GameDirChain (void);
 
 void	COM_WriteFile (char *filename, void *data, int len);
 int		COM_FOpenFile (const char *filename, FILE **file);
+// COM_FOpenFile's file as a VFS, a pak's entry its slice of the pak; NULL if
+// it isn't found
+vfsfile_t	*FS_OpenVFS (const char *path);
 void	COM_CreatePath (char *path);
 void	COM_Gamedir (char *dir);
