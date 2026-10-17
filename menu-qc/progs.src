@@ -13,4 +13,5 @@ sb_players.qc
 sb_options.qc
 sb_browser.qc
 demos.qc
+hub.qc
 main.qc

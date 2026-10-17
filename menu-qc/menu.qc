@@ -1,11 +1,12 @@
 // menu.qc -- id's menus: QuakeWorld's main, options, keys, help and quit
 // screen, as the C menu had them, and NetQuake's single player; multiplayer is
-// a menu of the server browser (sb_*.qc) and the demos (demos.qc)
+// a menu of the server browser (sb_*.qc), the demos (demos.qc) and the hub's
+// games (hub.qc)
 
 // what the menus show: from M_BIG on, the screens that draw and take their
 // keys themselves (main.qc's bigmenus)
 enum { M_NONE, M_MAIN, M_SINGLEPLAYER, M_OPTIONS, M_KEYS, M_HELP, M_QUIT, M_SKILL, M_LOAD, M_SAVE, M_MULTIPLAYER,
-	M_SLIST, M_DEMOS, M_COUNT };
+	M_SLIST, M_DEMOS, M_HUB, M_COUNT };
 #define	M_BIG	M_SLIST
 
 float	m_state;
@@ -14,6 +15,7 @@ float	sb_ctrl, sb_alt, sb_shift;	// held, as the big screens have them
 
 void() SB_Open;				// the server browser (sb_browser.qc)
 void() Demos_Open;			// the demos (demos.qc)
+void() Hub_Open;			// the hub's games (hub.qc)
 void(float state) M_DrawState;
 
 // a cursor moved through n items, round from either end
@@ -124,16 +126,16 @@ void(float key) M_Main_Key =
 
 MULTIPLAYER MENU
 
-The server browser and the demos, under NetQuake's title
+The server browser, the demos and the hub's games, under NetQuake's title
 
 ==============================================================================
 */
 
-#define	MULTIPLAYER_ITEMS	2
+#define	MULTIPLAYER_ITEMS	3
 
 float	m_multiplayer_cursor;
-string	m_multiplayer_names[MULTIPLAYER_ITEMS] = {"Server Browser", "Demos"};
-void()	m_multiplayer_open[MULTIPLAYER_ITEMS] = {SB_Open, Demos_Open};
+string	m_multiplayer_names[MULTIPLAYER_ITEMS] = {"Server Browser", "Demos", "Hub"};
+void()	m_multiplayer_open[MULTIPLAYER_ITEMS] = {SB_Open, Demos_Open, Hub_Open};
 
 void() M_Multiplayer_Draw =
 {

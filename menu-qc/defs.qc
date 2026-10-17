@@ -128,6 +128,33 @@ string(float handle, float num) search_getfilename = #77;
 float(float handle, float num) search_getfilesize = #0:search_getfilesize;
 float(float handle, float num) search_getfileage = #0:search_getfileage;
 
+// SoftWorld's GETs: a request's id (0 when as many as can be run), its status
+// (0 while it runs, else the answer's, -1 failed), its body once it has all
+// come, a header of its answer, why it failed; closed, its id is free again
+float(string url, optional string headers) webget = #0:webget;
+float(float id) webget_status = #0:webget_status;
+string(float id) webget_body = #0:webget_body;
+string(float id, string name) webget_header = #0:webget_header;
+string(float id) webget_error = #0:webget_error;
+void(float id) webget_close = #0:webget_close;
+
+// JSON, qcvm's by name: a document is a word in the heap and so is a node, as
+// are lengths and indices; a string read from one lives until json_free
+typedef int	jsonnode;
+jsonnode(string text) json_parse = #0:json_parse;
+void(jsonnode node) json_free = #0:json_free;
+int(jsonnode node) json_get_value_type = #0:json_get_value_type;
+float(jsonnode node) json_get_float = #0:json_get_float;
+string(jsonnode node) json_get_string = #0:json_get_string;
+jsonnode(jsonnode node, string key) json_find_object_child = #0:json_find_object_child;
+int(jsonnode node) json_get_length = #0:json_get_length;
+jsonnode(jsonnode node, int index) json_get_child_at_index = #0:json_get_child_at_index;
+
+// a string's bytes as a URL takes them, all but A-Z a-z 0-9 . - _ ~ as %XX
+string(string s) uri_escape = #510;
+// the time now as C's strftime has it: local time, or UTC with 0
+string(float uselocaltime, string format, ...) strftime = #478;
+
 // SoftWorld's, the server list's: a server's view index (-1 not shown); a
 // server asked again ahead of the rest; whether a source named a server; a
 // source's name, type, location, marked, servers, state or age; its mark;

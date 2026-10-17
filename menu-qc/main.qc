@@ -7,6 +7,7 @@ void() m_init =
 	registercommand ("menu_multiplayer");
 	registercommand ("menu_slist");
 	registercommand ("menu_demos");
+	registercommand ("menu_hub");
 	registercommand ("addserver");
 	registercommand ("menu_options");
 	registercommand ("menu_keys");
@@ -21,7 +22,7 @@ void() m_shutdown =
 };
 
 // the big screens, each drawn whole on the backdrop and taking its keys as
-// they are and as they type: the server browser, the demos
+// they are and as they type: the server browser, the demos, the hub's games
 typedef struct
 {
 	void(vector size)	draw;
@@ -31,7 +32,8 @@ typedef struct
 
 bigmenu_t	bigmenus[M_COUNT - M_BIG] = {
 	{SB_Draw, SB_Key, SB_Typed},
-	{Demos_Draw, Demos_Key, Demos_Char}
+	{Demos_Draw, Demos_Key, Demos_Char},
+	{Hub_Draw, Hub_Key, Hub_Char}
 };
 
 void(vector size) m_draw =
@@ -125,6 +127,9 @@ float(string cmd) m_consolecommand =
 		return TRUE;
 	case "menu_demos":
 		Demos_Open ();
+		return TRUE;
+	case "menu_hub":
+		Hub_Open ();
 		return TRUE;
 	case "addserver":
 		if (argv (1) == "")
