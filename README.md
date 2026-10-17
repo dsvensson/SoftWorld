@@ -525,7 +525,8 @@ those it doesn't take with `clientcommand`. It offers a
 `csprogs.dat` (`sv_csqc_progname`) in the serverinfo as FTE does. The client runs a server's csprogs as FTE's
 client does:
 - it downloads the csprogs into `csprogsvers` (`cl_download_csprogs`), checks it, and loads it
-  with `csaddon.dat` where cheats apply;
+  with `csaddon.dat` where cheats apply; a demo runs CSQC only when its server had FTE's CSQC
+  protocol (mvdsv's MVDs and ezQuake's QWDs run none);
 - it tells the server CSQC runs, and takes its entities, events and stats (256, as floats and
   strings too);
 - sounds and temp entities go to CSQC first, as do the commands before they are sent;

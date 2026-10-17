@@ -271,7 +271,9 @@ static void VWepModel_NextDownload (void)
 CL_StartCSQC
 
 The csprogs the serverinfo offers, as FTE starts it before the models load:
-any csprogs will do in a demo or with the server's anycsqc
+any csprogs will do in a demo or with the server's anycsqc. A demo of a
+server without FTE's CSQC protocol (mvdsv's MVDs, ezQuake's QWDs) runs none:
+a csprogs.dat in the game directory isn't its
 =================
 */
 static void CL_StartCSQC (void)
@@ -281,6 +283,8 @@ static void CL_StartCSQC (void)
 	size_t		size = strtoul (Info_ValueForKey (cl.serverinfo, "*csprogssize"), NULL, 0);
 	bool		anycsqc = atoi (Info_ValueForKey (cl.serverinfo, "anycsqc")) || cls.demoplayback;
 
+	if (cls.demoplayback && !(cls.fteext & FTE_PEXT_CSQC))
+		return;
 	if (*end)
 	{
 		Con_Printf ("The serverinfo's *csprogs is corrupt\n");
