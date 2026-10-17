@@ -118,6 +118,16 @@ void(float fhandle) fclose = #49;
 string(float fhandle) fgets = #50;
 #define	FILE_READ	0
 
+// the files of the game's search path a pattern names (FTE's, '*' and '?'
+// within a directory): a search's handle (-1 none), its files, a file's name,
+// size in bytes (-1 unknown) and SoftWorld's, its age in seconds (-1 unknown)
+float(string pattern, float caseinsensitive, float quiet) search_begin = #74;
+void(float handle) search_end = #75;
+float(float handle) search_getsize = #76;
+string(float handle, float num) search_getfilename = #77;
+float(float handle, float num) search_getfilesize = #0:search_getfilesize;
+float(float handle, float num) search_getfileage = #0:search_getfileage;
+
 // SoftWorld's, the server list's: a server's view index (-1 not shown); a
 // server asked again ahead of the rest; whether a source named a server; a
 // source's name, type, location, marked, servers, state or age; its mark;

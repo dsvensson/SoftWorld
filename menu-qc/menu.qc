@@ -1,14 +1,19 @@
 // menu.qc -- id's menus: QuakeWorld's main, options, keys, help and quit
 // screen, as the C menu had them, and NetQuake's single player; multiplayer is
-// the server browser (sb_*.qc)
+// a menu of the server browser (sb_*.qc) and the demos (demos.qc)
 
-// what the menus show
-enum { M_NONE, M_MAIN, M_SINGLEPLAYER, M_OPTIONS, M_KEYS, M_HELP, M_QUIT, M_SKILL, M_LOAD, M_SAVE, M_SLIST };
+// what the menus show: from M_BIG on, the screens that draw and take their
+// keys themselves (main.qc's bigmenus)
+enum { M_NONE, M_MAIN, M_SINGLEPLAYER, M_OPTIONS, M_KEYS, M_HELP, M_QUIT, M_SKILL, M_LOAD, M_SAVE, M_MULTIPLAYER,
+	M_SLIST, M_DEMOS, M_COUNT };
+#define	M_BIG	M_SLIST
 
 float	m_state;
 float	m_entersound;		// played after drawing a frame, so caching won't disrupt the sound
+float	sb_ctrl, sb_alt, sb_shift;	// held, as the big screens have them
 
 void() SB_Open;				// the server browser (sb_browser.qc)
+void() Demos_Open;			// the demos (demos.qc)
 void(float state) M_DrawState;
 
 // a cursor moved through n items, round from either end
@@ -37,6 +42,7 @@ void(float state) M_Enter =
 	setkeydest (KEY_MENU);
 	m_state = state;
 	m_entersound = TRUE;
+	sb_ctrl = sb_alt = sb_shift = FALSE;
 };
 
 // the menus gone, the keys the game's
@@ -54,6 +60,7 @@ void() M_Menu_Main_f = { M_Enter (M_MAIN); };
 void() M_Menu_SinglePlayer_f = { M_Enter (M_SINGLEPLAYER); };
 void() M_Menu_Options_f = { M_Enter (M_OPTIONS); };
 void() M_Menu_Keys_f = { M_Enter (M_KEYS); };
+void() M_Menu_Multiplayer_f = { M_Enter (M_MULTIPLAYER); };
 
 void() M_Menu_Help_f =
 {
@@ -82,7 +89,8 @@ MAIN MENU
 #define	MAIN_ITEMS	5
 
 float	m_main_cursor;
-void()	m_main_open[MAIN_ITEMS] = {M_Menu_SinglePlayer_f, SB_Open, M_Menu_Options_f, M_Menu_Help_f, M_Menu_Quit_f};
+void()	m_main_open[MAIN_ITEMS] = {M_Menu_SinglePlayer_f, M_Menu_Multiplayer_f, M_Menu_Options_f, M_Menu_Help_f,
+	M_Menu_Quit_f};
 
 void() M_Main_Draw =
 {
@@ -107,6 +115,52 @@ void(float key) M_Main_Key =
 	case K_ENTER:
 		m_entersound = TRUE;
 		m_main_open[m_main_cursor] ();
+		break;
+	}
+};
+
+/*
+==============================================================================
+
+MULTIPLAYER MENU
+
+The server browser and the demos, under NetQuake's title
+
+==============================================================================
+*/
+
+#define	MULTIPLAYER_ITEMS	2
+
+float	m_multiplayer_cursor;
+string	m_multiplayer_names[MULTIPLAYER_ITEMS] = {"Server Browser", "Demos"};
+void()	m_multiplayer_open[MULTIPLAYER_ITEMS] = {SB_Open, Demos_Open};
+
+void() M_Multiplayer_Draw =
+{
+	float	i;
+
+	M_DrawPic (16, 4, "gfx/qplaque.lmp");
+	M_DrawTitle ("gfx/p_multi.lmp");
+	for (i = 0 ; i < MULTIPLAYER_ITEMS ; i++)
+		M_Print (88, 32 + i * 8, m_multiplayer_names[i]);
+	M_DrawCharacter (72, 32 + m_multiplayer_cursor * 8, UI_Cursor ());
+};
+
+void(float key) M_Multiplayer_Key =
+{
+	switch (key)
+	{
+	case K_ESCAPE:
+		M_Menu_Main_f ();
+		break;
+	case K_DOWNARROW:
+	case K_UPARROW:
+		localsound ("misc/menu1.wav");
+		m_multiplayer_cursor = Wrap (m_multiplayer_cursor + (key == K_DOWNARROW ? 1 : -1), MULTIPLAYER_ITEMS);
+		break;
+	case K_ENTER:
+		m_entersound = TRUE;
+		m_multiplayer_open[m_multiplayer_cursor] ();
 		break;
 	}
 };
@@ -733,8 +787,8 @@ typedef struct
 	void(float key)	key;
 } menu_t;
 
-// the server browser (M_SLIST) draws and takes its keys itself
-menu_t	menus[M_SLIST] = {
+// the big screens (M_BIG on) draw and take their keys themselves
+menu_t	menus[M_BIG] = {
 	{__NULL__, __NULL__},
 	{M_Main_Draw, M_Main_Key},
 	{M_SinglePlayer_Draw, M_SinglePlayer_Key},
@@ -744,11 +798,12 @@ menu_t	menus[M_SLIST] = {
 	{M_Quit_Draw, M_Quit_Key},
 	{M_Skill_Draw, M_Skill_Key},
 	{M_LoadSave_Draw, M_LoadSave_Key},
-	{M_LoadSave_Draw, M_LoadSave_Key}
+	{M_LoadSave_Draw, M_LoadSave_Key},
+	{M_Multiplayer_Draw, M_Multiplayer_Key}
 };
 
 void(float state) M_DrawState =
 {
-	if (state > M_NONE && state < M_SLIST)
+	if (state > M_NONE && state < M_BIG)
 		menus[state].draw ();
 };

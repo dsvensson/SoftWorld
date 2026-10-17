@@ -20,8 +20,8 @@ enum { SBO_NONE, SBO_INFO, SBO_ADDSERVER, SBO_ADDSOURCE, SBO_CONFIRM, SBO_COUNT 
 float	sb_tab;
 float	sb_overlay;
 float	sb_scanned;					// the browser asked for its first scan
-float	sb_ctrl, sb_alt, sb_shift;	// held
 float	sb_vw, sb_vh;				// the layout's size
+float	sb_wx, sb_wy, sb_ww, sb_wh;	// the big screens' window on it
 
 void() SB_CloseOverlay =
 {
@@ -35,6 +35,44 @@ THE PAGES' PARTS
 
 ==============================================================================
 */
+
+// the backdrop the other menus lie on (Backdrop_Draw), and the big screens'
+// window on it: min (640, w) - 8 wide, min (480, h) - 8 high, centered
+void(vector size) SB_Window =
+{
+	sb_vw = size_x;
+	sb_vh = size_y;
+	Backdrop_Draw (size);
+	sb_ww = min (640, sb_vw) - 8;
+	sb_wh = min (480, sb_vh) - 8;
+	sb_wx = floor ((sb_vw - sb_ww) / 2);
+	sb_wy = floor ((sb_vh - sb_wh) / 2);
+};
+
+// the line under a big screen's tabs, or its name
+void() SB_TitleLine =
+{
+	UI_Line (sb_wx + Trunc ((sb_ww - 8 * floor (sb_ww / 8)) / 2), sb_wy + 8, floor (sb_ww / 8));
+};
+
+// a big screen's name where the browser has its tabs, bracketed and red
+void(string name) SB_Title =
+{
+	UI_Print (sb_wx, sb_wy, strcat (chr2str (0x10), name, chr2str (0x11)), TRUE);
+	SB_TitleLine ();
+};
+
+// a status bar's first line, text at its right end, as the browser's has
+// where the list is
+void(float x, float y, float w, string text) SB_CountLine =
+{
+	float	cells = floor (w / 8), k, n = strlen (text);
+
+	for (k = 0 ; k < cells ; k++)
+		if (k < cells - 3 - n || k > cells - 3)
+			UI_Char (x + k * 8, y, k == 0 ? 0x1d : k == cells - 1 ? 0x1f : 0x1e);
+	UI_Print (x + w - 8 * (3 + n) + 4, y, text, TRUE);
+};
 
 // a list's cursor, and its first row shown
 typedef struct

@@ -67,13 +67,13 @@ void(float k) SB_TabKey =
 };
 
 // a key that types nothing: what is over the page's, else Escape back to
-// the main menu, the page's, the tabs'
+// the multiplayer menu, the page's, the tabs'
 void(float k) SB_Key =
 {
 	if (sb_overlay)
 		sb_overlays[sb_overlay].key (k);
 	else if (k == K_ESCAPE)
-		M_Menu_Main_f ();
+		M_Menu_Multiplayer_f ();
 	else if (!sb_pages[sb_tab].key (k))
 		SB_TabKey (k);
 };
@@ -87,41 +87,6 @@ void(float c) SB_Typed =
 		sb_pages[sb_tab].typed (c);
 };
 
-void(float scan, float chr) SB_KeyDown =
-{
-	if (scan == K_CTRL)
-		sb_ctrl = TRUE;
-	else if (scan == K_ALT)
-		sb_alt = TRUE;
-	else if (scan == K_SHIFT)
-		sb_shift = TRUE;
-
-	// the characters typed come on their own (the layout's); with Ctrl or
-	// Alt, which type none, the key is the character
-	if (!scan)
-	{
-		if (!sb_ctrl && !sb_alt)
-			SB_Typed (chr);
-	}
-	else if (scan >= ' ' && scan < 127)
-	{
-		if (sb_ctrl || sb_alt)
-			SB_Typed (scan);
-	}
-	else
-		SB_Key (scan);
-};
-
-void(float scan) SB_KeyUp =
-{
-	if (scan == K_CTRL)
-		sb_ctrl = FALSE;
-	else if (scan == K_ALT)
-		sb_alt = FALSE;
-	else if (scan == K_SHIFT)
-		sb_shift = FALSE;
-};
-
 /*
 ==============================================================================
 
@@ -133,7 +98,6 @@ THE BROWSER
 void() SB_Open =
 {
 	M_Enter (M_SLIST);
-	sb_ctrl = sb_alt = sb_shift = FALSE;
 	SB_CloseOverlay ();
 	SB_Keys ();
 	sb_settings = "";
@@ -190,24 +154,15 @@ void(float x, float y) SB_Tabs =
 	}
 };
 
-// on what the other menus lie on (Backdrop_Draw): its window min (640, w) - 8
-// wide, its tabs, a line, the page, what is over it
+// in the big screens' window (SB_Window): its tabs, a line, the page, what is
+// over it
 void(vector size) SB_Draw =
 {
-	float	x, y, w, h;
-
-	sb_vw = size_x;
-	sb_vh = size_y;
-	Backdrop_Draw (size);
+	SB_Window (size);
 	SB_Update ();
-
-	w = min (640, sb_vw) - 8;
-	h = min (480, sb_vh) - 8;
-	x = floor ((sb_vw - w) / 2);
-	y = floor ((sb_vh - h) / 2);
-	SB_Tabs (x, y);
-	UI_Line (x + Trunc ((w - 8 * floor (w / 8)) / 2), y + 8, floor (w / 8));
-	sb_pages[sb_tab].draw (x, y + 16, w, h - 16);
+	SB_Tabs (sb_wx, sb_wy);
+	SB_TitleLine ();
+	sb_pages[sb_tab].draw (sb_wx, sb_wy + 16, sb_ww, sb_wh - 16);
 	if (sb_overlay)
 		sb_overlays[sb_overlay].draw ();
 };
