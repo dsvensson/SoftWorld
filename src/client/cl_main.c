@@ -1400,6 +1400,7 @@ static void CL_InitLocal (void)
 	CL_InitPrediction ();
 	CL_InitCam ();
 	SB_Init ();
+	Hub_Init ();
 	CL_InitFChecks ();
 	
 //

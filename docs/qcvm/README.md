@@ -211,7 +211,11 @@ It is the checklist for the rest of CSQC.
   `search_getfilemtime` list the files of the game's search path a pattern names (`*` and `?`
   within one directory, case aside, each file once and sorted by name unless flag 4 asks for
   every copy; a pak's file has the pak's time), and SoftWorld's `search_getfileage` is a file's
-  age in seconds (`cl_search.c`). Its files
+  age in seconds (`cl_search.c`). SoftWorld's `webget` (a URL, and request lines more) starts a
+  GET that runs while the menu polls it, eight at once: `webget_status` (0 while it runs, else
+  the answer's status, -1 failed), `webget_body` (once it has all come, up to 1 MB; a status
+  that isn't a 2xx keeps its body too), `webget_header`, `webget_error` and `webget_close`
+  (`cl_hub.c`); the JSON builtins read what it brings. Its files
   (`fopen` and the rest) are FTE's sandbox in the game directory, and `addprogs` loads further
   progs from it (a launcher's games). Its heap is `pr_menu_memsize` (1g, address space committed
   as it is used; 16m on the web and 32-bit builds). Uploaded images are drawn at the size asked.

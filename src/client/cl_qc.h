@@ -64,6 +64,11 @@ bool	SB_Builtins (qc_builtins_t *b);
 bool	Search_Builtins (qc_builtins_t *b);
 void	Search_Shutdown (void);		// the searches left open, gone
 
+// SoftWorld's webget builtins, the menu's GETs (cl_hub.c), into a host's;
+// false when there is no room
+bool	Hub_Builtins (qc_builtins_t *b);
+void	Hub_Shutdown (void);		// the GETs left running, stopped
+
 // FTE's 2D builtins (drawpic, drawstring, ...), into a host's; false when
 // there is no room
 bool	CLQC_DrawBuiltins (qc_builtins_t *b);

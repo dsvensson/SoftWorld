@@ -42,3 +42,8 @@ void SB_Init (void);			// the sb_* cvars
 void SB_Adopt (void);			// the newest list, at the top of M_Draw
 void SB_Frame (bool connecting);	// each frame: no scan while connecting
 void SB_Shutdown (void);
+
+//
+// the menu's GETs and the hub's cvars (cl_hub.c)
+//
+void Hub_Init (void);			// the hub_* cvars

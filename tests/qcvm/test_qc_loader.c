@@ -832,7 +832,11 @@ static void TestMenuProgs (void)
 	static const char	*entries[] = {"m_init", "m_shutdown", "m_draw", "m_keydown", "m_toggle", "m_consolecommand"};
 	static const char	*softworld[] = {"isfullscreen", "gethostcacheindexforaddress", "refreshhostcacheentry",
 		"hostcacheinsource", "gethostcachesource", "sethostcachesourcemark", "addhostcachesource", "removehostcachesource",
-		"addhostcacheserver", "cansave", "canload", "search_getfileage"};
+		"addhostcacheserver", "cansave", "canload", "search_getfileage", "webget", "webget_status", "webget_body",
+		"webget_header", "webget_error", "webget_close",
+		// qcvm's JSON, which FTE's menus haven't
+		"json_parse", "json_free", "json_get_value_type", "json_get_name", "json_get_integer", "json_get_float",
+		"json_get_string", "json_find_object_child", "json_get_length", "json_get_child_at_index"};
 	uint8_t				*data;
 	size_t				size;
 	qc_progs_t			*p;
