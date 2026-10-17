@@ -17,9 +17,9 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// test_simd.c -- each kernel of the build's SIMD backend (x86-64-v4, x86-64-v3
-// or apple-m3) against the scalar reference, on random input; the results must
-// be the same bit for bit
+// test_simd.c -- each kernel of the build's SIMD backend (x86-64-v4, x86-64-v3,
+// apple-m3 or wasm-simd128) against the scalar reference, on random input; the
+// results must be the same bit for bit
 
 #include "simd_backends.h"
 

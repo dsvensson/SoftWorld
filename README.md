@@ -171,8 +171,9 @@ ctest --preset web
 zlib is Emscripten's port, fetched and built by the first build that needs it. `web-debug`
 builds Debug. The tests run in node, Emscripten's, and with Chrome `test_present_webgl`
 and `test_sound_web` in it, headless (emrun): the shader drawn with WebGL 2 and compared with what
-screenshots make, and sound played through its AudioWorklet. The build is WebAssembly with the
-scalar kernels, and worker threads in the page as on the systems (`r_threads`).
+screenshots make, and sound played through its AudioWorklet. The build is WebAssembly with its
+SIMD and the kernels written for it (`SW_ARCH` `wasm-simd128`; `-DSW_ARCH=generic` builds the
+scalar kernels), and worker threads in the page as on the systems (`r_threads`).
 
 ## Programs
 
@@ -419,9 +420,11 @@ URL.
 
 ### In a browser
 
-The page needs the game's files from the site that serves it, and cross-origin isolation (the
-COOP and COEP headers) for its shared memory. `serve.py` serves a build and a Quake directory
-on this machine:
+The page needs a browser with WebAssembly SIMD (Chrome and Edge 91, Firefox 89, Safari 16.4 or
+later; on a PC, a processor with SSE4.1, which Intel's have since 2008 and AMD's since 2011)
+and WebGL 2, and says so in place of starting where it hasn't them. It needs the game's files
+from the site that serves it, and cross-origin isolation (the COOP and COEP headers) for its
+shared memory. `serve.py` serves a build and a Quake directory on this machine:
 
 ```
 python src\platform\web\serve.py build\web\Release C:\quake

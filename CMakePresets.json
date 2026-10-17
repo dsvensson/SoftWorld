@@ -111,10 +111,10 @@
 		},
 		{
 			"name": "web",
-			"displayName": "Emscripten, WebAssembly (from a shell emsdk_env set up)",
+			"displayName": "Emscripten, WebAssembly with SIMD (from a shell emsdk_env set up)",
 			"inherits": "base",
 			"toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
-			"cacheVariables": { "SW_ARCH": "generic" }
+			"cacheVariables": { "SW_ARCH": "wasm-simd128" }
 		}
 	],
 	"buildPresets": [

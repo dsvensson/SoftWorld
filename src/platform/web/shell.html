@@ -142,10 +142,24 @@
 	};
 
 	function start () {
+		document.body.appendChild(document.importNode(document.getElementById('game-script').content, true));
+	}
+
+	// what the browser lacks that the game needs, said in place of starting
+	// it: the game is built with WebAssembly's SIMD, which a browser without it
+	// can't compile at all (a module of one SIMD instruction, i8x16.splat, is
+	// what it is asked to take), and draws with WebGL 2
+	function lacking () {
+		const simd = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 8, 1, 6,
+			0, 65, 0, 253, 15, 11]);
+
+		if (!globalThis.WebAssembly || !WebAssembly.validate(simd))
+			return "This browser has no WebAssembly SIMD, which SoftWorld needs. Chrome and Edge have it since "
+				+ "version 91, Firefox since 89 and Safari since 16.4; on a PC, they need a processor with "
+				+ "SSE4.1 for it (Intel since 2008, AMD since 2011).";
 		if (!document.createElement('canvas').getContext('webgl2'))
-			notice('error', 'This browser has no WebGL 2.');
-		else
-			document.body.appendChild(document.importNode(document.getElementById('game-script').content, true));
+			return 'This browser has no WebGL 2, which SoftWorld draws with.';
+		return null;
 	}
 
 	/*
@@ -155,7 +169,11 @@
 	takes the page at its next load, so the page loads once more; a page still
 	not isolated after that says why.
 	*/
-	if (globalThis.crossOriginIsolated) {
+	const missing = lacking();
+
+	if (missing)
+		notice('error', missing);
+	else if (globalThis.crossOriginIsolated) {
 		sessionStorage.removeItem('softworld-isolating');
 		start();
 	}

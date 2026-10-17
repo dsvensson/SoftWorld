@@ -169,3 +169,31 @@ void	Simd_M3_Expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, 
 			int scale, int transparent);
 void	Simd_M3_CopyStream (void *dest, size_t destpitch, const void *src, size_t srcpitch,
 			size_t rowbytes, int rows);
+
+void	Simd_W_ZSpan (float *dest, int count, float zi, float step);
+void	Simd_W_TexSpan (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src, int srcwidth,
+			int u, int v, int count);
+void	Simd_W_TurbSpan (uint32_t *dest, const simd_texmap_t *map, const byte *src, const uint32_t *palette,
+			const int *turb, int u, int v, int count);
+void	Simd_W_TurbSpanRGB30 (uint32_t *dest, const simd_texmap_t *map, const uint32_t *src,
+			const int *turb, int u, int v, int count);
+void	Simd_W_TurbSpanLit (uint32_t *dest, const simd_texmap_t *map, const simd_turblight_t *lit,
+			const int *turb, int u, int v, int count);
+void	Simd_W_LitRowColormap (uint32_t *dest, const byte *src, const uint32_t *colormap,
+			int light, int step, int count);
+void	Simd_W_LitRowRGB (uint32_t *dest, const byte *src, const uint32_t *palette,
+			const uint32_t *floor, const int light[3], const int step[3], int count);
+void	Simd_W_LitRowRGB30 (uint32_t *dest, const uint32_t *src, const uint32_t *glow, int glowscale,
+			const int light[3], const int step[3], int count);
+void	Simd_W_AliasSpan (uint32_t *dest, float *zbuf, const byte *tex, int sfrac, int tfrac,
+			int light, int zi, int count, const simd_aliasmap_t *map);
+void	Simd_W_BlendSpan (uint32_t *dest, const uint32_t *src, const float *zbuf, float zi, float step,
+			int alpha, int count);
+void	Simd_W_PartSpan (uint32_t *dest, const float *zbuf, float zi, float step,
+			const float *const src[3], const float *const mul[3], int count);
+void	Simd_W_FogSpan (uint32_t *dest, const float *zbuf, float zi, float step, int count,
+			const simd_fog_t *fog);
+void	Simd_W_Expand8 (uint32_t *dest, const byte *src, const uint32_t *palette, int count,
+			int scale, int transparent);
+void	Simd_W_CopyStream (void *dest, size_t destpitch, const void *src, size_t srcpitch,
+			size_t rowbytes, int rows);
