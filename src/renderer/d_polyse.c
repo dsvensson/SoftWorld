@@ -144,6 +144,109 @@ void D_AliasBlendSpan (pixel_t *pdest, float *pz, const byte *ptex, int sfrac, i
 
 /*
 ================
+D_SetXraySize / D_XrayBegin
+
+The nearest 1/z of the model seen through walls being drawn at each pixel of
+a width x height frame, as the depth buffer's (D_AliasXraySpan): made the
+first frame one is, 0 where it isn't, which its second pass leaves it
+================
+*/
+static float	*d_xrayz;
+static size_t	d_xraysize;
+dxray_t			d_xray;
+
+void D_SetXraySize (int width, int height)
+{
+	Mem_Free (d_xrayz);
+	d_xrayz = NULL;
+	d_xraysize = (size_t)width * height;
+}
+
+void D_XrayBegin (void)
+{
+	if (!d_xrayz)
+		d_xrayz = Mem_Calloc (d_xraysize, sizeof(*d_xrayz));
+}
+
+/*
+================
+D_AliasXraySpan
+
+A span of a model seen through walls (R_DrawXray), its texels mapped as they
+are drawn, into a row, with their 1/z. D_XRAY_NEAREST keeps the model's
+nearest 1/z at each pixel; D_XRAY_BLEND blends a texel in where it is that
+nearest (so the model is one layer, its arm not over its body) and behind the
+depth buffer, fogged, alpha of 256, and takes the nearest back to 0. The depth
+buffer is kept. Any thread's, kept spans' too, as D_AliasBlendSpan.
+================
+*/
+void D_AliasXraySpan (pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
+	int count, const simd_aliasmap_t *map, int alpha, dxray_t xray)
+{
+	pixel_t	*row = D_BlendRow (count);
+	float	*zrow = D_BlendZRow (count);
+	float	*nearest = d_xrayz + (pz - d_pzbuffer);
+	int		i;
+
+	for (i=0 ; i<count ; i++)
+	{
+		row[i] = 0xffffffffu;		// no texel: its top bit, which no pixel has
+		zrow[i] = 0;				// infinitely far, behind every texel
+	}
+	simd_aliasspan (row, zrow, ptex, sfrac, tfrac, light, zi, count, map);
+	if (xray == D_XRAY_NEAREST)
+	{
+		for (i=0 ; i<count ; i++)
+			if (zrow[i] > nearest[i])
+				nearest[i] = zrow[i];
+		return;
+	}
+
+	for (i=0 ; i<count ; i++)
+	{
+		if (zrow[i] > 0 && zrow[i] == nearest[i])
+		{
+			nearest[i] = 0;
+			if (zrow[i] < pz[i])
+				continue;		// hidden there: blended in
+		}
+		row[i] = 0xffffffffu;
+	}
+	if (r_fogactive)
+		simd_fogspan (row, NULL, (float)zi * ALIAS_ZI_TO_FLOAT, (float)map->zistep * ALIAS_ZI_TO_FLOAT,
+			count, &d_fog);
+	simd_blendspan (pdest, row, NULL, 0, 0, alpha, count);
+}
+
+/*
+================
+D_AliasXrayPixel
+
+A pixel of a model seen through walls, 1/z z, as D_AliasXraySpan draws a span
+================
+*/
+void D_AliasXrayPixel (pixel_t *dest, float *pz, pixel_t color, float z, int alpha, dxray_t xray)
+{
+	float	*nearest = d_xrayz + (pz - d_pzbuffer);
+
+	if (xray == D_XRAY_NEAREST)
+	{
+		if (z > *nearest)
+			*nearest = z;
+		return;
+	}
+	if (!(z > 0) || z != *nearest)
+		return;
+	*nearest = 0;
+	if (z >= *pz)
+		return;
+	if (r_fogactive)
+		color = R_FogPixel (color, z);
+	*dest = D_BlendPixel (color, *dest, alpha);
+}
+
+/*
+================
 D_AliasBlendPixel
 
 A pixel of a translucent model, 1/z z, depth tested and written, fogged and
@@ -226,29 +329,11 @@ int		d_alpha = 256;
 
 /*
 ================
-D_AliasPut
-
-A single pixel of a model, 1/z zi, blended if it is translucent: drawn after
-the fog, it is fogged first
-================
-*/
-static void D_AliasPut (pixel_t *dest, pixel_t color, float zi)
-{
-	if (d_alpha >= 256)
-	{
-		*dest = color;
-		return;
-	}
-	if (r_fogactive)
-		color = R_FogPixel (color, zi);
-	*dest = D_BlendPixel (color, *dest, d_alpha);
-}
-
-/*
-================
 D_AliasPoint
 
-A pixel of a model at u, v, depth tested at z: kept in the batch, or drawn
+A pixel of a model at u, v, depth tested at z: kept in the batch, or drawn,
+blended if it is translucent (D_AliasBlendPixel), or a pass of a model seen
+through walls (D_AliasXrayPixel)
 ================
 */
 static void D_AliasPoint (int u, int v, float z, pixel_t color)
@@ -257,14 +342,15 @@ static void D_AliasPoint (int u, int v, float z, pixel_t color)
 	float	*zbuf = zspantable[v] + u;
 
 	if (D_Keeping ())
-	{
-		D_KeepAliasPixel (v, dest, zbuf, color, z, d_alpha);
-		return;
-	}
-	if (z >= *zbuf)
+		D_KeepAliasPixel (v, dest, zbuf, color, z, d_alpha, d_xray);
+	else if (d_xray)
+		D_AliasXrayPixel (dest, zbuf, color, z, d_alpha, d_xray);
+	else if (d_alpha < 256)
+		D_AliasBlendPixel (dest, zbuf, color, z, d_alpha);
+	else if (z >= *zbuf)
 	{
 		*zbuf = z;
-		D_AliasPut (dest, color, z);
+		*dest = color;
 	}
 }
 
@@ -758,8 +844,11 @@ static void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 				mapindex = D_KeepAliasMap (&map);
 			D_KeepAliasSpan (d_atoprow + (int)(pspanpackage - a_spans), pspanpackage->pdest, pspanpackage->pz,
 				pspanpackage->ptex, pspanpackage->sfrac, pspanpackage->tfrac, pspanpackage->light,
-				pspanpackage->zi, lcount, mapindex, d_alpha);
+				pspanpackage->zi, lcount, mapindex, d_alpha, d_xray);
 		}
+		else if (d_xray)
+			D_AliasXraySpan (pspanpackage->pdest, pspanpackage->pz, pspanpackage->ptex, pspanpackage->sfrac,
+				pspanpackage->tfrac, pspanpackage->light, pspanpackage->zi, lcount, &map, d_alpha, d_xray);
 		else if (d_alpha < 256)
 			D_AliasBlendSpan (pspanpackage->pdest, pspanpackage->pz, pspanpackage->ptex, pspanpackage->sfrac,
 				pspanpackage->tfrac, pspanpackage->light, pspanpackage->zi, lcount, &map, d_alpha);

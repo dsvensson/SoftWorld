@@ -377,6 +377,10 @@ typedef struct
 	entity_t	visedicts_list[2][MAX_VISEDICTS];
 	entity_t	*visedicts, *oldvisedicts;
 	int			numvisedicts, oldnumvisedicts;
+	// the players seen through walls in a demo (demo_xray): copies of theirs,
+	// one color and translucent, drawn after the rest where they're hidden
+	entity_t	xrayedicts[MAX_PLAYERS];
+	int			numxrayedicts;
 
 	int			spikeindex, playerindex, flagindex;	// model indices, for effects
 	int			h_playerindex, gib1index, gib2index, gib3index;	// and the filters' (FTE's)

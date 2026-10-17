@@ -695,3 +695,39 @@ void R_DrawTranslucent (void)
 	currententity = &r_worldentity;
 	VectorCopy (r_origin, modelorg);
 }
+
+/*
+================
+R_DrawXray
+
+After the translucent, the models seen through walls (demo_xray): each where
+it is hidden alone, one layer of it, by its alpha, the depth buffer kept
+(D_AliasXraySpan). Drawn twice, as alike as the body was: to find its nearest
+depth at each pixel, then to blend it in there.
+================
+*/
+void R_DrawXray (void)
+{
+	entity_t	*ent;
+	int			i;
+
+	if (!r_scene.numxrayedicts || !*r_scene.numxrayedicts || !r_drawentities.value)
+		return;
+	D_XrayBegin ();
+	for (i = 0 ; i < *r_scene.numxrayedicts ; i++)
+	{
+		ent = &r_scene.xrayedicts[i];
+		if (!ent->model || ent->model->type != mod_alias)
+			continue;
+		currententity = ent;
+		d_alpha = R_EntityAlpha (ent);
+		d_xray = D_XRAY_NEAREST;
+		R_DrawAliasEntity ();
+		d_xray = D_XRAY_BLEND;
+		R_DrawAliasEntity ();
+	}
+	d_xray = D_XRAY_NONE;
+	d_alpha = 256;
+	currententity = &r_worldentity;
+	VectorCopy (r_origin, modelorg);
+}

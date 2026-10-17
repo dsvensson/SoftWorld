@@ -327,6 +327,8 @@ typedef struct
 	entity_t	*visedicts;		// entities to draw this frame; static entities
 	int			*numvisedicts;	// visible this frame are appended by the renderer
 	int			maxvisedicts;
+	entity_t	*xrayedicts;	// models seen through walls (demo_xray): drawn after the
+	int			*numxrayedicts;	// rest where they're hidden, by their alpha; 0 none
 	dlight_t	*dlights;		// MAX_DLIGHTS
 	lightstyle_t	*lightstyles;	// MAX_LIGHTSTYLES
 	entity_t	*viewent;		// the weapon model

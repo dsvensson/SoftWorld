@@ -181,6 +181,19 @@ pixel_t *D_BlendRow (int count)
 	return d_blendrow;
 }
 
+static thread_local float	*d_blendzrow;
+static thread_local int		d_blendzrowsize;
+
+float *D_BlendZRow (int count)
+{
+	if (count > d_blendzrowsize)
+	{
+		d_blendzrowsize = count > 1024 ? count : 1024;
+		d_blendzrow = Mem_Realloc (d_blendzrow, (size_t)d_blendzrowsize * sizeof(*d_blendzrow));
+	}
+	return d_blendzrow;
+}
+
 /*
 =============
 D_DrawBlendedSpans

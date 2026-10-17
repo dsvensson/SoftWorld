@@ -116,6 +116,7 @@ void R_SetRenderSize (int width, int height, int scale)
 	R_SetWarpTable ((width > height ? width : height) / scale);
 	D_SetWarpSize (width, height, scale);
 	D_SetPolysetSize (height);
+	D_SetXraySize (width, height);
 	D_SetSpriteSize (height);
 	D_SetBatchSize (height);
 	Draw_Invalidate ();		// vid.hud is new too

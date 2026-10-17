@@ -228,6 +228,7 @@ void R_AddTranslucent (msurface_t *surf, int alpha);
 void R_AddTranslucentModel (model_t *model);
 void R_AddTranslucentEntity (entity_t *ent);
 void R_DrawTranslucent (void);
+void R_DrawXray (void);			// r_scene's models seen through walls, after the translucent
 void R_DrawRings (void);		// r_scene's, r_ring.c
 void R_DrawAliasEntity (void);
 void R_RotateBmodel (void);
@@ -251,6 +252,7 @@ extern cvar_t	r_lightmode;
 extern cvar_t	r_litwater;
 extern cvar_t	r_dlight_scale;		// dynamic lights' light times this
 extern cvar_t	r_lerpframes;
+extern cvar_t	r_drawentities;
 extern cvar_t	r_lerpmuzzlehack;
 void R_DlightColor (const dlight_t *dl, float color[3]);
 

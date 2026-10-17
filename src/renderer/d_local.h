@@ -123,9 +123,23 @@ void D_DrawFlatPolygon (emitpoint_t *pverts, int nump, pixel_t color, int alpha)
 void D_DrawBlendedSpans (sspan_t *pspan, int alpha, bool turb);
 
 // translucency: how opaque the alias model being drawn is, of 256; a scratch
-// row for a span's texels before they are blended in, at least count long
+// row for a span's texels before they are blended in, at least count long,
+// and one for their 1/z
 extern int	d_alpha;
 pixel_t	*D_BlendRow (int count);
+float	*D_BlendZRow (int count);
+
+// a model seen through walls (R_DrawXray) is drawn twice: D_XRAY_NEAREST
+// finds its nearest 1/z at each pixel, D_XRAY_BLEND blends it in there, by
+// d_alpha, where that is behind the depth buffer; the depth buffer is kept
+typedef enum
+{
+	D_XRAY_NONE,
+	D_XRAY_NEAREST,
+	D_XRAY_BLEND
+} dxray_t;
+extern dxray_t	d_xray;
+void D_XrayBegin (void);		// before the first pass of a frame
 
 // a channel of src over dst, as simd_blendspan blends it: in linear light, a
 // channel being the fourth root of its light
@@ -173,6 +187,7 @@ extern float	**zspantable;
 
 void D_SetWarpSize (int width, int height, int scale);
 void D_SetPolysetSize (int height);
+void D_SetXraySize (int width, int height);
 void D_SetSpriteSize (int height);
 void D_SetBatchSize (int height);
 
@@ -247,13 +262,17 @@ void D_KeepFlatSpan (int u, int v, int count, int map);
 // what the batch has kept drawn now, and keeping going on: before what
 // can't be kept is drawn, or a cache block it reads is given up
 void D_FlushKept (void);
-// a model's span or pixel, alpha of 256: blended if less (D_AliasBlendSpan)
+// a model's span or pixel, alpha of 256: blended if less (D_AliasBlendSpan),
+// or a pass of one seen through walls (D_AliasXraySpan)
 void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
-	int count, int map, int alpha);
-void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z, int alpha);
+	int count, int map, int alpha, dxray_t xray);
+void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z, int alpha, dxray_t xray);
 void D_AliasBlendSpan (pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
 	int count, const simd_aliasmap_t *map, int alpha);
 void D_AliasBlendPixel (pixel_t *dest, float *pz, pixel_t color, float z, int alpha);
+void D_AliasXraySpan (pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
+	int count, const simd_aliasmap_t *map, int alpha, dxray_t xray);
+void D_AliasXrayPixel (pixel_t *dest, float *pz, pixel_t color, float z, int alpha, dxray_t xray);
 void D_KeepSpriteSpan (int u, int v, int count, int map);
 // lines lines of a particle's square, width wide, from line v (d_part.c)
 void D_KeepParticle (int v, pixel_t *pdest, float *pz, pixel_t color, float zi, int width, int lines);

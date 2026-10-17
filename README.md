@@ -303,6 +303,7 @@ Worth knowing:
 | `demo_jump [+\|-][m:]s` | seek in an MVD |
 | `track [name]`, jump, attack | in an MVD or QTV: follow a player, the next one; attack flies the camera and gives it back |
 | `demo_itemtimers`, `demo_itemrings`, `demo_itemghosts` | KTX's item announcements: a list of the items `demo_itemtimers` names (`quad pent` by default, of quad, pent, ring, suit, mega, ra, ya, ga, rl and lg; empty for none), and rings on the floor with a ghost of each item where it lies, `demo_itemghosts` solid (0.20 by default, 0 none) |
+| `demo_xray`, `demo_xray_alpha`, `demo_xray_distance`, `demo_xray_team_color`, `demo_xray_enemy_color` | in a demo or QTV only, never in a game: the players behind walls seen through them, as powercam shows them in FTE, what of each is hidden all in one color, teammates' green and the others' red by default (red, green and blue as light, as `r_team_color`'s; empty, their skins), the team the one of the player followed. As solid as `demo_xray_alpha` (0.3) near the view, fading out over the last third of `demo_xray_distance` (512) to nothing at it. `demo_xray` 1, the default, on; 0 off |
 | `f_version`, `f_system`, `f_modified` | answered in chat as ezQuake answers them; `f_modified` also as a command, and `allow_f_system 0` answers `f_system` with "disabled" |
 | `memstats` | memory by use |
 

@@ -35,6 +35,8 @@ typedef enum
 {
 	DK_ALIASSPAN,
 	DK_ALIASPIXEL,
+	DK_XRAYSPAN,		// a model seen through walls' (D_AliasXraySpan)
+	DK_XRAYPIXEL,
 	DK_SPRITESPAN,
 	DK_PARTICLE,
 	DK_BLENDSPAN,
@@ -55,12 +57,14 @@ typedef struct
 			int			sfrac, tfrac, light, zi, count;
 			int			map;		// of the batch's alias maps
 			int			alpha;		// of 256, blended if less
+			dxray_t		xray;		// DK_XRAYSPAN's pass
 		} alias;
 		struct
 		{
 			pixel_t		color;
 			float		z;
 			int			alpha;
+			dxray_t		xray;
 		} pixel;
 		struct
 		{
@@ -268,9 +272,9 @@ sprite would have drawn on line v
 ================
 */
 void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sfrac, int tfrac, int light, int zi,
-	int count, int map, int alpha)
+	int count, int map, int alpha, dxray_t xray)
 {
-	dkept_t	*k = D_Keep (v, DK_ALIASSPAN);
+	dkept_t	*k = D_Keep (v, xray ? DK_XRAYSPAN : DK_ALIASSPAN);
 
 	k->pdest = pdest;
 	k->pz = pz;
@@ -282,17 +286,19 @@ void D_KeepAliasSpan (int v, pixel_t *pdest, float *pz, const byte *ptex, int sf
 	k->alias.count = count;
 	k->alias.map = map;
 	k->alias.alpha = alpha;
+	k->alias.xray = xray;
 }
 
-void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z, int alpha)
+void D_KeepAliasPixel (int v, pixel_t *pdest, float *pz, pixel_t color, float z, int alpha, dxray_t xray)
 {
-	dkept_t	*k = D_Keep (v, DK_ALIASPIXEL);
+	dkept_t	*k = D_Keep (v, xray ? DK_XRAYPIXEL : DK_ALIASPIXEL);
 
 	k->pdest = pdest;
 	k->pz = pz;
 	k->pixel.color = color;
 	k->pixel.z = z;
 	k->pixel.alpha = alpha;
+	k->pixel.xray = xray;
 }
 
 void D_KeepParticle (int v, pixel_t *pdest, float *pz, pixel_t color, float zi, int width, int lines)
@@ -381,6 +387,13 @@ static void D_FillStrip (void *ctx, int index)
 				*k->pz = k->pixel.z;
 				*k->pdest = k->pixel.color;
 			}
+			break;
+		case DK_XRAYSPAN:
+			D_AliasXraySpan (k->pdest, k->pz, k->alias.ptex, k->alias.sfrac, k->alias.tfrac, k->alias.light,
+				k->alias.zi, k->alias.count, &b->aliasmaps[k->alias.map], k->alias.alpha, k->alias.xray);
+			break;
+		case DK_XRAYPIXEL:
+			D_AliasXrayPixel (k->pdest, k->pz, k->pixel.color, k->pixel.z, k->pixel.alpha, k->pixel.xray);
 			break;
 		case DK_SPRITESPAN:
 			D_SpriteSpan (&b->spritemaps[k->sprite.map], k->sprite.u, k->sprite.v, k->sprite.count);

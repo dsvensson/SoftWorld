@@ -151,7 +151,7 @@ static cvar_t	r_fullbright_scale = {.name = "r_fullbright_scale", .string = "1.5
 		"what light reaches and what it doesn't (particles, sprites, unlit liquids, the sky); 0 or less is 1."};
 cvar_t	r_dlight_scale = {.name = "r_dlight_scale", .string = "1", .archive = true,
 	.description = "Multiplies dynamic lights' light on surfaces, in r_lightmode 1; 0 is none."};
-static cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1",
+cvar_t	r_drawentities = {.name = "r_drawentities", .string = "1",
 	.description = "Draws the entities: models, sprites and brush models.",
 	.values = (const cvar_value_t[]){{"0", "The world alone"}, {"1", "The entities too"}, {0}}};
 
@@ -1343,6 +1343,7 @@ void R_RenderView (void)
 		D_BeginBatch (D_BATCH_TRANSLUCENT);
 		R_DrawTranslucent ();
 		R_DrawRings ();
+		R_DrawXray ();
 		D_EndBatch ();
 		D_FillBatch (D_BATCH_TRANSLUCENT);
 	}
@@ -1350,6 +1351,7 @@ void R_RenderView (void)
 	{
 		R_DrawTranslucent ();
 		R_DrawRings ();
+		R_DrawXray ();
 	}
 	R_ProfEnd (PROF_MODELS, prof);
 

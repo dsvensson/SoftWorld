@@ -26,6 +26,7 @@ extern	cvar_t	cl_predict_players2;
 extern	cvar_t	r_drawvweps;
 extern	cvar_t	r_rocketlight, r_rocketlight_color;
 extern	cvar_t	r_team_color, r_enemy_color;
+extern	cvar_t	demo_xray, demo_xray_alpha, demo_xray_distance, demo_xray_team_color, demo_xray_enemy_color;
 extern	cvar_t	cl_deadbodyfilter, cl_gibfilter, cl_r2g;
 extern	cvar_t	cl_solid_players;
 
@@ -136,30 +137,82 @@ static const pixel_t *CL_FlatColormap (const cvar_t *var, pixel_t *colormap, pix
 
 /*
 ===============
+CL_PlayerSide
+
+Whether player j is on the side of the player the game is seen from (the
+player, or the one a spectator or demo follows; any team outside teamplay is
+theirs alone): 1 on it, 0 not, -1 there's no side, as to a free camera
+===============
+*/
+static int CL_PlayerSide (int j)
+{
+	int		me = cl.spectator || cls.mvdplayback ? Cam_TrackNum () : cl.playernum;
+
+	if (me < 0 || me >= cl.maxplayers || j < 0 || j >= cl.maxplayers)
+		return -1;
+	return j == me || (atoi (Info_ValueForKey (cl.serverinfo, "teamplay"))
+		&& !strcmp (Info_ValueForKey (cl.players[j].userinfo, "team"),
+			Info_ValueForKey (cl.players[me].userinfo, "team")));
+}
+
+/*
+===============
 CL_PlayerFlat
 
 The one color player j's model is drawn in, unlit, in place of its skin:
-r_team_color's for the team of the player whose side the game is seen from
-(the player, or the one a spectator or demo follows; any team outside
-teamplay is theirs alone), r_enemy_color's for the others. NULL for the skin:
-the cvar empty, or a free camera, which is on no one's side.
+r_team_color's for the team of the player whose side the game is seen from,
+r_enemy_color's for the others (CL_PlayerSide). NULL for the skin: the cvar
+empty, or a free camera, which is on no one's side.
 ===============
 */
 static const pixel_t *CL_PlayerFlat (int j)
 {
 	static pixel_t	colormaps[2][VID_GRADES * 256];
 	static pixel_t	made[2] = {0xffffffffu, 0xffffffffu};		// no pixel has the top bit
-	int				me = cl.spectator || cls.mvdplayback ? Cam_TrackNum () : cl.playernum;
-	bool			team;
+	int				side = CL_PlayerSide (j);
 
-	if (me < 0 || me >= cl.maxplayers || j < 0 || j >= cl.maxplayers)
+	if (side < 0)
 		return NULL;
-	team = j == me || (atoi (Info_ValueForKey (cl.serverinfo, "teamplay"))
-		&& !strcmp (Info_ValueForKey (cl.players[j].userinfo, "team"),
-			Info_ValueForKey (cl.players[me].userinfo, "team")));
-	if (team)
+	if (side)
 		return CL_FlatColormap (&r_team_color, colormaps[0], &made[0]);
 	return CL_FlatColormap (&r_enemy_color, colormaps[1], &made[1]);
+}
+
+/*
+===============
+CL_XrayPlayer
+
+Player j's model, ent, seen through walls (demo_xray): a copy of it, the same
+pose where it is, in the xray list, which is drawn where the model is hidden.
+All in the color of its side (demo_xray_team_color, else
+demo_xray_enemy_color: everyone's to a free camera), as solid as
+demo_xray_alpha near the view and fading out toward demo_xray_distance as
+powercam's does, by 1 - 2^(10 x - 10) at x of the distance; none past it.
+===============
+*/
+static void CL_XrayPlayer (int j, const entity_t *ent)
+{
+	static pixel_t	colormaps[2][VID_GRADES * 256];
+	static pixel_t	made[2] = {0xffffffffu, 0xffffffffu};		// no pixel has the top bit
+	float			cutoff = demo_xray_distance.value, dist, alpha;
+	vec3_t			d;
+	entity_t		*copy;
+	int				team;
+
+	VectorSubtract (ent->origin, cl.simorg, d);
+	dist = Length (d);
+	if (!(dist < cutoff) || cl.numxrayedicts == MAX_PLAYERS)
+		return;
+	alpha = demo_xray_alpha.value * (1 - exp2f (10 * dist / cutoff - 10)) * 254;
+	if (!(alpha >= 0.5f))
+		return;
+
+	copy = &cl.xrayedicts[cl.numxrayedicts++];
+	*copy = *ent;
+	copy->alpha = (byte)fminf (alpha + 0.5f, 254);		// 1 to 254: 0 and 255 are solid
+	team = CL_PlayerSide (j) > 0;
+	copy->flat = CL_FlatColormap (team ? &demo_xray_team_color : &demo_xray_enemy_color, colormaps[team],
+		&made[team]);
 }
 
 /*
@@ -1806,10 +1859,16 @@ static void CL_LinkPlayers (void)
 	frame_t			*frame;
 	int				oldphysent;
 	vec3_t			origin, angles;
+	bool			xray;
 
 	playertime = host.realtime - cls.latency + 0.02;
 	if (playertime > host.realtime)
 		playertime = host.realtime;
+
+	// players seen through walls only where it isn't cheating: in a demo or
+	// QTV, which is one too (cls.demoplayback); never in a game
+	cl.numxrayedicts = 0;
+	xray = cls.demoplayback && demo_xray.value && !cl.intermission;
 
 	frame = &cl.frames[cl.parsecount&UPDATE_MASK];
 
@@ -1911,6 +1970,10 @@ static void CL_LinkPlayers (void)
 		if (cl.vwep_enabled && r_drawvweps.value && state->vw_index && state->modelindex == cl.playerindex)
 			CL_AddVWep (ent, state->vw_index);
 
+		// the body as drawn (CL_AddVWep may give it the visible weapons' own),
+		// alive; not eyes.mdl, a weapon or a flag
+		if (xray && state->modelindex == cl.playerindex && !(state->flags & PF_DEAD))
+			CL_XrayPlayer (j, ent);
 	}
 }
 

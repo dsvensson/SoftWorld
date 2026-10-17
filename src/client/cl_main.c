@@ -128,6 +128,26 @@ cvar_t	r_enemy_color = {.name = "r_enemy_color", .string = "", .archive = true,
 		"color in place of their skins, unlit, as r_team_color does your teammates'. Empty (the default) leaves "
 		"their skins.", .min = 0, .max = 2};
 
+// players behind walls seen through them, in a demo or QTV alone (cl_ents.c)
+cvar_t	demo_xray = {.name = "demo_xray", .string = "1", .archive = true,
+	.description = "In a demo or QTV, never in a game: the players behind walls are seen through them, what of "
+		"them is hidden all in one color (demo_xray_team_color, demo_xray_enemy_color), fading out with their "
+		"distance (demo_xray_alpha, demo_xray_distance).",
+	.values = (const cvar_value_t[]){{"0", "Off"}, {"1", "On"}, {0}}};
+cvar_t	demo_xray_alpha = {.name = "demo_xray_alpha", .string = "0.3", .archive = true,
+	.description = "How solid a player seen through a wall is (demo_xray), 0 to 1: as near as this, then fading "
+		"over the last third of demo_xray_distance to nothing at it.", .min = 0, .max = 1};
+cvar_t	demo_xray_distance = {.name = "demo_xray_distance", .string = "512", .archive = true,
+	.description = "How far from the view players are seen through walls (demo_xray), fading out to nothing "
+		"at it."};
+cvar_t	demo_xray_team_color = {.name = "demo_xray_team_color", .string = "0 1 0", .archive = true,
+	.description = "The color teammates are seen through walls in (demo_xray): red, green and blue as light, 0 to 2 "
+		"each, as r_team_color's; empty, their skins. The team is the one of the player the demo follows (or "
+		"followed last), in a teamplay game.", .min = 0, .max = 2};
+cvar_t	demo_xray_enemy_color = {.name = "demo_xray_enemy_color", .string = "1 0 0", .archive = true,
+	.description = "The color the other players are seen through walls in (demo_xray), all of them outside "
+		"teamplay or with no one followed: as demo_xray_team_color's.", .min = 0, .max = 2};
+
 // FTE's names and values: what isn't drawn, and rockets drawn as grenades
 cvar_t	cl_deadbodyfilter = {.name = "cl_deadbodyfilter", .string = "0", .archive = true,
 	.description = "Hides dead players' bodies.",
@@ -1395,6 +1415,8 @@ static void CL_InitLocal (void)
 
 	r_scene.numvisedicts = &cl.numvisedicts;
 	r_scene.maxvisedicts = MAX_VISEDICTS;
+	r_scene.xrayedicts = cl.xrayedicts;
+	r_scene.numxrayedicts = &cl.numxrayedicts;
 	r_scene.dlights = cl.dlights;
 	r_scene.lightstyles = cl.lightstyles;
 	r_scene.viewent = &cl.viewent;
@@ -1456,6 +1478,11 @@ static void CL_InitLocal (void)
 	Cvar_RegisterVariable (&r_rocketlight_color);
 	Cvar_RegisterVariable (&r_team_color);
 	Cvar_RegisterVariable (&r_enemy_color);
+	Cvar_RegisterVariable (&demo_xray);
+	Cvar_RegisterVariable (&demo_xray_alpha);
+	Cvar_RegisterVariable (&demo_xray_distance);
+	Cvar_RegisterVariable (&demo_xray_team_color);
+	Cvar_RegisterVariable (&demo_xray_enemy_color);
 	Cvar_RegisterVariable (&cl_deadbodyfilter);
 	Cvar_RegisterVariable (&cl_gibfilter);
 	Cvar_RegisterVariable (&cl_r2g);

@@ -109,6 +109,8 @@ static struct
 	vec3_t			vieworg, viewangles;
 	vrect_t			view;				// VF_MIN and VF_SIZE, the layout's units (scr.vrect's)
 	bool			enginegun;			// the client draws its gun
+	int				noxray;				// 0: the players seen through walls (demo_xray) of a scene
+										// without the client's entities, none
 	bool			sbar, crosshair;	// VF_DRAWENGINESBAR, VF_DRAWCROSSHAIR
 	bool			drewsbar;			// as renderscene had it
 	entity_t		viewent;			// an RF_VIEWMODEL entity's, as the gun
@@ -1096,6 +1098,7 @@ static bool CS_ClearScene (qcvm_t *vm)
 	csqc.view = scr.vrect;
 	r_scene.viewent = &cl.viewent;
 	r_scene.drawviewmodel = false;
+	r_scene.numxrayedicts = &csqc.noxray;
 	csqc.sbar = false;
 	csqc.crosshair = false;
 	return true;
@@ -1126,6 +1129,7 @@ static bool CS_AddEntities (qcvm_t *vm)
 	{
 		for (i = 0 ; i < csqc.numengine ; i++)
 			CS_AddToScene (&csqc.engine[i]);
+		r_scene.numxrayedicts = &cl.numxrayedicts;		// the client's players, so those seen through walls
 		CL_UpdateTEnts ();
 	}
 
@@ -2513,11 +2517,13 @@ bool CSQC_DrawView (bool *sbar)
 		VectorCopy (csqc.viewangles, r_refdef.viewangles);
 		r_scene.viewent = &cl.viewent;
 		r_scene.drawviewmodel = csqc.enginegun;
+		r_scene.numxrayedicts = &cl.numxrayedicts;
 		V_DrawView (true);
 		csqc.drewsbar = true;
 	}
 	*sbar = csqc.rendered ? csqc.drewsbar : !ok;
 	r_scene.viewent = &cl.viewent;
+	r_scene.numxrayedicts = &cl.numxrayedicts;
 	return true;
 }
 
