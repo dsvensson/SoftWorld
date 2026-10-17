@@ -444,7 +444,11 @@ A site without a Quake directory (`manifest.json` listing none) asks for the pla
 in the browser with what the game writes, so the next visit has them. The Pages workflow, run
 from Actions, puts the page on the repository's GitHub Pages so.
 
-The game's files come as the game reads them, a piece at a time, and the browser keeps the
+The page asks for the game's own files (its script, its WebAssembly and its workers) by the
+name of the build, which the build writes into the page: a site may let browsers keep them,
+and a new build is loaded whole, never mixed with what a browser kept of the last one. The page
+itself is best sent to be checked each time (`Cache-Control: no-cache`), as `serve.py` sends
+it. The game's files come as the game reads them, a piece at a time, and the browser keeps the
 pieces for 30 days or until the file changes on the site. What the game writes (`config.cfg`,
 written when the page hides, as a closed tab never quits; demos, screenshots, downloads) is
 kept in the browser and read over the site's files at the next start; clearing the site's

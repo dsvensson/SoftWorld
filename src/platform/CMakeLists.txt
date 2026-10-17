@@ -216,7 +216,8 @@ elseif(EMSCRIPTEN)
 	# client with a local server, and the client alone: softworld.html, .js and
 	# .wasm, and next to them the file system's fetch worker (softworld-fs.js),
 	# the sound's AudioWorklet (softworld-sound.js) and the service worker that
-	# isolates the page where the site can't (softworld-coi.js)
+	# isolates the page where the site can't (softworld-coi.js); the page names
+	# the build it loads the files of (webstamp.cmake)
 	set(SW_WEB_LINK_OPTIONS -sENVIRONMENT=web,worker -sCASE_INSENSITIVE_FS=1
 		-sPTHREAD_POOL_SIZE=${SW_WEB_WORKERS} -sPTHREAD_POOL_SIZE_STRICT=2
 		"SHELL:--shell-file ${SW_WEB_DIR}/shell.html")
@@ -241,6 +242,8 @@ elseif(EMSCRIPTEN)
 				"$<TARGET_FILE_DIR:${target}>/softworld-sound.js"
 			COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${SW_WEB_DIR}/coi_worker.js"
 				"$<TARGET_FILE_DIR:${target}>/softworld-coi.js"
+			COMMAND "${CMAKE_COMMAND}" "-DDIR=$<TARGET_FILE_DIR:${target}>" -DNAME=${target}
+				-P "${PROJECT_SOURCE_DIR}/cmake/webstamp.cmake"
 			VERBATIM)
 	endforeach()
 	target_link_libraries(softworld PRIVATE sw_server)

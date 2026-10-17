@@ -61,6 +61,19 @@
 <script>
 	'use strict';
 
+	/*
+	The build, named in place of the word below as it is built (webstamp.cmake):
+	the game's files (its script, its WebAssembly and its workers) are asked
+	for by it, so a site's new build is always all of what is loaded, whatever
+	the browser has kept of the last one. Its threads' workers load the script
+	as it was asked for.
+	*/
+	const build = '@SW_BUILD@';
+
+	function stamped (path) {
+		return build.startsWith('@') ? path : `${path}?v=${build}`;
+	}
+
 	// the query as a command line: words between spaces, or in quotes
 	function commandLine (query) {
 		var text = decodeURIComponent(query.replace(/^\?/, ''));
@@ -139,10 +152,16 @@
 		swAssets: 'quake/',
 		swManifest: 'manifest.json',
 		swAskForGame: askForGame,
+		locateFile: (path, prefix) => prefix + stamped(path),
 	};
 
+	// the game's script, as the build named
 	function start () {
-		document.body.appendChild(document.importNode(document.getElementById('game-script').content, true));
+		const game = document.importNode(document.getElementById('game-script').content, true);
+		const script = game.querySelector('script');
+
+		script.src = stamped(script.getAttribute('src'));
+		document.body.appendChild(game);
 	}
 
 	// what the browser lacks that the game needs, said in place of starting
