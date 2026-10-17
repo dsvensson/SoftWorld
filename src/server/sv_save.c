@@ -570,7 +570,8 @@ static bool SV_LoadGame (const char *arg)
 	byte			*file;
 	char			mapfile[MAX_QPATH + 16];
 	int				i, size;
-	FILE			*f;
+	long long		mapsize, maptime;
+	bool			hasmap = false;
 
 	if (host.dedicated)
 	{
@@ -585,11 +586,10 @@ static bool SV_LoadGame (const char *arg)
 	// is the search path: the level comes up in the game's, with its progs
 	FS_UseChain (FS_GameDirChain ());
 	file = FS_LoadFile (load.name, &size);
-	f = NULL;
 	if (file && SV_ParseSaveHeader ((char *)file, &load))
 	{
 		snprintf (mapfile, sizeof(mapfile), "maps/%s.bsp", load.map);
-		COM_FOpenFile (mapfile, &f);
+		hasmap = FS_FileInfo (mapfile, &mapsize, &maptime);
 	}
 	FS_UseChain (NULL);
 	if (!file)
@@ -602,13 +602,12 @@ static bool SV_LoadGame (const char *arg)
 		Mem_Free (file);
 		return false;
 	}
-	if (!f)
+	if (!hasmap)
 	{
 		Con_Printf ("ERROR: %s's map, %s, isn't there.\n", load.name, mapfile);
 		Mem_Free (file);
 		return false;
 	}
-	fclose (f);
 	SV_FindSaveExtensions (&load);
 
 	Con_Printf ("Loading game from %s...\n", load.name);

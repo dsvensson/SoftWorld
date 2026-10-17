@@ -29,7 +29,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "q_endian.h"
 #include "q_string.h"
 #include "sys.h"
+#include "vfs.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -415,20 +417,33 @@ bool FS_InGameDir (const char *path)
 			continue;	// nothing can be named by a path that doesn't fit one
 		if (Sys_FileTime (netpath) != -1)
 			return true;
+		if (Q_snprintfz (netpath, sizeof(netpath), "%s/%s.gz", search->filename, path) && Sys_FileTime (netpath) != -1)
+			return true;
 	}
 	return false;
 }
 
-int COM_FOpenFile (const char *filename, FILE **file)
+/*
+===========
+FS_Open
+
+COM_FOpenFile's search; with gz, a file of a directory stored gzipped too,
+path.gz where path would be (after path, before the next element of the
+search path), as a download from the web saves one as it came
+(cl_download.c): *gz set, its length the gzip's
+===========
+*/
+static int FS_Open (const char *filename, FILE **file, bool *gz)
 {
 	searchpath_t	*search;
 	char		netpath[MAX_OSPATH];
 	pack_t		*pak;
 	int			i;
-	int			findtime;
 
 	file_from_pak = 0;
 	com_filesource[0] = 0;
+	if (gz)
+		*gz = false;
 
 //
 // search through the path, one element at a time: a loader's own chain
@@ -471,14 +486,20 @@ int COM_FOpenFile (const char *filename, FILE **file)
 			if (!Q_snprintfz (netpath, sizeof(netpath), "%s/%s", search->filename, filename))
 				continue;	// nothing can be named by a path that doesn't fit one
 			
-			findtime = Sys_FileTime (netpath);
-			if (findtime == -1)
-				continue;
+			if (Sys_FileTime (netpath) == -1)
+			{	// stored gzipped, where that will do
+				if (!gz || !Q_snprintfz (netpath, sizeof(netpath), "%s/%s.gz", search->filename, filename)
+					|| Sys_FileTime (netpath) == -1)
+					continue;
+				*gz = true;
+			}
 				
 			*file = fopen (netpath, "rb");
 			if (!*file)
 			{	// there, but not to be read (permissions, a sandbox)
 				Sys_Printf ("FindFile: can't open %s\n", netpath);
+				if (gz)
+					*gz = false;
 				continue;
 			}
 			Sys_Printf ("FindFile: %s\n",netpath);
@@ -495,22 +516,45 @@ int COM_FOpenFile (const char *filename, FILE **file)
 	return -1;
 }
 
+int COM_FOpenFile (const char *filename, FILE **file)
+{
+	return FS_Open (filename, file, NULL);
+}
+
 /*
 ===========
 FS_OpenVFS
 
 COM_FOpenFile's file as a VFS (vfs.h): a pak's entry its slice of the pak,
-from where COM_FOpenFile put the file
+from where COM_FOpenFile put the file; one stored gzipped unpacked
 ===========
 */
 vfsfile_t *FS_OpenVFS (const char *path)
 {
-	FILE	*f;
-	int		length = COM_FOpenFile (path, &f);
+	FILE		*f;
+	bool		gz;
+	int			length = FS_Open (path, &f, &gz);
+	vfsfile_t	*v;
 
 	if (!f)
 		return NULL;
-	return VFS_OpenStdio (f, ftell (f), length);
+	v = VFS_OpenStdio (f, ftell (f), length);
+	return gz ? VFS_OpenGunzip (v) : v;
+}
+
+// size, of a gzip, the size it unpacks to, as its trailer has it (to 4 GB);
+// left as it was where the trailer can't be read
+static void FS_GzipSize (const char *netpath, long long *size)
+{
+	FILE	*f = fopen (netpath, "rb");
+	byte	trailer[4];
+
+	if (!f)
+		return;
+	if (!fseek (f, -4, SEEK_END) && fread (trailer, 1, 4, f) == 4)
+		*size = (long long)((unsigned)trailer[0] | (unsigned)trailer[1] << 8 | (unsigned)trailer[2] << 16
+			| (unsigned)trailer[3] << 24);
+	fclose (f);
 }
 
 /*
@@ -518,7 +562,8 @@ vfsfile_t *FS_OpenVFS (const char *path)
 FS_FileInfo
 
 The size and time of the file COM_FOpenFile would open, looked for as it
-looks: a pak's entry its own size and the pak's time
+looks: a pak's entry its own size and the pak's time. One stored gzipped
+(FS_Open) is found too, with the size it unpacks to.
 ===========
 */
 bool FS_FileInfo (const char *path, long long *size, long long *mtime)
@@ -547,6 +592,12 @@ bool FS_FileInfo (const char *path, long long *size, long long *mtime)
 		if (Q_snprintfz (netpath, sizeof(netpath), "%s/%s", search->filename, path)
 			&& Sys_FileInfo (netpath, size, mtime))
 			return true;
+		if (Q_snprintfz (netpath, sizeof(netpath), "%s/%s.gz", search->filename, path)
+			&& Sys_FileInfo (netpath, size, mtime))
+		{
+			FS_GzipSize (netpath, size);
+			return true;
+		}
 	}
 	return false;
 }
@@ -593,6 +644,23 @@ static bool FS_HasExtension (const char *name, const char *const *extensions)
 	return false;
 }
 
+// how much of a file's name it is listed by: all of one with one of the
+// extensions, and of one of them stored gzipped (FS_Open) the name it is read
+// by, x.bsp of x.bsp.gz; 0 for another
+static size_t FS_ListedLength (const char *name, const char *const *extensions)
+{
+	char	plain[MAX_OSPATH];
+	size_t	len = strlen (name);
+
+	if (FS_HasExtension (name, extensions))
+		return len;
+	if (len <= 3 || len - 3 >= sizeof(plain) || Q_strcasecmp (name + len - 3, ".gz"))
+		return 0;
+	memcpy (plain, name, len - 3);
+	plain[len - 3] = 0;
+	return FS_HasExtension (plain, extensions) ? len - 3 : 0;
+}
+
 static void FS_ProbeEntry (void *ctx, const char *name, bool isdir)
 {
 	fs_probe_t	*p = ctx, sub;
@@ -602,7 +670,7 @@ static void FS_ProbeEntry (void *ctx, const char *name, bool isdir)
 		return;
 	if (!isdir)
 	{
-		p->found = FS_HasExtension (name, p->extensions);
+		p->found = FS_ListedLength (name, p->extensions) != 0;
 		return;
 	}
 	if (p->depth <= 0)
@@ -629,11 +697,12 @@ static void FS_ListEntry (void *ctx, const char *name, bool isdir)
 {
 	fs_listing_t	*l = ctx;
 	char			path[MAX_OSPATH];
+	size_t			len = strlen (name);
 
 	// hidden entries only when asked for by their dot
 	if (Q_strncasecmp (name, l->name, strlen (l->name)) || (name[0] == '.' && l->name[0] != '.'))
 		return;
-	if (!isdir && !FS_HasExtension (name, l->extensions))
+	if (!isdir && !(len = FS_ListedLength (name, l->extensions)))
 		return;
 	if (isdir)
 	{
@@ -641,7 +710,7 @@ static void FS_ListEntry (void *ctx, const char *name, bool isdir)
 		if (!FS_HasFiles (path, l->extensions))
 			return;
 	}
-	snprintf (path, sizeof(path), "%s%s%s", l->dir, name, isdir ? "/" : "");
+	snprintf (path, sizeof(path), "%s%.*s%s", l->dir, (int)len, name, isdir ? "/" : "");
 	l->add (l->ctx, path);
 }
 
@@ -737,14 +806,35 @@ void FS_SetLoadHook (void (*hook) (const char *path, const byte *data, int lengt
 	fs_loadhook = hook;
 }
 
+// a file stored gzipped (FS_Open), all of it unpacked as FS_LoadFile has it;
+// NULL, with why printed, where it can't be
+static byte *FS_LoadGzip (const char *path, FILE *h, int packed, int *len)
+{
+	vfsfile_t	*f = VFS_OpenGunzip (VFS_OpenStdio (h, 0, packed));
+	size_t		size;
+	byte		*buf = VFS_ReadAll (f, &size);
+
+	if (!buf || size > INT_MAX)
+	{
+		Con_Printf ("FS_LoadFile: can't unpack %s.gz: %s\n", path, buf ? "it's over 2 GB" : VFS_Error (f));
+		Mem_Free (buf);
+		buf = NULL;
+	}
+	else
+		*len = (int)size;
+	VFS_Close (f);
+	return buf;
+}
+
 byte *FS_LoadFile (const char *path, int *length)
 {
 	FILE	*h;
 	byte	*buf;
 	int		len;
+	bool	gz;
 
 // look for it in the filesystem or pack files
-	len = com_filesize = COM_FOpenFile (path, &h);
+	len = com_filesize = FS_Open (path, &h, &gz);
 	if (!h)
 		return NULL;
 	if (len < 0)
@@ -754,16 +844,25 @@ byte *FS_LoadFile (const char *path, int *length)
 		return NULL;
 	}
 
-	buf = Mem_Alloc ((size_t)len + 1);
-	buf[len] = 0;
-	if (fread (buf, 1, (size_t)len, h) != (size_t)len)
+	if (gz)
 	{
-		fclose (h);
-		Mem_Free (buf);
-		Con_Printf ("FS_LoadFile: error reading %s\n", path);
-		return NULL;
+		if (!(buf = FS_LoadGzip (path, h, len, &len)))
+			return NULL;
+		com_filesize = len;
 	}
-	fclose (h);
+	else
+	{
+		buf = Mem_Alloc ((size_t)len + 1);
+		buf[len] = 0;
+		if (fread (buf, 1, (size_t)len, h) != (size_t)len)
+		{
+			fclose (h);
+			Mem_Free (buf);
+			Con_Printf ("FS_LoadFile: error reading %s\n", path);
+			return NULL;
+		}
+		fclose (h);
+	}
 
 	// the hook is the main thread's: a loader reads through a chain of its own
 	if (fs_loadhook && !fs_thread_chain)

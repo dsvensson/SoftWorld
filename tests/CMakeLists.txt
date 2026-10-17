@@ -143,6 +143,16 @@ sw_add_program(test_vfs test_vfs.c)
 target_link_libraries(test_vfs PRIVATE sw_common ZLIB::ZLIB)
 add_test(NAME vfs COMMAND test_vfs)
 
+# test_fs reads files of a game directory it writes stored gzipped: found and
+# unpacked as the plain file, under it, listed by the name they are read by.
+sw_add_program(test_fs test_fs.c)
+if(WIN32)
+	target_link_libraries(test_fs PRIVATE sw_platform_win sw_common ZLIB::ZLIB)
+else()
+	target_link_libraries(test_fs PRIVATE sw_platform_posix sw_common ZLIB::ZLIB)
+endif()
+add_test(NAME fs COMMAND test_fs)
+
 # test_part reads particle scripts it writes, FTE's and DarkPlaces', and runs
 # an effect into the batches the renderer draws (src/particles).
 sw_add_program(test_part test_part.c)

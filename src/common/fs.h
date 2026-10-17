@@ -35,6 +35,11 @@ extern	char	gamedirfile[MAX_OSPATH];
 void	COM_Init (const char *basedir);
 const char	*FS_BaseDir (void);	// the directory holding the game directories
 
+// A file of a directory of the search path can be stored gzipped, as path.gz
+// beside where path would be (a download from the web saves one as it came):
+// FS_LoadFile, FS_OpenVFS, FS_FileInfo and the listings find it as path,
+// unpacked; COM_FOpenFile, whose FILE is the file as it is on disk, doesn't.
+
 // loads a file into memory from Mem_Alloc (0-terminated); NULL if missing
 byte	*FS_LoadFile (const char *path, int *length);
 
@@ -62,9 +67,10 @@ void	FS_FlushGamedir (void);
 void	FS_SetGamedirHooks (void (*leaving)(void), void (*entered)(void));
 
 // the paths under the search path that begin with partial: files with one of
-// the extensions (NULL-terminated, each with its dot), and the directories
-// with such files in them, ending with '/'; a path the search path has twice
-// is given twice
+// the extensions (NULL-terminated, each with its dot), one stored gzipped by
+// the name it is read by (x.bsp of x.bsp.gz), and the directories with such
+// files in them, ending with '/'; a path the search path has twice is given
+// twice
 void	FS_ListPaths (const char *partial, const char *const *extensions, void (*add) (void *ctx, const char *path),
 			void *ctx);
 // the same for a game directory alone, mounted or not
@@ -92,11 +98,12 @@ fs_chain_t	*FS_GameDirChain (void);
 
 void	COM_WriteFile (char *filename, void *data, int len);
 int		COM_FOpenFile (const char *filename, FILE **file);
-// COM_FOpenFile's file as a VFS, a pak's entry its slice of the pak; NULL if
-// it isn't found
+// COM_FOpenFile's file as a VFS, a pak's entry its slice of the pak, one
+// stored gzipped unpacked; NULL if it isn't found
 vfsfile_t	*FS_OpenVFS (const char *path);
 // the size and the time (seconds since 1970) of the file COM_FOpenFile would
-// open, a pak's entry the pak's time; false where the search path has none
+// open, a pak's entry the pak's time, one stored gzipped the size it unpacks
+// to; false where the search path has none
 bool	FS_FileInfo (const char *path, long long *size, long long *mtime);
 void	COM_CreatePath (char *path);
 void	COM_Gamedir (char *dir);

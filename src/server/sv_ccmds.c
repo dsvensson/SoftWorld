@@ -323,25 +323,20 @@ restored (load) before the clients come
 */
 void SV_GotoLevel (const char *name, spawnparms_t parms, cmap_t *built, const sv_loadgame_t *load)
 {
-	char	level[MAX_QPATH];
-	char	expanded[MAX_QPATH];
-	FILE	*f;
+	char		level[MAX_QPATH];
+	char		expanded[MAX_QPATH];
+	long long	size, mtime;
 
 	Q_strncpyz (level, name, sizeof(level));		// name may be sv.name, which spawning clears
 
-	// check to make sure the level exists
-	if (Q_snprintfz (expanded, sizeof(expanded), "maps/%s.bsp", level))
-		COM_FOpenFile (expanded, &f);
-	else
-		f = NULL;
-	if (!f)
+	// check to make sure the level exists (stored gzipped too)
+	if (!Q_snprintfz (expanded, sizeof(expanded), "maps/%s.bsp", level) || !FS_FileInfo (expanded, &size, &mtime))
 	{
 		Con_Printf ("Can't find %s\n", expanded);
 		if (built)
 			CM_DiscardMap (built);
 		return;
 	}
-	fclose (f);
 
 	SV_BroadcastCommand ("changing\n");
 	SV_SendMessagesToAll ();
