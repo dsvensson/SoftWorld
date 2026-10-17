@@ -52,8 +52,8 @@ You need Windows 10 or 11 on x64, and:
 - mbedTLS 3, for the server browser's HTTPS: WebRTC's (below) where it is in, else the one
   CMake finds, else configuring fetches mbedTLS 3.6.7 and builds it into `deps` once (a
   minute or so), as it does fteqcc.
-- zlib, for gzip (the hub's demos are `.mvd.gz`): a static one CMake finds, else configuring
-  fetches zlib 1.3.1 and builds it into `deps` once (seconds).
+- zlib, for gzip (the hub's demos are `.mvd.gz`, and downloads are kept as gzips): a static one
+  CMake finds, else configuring fetches zlib 1.3.1 and builds it into `deps` once (seconds).
 
 Build from a Visual Studio developer prompt (x64):
 
@@ -299,6 +299,7 @@ Worth knowing:
 | `r_team_color`, `r_enemy_color` | teammates' and the other players' models (dead bodies too) all in one color in place of their skins, unlit: red, green and blue as light, 0 to 2 each, 1 1 1 white and more brighter (`r_enemy_color "0 2 0"`); empty, the default, leaves the skins. The team is the one of the player you see the game as (you, or the player a demo or spectating follows), in a teamplay game; outside teamplay every other player is an enemy, and a free camera colors no one |
 | `cl_deadbodyfilter`, `cl_gibfilter`, `cl_r2g` | as FTE's, all off by default: dead players' bodies hidden (1 once they lie on the ground, 2 from the moment they die); gibs and blown-off heads hidden; rockets drawn as grenades, and unlike FTE's with a grenade's smoke trail too (their light kept) |
 | `cl_download_mapsrc` | where a map comes from that the server doesn't give (no downloads, or it doesn't have it) or a demo or QTV stream needs, as FTE's: `<url><map>.bsp`, over HTTP or HTTPS, with the download bar; maps.quakeworld.nu's `https://maps.quakeworld.nu/all/` by default, empty for none |
+| `sv_dlURL` | a server's web address for its files, as FTE's: a map, model, sound or skin the client lacks comes from `<url>/<gamedir>/<path>` over HTTP or HTTPS, with the download bar, before the server is asked, which it is where the web hasn't the file; in a demo or QTV stream too. A gzip is asked for, and one that comes (nginx's `gzip_static`) is kept as it came, as `<path>.gz`, which the game reads as `<path>`. Set on a SoftWorld server, it is in the serverinfo; empty, the default, none |
 | `demo_speed`, `pause` | MVD playback speed, and pause |
 | `demo_jump [+\|-][m:]s` | seek in an MVD |
 | `track [name]`, jump, attack | in an MVD or QTV: follow a player, the next one; attack flies the camera and gives it back |
@@ -465,9 +466,10 @@ QTV comes over WebSocket too: a SoftWorld server's at its port, `qtvplay ws://ho
 after a packet lost until it comes again, which UDP doesn't. The page's own server takes only
 its own client.
 
-The page's GETs (the Hub's games, `playdemo` of a URL) are the browser's `fetch()`, from sites
-that let other pages read them (CORS's headers), as the hub's API and its demos do. A map a demo
-needs that the site's Quake directory hasn't isn't fetched in a page.
+The page's GETs (the Hub's games, `playdemo` of a URL, the files of a server's `sv_dlURL` and
+`cl_download_mapsrc`'s maps) are the browser's `fetch()`, from sites that let other pages read
+them (CORS's headers), as the hub's API and its demos do; maps.quakeworld.nu sends none, so a
+page gets no maps from it. A file that comes gzipped is kept unpacked, as `fetch()` hands it over.
 
 On Windows the sandbox's firewall rule lets TCP in with UDP since the WebSocket port came; a
 rule made before lets UDP alone in, until `softworld -sandbox-network`, run once as an

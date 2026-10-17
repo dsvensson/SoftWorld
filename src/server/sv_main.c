@@ -70,6 +70,12 @@ cvar_t	allow_download_maps = {.name = "allow_download_maps", .string = "1",
 	.description = "Lets clients download maps (files under maps/), when allow_download is on; "
 		"maps in pak files are never sent.",
 	.values = (const cvar_value_t[]){{"0", "Refused"}, {"1", "Allowed"}, {0}}};
+// a web address the clients fetch the files they lack from before asking the
+// server (FTE's, ioquake3's name)
+static cvar_t	sv_dlURL = {.name = "sv_dlURL", .string = "", .serverinfo = true,
+	.description = "A web address (http:// or https://) the clients fetch the maps, models, sounds and skins they "
+		"lack from before asking the server, as <url>/<gamedir>/<path>, each as it is or gzipped "
+		"(Content-Encoding); FTE's. Empty for none. Serverinfo."};
 
 static cvar_t sv_highchars = {.name = "sv_highchars", .string = "1",
 	.description = "Lets names and other info strings keep high-bit (colored) and control characters; 0 strips them.",
@@ -1740,6 +1746,7 @@ static void SV_InitLocal (void)
 	Cvar_RegisterVariable (&allow_download_models);
 	Cvar_RegisterVariable (&allow_download_sounds);
 	Cvar_RegisterVariable (&allow_download_maps);
+	Cvar_RegisterVariable (&sv_dlURL);
 
 	Cvar_RegisterVariable (&sv_highchars);
 

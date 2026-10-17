@@ -72,7 +72,10 @@ typedef enum { HTTP_RUNNING, HTTP_DONE, HTTP_FAILED } httpstate_t;
 typedef struct httpfetch_s httpfetch_t;
 
 // url's GET started, with request lines more: "Name: value" each, apart by
-// \n or \r\n, or NULL. Never NULL: one that can't start has failed.
+// \n or \r\n, or NULL. Never NULL: one that can't start has failed. An
+// Accept-Encoding asked for, the body comes natively as it was sent (its
+// Content-Encoding says how); a page's fetch() asks for its own and unpacks
+// the body, telling no Content-Encoding.
 httpfetch_t	*HTTP_Start (const char *url, const char *headers);
 // the body's bytes come since, up to size: 0 when none have
 int			HTTP_Read (httpfetch_t *f, void *buf, int size);

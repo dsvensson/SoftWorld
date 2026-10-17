@@ -36,15 +36,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // The requests ride on the move packets; before the client is in the game,
 // what does not fit goes in packets of its own.
 //
-// A map the server can't give, or a recording or QTV stream needs, comes
-// from the web (cl_download_mapsrc).
+// A file the server keeps on the web too (its serverinfo's sv_dlURL, FTE's)
+// comes from there first, and a map the server can't give, or a recording or
+// QTV stream needs, from cl_download_mapsrc (FROM THE WEB, below).
 
 #include "cl_local.h"
 
 #include "net_http.h"
 #include "sys.h"
-
-#include <stdatomic.h>
 
 #define DL_MAXREQUESTS	256		// requests in flight at most
 #define DL_RETRY		10		// our packets the server acknowledges before an unanswered request is lost
@@ -389,15 +388,21 @@ static void CL_CloseDownload (void)
 
 FROM THE WEB
 
-A map the server can't give, or a recording or QTV stream needs, as FTE's
-cl_download_mapsrc has it: <url><map>.bsp, over HTTP or HTTPS on a thread of
-its own, which writes the temp file. The download bar follows it, and a
-recording waits for it.
+As FTE has them: a map, a model, a sound or a skin from the server's web
+address for its files (its serverinfo's sv_dlURL), <url>/<gamedir>/<path>,
+before the server is asked, which it is where the web hasn't the file (a
+recording or QTV stream then has only cl_download_mapsrc); and a map the
+server can't give, or a recording or QTV stream needs, from
+cl_download_mapsrc, <url><map>.bsp.
+
+Over HTTP or HTTPS, a GET that runs on its own (net_http.h's HTTP_Start, a
+page's fetch()), what came of it written to the temp file each frame. The
+download bar follows it, and a recording waits for it. A gzip is asked for,
+and one that comes is saved as it came, as <path>.gz, which the file system
+reads unpacked (fs.h); a page's fetch() unpacks it before it is read.
 
 ===============================================================================
 */
-
-#define WEB_TIMEOUT		20		// seconds without a byte
 
 static cvar_t	cl_download_mapsrc = {.name = "cl_download_mapsrc", .string = "https://maps.quakeworld.nu/all/",
 	.archive = true,
@@ -405,21 +410,15 @@ static cvar_t	cl_download_mapsrc = {.name = "cl_download_mapsrc", .string = "htt
 		"map), or that a demo or QTV stream needs: a URL the maps are under, as <url><map>.bsp (FTE's). Empty for "
 		"none."};
 
-enum { WEB_RUNNING, WEB_DONE, WEB_ABANDONED };
-
-// a map on its way; its thread frees it where it was abandoned
+// a file on its way
 typedef struct
 {
-	char			url[MAX_OSPATH * 2];
-	char			path[MAX_OSPATH];		// the temp file
-	FILE			*file;
-	systhread_t		*thread;
-	atomic_llong	received;
-	atomic_llong	total;					// -1 where the answer gives none
-	atomic_int		state;
-	atomic_bool		cancel;
-	bool			ok;						// once it is done
-	char			error[256];
+	httpfetch_t	*fetch;
+	FILE		*file;					// the temp file
+	char		url[HTTP_MAXURL];
+	char		remote[MAX_OSPATH];		// the server's name for it
+	bool		dlurl;					// from the server's sv_dlURL, else cl_download_mapsrc
+	char		error[64];				// why it failed here, "" while it hasn't
 } webdownload_t;
 
 static webdownload_t	*web;		// the one on its way
@@ -434,157 +433,238 @@ bool CL_Downloading (void)
 	return cls.download || web;
 }
 
-static bool CL_WebBody (void *ctx, const void *data, size_t length, long long total)
+// a URL of http:// or https://
+static bool CL_IsWebURL (const char *url)
 {
-	webdownload_t	*w = ctx;
-
-	if (atomic_load (&w->cancel))
-		return false;
-	if (fwrite (data, 1, length, w->file) != length)
-	{
-		snprintf (w->error, sizeof(w->error), "can't write the file");
-		return false;
-	}
-	atomic_store (&w->total, total);
-	atomic_fetch_add (&w->received, (long long)length);
-	return true;
+	return !Q_strncasecmp (url, "http://", 7) || !Q_strncasecmp (url, "https://", 8);
 }
 
-static void CL_WebThread (void *arg)
+// path onto the URL in url, its bytes a URL can't hold as they are as %XX;
+// false if it doesn't fit
+static bool CL_URLPath (char *url, size_t size, const char *path)
 {
-	webdownload_t	*w = arg;
+	static const char	hex[] = "0123456789ABCDEF";
+	size_t				len = strlen (url);
+	unsigned char		c;
 
-	if (!(w->file = fopen (w->path, "wb")))
-		snprintf (w->error, sizeof(w->error), "can't create the file");
-	else
+	for ( ; *path ; path++)
 	{
-		w->ok = HTTP_Get (w->url, WEB_TIMEOUT, CL_WebBody, w, w->error, sizeof(w->error));
-		if (fclose (w->file) && w->ok)
+		c = (unsigned char)*path;
+		if (isalnum (c) || strchr ("-._~/", c))
 		{
-			w->ok = false;
-			snprintf (w->error, sizeof(w->error), "can't write the file");
+			if (len + 1 >= size)
+				return false;
+			url[len++] = (char)c;
+		}
+		else
+		{
+			if (len + 3 >= size)
+				return false;
+			url[len++] = '%';
+			url[len++] = hex[c >> 4];
+			url[len++] = hex[c & 15];
 		}
 	}
-	if (!w->ok)
-		remove (w->path);
-	if (atomic_exchange (&w->state, WEB_DONE) == WEB_ABANDONED)
-	{	// nothing waits for it
-		remove (w->path);
-		free (w);
-	}
+	url[len] = 0;
+	return true;
 }
 
 /*
 ================
-CL_WebDownload
+CL_StartWeb
 
-A map from cl_download_mapsrc, saved as local; false where local isn't a map,
-there is no such URL, or no thread for it
+local from url into its temp file, remote the server's name for it (asked
+for where it was the server's sv_dlURL that hasn't it); false where the temp
+file can't be made
 ================
 */
-static bool CL_WebDownload (const char *local)
+static bool CL_StartWeb (const char *url, const char *remote, const char *local, bool dlurl)
 {
-	const char		*src = cl_download_mapsrc.string, *dot = strrchr (local, '.');
-	webdownload_t	*w;
+	char	path[MAX_OSPATH];
+	FILE	*file;
 
-	if (strncmp (local, "maps/", 5) || strchr (local + 5, '/') || !dot || Q_strcasecmp (dot, ".bsp")
-		|| (Q_strncasecmp (src, "http://", 7) && Q_strncasecmp (src, "https://", 8)))
-		return false;
-	if (!(w = calloc (1, sizeof(*w))))
-		return false;
-
+	// before printing: the names may be va()'s buffer, which printing reuses
 	Q_strncpyz (cls.downloadname, local, sizeof(cls.downloadname));
 	Q_strncpyz (cls.downloadlocalname, local, sizeof(cls.downloadlocalname));
 	COM_StripExtension (cls.downloadlocalname, cls.downloadtempname);
 	Q_strncatz (cls.downloadtempname, ".tmp", sizeof(cls.downloadtempname));
-	snprintf (w->url, sizeof(w->url), "%s%s", src, local + 5);
-	if (!CL_DownloadPath (cls.downloadtempname, w->path, sizeof(w->path)))
+	if (!CL_DownloadPath (cls.downloadtempname, path, sizeof(path)))
+		return false;
+	COM_CreatePath (path);
+	if (!(file = fopen (path, "wb")))
 	{
-		free (w);
+		Con_Printf ("Failed to open %s\n", path);
 		return false;
 	}
-	COM_CreatePath (w->path);
-	atomic_store (&w->total, -1);
-	atomic_store (&w->state, WEB_RUNNING);
-	if (!(w->thread = Sys_StartThread ("download", CL_WebThread, w)))
-	{
-		free (w);
-		return false;
-	}
-	web = w;
+	web = Mem_Calloc (1, sizeof(*web));
+	web->file = file;
+	Q_strncpyz (web->url, url, sizeof(web->url));
+	Q_strncpyz (web->remote, remote, sizeof(web->remote));
+	web->dlurl = dlurl;
+	web->fetch = HTTP_Start (url, "Accept-Encoding: gzip");
 	CL_DownloadStarted ();
-	Con_Printf ("Downloading %s from %s...\n", local, w->url);
+	Con_Printf ("Downloading %s from %s...\n", cls.downloadlocalname, web->url);
 	return true;
+}
+
+/*
+================
+CL_DlURLDownload
+
+local from the server's web address for its files, its serverinfo's sv_dlURL
+(FTE's): <url>/<gamedir>/<remote>; false where it has none
+================
+*/
+static bool CL_DlURLDownload (const char *remote, const char *local)
+{
+	const char	*base = Info_ValueForKey (cl.serverinfo, "sv_dlURL");
+	char		url[HTTP_MAXURL], path[MAX_OSPATH * 2];
+
+	if (!CL_IsWebURL (base))
+		return false;
+	if (!Q_snprintfz (url, sizeof(url), "%s%s", base, base[strlen (base) - 1] == '/' ? "" : "/")
+		|| !Q_snprintfz (path, sizeof(path), "%s/%s", gamedirfile, remote) || !CL_URLPath (url, sizeof(url), path))
+		return false;
+	return CL_StartWeb (url, remote, local, true);
+}
+
+/*
+================
+CL_MapsrcDownload
+
+A map from cl_download_mapsrc, <url><map>.bsp, saved as local; false where
+local isn't a map or there is no such URL
+================
+*/
+static bool CL_MapsrcDownload (const char *local)
+{
+	const char	*src = cl_download_mapsrc.string, *dot = strrchr (local, '.');
+	char		url[HTTP_MAXURL];
+
+	if (strncmp (local, "maps/", 5) || strchr (local + 5, '/') || !dot || Q_strcasecmp (dot, ".bsp")
+		|| !CL_IsWebURL (src))
+		return false;
+	if (!Q_snprintfz (url, sizeof(url), "%s", src) || !CL_URLPath (url, sizeof(url), local + 5))
+		return false;
+	return CL_StartWeb (url, local, local, false);
+}
+
+/*
+================
+CL_EndWeb
+
+The web download ended, error why where it failed (NULL where it didn't):
+renamed into place (as <local>.gz where it came gzipped), and the next file;
+else, where it was the server's sv_dlURL, the server asked for it (a
+recording's or a QTV stream's map from cl_download_mapsrc)
+================
+*/
+static void CL_EndWeb (const char *error)
+{
+	char	why[256], encoding[32], url[HTTP_MAXURL], remote[MAX_OSPATH], local[MAX_OSPATH], saved[MAX_OSPATH];
+	char	oldn[MAX_OSPATH], newn[MAX_OSPATH];
+	double	took = host.realtime - dl.started;
+	bool	gz = false, dlurl = web->dlurl;
+
+	Q_strncpyz (why, error ? error : "", sizeof(why));		// error may be the GET's, closed below
+	// a gzip comes as it was sent (a page's fetch() has unpacked it, and
+	// tells no encoding)
+	if (!why[0] && HTTP_ResponseHeader (web->fetch, "Content-Encoding", encoding, sizeof(encoding))
+		&& Q_strcasecmp (encoding, "identity"))
+	{
+		if (Q_strcasecmp (encoding, "gzip"))
+			snprintf (why, sizeof(why), "it came as %s, which isn't gzip", encoding);
+		else
+			gz = true;
+	}
+	if (fclose (web->file) && !why[0])
+		Q_strncpyz (why, "can't write the file", sizeof(why));
+	HTTP_Close (web->fetch);
+	Q_strncpyz (url, web->url, sizeof(url));
+	Q_strncpyz (remote, web->remote, sizeof(remote));
+	Q_strncpyz (local, cls.downloadlocalname, sizeof(local));
+	Mem_Free (web);
+	web = NULL;
+	cls.downloadpercent = 0;
+
+	if (!CL_DownloadPath (cls.downloadtempname, oldn, sizeof(oldn)))
+		Q_strncpyz (why, "its path doesn't fit", sizeof(why));
+	else if (!why[0] && (!Q_snprintfz (saved, sizeof(saved), "%s%s", local, gz ? ".gz" : "")
+		|| !CL_DownloadPath (saved, newn, sizeof(newn))))
+		Q_strncpyz (why, "its path doesn't fit", sizeof(why));
+	if (!why[0])
+	{
+		remove (newn);
+		if (rename (oldn, newn))
+			Con_Printf ("failed to rename %s\n", oldn);
+		else
+			Con_Printf ("%s: %d bytes%s in %.1f s, %s\n", saved, dl.received, gz ? ", gzipped," : "", took,
+				CL_RateText (dl.received / fmax (took, 0.001)));
+		CL_RequestNextDownload ();
+		return;
+	}
+
+	remove (oldn);
+	Con_Printf ("Couldn't download %s from %s: %s\n", local, url, why);
+	if (dlurl && !cls.demoplayback)
+	{	// the server, then
+		CL_BeginDownload (remote, local);
+		Con_Printf ("Downloading %s...\n", cls.downloadname);
+		return;
+	}
+	if (dlurl && CL_MapsrcDownload (local))
+		return;
+	CL_RequestNextDownload ();
 }
 
 /*
 ================
 CL_DownloadFrame
 
-Once a frame: the web download's bar, and its end, as one from the server
-ends: renamed into place, then the next file
+Once a frame: what came of the web download, into its temp file, for the bar,
+and its end
 ================
 */
 void CL_DownloadFrame (void)
 {
-	char		oldn[MAX_OSPATH], newn[MAX_OSPATH], error[256];
+	byte		buf[65536];
 	long long	total;
-	double		took;
-	bool		ok;
+	httpstate_t	state;
+	int			n;
 
 	if (!web)
 		return;
-	dl.received = (int)atomic_load (&web->received);
-	total = atomic_load (&web->total);
-	cls.downloadpercent = total > 0 ? (int)(dl.received * 100LL / total) : 0;
-	if (atomic_load (&web->state) != WEB_DONE)
+	while (!web->error[0] && (n = HTTP_Read (web->fetch, buf, sizeof(buf))) > 0)
+	{
+		if (fwrite (buf, 1, (size_t)n, web->file) != (size_t)n)
+			Q_strncpyz (web->error, "can't write the file", sizeof(web->error));
+		dl.received += n;
+	}
+	// a page's length is the gzip's that fetch() unpacks: the bar stops full
+	total = HTTP_Length (web->fetch);
+	cls.downloadpercent = total > 0 ? (int)fmin (dl.received * 100.0 / (double)total, 100) : 0;
+	if (web->error[0])
+	{
+		CL_EndWeb (web->error);
 		return;
-
-	Sys_JoinThread (web->thread);
-	ok = web->ok;
-	Q_strncpyz (error, web->error, sizeof(error));
-	free (web);
-	web = NULL;
-	cls.downloadpercent = 0;
-
-	took = host.realtime - dl.started;
-	if (!CL_DownloadPath (cls.downloadtempname, oldn, sizeof(oldn))
-		|| !CL_DownloadPath (cls.downloadlocalname, newn, sizeof(newn)))
-	{
-		ok = false;
-		Q_strncpyz (error, "its path doesn't fit", sizeof(error));
 	}
-	if (!ok)
-		Con_Printf ("Couldn't download %s: %s\n", cls.downloadname, error);
-	else
-	{
-		remove (newn);
-		if (rename (oldn, newn))
-			Con_Printf ("failed to rename %s\n", oldn);
-		else
-			Con_Printf ("%s: %d bytes in %.1f s, %s\n", cls.downloadname, dl.received, took,
-				CL_RateText (dl.received / fmax (took, 0.001)));
-	}
-	CL_RequestNextDownload ();
+	state = HTTP_State (web->fetch);
+	if (state != HTTP_RUNNING)
+		CL_EndWeb (state == HTTP_DONE ? NULL : HTTP_Error (web->fetch));
 }
 
-// the web download dropped: its thread ends on its own, and cleans up after
+// the web download dropped, its temp file with it
 static void CL_AbandonWeb (void)
 {
-	systhread_t	*thread;
+	char	path[MAX_OSPATH];
 
 	if (!web)
 		return;
-	thread = web->thread;
-	atomic_store (&web->cancel, true);
-	if (atomic_exchange (&web->state, WEB_ABANDONED) == WEB_DONE)
-	{
-		Sys_JoinThread (thread);
-		remove (web->path);
-		free (web);
-	}
-	else
-		Sys_DetachThread (thread);
+	HTTP_Close (web->fetch);
+	fclose (web->file);
+	if (CL_DownloadPath (cls.downloadtempname, path, sizeof(path)))
+		remove (path);
+	Mem_Free (web);
 	web = NULL;
 	cls.downloadpercent = 0;
 }
@@ -613,7 +693,7 @@ static void CL_DownloadFailed (const char *reason)
 	Con_Printf ("Couldn't download %s: %s\n", cls.downloadname, reason);
 	Q_strncpyz (local, cls.downloadlocalname, sizeof(local));
 	CL_CloseDownload ();
-	if (!CL_WebDownload (local))
+	if (!CL_MapsrcDownload (local))
 		CL_RequestNextDownload ();
 }
 
@@ -654,27 +734,16 @@ static void CL_FinishDownload (void)
 
 /*
 =================
-CL_CheckOrDownloadFile
+CL_CheckOrDownload
 
-Returns true if the file exists, otherwise it attempts
-to start a download from the server.
+Returns true if the file exists (stored gzipped too), otherwise it attempts to
+start a download of the server's file remote as local: from the server's
+sv_dlURL first where fromweb, then from the server
 =================
 */
-bool	CL_CheckOrDownloadFile (char *filename)
+static bool CL_CheckOrDownload (const char *remote, const char *local, bool fromweb)
 {
-	return CL_CheckOrDownloadFileAs (filename, filename);
-}
-
-/*
-=================
-CL_CheckOrDownloadFileAs
-
-The same, saving the server's file remote as local
-=================
-*/
-bool	CL_CheckOrDownloadFileAs (const char *remote, const char *local)
-{
-	FILE	*f;
+	long long	size, mtime;
 
 	if (strstr (remote, "..") || strstr (local, ".."))
 	{
@@ -682,12 +751,8 @@ bool	CL_CheckOrDownloadFileAs (const char *remote, const char *local)
 		return true;
 	}
 
-	COM_FOpenFile (local, &f);
-	if (f)
-	{	// it exists, no need to download
-		fclose (f);
-		return true;
-	}
+	if (FS_FileInfo (local, &size, &mtime))
+		return true;	// it exists, no need to download
 	if (CL_Attracting ())
 		return true;	// attract mode shows what is here
 
@@ -696,11 +761,18 @@ bool	CL_CheckOrDownloadFileAs (const char *remote, const char *local)
 		Con_Printf("Unable to download %s in record mode.\n", remote);
 		return true;
 	}
+	// the server's web address for its files first, a recording's and a QTV
+	// stream's too
+	if (fromweb && CL_DlURLDownload (remote, local))
+	{
+		cls.downloadnumber++;
+		return false;
+	}
 	// a recording or a QTV stream has no server to ask: a map comes from the
 	// web, where it is there, the recording waiting for it
 	if (cls.demoplayback)
 	{
-		if (!CL_WebDownload (local))
+		if (!CL_MapsrcDownload (local))
 			return true;
 		cls.downloadnumber++;
 		return false;
@@ -712,6 +784,33 @@ bool	CL_CheckOrDownloadFileAs (const char *remote, const char *local)
 	cls.downloadnumber++;
 
 	return false;
+}
+
+/*
+=================
+CL_CheckOrDownloadFile
+
+Returns true if the file exists, otherwise it attempts
+to start a download: a map, a model, a sound or a skin, from the server's
+sv_dlURL first, as FTE has it
+=================
+*/
+bool	CL_CheckOrDownloadFile (char *filename)
+{
+	return CL_CheckOrDownload (filename, filename, true);
+}
+
+/*
+=================
+CL_CheckOrDownloadFileAs
+
+The same, saving the server's file remote as local, from the server alone
+(a csprogs, which must be the one its checksum names)
+=================
+*/
+bool	CL_CheckOrDownloadFileAs (const char *remote, const char *local)
+{
+	return CL_CheckOrDownload (remote, local, false);
 }
 
 /*

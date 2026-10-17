@@ -1,9 +1,13 @@
 // net_http_web.c -- a page's GETs that run on their own (net_http.h's
 // HTTP_Start): the browser's fetch() (net_http_web.js), polled as the native
 // programs' threads are. A page has no GETs that block (net_http_none.c).
+// fetch() unpacks an answer that came gzipped (or in another encoding) before
+// it is read: no Content-Encoding is told, nor its length, which is of what
+// came packed.
 
 #include "mem.h"
 #include "net_http.h"
+#include "q_string.h"
 #include "q_types.h"
 
 #include <stdlib.h>
@@ -53,14 +57,20 @@ int HTTP_Status (httpfetch_t *f)
 
 bool HTTP_ResponseHeader (httpfetch_t *f, const char *name, char *value, size_t size)
 {
+	if (!Q_strcasecmp (name, "Content-Encoding"))
+		return false;		// fetch()'s, which has unpacked the body
 	return web_http_header (f->id, name, value, (int)size) >= 0;
 }
 
+// the body's length, where it came as it is read; a site's Content-Encoding
+// that isn't exposed to the page isn't seen, nor that the length is packed
 long long HTTP_Length (httpfetch_t *f)
 {
 	char	value[32];
 
-	return HTTP_ResponseHeader (f, "Content-Length", value, sizeof(value)) ? atoll (value) : -1;
+	if (web_http_header (f->id, "Content-Encoding", value, (int)sizeof(value)) >= 0 && Q_strcasecmp (value, "identity"))
+		return -1;
+	return web_http_header (f->id, "Content-Length", value, (int)sizeof(value)) >= 0 ? atoll (value) : -1;
 }
 
 const char *HTTP_Error (httpfetch_t *f)
