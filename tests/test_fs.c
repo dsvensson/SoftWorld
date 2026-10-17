@@ -20,7 +20,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // test_fs.c -- files of a game directory stored gzipped (fs.h): path.gz found
 // as path by FS_LoadFile, FS_OpenVFS and FS_FileInfo, unpacked, with the size
 // it unpacks to; a plain file over its gzip; listed by the name it is read by;
-// COM_FOpenFile not finding it; and one cut short not loading
+// COM_FOpenFile not finding it; one cut short not loading; and the shareware's
+// loose files below the top of the game directory found, as a server's
+// downloads are
 
 #include "fs.h"
 #include "mem.h"
@@ -159,6 +161,11 @@ static void TestLoad (void)
 	Mem_Free (buf);
 
 	CHECK (!FS_LoadFile ("none.dat", &len));
+
+	// below the top of a shareware game directory, as a downloaded map is
+	buf = FS_LoadFile ("maps/x.dat", &len);
+	CHECK (buf && len == DATASIZE && !memcmp (buf, data, DATASIZE));
+	Mem_Free (buf);
 }
 
 static void TestOpen (void)
@@ -215,11 +222,12 @@ static void TestList (void)
 
 int main (void)
 {
-	// loose files outside pak files are only found at the top of a shareware
-	// game directory
+	// a game directory without pak files: the shareware's rules
 	MakeData ();
 	mkdir ("test_fs_data", 0777);
 	mkdir ("test_fs_data/id1", 0777);
+	mkdir ("test_fs_data/id1/maps", 0777);
+	WriteGzip ("test_fs_data/id1/maps/x.dat.gz", data, DATASIZE, 0);
 	WriteGzip ("test_fs_data/id1/a.dat.gz", data, DATASIZE, 0);
 	WriteFile ("test_fs_data/id1/b.txt", "plain b", 7);
 	WriteGzip ("test_fs_data/id1/b.txt.gz", "gzipped b", 9, 0);

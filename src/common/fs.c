@@ -43,8 +43,6 @@ static cvar_t	registered = {.name = "registered", .string = "0", .noreset = true
 	.description = "Whether the registered game's data (gfx/pop.lmp) was found; set at startup, read by the game code.",
 	.values = (const cvar_value_t[]){{"0", "Shareware data"}, {"1", "Registered data"}, {0}}};
 
-static int		static_registered = 1;	// only for startup check, then set
-
 
 static void COM_InitFilesystem (const char *basedir);
 static void COM_Path_f (void);
@@ -135,9 +133,9 @@ Handles byte ordering and avoids alignment errors
 COM_CheckRegistered
 
 Looks for the pop.txt file and verifies it.
-Sets the "registered" cvar.
-Immediately exits out if an alternate game was attempted to be started without
-being registered.
+Sets the "registered" cvar. The shareware's loose files beyond the top of a
+game directory are found too, as FTE and ezQuake find them: what a server
+sends (maps/, sound/) is of no use otherwise.
 ================
 */
 static void COM_CheckRegistered (void)
@@ -148,7 +146,6 @@ static void COM_CheckRegistered (void)
 	int			i;
 
 	COM_FOpenFile("gfx/pop.lmp", &h);
-	static_registered = 0;
 
 	if (!h)
 	{
@@ -167,7 +164,6 @@ static void COM_CheckRegistered (void)
 			Sys_Error ("Corrupted data file.");
 	
 	Cvar_Set ("registered", "1");
-	static_registered = 1;
 	Con_Printf ("Playing registered version.\n");
 }
 
@@ -477,12 +473,6 @@ static int FS_Open (const char *filename, FILE **file, bool *gz)
 		else
 		{		
 	// check a file in the directory tree
-			if (!static_registered)
-			{	// if not a registered version, don't ever go beyond base
-				if ( strchr (filename, '/') || strchr (filename,'\\'))
-					continue;
-			}
-			
 			if (!Q_snprintfz (netpath, sizeof(netpath), "%s/%s", search->filename, filename))
 				continue;	// nothing can be named by a path that doesn't fit one
 			
@@ -587,8 +577,6 @@ bool FS_FileInfo (const char *path, long long *size, long long *mtime)
 				}
 			continue;
 		}
-		if (!static_registered && (strchr (path, '/') || strchr (path, '\\')))
-			continue;		// as COM_FOpenFile has it
 		if (Q_snprintfz (netpath, sizeof(netpath), "%s/%s", search->filename, path)
 			&& Sys_FileInfo (netpath, size, mtime))
 			return true;
