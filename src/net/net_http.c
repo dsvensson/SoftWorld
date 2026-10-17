@@ -20,8 +20,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // net_http.c -- GETs over HTTP or HTTPS (net_http.h)
 //
 // A GET as HTTP/1.0 has it (the body to the connection's end, no chunks to put
-// together), a Host for the name's servers, and redirects followed, from
-// http:// to https:// too. The body is handed on as it comes. TLS is mbedTLS's
+// together), a Host for the name's servers, the caller's request lines after
+// (an API's key), and redirects followed, from http:// to https:// too. The
+// last answer's head is told before its body, which is handed on as it comes. TLS is mbedTLS's
 // (the one a program has, WebRTC's where it is in), the server's certificate
 // checked against the roots the system trusts and the name asked for (SNI).
 // TLS 1.2 at most: 1.3 needs mbedTLS's PSA key store, which isn't safe from
@@ -86,7 +87,7 @@ static void HTTP_AddRoot (void *ctx, const void *data, size_t length)
 	mbedtls_x509_crt_parse (ctx, data, length);
 }
 
-static void HTTP_Close (http_t *h)
+static void HTTP_Hangup (http_t *h)
 {
 	if (h->tls)
 	{
@@ -175,7 +176,7 @@ static bool HTTP_Write (http_t *h, const char *data, size_t length)
 }
 
 // the bytes read, 0 at the end, -1 on an error or at the deadline
-static int HTTP_Read (http_t *h, char *buf, size_t size)
+static int HTTP_ReadSome (http_t *h, char *buf, size_t size)
 {
 	int		ret;
 
@@ -207,7 +208,7 @@ typedef struct
 	bool	tls;
 	char	host[256];
 	int		port;
-	char	path[1024];
+	char	path[HTTP_MAXURL];
 } httpurl_t;
 
 static bool HTTP_ParseURL (const char *url, httpurl_t *u)
@@ -269,6 +270,8 @@ static bool HTTP_ParseURL (const char *url, httpurl_t *u)
 
 	// the path and query, the fragment the client's own
 	n = strcspn (end, "#");
+	if (n + 2 > sizeof(u->path))
+		return false;
 	if (*end != '/')
 		snprintf (u->path, sizeof(u->path), "/%.*s", (int)n, end);
 	else
@@ -279,7 +282,7 @@ static bool HTTP_ParseURL (const char *url, httpurl_t *u)
 // where a redirect leads from base: a URL, or one relative to base's
 static bool HTTP_ResolveURL (const httpurl_t *base, const char *location, char *out, size_t size)
 {
-	char	origin[300], dir[1024], *slash;
+	char	origin[300], dir[HTTP_MAXURL], *slash;
 
 	if (strstr (location, "://"))
 	{
@@ -301,8 +304,7 @@ static bool HTTP_ResolveURL (const httpurl_t *base, const char *location, char *
 	}
 }
 
-// a header's value of the response's head, NULL if it has none
-static const char *HTTP_Header (const char *head, const char *name, char *value, size_t size)
+const char *HTTP_HeaderValue (const char *head, const char *name, char *value, size_t size)
 {
 	const char	*line, *end;
 	size_t		namelength = strlen (name), n;
@@ -334,7 +336,17 @@ THE GET
 ==============================================================================
 */
 
-typedef enum { HTTP_GOT, HTTP_REDIRECTED, HTTP_FAILED } httpgot_t;
+typedef enum { GET_GOT, GET_REDIRECTED, GET_FAILED } httpgot_t;
+
+// what a GET asks, and who takes the answer
+typedef struct
+{
+	double		timeout;
+	const char	*headers;		// request lines more, each ending \r\n, or NULL
+	httphead_t	head;			// told the answer's status and head, or NULL
+	httpbody_t	body;
+	void		*ctx;
+} httprequest_t;
 
 // the head of the answer, to its blank line: its length with the line, the
 // body that came with it after; 0 with why in error
@@ -355,7 +367,7 @@ static size_t HTTP_ReadHead (http_t *h, const httpurl_t *u, double timeout, char
 			return 0;
 		}
 		h->deadline = Sys_DoubleTime () + timeout;
-		n = HTTP_Read (h, head + *have, HTTP_MAXHEAD - *have);
+		n = HTTP_ReadSome (h, head + *have, HTTP_MAXHEAD - *have);
 		if (n <= 0)
 		{
 			snprintf (error, errorsize, n ? "%s stopped answering" : "%s answered nothing", u->host);
@@ -364,46 +376,50 @@ static size_t HTTP_ReadHead (http_t *h, const httpurl_t *u, double timeout, char
 	}
 }
 
-// one GET of the URL: its body handed to body, or where it moved to (in location)
-static httpgot_t HTTP_Fetch (const httpurl_t *u, double timeout, httpbody_t body, void *ctx,
-	char *location, size_t locationsize, char *error, size_t errorsize)
+// one GET of the URL: its body handed to the request's body, or where it moved
+// to (in location)
+static httpgot_t HTTP_Fetch (const httpurl_t *u, const httprequest_t *r, char *location, size_t locationsize,
+	char *error, size_t errorsize)
 {
 	http_t		h = {0};
 	netadr_t	a;
-	char		request[1536], hostport[300], value[64], head[HTTP_MAXHEAD + 1], buf[16384];
+	char		request[HTTP_MAXURL + HTTP_MAXHEADERS + 512], hostport[300], value[64], head[HTTP_MAXHEAD + 1];
+	char		buf[16384];
+	double		timeout = r->timeout;
 	size_t		have, headlength;
 	long long	total = -1, got;
 	int			n, status;
+	bool		refused;
 
 	if (!UDP_Resolve (u->host, false, &a))
 	{
 		snprintf (error, errorsize, "%s isn't found", u->host);
-		return HTTP_FAILED;
+		return GET_FAILED;
 	}
 	a.type = NA_IP;
 	a.port = (unsigned short)BigShort ((short)u->port);
 	if (!(h.stream = TCP_StreamOpen (&a, Sys_DoubleTime () + HTTP_CONNECTTIME)))
 	{
 		snprintf (error, errorsize, "%s doesn't answer", u->host);
-		return HTTP_FAILED;
+		return GET_FAILED;
 	}
 	h.deadline = Sys_DoubleTime () + timeout;
 	if (u->tls && !HTTP_StartTLS (&h, u->host, error, errorsize))
 	{
-		HTTP_Close (&h);
-		return HTTP_FAILED;
+		HTTP_Hangup (&h);
+		return GET_FAILED;
 	}
 
 	snprintf (hostport, sizeof(hostport), strchr (u->host, ':') ? "[%s]" : "%s", u->host);
 	if (u->port != (u->tls ? 443 : 80))
 		snprintf (hostport + strlen (hostport), sizeof(hostport) - strlen (hostport), ":%i", u->port);
 	snprintf (request, sizeof(request), "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: SoftWorld/%4.2f\r\n"
-		"Accept: */*\r\nConnection: close\r\n\r\n", u->path, hostport, VERSION);
+		"Accept: */*\r\nConnection: close\r\n%s\r\n", u->path, hostport, VERSION, r->headers ? r->headers : "");
 	if (!HTTP_Write (&h, request, strlen (request)))
 	{
 		snprintf (error, errorsize, "%s stopped answering", u->host);
-		HTTP_Close (&h);
-		return HTTP_FAILED;
+		HTTP_Hangup (&h);
+		return GET_FAILED;
 	}
 
 	// the status line and headers
@@ -415,27 +431,32 @@ static httpgot_t HTTP_Fetch (const httpurl_t *u, double timeout, httpbody_t body
 		snprintf (error, errorsize, "%s's answer isn't HTTP", u->host);
 		goto failed;
 	}
-	if (status >= 300 && status < 400 && HTTP_Header (head, "Location", location, locationsize))
+	if (status >= 300 && status < 400 && HTTP_HeaderValue (head, "Location", location, locationsize))
 	{
-		HTTP_Close (&h);
-		return HTTP_REDIRECTED;
+		HTTP_Hangup (&h);
+		return GET_REDIRECTED;
 	}
-	if (status < 200 || status >= 300)
+	// an answer that isn't a 2xx fails, its body read first where the head is
+	// asked for (an API's says why)
+	refused = status < 200 || status >= 300;
+	if (r->head)
+		r->head (r->ctx, status, head);
+	else if (refused)
 	{
 		snprintf (error, errorsize, "%s answered %i", u->host, status);
 		goto failed;
 	}
-	if (HTTP_Header (head, "Content-Length", value, sizeof(value)))
+	if (HTTP_HeaderValue (head, "Content-Length", value, sizeof(value)))
 		total = atoll (value);
 
 	// the body: what came with the head, then the rest to the connection's end
 	got = (long long)(have - headlength);
-	if (got && !body (ctx, head + headlength, (size_t)got, total))
+	if (got && !r->body (r->ctx, head + headlength, (size_t)got, total))
 		goto failed;		// why is body's to say
 	for (;;)
 	{
 		h.deadline = Sys_DoubleTime () + timeout;
-		n = HTTP_Read (&h, buf, sizeof(buf));
+		n = HTTP_ReadSome (&h, buf, sizeof(buf));
 		if (!n)
 			break;
 		if (n < 0)
@@ -444,28 +465,45 @@ static httpgot_t HTTP_Fetch (const httpurl_t *u, double timeout, httpbody_t body
 			goto failed;
 		}
 		got += n;
-		if (!body (ctx, buf, (size_t)n, total))
+		if (!r->body (r->ctx, buf, (size_t)n, total))
 			goto failed;
 	}
-	HTTP_Close (&h);
+	HTTP_Hangup (&h);
+	if (refused)
+	{
+		snprintf (error, errorsize, "%s answered %i", u->host, status);
+		return GET_FAILED;
+	}
 	if (total >= 0 && got < total)
 	{
 		snprintf (error, errorsize, "%s's answer was cut short", u->host);
-		return HTTP_FAILED;
+		return GET_FAILED;
 	}
-	return HTTP_GOT;
+	return GET_GOT;
 
 failed:
-	HTTP_Close (&h);
-	return HTTP_FAILED;
+	HTTP_Hangup (&h);
+	return GET_FAILED;
 }
 
-bool HTTP_Get (const char *url, double timeout, httpbody_t body, void *ctx, char *error, size_t errorsize)
+bool HTTP_Request (const char *url, const char *headers, double timeout, httphead_t head, httpbody_t body, void *ctx,
+	char *error, size_t errorsize)
 {
-	char		current[2048], location[2048];
-	httpurl_t	u;
-	int			redirects;
+	httprequest_t	r = {timeout, headers, head, body, ctx};
+	char			current[HTTP_MAXURL], location[HTTP_MAXURL];
+	httpurl_t		u;
+	int				redirects;
 
+	if (strlen (url) >= sizeof(current))
+	{
+		snprintf (error, errorsize, "the URL is longer than %i characters", HTTP_MAXURL - 1);
+		return false;
+	}
+	if (headers && strlen (headers) > HTTP_MAXHEADERS)
+	{
+		snprintf (error, errorsize, "the request's headers are longer than %i characters", HTTP_MAXHEADERS);
+		return false;
+	}
 	Q_strncpyz (current, url, sizeof(current));
 	for (redirects = 0 ; redirects <= HTTP_REDIRECTS ; redirects++)
 	{
@@ -474,24 +512,29 @@ bool HTTP_Get (const char *url, double timeout, httpbody_t body, void *ctx, char
 			snprintf (error, errorsize, "%s isn't an http:// or https:// URL", current);
 			return false;
 		}
-		switch (HTTP_Fetch (&u, timeout, body, ctx, location, sizeof(location), error, errorsize))
+		switch (HTTP_Fetch (&u, &r, location, sizeof(location), error, errorsize))
 		{
-		case HTTP_GOT:
+		case GET_GOT:
 			return true;
-		case HTTP_REDIRECTED:
+		case GET_REDIRECTED:
 			if (!HTTP_ResolveURL (&u, location, current, sizeof(current)))
 			{
 				snprintf (error, errorsize, "%s redirects somewhere too long to follow", current);
 				return false;
 			}
 			break;
-		case HTTP_FAILED:
+		case GET_FAILED:
 		default:
 			return false;
 		}
 	}
 	snprintf (error, errorsize, "%s redirected too often", url);
 	return false;
+}
+
+bool HTTP_Get (const char *url, double timeout, httpbody_t body, void *ctx, char *error, size_t errorsize)
+{
+	return HTTP_Request (url, NULL, timeout, NULL, body, ctx, error, errorsize);
 }
 
 /*

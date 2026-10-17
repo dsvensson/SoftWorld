@@ -17,7 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// net_http_none.c -- a page's GETs: none, it has no threads to wait on one
+// net_http_none.c -- a page's GETs that block: none, it has no threads to wait
+// on one (its others are fetch()'s, net_http_web.c)
 
 #include "net_http.h"
 
@@ -31,6 +32,14 @@ bool HTTP_Get (const char *url, double timeout, httpbody_t body, void *ctx, char
 	(void)ctx;
 	snprintf (error, errorsize, "no HTTP here");
 	return false;
+}
+
+bool HTTP_Request (const char *url, const char *headers, double timeout, httphead_t head, httpbody_t body, void *ctx,
+	char *error, size_t errorsize)
+{
+	(void)headers;
+	(void)head;
+	return HTTP_Get (url, timeout, body, ctx, error, errorsize);
 }
 
 char *HTTP_GetAll (const char *url, size_t max, double timeout, size_t *length, char *error, size_t errorsize)

@@ -90,6 +90,18 @@ if(NOT EMSCRIPTEN)
 	add_test(NAME stream COMMAND test_stream)
 endif()
 
+# test_http_async runs the GETs that run on their own against a server on the
+# loopback, and a download as a file; not on the web, whose GETs are fetch()'s.
+if(NOT EMSCRIPTEN)
+	sw_add_program(test_http_async test_http_async.c)
+	if(WIN32)
+		target_link_libraries(test_http_async PRIVATE sw_platform_win sw_net sw_common ZLIB::ZLIB)
+	else()
+		target_link_libraries(test_http_async PRIVATE sw_platform_posix sw_net sw_common ZLIB::ZLIB)
+	endif()
+	add_test(NAME http_async COMMAND test_http_async)
+endif()
+
 # test_slist runs the server list's parts without a network (src/slist):
 # packets, sources, the cache, the scheduler with the time handed in, routes
 # and the view.
