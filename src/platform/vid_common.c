@@ -12,7 +12,15 @@
 
 viddef_t	vid;				// global video state
 
-cvar_t	vid_vsync = {.name = "vid_vsync", .string = "0", .archive = true,
+// on in a browser, where a canvas in step with the display shows HDR
+// (vid_webgl.c); elsewhere frames are shown without waiting
+cvar_t	vid_vsync = {.name = "vid_vsync",
+#ifdef __EMSCRIPTEN__
+	.string = "1",
+#else
+	.string = "0",
+#endif
+	.archive = true,
 	.description = "Shows frames in step with the display's refresh (never in a timedemo).",
 	.values = (const cvar_value_t[]){{"0", "Frames shown without waiting for the display"},
 		{"1", "A frame at each refresh"}, {0}}};

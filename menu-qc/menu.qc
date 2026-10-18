@@ -190,8 +190,8 @@ typedef struct
 	float	from, to, step;
 } option_t;
 
-#define	OPTIONS_ITEMS	16
-#define	OPT_USEMOUSE	15			// not there in fullscreen
+#define	OPTIONS_ITEMS	17
+#define	OPT_USEMOUSE	16			// not there in fullscreen
 
 option_t	options[OPTIONS_ITEMS] = {
 	{"Customize controls", OPT_ACTION},
@@ -199,6 +199,7 @@ option_t	options[OPTIONS_ITEMS] = {
 	{"Reset to defaults", OPT_ACTION},
 	{"Screen size", OPT_SLIDER, "viewsize", 30, 120, 10},
 	{"Brightness", OPT_SLIDER, "gamma", 1, 0.5, -0.05},
+	{"Vertical Sync", OPT_SWITCH, "vid_vsync"},
 	{"Mouse Speed", OPT_SLIDER, "sensitivity", 1, 11, 0.5},
 	{"CD Music Volume", OPT_SLIDER, "bgmvolume", 0, 1, 1},
 	{"Sound Volume", OPT_SLIDER, "volume", 0, 1, 0.1},

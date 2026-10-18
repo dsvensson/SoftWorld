@@ -283,7 +283,7 @@ Worth knowing:
 | `r_lerpframes`, `r_lerpmuzzlehack` | models' animation frames blend into each other (1, the default), as in ezQuake; the view model's muzzle flash appears at once rather than blending in from behind the view |
 | `gamma`, `vid_contrast` | the view's gamma and contrast; the HUD keeps its own |
 | `vid_hdr`, `vid_hdr_paperwhite`, `vid_hdr_headroom` | HDR output on an HDR display (in a browser with `vid_vsync 1`, and the peak `vid_hdr_headroom` times SDR white: In a browser, below); SDR white's brightness in nits, 0 (the default) the system's: Windows' SDR content brightness, the compositor's on Linux, the system's white on macOS (where nits are over a white of 100). What is brighter than white goes up to the display's peak, which the console tells at start; on Windows a color profile assigned to the display can change the peak it reports. `screenshot` writes HDR while the output is: a 16 bit PNG, PQ in BT.2020 (its cICP chunk), SDR white at 203 nits and the light over it as bright as shown, which Chromium's browsers show as HDR |
-| `vid_vsync` | 1 a frame at each refresh; 0 (the default) doesn't wait for the display |
+| `vid_vsync` | 1 a frame at each refresh (the default in a browser, where it gives HDR); 0 (the default elsewhere) doesn't wait for the display. The options menu's Vertical Sync |
 | `vid_fullscreen`, `-fullscreen`, Alt+Enter | fullscreen: a borderless window on Windows, macOS's own (Option+Enter) on a Mac, the compositor's on Linux |
 | `vid_info`, `-gpu n` | Linux: GPU and presentation details. Use the n'th GPU |
 | `r_profile 1`, `r_profile_show` | time a frame takes, by stage |
@@ -456,14 +456,14 @@ data forgets it. Sound and the mouse wait for a click or a key: the browser's ru
 moves raw where the browser has it (Chrome), and `vid_vsync 0` shows frames as soon as they
 are drawn where it lets a page (Chrome too); `vid_info` tells what it has.
 
-HDR in a browser comes with `vid_vsync 1` on an HDR display (`vid_hdr`): WebGPU's canvas shows
-light past SDR white, and can't show frames as soon as they are drawn, as WebGL's can and
-shows SDR alone; the page takes the one or the other as `vid_vsync` changes. SDR white is the
-system's, whatever `vid_hdr_paperwhite` says. A browser doesn't tell a page how bright the
-display goes, which `vid_hdr_headroom` does: how many times as bright as SDR white the
-brightest white is, 1.5 by default (Chrome's `chrome://gpu` has it, as HDR relative maximum
-luminance). It shows HDR where the browser's WebGPU canvas has extended tone mapping (Chrome
-and Edge 129 or later).
+HDR in a browser comes with `vid_vsync 1`, the default there, on an HDR display (`vid_hdr`):
+WebGPU's canvas shows light past SDR white, and can't show frames as soon as they are drawn, as
+WebGL's can and shows SDR alone; the page takes the one or the other as `vid_vsync` changes. SDR
+white is the system's, whatever `vid_hdr_paperwhite` says. A browser doesn't tell a page how
+bright the display goes, which `vid_hdr_headroom` does: how many times as bright as SDR white
+the brightest white is, 1.5 by default (Chrome's `chrome://gpu` has it, as HDR relative maximum
+luminance). It shows HDR where the browser's WebGPU canvas has extended tone mapping (Chrome and
+Edge 129 or later).
 
 A browser has no UDP: the page connects to servers over WebSocket, or WebRTC (`rtc://`, in
 WebRTC below). `connect host[:port]` is `ws://host:27500`, or `wss://` from an https page;
