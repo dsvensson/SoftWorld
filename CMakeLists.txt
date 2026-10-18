@@ -116,11 +116,12 @@ elseif(EMSCRIPTEN)
 	# the web: POSIX as musl has it (dirent's types), which strict C23 hides; the
 	# worker threads and the shared memory the page's workers read; longjmp
 	# (Host_Error's) in WebAssembly, not through JavaScript; Windows' 1 MB of stack
-	# (the refresh takes about 256 KB); memory grown as used, up to 2 GB
+	# (the refresh takes about 256 KB); memory grown as used, up to 4 GB, as far as
+	# 32-bit WebAssembly goes (its pointers past 2 GB unsigned in the page's libraries)
 	add_compile_definitions(_GNU_SOURCE)
 	add_compile_options(-pthread -sSUPPORT_LONGJMP=wasm)
 	add_link_options(-pthread -sSUPPORT_LONGJMP=wasm -sSTACK_SIZE=1MB -sINITIAL_MEMORY=256MB
-		-sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2GB -Wno-pthreads-mem-growth
+		-sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB -Wno-pthreads-mem-growth
 		"$<$<CONFIG:Release>:--profiling-funcs>")
 	# the threads made ahead, as one started later waits for the page to yield:
 	# the most worker threads r_threads gets

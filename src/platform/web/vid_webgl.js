@@ -279,6 +279,11 @@ addToLibrary({
 	web_vid_present: (view, hud, huddirty, rowpixels, constants, x, y, width, height, paced) => {
 		var gl = WebVid.gl, canvas = WebVid.canvas, now = performance.now(), layout;
 
+		// pointers, unsigned: the memory goes past 2 GB
+		view >>>= 0;
+		hud >>>= 0;
+		constants >>>= 0;
+
 		// WebGPU's canvas: drawn whole each frame, its texture a new one
 		if (WebVid.kind == 'webgpu') {
 			if (!WebGpu.device)
@@ -327,12 +332,12 @@ addToLibrary({
 		gl.activeTexture(gl.TEXTURE0);
 		gl.bindTexture(gl.TEXTURE_2D, WebVid.view);
 		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, WebVid.width, WebVid.height, gl.RED_INTEGER, gl.UNSIGNED_INT,
-			HEAPU32, view >> 2);
+			HEAPU32, view >>> 2);
 		if (huddirty || WebVid.hudforce) {
 			gl.activeTexture(gl.TEXTURE1);
 			gl.bindTexture(gl.TEXTURE_2D, WebVid.hud);
 			gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, WebVid.width, WebVid.height, gl.RED_INTEGER, gl.UNSIGNED_INT,
-				HEAPU32, hud >> 2);
+				HEAPU32, hud >>> 2);
 			WebVid.hudforce = false;
 		}
 		gl.bindBuffer(gl.UNIFORM_BUFFER, WebVid.ubo);
@@ -379,6 +384,12 @@ addToLibrary({
 		var gl = WebVid.gl, float = !!gl.getExtension('EXT_color_buffer_float');
 		var fb = gl.createFramebuffer(), rb = gl.createRenderbuffer(), pixels, row, y;
 
+		// pointers, unsigned: the memory goes past 2 GB
+		view >>>= 0;
+		hud >>>= 0;
+		constants >>>= 0;
+		out >>>= 0;
+
 		gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
 		gl.renderbufferStorage(gl.RENDERBUFFER, float ? gl.RGBA32F : gl.RGBA8, width, height);
 		gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
@@ -388,11 +399,11 @@ addToLibrary({
 		gl.activeTexture(gl.TEXTURE0);
 		gl.bindTexture(gl.TEXTURE_2D, WebVid.view);
 		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, WebVid.width, WebVid.height, gl.RED_INTEGER, gl.UNSIGNED_INT,
-			HEAPU32, view >> 2);
+			HEAPU32, view >>> 2);
 		gl.activeTexture(gl.TEXTURE1);
 		gl.bindTexture(gl.TEXTURE_2D, WebVid.hud);
 		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, WebVid.width, WebVid.height, gl.RED_INTEGER, gl.UNSIGNED_INT,
-			HEAPU32, hud >> 2);
+			HEAPU32, hud >>> 2);
 		gl.bindBuffer(gl.UNIFORM_BUFFER, WebVid.ubo);
 		gl.bufferSubData(gl.UNIFORM_BUFFER, 0, HEAPU8, constants, 64);
 		gl.viewport(0, 0, width, height);
@@ -410,7 +421,7 @@ addToLibrary({
 		// GL's rows count from the bottom
 		for (y = 0 ; y < height ; y++) {
 			row = pixels.subarray((height - 1 - y) * width * 4, (height - y) * width * 4);
-			HEAPF32.set(row, (out >> 2) + y * width * 4);
+			HEAPF32.set(row, (out >>> 2) + y * width * 4);
 		}
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 		gl.deleteFramebuffer(fb);

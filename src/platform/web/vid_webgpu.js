@@ -150,7 +150,7 @@ addToLibrary({
 			return context;
 		},
 
-		// the layers and the constants into the GPU's copies
+		// the layers and the constants into the GPU's copies (the pointers unsigned)
 		upload(view, hud, huddirty, rowpixels, constants) {
 			var queue = WebGpu.device.queue, size = [WebGpu.width, WebGpu.height];
 			var bytes = (WebGpu.height - 1) * rowpixels * 4 + WebGpu.width * 4, layout = {bytesPerRow: rowpixels * 4};
@@ -223,6 +223,12 @@ addToLibrary({
 		var device = WebGpu.device, target, buffer, encoder, pixels, y;
 		var pitch = Math.ceil(width * 16 / 256) * 256;
 
+		// pointers, unsigned: the memory goes past 2 GB
+		view >>>= 0;
+		hud >>>= 0;
+		constants >>>= 0;
+		out >>>= 0;
+
 		await WebGpu.pipeline('rgba32float');
 		target = device.createTexture({size: [width, height], format: 'rgba32float',
 			usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC});
@@ -236,7 +242,7 @@ addToLibrary({
 		await buffer.mapAsync(GPUMapMode.READ);
 		pixels = new Float32Array(buffer.getMappedRange());
 		for (y = 0 ; y < height ; y++)
-			HEAPF32.set(pixels.subarray(y * pitch / 4, y * pitch / 4 + width * 4), (out >> 2) + y * width * 4);
+			HEAPF32.set(pixels.subarray(y * pitch / 4, y * pitch / 4 + width * 4), (out >>> 2) + y * width * 4);
 		buffer.unmap();
 		buffer.destroy();
 		target.destroy();

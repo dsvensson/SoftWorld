@@ -87,6 +87,7 @@ addToLibrary({
 	web_http_read: (id, buf, max) => {
 		var f = WebHTTP.fetches[id], done = 0, m, n;
 
+		buf >>>= 0;		// unsigned: the memory goes past 2 GB
 		if (!f)
 			return 0;
 		while (done < max && f.chunks.length) {

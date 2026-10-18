@@ -294,6 +294,7 @@ addToLibrary({
 	web_ws_recv: (buf, max, id) => {
 		var next = WebNet.queue.shift();
 
+		buf >>>= 0;		// unsigned: the memory goes past 2 GB
 		if (!next)
 			return 0;
 		{{{ makeSetValue('id', 0, 'next[0]', 'i32') }}};
@@ -308,6 +309,7 @@ addToLibrary({
 	web_ws_read: (id, buf, max) => {
 		var s = WebNet.sockets[id], done = 0, m, n;
 
+		buf >>>= 0;		// unsigned: the memory goes past 2 GB
 		if (!s)
 			return -1;
 		while (done < max && s.received.length) {

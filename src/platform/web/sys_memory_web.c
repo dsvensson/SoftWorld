@@ -5,7 +5,7 @@
 // Emscripten's mmap allocates and clears the whole size at once. A reservation
 // is a block of the heap instead, cleared as it is committed. The heap's new
 // memory comes from the browser zeroed and is given pages by the system only
-// where it is touched, so a reservation costs address space (2 GB of it) and
+// where it is touched, so a reservation costs address space (4 GB of it) and
 // the RAM of what is committed. A block of freed memory isn't zeroed, which is
 // why commits clear what they add.
 

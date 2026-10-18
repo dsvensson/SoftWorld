@@ -19,6 +19,9 @@ addToLibrary({
 	web_snd_init: (ring, frames, shared) => {
 		var resume;
 
+		// pointers, unsigned: the memory goes past 2 GB
+		ring >>>= 0;
+		shared >>>= 0;
 		if (!globalThis.AudioWorkletNode) {
 			WebSnd.failed = 'this browser has no AudioWorklet';
 			return 0;
