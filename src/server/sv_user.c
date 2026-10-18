@@ -66,6 +66,18 @@ static void SV_New_f (void)
 	host_client->state = cs_connected;
 	host_client->connection_started = host.realtime;
 
+	// what was broadcast before the client has the level is for nobody, and
+	// the serverdata needs the room: NetQuake's progs broadcast as their
+	// monsters set up in the first frames, which reach a client connected
+	// through a change of level whether they went to back buffers or still
+	// fit the message (a level of Copper's monsters filled it)
+	if (host_client->num_backbuf || host_client->netchan.message.cursize) {
+		Con_DPrintf("%s: [SV_New] %d bytes and %d back buffers from before the level, dropped\n",
+			host_client->name, host_client->netchan.message.cursize, host_client->num_backbuf);
+		host_client->num_backbuf = 0;
+		SZ_Clear(&host_client->netchan.message);
+	}
+
 	if (sv.bigcoords && !(host_client->fteext & FTE_PEXT_FLOATCOORDS))
 	{
 		SV_ClientPrintf (host_client, PRINT_HIGH, "%s", SV_BIGCOORDS_REFUSAL);
@@ -94,14 +106,6 @@ static void SV_New_f (void)
 
 //NOTE:  This doesn't go through ClientReliableWrite since it's before the user
 //spawns.  These functions are written to not overflow
-	// what was broadcast before the client has the level is for nobody:
-	// NetQuake's progs broadcast as their monsters set up in the first frames
-	if (host_client->num_backbuf) {
-		Con_DPrintf("WARNING %s: [SV_New] Back buffered (%d), clearing\n", host_client->name, host_client->netchan.message.cursize);
-		host_client->num_backbuf = 0;
-		SZ_Clear(&host_client->netchan.message);
-	}
-
 	// send the serverdata, with the protocol extensions in use this level;
 	// what follows is in this level's encoding
 	MSG_WriteByte (&host_client->netchan.message, svc_serverdata);
