@@ -323,10 +323,17 @@ static void SV_SaveSpawnparms (spawnparms_t parms)
 SV_InitVis
 
 Room for the visibility rows of the level. A PHS (potentially hearable set)
-row is the PVS rows of every leaf a leaf sees; for a big map building them
-all takes minutes, so each is built when a multicast first needs it.
+row is the PVS rows of every leaf a leaf sees; building them all takes long
+on a big map, so each is built when a multicast first needs it, and kept
+with the PVS rows it took. Kept, rows grow toward the leafs squared over 8
+bytes, more than a gigabyte for a map of 100000 leafs: as FTE's sv_calcphs 2
+has it, a map whose rows take a megabyte or more keeps none and has no PHS,
+nor has a single player game, and sounds go to every client, as NetQuake's
+server sends them.
 ================
 */
+#define VIS_KEPT_MAX	0x100000
+
 static void SV_InitVis (void)
 {
 	int		num;
@@ -335,9 +342,12 @@ static void SV_InitVis (void)
 	num = CM_NumVisLeafs (sv.map) + 1;
 	sv.vis_rows = num;
 	sv.vis_rowbytes = ((num + 31) >> 5) * 4;
+	sv.vis_kept = (size_t)num * (size_t)sv.vis_rowbytes < VIS_KEPT_MAX;
+	sv.phs = sv.vis_kept && (SV_Deathmatch () || (!SV_AttractCvar ("coop") && coop.value));
 	sv.checkpvs = Arena_Alloc (&sv_level_arena, (size_t)sv.vis_rowbytes);
-	sv.pvs_rows = Arena_Alloc (&sv_level_arena, (size_t)num * sizeof(*sv.pvs_rows));
-	sv.phs_rows = Arena_Alloc (&sv_level_arena, (size_t)num * sizeof(*sv.phs_rows));
+	sv.pvs_row = Arena_Alloc (&sv_level_arena, (size_t)sv.vis_rowbytes);
+	sv.pvs_rows = sv.vis_kept ? Arena_Alloc (&sv_level_arena, (size_t)num * sizeof(*sv.pvs_rows)) : NULL;
+	sv.phs_rows = sv.vis_kept ? Arena_Alloc (&sv_level_arena, (size_t)num * sizeof(*sv.phs_rows)) : NULL;
 }
 
 /*
@@ -345,7 +355,7 @@ static void SV_InitVis (void)
 SV_LeafPVS
 
 The leafs leafnum sees, bit n for leaf n+1; leaf 0 (outside the map) sees
-everything
+everything. Without sv.vis_kept, the row is good until the next call.
 ================
 */
 byte *SV_LeafPVS (int leafnum)
@@ -354,6 +364,11 @@ byte *SV_LeafPVS (int leafnum)
 
 	if (leafnum < 0 || leafnum >= sv.vis_rows)
 		leafnum = 0;
+	if (!sv.vis_kept)
+	{
+		memcpy (sv.pvs_row, CM_LeafPVS (sv.map, leafnum), (size_t)sv.vis_rowbytes);
+		return sv.pvs_row;
+	}
 	if (!sv.pvs_rows[leafnum])
 	{
 		row = Arena_Alloc (&sv_level_arena, (size_t)sv.vis_rowbytes);
@@ -367,7 +382,8 @@ byte *SV_LeafPVS (int leafnum)
 ================
 SV_LeafPHS
 
-The leafs leafnum can hear: the PVS of every leaf it sees
+The leafs leafnum can hear: the PVS of every leaf it sees; every leaf
+without a PHS (sv.phs)
 ================
 */
 byte *SV_LeafPHS (int leafnum)
@@ -376,6 +392,8 @@ byte *SV_LeafPHS (int leafnum)
 	byte		*pvs;
 	int			j, l, rowwords = sv.vis_rowbytes / 4;
 
+	if (!sv.phs)
+		return SV_LeafPVS (0);
 	if (leafnum < 0 || leafnum >= sv.vis_rows)
 		leafnum = 0;
 	if (!sv.phs_rows[leafnum])
@@ -413,6 +431,8 @@ void SV_CheckVisWiden (void)
 	if (CM_VisWidened (sv.map) == widen)
 		return;
 	CM_WidenVis (sv.map, widen);
+	if (!sv.vis_kept)
+		return;
 	memset (sv.pvs_rows, 0, (size_t)sv.vis_rows * sizeof(*sv.pvs_rows));
 	memset (sv.phs_rows, 0, (size_t)sv.vis_rows * sizeof(*sv.phs_rows));
 }

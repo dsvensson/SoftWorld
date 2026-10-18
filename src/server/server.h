@@ -109,7 +109,10 @@ typedef struct
 
 	int			vis_rows;			// leafs with visibility, and leaf 0 outside the map
 	int			vis_rowbytes;
-	byte		**pvs_rows, **phs_rows;	// decompressed when first needed, NULL until then
+	bool		vis_kept;			// rows are kept as they are decompressed: the map's all fit
+	bool		phs;				// sounds go to who can hear them; else to everyone, as NetQuake's
+	byte		**pvs_rows, **phs_rows;	// decompressed when first needed, NULL until then (vis_kept)
+	byte		*pvs_row;			// a row decompressed for the moment, without vis_kept
 	byte		*checkpvs;			// what the PF_checkclient target sees
 
 	// added to every client's unreliable buffer each frame, then cleared
